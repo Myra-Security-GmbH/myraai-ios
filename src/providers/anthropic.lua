@@ -32,22 +32,31 @@ function M.build_headers(ctx, api_key)
     return headers
 end
 
--- Convert OpenAI-style request to Anthropic Messages format.
--- ctx.request_body is always in OpenAI format (normalised by transform.lua).
+-- Build the Anthropic Messages API request body.
+--
+-- For native Anthropic endpoints (ctx.is_compat == false) the client already
+-- sends Anthropic Messages format, so we pass it through unchanged. This
+-- preserves system prompts, tool use/result blocks, extended thinking params,
+-- and any other Anthropic-specific fields.
+--
+-- For the OpenAI-compat endpoint (ctx.is_compat == true) the body arrives in
+-- OpenAI chat/completions format and needs converting.
 function M.build_request(ctx)
+    if not ctx.is_compat then
+        -- Native Anthropic path: forward raw body as-is
+        return ctx.raw_request_body
+    end
+
+    -- Compat path: convert OpenAI chat/completions → Anthropic Messages
     local src = ctx.request_body
 
-    -- Separate system message from the messages array
     local system_msg
     local messages = {}
     for _, msg in ipairs(src.messages or {}) do
         if msg.role == "system" then
             system_msg = msg.content
         else
-            messages[#messages + 1] = {
-                role    = msg.role,
-                content = msg.content,
-            }
+            messages[#messages + 1] = { role = msg.role, content = msg.content }
         end
     end
 
@@ -56,13 +65,12 @@ function M.build_request(ctx)
         max_tokens = src.max_tokens or 4096,
         messages   = messages,
     }
-    if system_msg then body.system = system_msg end
-    if src.temperature  then body.temperature   = src.temperature  end
-    if src.top_p        then body.top_p         = src.top_p        end
-    if src.stop         then body.stop_sequences = type(src.stop) == "table"
-                                                   and src.stop
-                                                   or {src.stop}  end
-    if src.stream       then body.stream        = true             end
+    if system_msg        then body.system         = system_msg end
+    if src.temperature   then body.temperature    = src.temperature end
+    if src.top_p         then body.top_p          = src.top_p end
+    if src.stop          then body.stop_sequences = type(src.stop) == "table"
+                                                    and src.stop or {src.stop} end
+    if src.stream        then body.stream         = true end
 
     return json.encode(body)
 end

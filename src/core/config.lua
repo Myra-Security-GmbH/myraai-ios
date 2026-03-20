@@ -23,7 +23,10 @@ function M.get_gateway(tenant_slug, gateway_slug)
 
     local cached = state.config_get(cache_key)
     if cached then
-        return json.decode(cached)
+        local decoded, decode_err = json.decode(cached)
+        if decoded then return decoded end
+        ngx.log(ngx.WARN, "config: corrupt cache entry for ", cache_key, ": ", decode_err)
+        -- fall through to storage
     end
 
     local config, err = storage.get_gateway(tenant_slug, gateway_slug)
@@ -43,7 +46,12 @@ function M.get_gateway(tenant_slug, gateway_slug)
     config.timeout_ms   = config.timeout_ms   or cfg.defaults.timeout_ms
     config.log_payloads = (config.log_payloads ~= false)
 
-    state.config_set(cache_key, json.encode(config), CACHE_TTL)
+    local encoded, enc_err = json.encode(config)
+    if not encoded then
+        ngx.log(ngx.ERR, "config: failed to encode config for caching: ", enc_err)
+    else
+        state.config_set(cache_key, encoded, CACHE_TTL)
+    end
     return config
 end
 

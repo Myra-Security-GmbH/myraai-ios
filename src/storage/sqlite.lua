@@ -9,6 +9,7 @@
 --   M.get_model_pricing(provider, model)      → {input_per_1k, output_per_1k} | nil
 --   M.insert_log(fields)                      → nil | err
 
+rawset(_G, "sqlite3", {})  -- lsqlite3 populates this global; pre-declare so write guard doesn't fire
 local sqlite3 = require("lsqlite3")
 local json    = require("utils.json")
 local uuid_lib = require("utils.uuid")

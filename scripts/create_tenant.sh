@@ -45,8 +45,10 @@ export AIG_CONFIG="${AIG_CONFIG:-$REPO_ROOT/config/gateway.lua}"
 export AIG_DATA_DIR="${AIG_DATA_DIR:-$REPO_ROOT/data}"
 
 if [[ -z "${AIG_MASTER_KEY:-}" ]]; then
-    echo "WARNING: AIG_MASTER_KEY is not set — using insecure dev key." >&2
-    echo "         Set AIG_MASTER_KEY in production." >&2
+    echo "Note: AIG_MASTER_KEY is not set — using default dev key." >&2
+    unset AIG_MASTER_KEY
+else
+    export AIG_MASTER_KEY
 fi
 
 # Check at least one provider key is set

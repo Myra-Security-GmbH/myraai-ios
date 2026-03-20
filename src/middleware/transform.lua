@@ -29,12 +29,14 @@ function M.run(ctx)
     local raw = ctx.raw_request_body
     if not raw or raw == "" then
         errors.send("INVALID_REQUEST", "Empty request body")
+        return
     end
 
     if not ctx.request_body then
         ctx.request_body = json.decode(raw)
         if not ctx.request_body then
             errors.send("INVALID_REQUEST", "Invalid JSON body")
+            return
         end
     end
 
@@ -44,6 +46,7 @@ function M.run(ctx)
     ctx.model = body.model
     if not ctx.model then
         errors.send("INVALID_REQUEST", "Missing 'model' field")
+        return
     end
 
     -- For compat endpoint: infer the real provider from the model name

@@ -86,7 +86,7 @@ local function handle_streaming(ctx, res)
             ngx.log(ngx.ERR, "streaming read error: ", err)
             break
         end
-        if chunk == "" or chunk == nil then break end
+        if not chunk then break end
 
         -- Forward to client immediately
         ngx.print(chunk)
@@ -190,6 +190,35 @@ function M.run(ctx)
                 last_err = "provider HTTP " .. res.status
                 ngx.log(ngx.WARN, "upstream: provider returned ", res.status)
                 goto next_try
+            end
+
+            -- 4xx from provider → pass through immediately (don't retry)
+            -- The error body comes from the provider so forward it as-is.
+            if res.status >= 400 then
+                -- res.body may be a reader function (when client sent stream=true)
+                -- even though the provider returned a plain JSON error. Buffer it.
+                local body_str = res.body
+                if type(body_str) == "function" then
+                    local parts = {}
+                    while true do
+                        local chunk = body_str(8192)
+                        if not chunk or chunk == "" then break end
+                        parts[#parts + 1] = chunk
+                    end
+                    body_str = table.concat(parts)
+                end
+                if res.httpc then res.httpc:set_keepalive() end
+                ctx.provider        = provider_name
+                ctx.model           = model
+                ctx.response_body   = body_str
+                ctx.provider_status = res.status
+                ctx.is_streaming    = false
+                ngx.status = res.status
+                ngx.header["Content-Type"] = "application/json"
+                ngx.header["X-AIG-Cache"]  = "MISS"
+                ngx.header["X-AIG-Provider"] = provider_name
+                ngx.header["X-AIG-Model"]    = model
+                return
             end
 
             -- Success path
