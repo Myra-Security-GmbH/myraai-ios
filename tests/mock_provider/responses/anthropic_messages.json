@@ -1,0 +1,18 @@
+{
+  "id": "msg_mock_001",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "Hello! I am a mock response from the test provider."
+    }
+  ],
+  "model": "claude-haiku-4-5-20251001",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 12,
+    "output_tokens": 12
+  }
+}
