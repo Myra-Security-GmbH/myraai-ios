@@ -21,5 +21,6 @@ M.upsert_tenant       = not_impl("upsert_tenant")
 M.upsert_gateway      = not_impl("upsert_gateway")
 M.upsert_provider_config = not_impl("upsert_provider_config")
 M.insert_auth_token   = not_impl("insert_auth_token")
+M.get_usage_stats     = not_impl("get_usage_stats")
 
 return M

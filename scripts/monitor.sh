@@ -46,16 +46,17 @@ render() {
     echo "  ── Last 60 seconds ────────────────────────────────────────"
     sql "
 SELECT
-  COUNT(*)                           AS requests,
-  COALESCE(SUM(input_tokens),0)      AS in_tok,
-  COALESCE(SUM(output_tokens),0)     AS out_tok,
-  ROUND(COALESCE(SUM(cost_usd),0),6) AS cost,
-  ROUND(COALESCE(AVG(latency_ms),0)) AS avg_ms
+  COUNT(*)                                    AS requests,
+  SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
+  COALESCE(SUM(input_tokens),0)               AS in_tok,
+  COALESCE(SUM(output_tokens),0)              AS out_tok,
+  ROUND(COALESCE(SUM(cost_usd),0),6)          AS cost,
+  ROUND(COALESCE(AVG(latency_ms),0))          AS avg_ms
 FROM request_logs
 WHERE ts >= datetime('now','-1 minute')
 " | awk -F'|' 'NR==1{
-    printf "  Requests: %-6s  In: %-8s  Out: %-8s  Cost: $%-10s  Avg: %sms\n",
-           $1,$2,$3,$4,$5
+    printf "  Requests: %-6s  Blocked: %-5s  In: %-8s  Out: %-8s  Cost: $%-10s  Avg: %sms\n",
+           $1,$2,$3,$4,$5,$6
 }'
     echo ""
 
@@ -63,17 +64,18 @@ WHERE ts >= datetime('now','-1 minute')
     echo "  ── Last hour ───────────────────────────────────────────────"
     sql "
 SELECT
-  COUNT(*)                           AS requests,
-  SUM(CASE WHEN cached=1 THEN 1 ELSE 0 END) AS cached,
-  COALESCE(SUM(input_tokens),0)      AS in_tok,
-  COALESCE(SUM(output_tokens),0)     AS out_tok,
-  ROUND(COALESCE(SUM(cost_usd),0),4) AS cost,
-  ROUND(COALESCE(AVG(latency_ms),0)) AS avg_ms
+  COUNT(*)                                    AS requests,
+  SUM(CASE WHEN cached=1  THEN 1 ELSE 0 END) AS cached,
+  SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
+  COALESCE(SUM(input_tokens),0)               AS in_tok,
+  COALESCE(SUM(output_tokens),0)              AS out_tok,
+  ROUND(COALESCE(SUM(cost_usd),0),4)          AS cost,
+  ROUND(COALESCE(AVG(latency_ms),0))          AS avg_ms
 FROM request_logs
 WHERE ts >= datetime('now','-1 hour')
 " | awk -F'|' 'NR==1{
-    printf "  Requests: %-6s  Cached: %-5s  In: %-8s  Out: %-8s  Cost: $%-10s  Avg: %sms\n",
-           $1,$2,$3,$4,$5,$6
+    printf "  Requests: %-6s  Cached: %-5s  Blocked: %-5s  In: %-8s  Out: %-8s  Cost: $%-10s  Avg: %sms\n",
+           $1,$2,$3,$4,$5,$6,$7
 }'
     echo ""
 
@@ -81,17 +83,18 @@ WHERE ts >= datetime('now','-1 hour')
     echo "  ── Today (UTC) ─────────────────────────────────────────────"
     sql "
 SELECT
-  COUNT(*)                           AS requests,
-  SUM(CASE WHEN cached=1 THEN 1 ELSE 0 END) AS cached,
-  COALESCE(SUM(input_tokens),0)      AS in_tok,
-  COALESCE(SUM(output_tokens),0)     AS out_tok,
-  ROUND(COALESCE(SUM(cost_usd),0),4) AS cost,
-  ROUND(COALESCE(AVG(latency_ms),0)) AS avg_ms
+  COUNT(*)                                    AS requests,
+  SUM(CASE WHEN cached=1  THEN 1 ELSE 0 END) AS cached,
+  SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
+  COALESCE(SUM(input_tokens),0)               AS in_tok,
+  COALESCE(SUM(output_tokens),0)              AS out_tok,
+  ROUND(COALESCE(SUM(cost_usd),0),4)          AS cost,
+  ROUND(COALESCE(AVG(latency_ms),0))          AS avg_ms
 FROM request_logs
 WHERE ts >= strftime('%Y-%m-%dT00:00:00Z','now')
 " | awk -F'|' 'NR==1{
-    printf "  Requests: %-6s  Cached: %-5s  In: %-8s  Out: %-8s  Cost: $%-10s  Avg: %sms\n",
-           $1,$2,$3,$4,$5,$6
+    printf "  Requests: %-6s  Cached: %-5s  Blocked: %-5s  In: %-8s  Out: %-8s  Cost: $%-10s  Avg: %sms\n",
+           $1,$2,$3,$4,$5,$6,$7
 }'
     echo ""
 
@@ -119,29 +122,72 @@ LIMIT 10
 
     # ── Recent requests ───────────────────────────────────────────────
     echo "  ── Last 10 requests ────────────────────────────────────────"
-    printf "  %-19s  %-12s  %-10s  %-24s  %3s  %6s  %6s  %9s  %5s\n" \
-        "TIME" "TENANT" "PROVIDER" "MODEL" "ST" "IN" "OUT" "COST" "MS"
-    printf "  %-19s  %-12s  %-10s  %-24s  %3s  %6s  %6s  %9s  %5s\n" \
-        "-------------------" "------------" "----------" "------------------------" "---" "------" "------" "---------" "-----"
+    printf "  %-19s  %-12s  %-10s  %-24s  %-9s  %6s  %6s  %9s  %5s\n" \
+        "TIME" "TENANT" "PROVIDER" "MODEL" "STATUS" "IN" "OUT" "COST" "MS"
+    printf "  %-19s  %-12s  %-10s  %-24s  %-9s  %6s  %6s  %9s  %5s\n" \
+        "-------------------" "------------" "----------" "------------------------" "---------" "------" "------" "---------" "-----"
     sql "
 SELECT
-  substr(l.ts,1,19)                  AS ts,
+  substr(l.ts,1,19)                         AS ts,
   COALESCE(t.slug, substr(l.tenant_id,1,8)) AS tenant,
   l.provider,
-  substr(l.model,1,24)               AS model,
+  substr(l.model,1,24)                      AS model,
   l.status,
   l.input_tokens,
   l.output_tokens,
-  ROUND(l.cost_usd,5)                AS cost,
+  ROUND(l.cost_usd,5)                       AS cost,
   l.latency_ms,
-  l.cached
+  l.cached,
+  l.blocked,
+  COALESCE(l.blocked_by,'')                 AS blocked_by
 FROM request_logs l
 LEFT JOIN cfg.tenants t ON t.id = l.tenant_id
 ORDER BY l.ts DESC LIMIT 10
 " | awk -F'|' '{
-    cached = ($10 == "1") ? " C" : "  "
-    printf "  %-19s  %-12s  %-10s  %-24s  %3s%s  %6s  %6s  $%-8s  %5s\n",
-           $1,$2,$3,$4,$5,cached,$6,$7,$8,$9
+    if ($11 == "1")       tag = "[" $12 "]"
+    else if ($10 == "1")  tag = "[cached]"
+    else                  tag = $5
+    printf "  %-19s  %-12s  %-10s  %-24s  %-9s  %6s  %6s  $%-8s  %5s\n",
+           $1,$2,$3,$4,tag,$6,$7,$8,$9
+}'
+    echo ""
+
+    # ── Recent blocked ────────────────────────────────────────────────
+    echo "  ── Last 10 blocked requests ────────────────────────────────"
+    printf "  %-19s  %-12s  %-14s  %-30s  %5s\n" \
+        "TIME" "TENANT" "BLOCKED BY" "REASON" "MS"
+    printf "  %-19s  %-12s  %-14s  %-30s  %5s\n" \
+        "-------------------" "------------" "--------------" "------------------------------" "-----"
+    sql "
+SELECT
+  substr(l.ts,1,19)                         AS ts,
+  COALESCE(t.slug, substr(l.tenant_id,1,8)) AS tenant,
+  COALESCE(l.blocked_by,'?')                AS blocked_by,
+  COALESCE(l.block_reason,'')              AS reason,
+  l.latency_ms
+FROM request_logs l
+LEFT JOIN cfg.tenants t ON t.id = l.tenant_id
+WHERE l.blocked = 1
+ORDER BY l.ts DESC LIMIT 10
+" | awk -F'|' 'BEGIN {
+    L["S1"]="Violent Crimes";       L["S2"]="Non-Violent Crimes";
+    L["S3"]="Sex Crimes";           L["S4"]="Child Exploitation";
+    L["S5"]="Defamation";           L["S6"]="Specialized Advice";
+    L["S7"]="Privacy";              L["S8"]="IP Infringement";
+    L["S9"]="WMD/CBRN";             L["S10"]="Hate Speech";
+    L["S11"]="Self-Harm";           L["S12"]="Explicit Sexual";
+    L["S13"]="Elections";           L["S14"]="Code Abuse";
+} {
+    reason = $4
+    if (reason ~ /^S[0-9]/) {
+        n = split(reason, codes, /,[ ]*/); out = ""
+        for (i=1; i<=n; i++) {
+            lbl = (codes[i] in L) ? codes[i] ":" L[codes[i]] : codes[i]
+            out = out (i>1 ? ", " : "") lbl
+        }
+        reason = substr(out, 1, 30)
+    }
+    printf "  %-19s  %-12s  %-14s  %-30s  %5s\n", $1,$2,$3,reason,$5
 }'
 
     echo ""

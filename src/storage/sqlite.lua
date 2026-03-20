@@ -54,6 +54,19 @@ end
 function M.migrate(cfg)
     apply_schema(cfg.sqlite.config_db, "config")
     apply_schema(cfg.sqlite.logs_db,   "logs")
+
+    -- Add block-tracking columns to existing logs DB (idempotent: errors on dup ignored).
+    local ldb = open_db(cfg.sqlite.logs_db)
+    ldb:exec("ALTER TABLE request_logs ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0")
+    ldb:exec("ALTER TABLE request_logs ADD COLUMN blocked_by TEXT")
+    ldb:exec("ALTER TABLE request_logs ADD COLUMN block_reason TEXT")
+    ldb:close()
+
+    -- Add cache-pricing columns to existing config DB (idempotent).
+    local cdb = open_db(cfg.sqlite.config_db)
+    cdb:exec("ALTER TABLE model_pricing ADD COLUMN cache_write_per_1k REAL")
+    cdb:exec("ALTER TABLE model_pricing ADD COLUMN cache_read_per_1k REAL")
+    cdb:close()
 end
 
 -- Open DB handles per worker (called from init_worker_by_lua_block).
@@ -172,7 +185,8 @@ end
 
 function M.get_model_pricing(provider, model)
     return query_one(cfg_db(), [[
-        SELECT input_per_1k, output_per_1k FROM model_pricing
+        SELECT input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k
+        FROM   model_pricing
         WHERE  provider = ? AND model = ?
     ]], provider, model)
 end
@@ -186,14 +200,17 @@ function M.insert_log(f)
         INSERT INTO request_logs
             (id, tenant_id, gateway_id, provider, model, status, cached,
              input_tokens, output_tokens, cost_usd, latency_ms, ts,
-             prompt, response, meta)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             prompt, response, meta, blocked, blocked_by, block_reason)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
         f.input_tokens, f.output_tokens, f.cost_usd, f.latency_ms, f.ts,
         f.prompt, f.response,
-        json.encode(f.meta or {})
+        json.encode(f.meta or {}),
+        f.blocked and 1 or 0,
+        f.blocked_by,
+        f.block_reason
     )
     return err
 end
@@ -264,7 +281,8 @@ function M.get_usage_stats()
     local function period(where)
         return query_one(ldb, [[
             SELECT COUNT(*) AS requests,
-                   SUM(CASE WHEN cached=1 THEN 1 ELSE 0 END) AS cached,
+                   SUM(CASE WHEN cached=1  THEN 1 ELSE 0 END) AS cached,
+                   SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
                    COALESCE(SUM(input_tokens),0)   AS input_tokens,
                    COALESCE(SUM(output_tokens),0)  AS output_tokens,
                    ROUND(COALESCE(SUM(cost_usd),0),6) AS cost_usd,
@@ -290,7 +308,8 @@ function M.get_usage_stats()
     local recent = query_all(ldb, [[
         SELECT substr(ts,1,19) AS ts, tenant_id, provider, model,
                status, input_tokens, output_tokens,
-               ROUND(cost_usd,5) AS cost_usd, latency_ms, cached
+               ROUND(cost_usd,5) AS cost_usd, latency_ms, cached,
+               blocked, blocked_by, block_reason
         FROM request_logs ORDER BY ts DESC LIMIT 10
     ]]) or {}
 
@@ -298,12 +317,23 @@ function M.get_usage_stats()
         row.tenant = slugs[row.tenant_id] or row.tenant_id
     end
 
+    local recent_blocked = query_all(ldb, [[
+        SELECT substr(ts,1,19) AS ts, tenant_id, blocked_by, block_reason, latency_ms
+        FROM request_logs WHERE blocked = 1
+        ORDER BY ts DESC LIMIT 20
+    ]]) or {}
+
+    for _, row in ipairs(recent_blocked) do
+        row.tenant = slugs[row.tenant_id] or row.tenant_id
+    end
+
     return {
-        today    = period("ts >= strftime('%Y-%m-%dT00:00:00Z','now')"),
-        hour     = period("ts >= datetime('now','-1 hour')"),
-        last_min = period("ts >= datetime('now','-1 minute')"),
-        by_tenant = by_tenant,
-        recent    = recent,
+        today          = period("ts >= strftime('%Y-%m-%dT00:00:00Z','now')"),
+        hour           = period("ts >= datetime('now','-1 hour')"),
+        last_min       = period("ts >= datetime('now','-1 minute')"),
+        by_tenant      = by_tenant,
+        recent         = recent,
+        recent_blocked = recent_blocked,
     }
 end
 

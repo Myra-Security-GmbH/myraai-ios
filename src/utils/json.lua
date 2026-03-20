@@ -23,4 +23,6 @@ function M.decode(str)
     return result
 end
 
+M.null = cjson.null
+
 return M

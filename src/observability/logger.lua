@@ -53,10 +53,13 @@ function M.emit(ctx)
         meta          = ctx.meta or {},
     }
 
-    -- Merge any extra log fields added by other middleware
+    -- Merge any extra log fields added by other middleware (e.g. blocked_by, block_reason)
     for k, v in pairs(ctx.log_fields or {}) do
         fields[k] = v
     end
+
+    -- Derive blocked flag from blocked_by (set by guardrails/dlp/rate_limit/etc.)
+    fields.blocked = fields.blocked_by ~= nil
 
     local err = storage.insert_log(fields)
     if err then

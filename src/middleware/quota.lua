@@ -14,6 +14,10 @@ function M.run(ctx)
     local spent_micro  = state.counter_get("budget:" .. ctx.gateway_id)
     local budget_micro = budget * 1e6
     if spent_micro >= budget_micro then
+        ctx.log_fields = ctx.log_fields or {}
+        ctx.log_fields.blocked_by   = "quota"
+        ctx.log_fields.block_reason = string.format("spent $%.4f of $%.4f",
+                                          spent_micro / 1e6, budget)
         errors.send("QUOTA_EXCEEDED",
             string.format("Budget $%.4f exceeded (spent $%.4f)",
                           budget, spent_micro / 1e6))

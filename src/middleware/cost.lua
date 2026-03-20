@@ -7,10 +7,13 @@ local state      = require("state")
 local M = {}
 
 function M.run(ctx)
-    local input_t  = ctx.input_tokens  or 0
-    local output_t = ctx.output_tokens or 0
+    local input_t    = ctx.input_tokens          or 0
+    local output_t   = ctx.output_tokens         or 0
+    local cache_cre  = ctx.cache_creation_tokens or 0
+    local cache_read = ctx.cache_read_tokens     or 0
 
-    local cost = cost_table.calculate(ctx.provider, ctx.model, input_t, output_t)
+    local cost = cost_table.calculate(ctx.provider, ctx.model,
+                                      input_t, output_t, cache_cre, cache_read)
     ctx.cost_usd = cost
 
     if cost > 0 then

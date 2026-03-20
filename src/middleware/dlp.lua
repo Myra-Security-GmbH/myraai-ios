@@ -4,7 +4,8 @@
 -- Config (in gateway_config.dlp):
 --   { enabled = true, action = "scrub", patterns = ["email","cc","ssn"] }
 
-local errors = require("core.errors")
+local errors   = require("core.errors")
+local req_util = require("utils.request")
 
 local M = {}
 
@@ -46,8 +47,7 @@ function M.run(ctx)
 
     -- Ensure body is read
     if not ctx.raw_request_body then
-        ngx.req.read_body()
-        ctx.raw_request_body = ngx.req.get_body_data() or ""
+        ctx.raw_request_body = req_util.read_body() or ""
     end
 
     local body_str = ctx.raw_request_body
@@ -59,6 +59,9 @@ function M.run(ctx)
         if matched then
             ngx.log(ngx.WARN, "DLP block: pattern=", which,
                     " tenant=", ctx.tenant_id, " gw=", ctx.gateway_id)
+            ctx.log_fields = ctx.log_fields or {}
+            ctx.log_fields.blocked_by   = "dlp"
+            ctx.log_fields.block_reason = which
             errors.send("DLP_BLOCKED", "Request contains sensitive data: " .. which)
         end
 

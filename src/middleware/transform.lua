@@ -2,28 +2,17 @@
 -- Ensures ctx.request_body is an OpenAI-format Lua table.
 -- Also resolves provider and model for compat requests.
 
-local json   = require("utils.json")
-local compat = require("providers.compat")
-local errors = require("core.errors")
+local json        = require("utils.json")
+local compat      = require("providers.compat")
+local errors      = require("core.errors")
+local req_util    = require("utils.request")
 
 local M = {}
 
 function M.run(ctx)
     -- Body may have already been read by cache_check or DLP
     if not ctx.raw_request_body then
-        ngx.req.read_body()
-        ctx.raw_request_body = ngx.req.get_body_data()
-        -- Body may be in a temp file when it exceeds client_body_buffer_size
-        if not ctx.raw_request_body then
-            local f = ngx.req.get_body_file()
-            if f then
-                local fh = io.open(f, "rb")
-                if fh then
-                    ctx.raw_request_body = fh:read("*a")
-                    fh:close()
-                end
-            end
-        end
+        ctx.raw_request_body = req_util.read_body()
     end
 
     local raw = ctx.raw_request_body

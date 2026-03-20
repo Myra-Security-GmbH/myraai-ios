@@ -78,7 +78,7 @@ local function handle_streaming(ctx, res)
     local reader      = res.body
     local provider_mod = res.provider_mod
     local buf         = ""
-    local input_tokens, output_tokens = 0, 0
+    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = 0, 0, 0, 0
 
     while true do
         local chunk, err = reader(8192)
@@ -108,8 +108,10 @@ local function handle_streaming(ctx, res)
 
             local parsed = provider_mod.parse_sse_chunk(line)
             if parsed then
-                if parsed.input_tokens  then input_tokens  = parsed.input_tokens  end
-                if parsed.output_tokens then output_tokens = parsed.output_tokens end
+                if parsed.input_tokens          then input_tokens          = parsed.input_tokens          end
+                if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
+                if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
+                if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
             end
         end
     end
@@ -117,9 +119,11 @@ local function handle_streaming(ctx, res)
     -- Return connection to pool
     if res.httpc then res.httpc:set_keepalive() end
 
-    ctx.input_tokens    = input_tokens
-    ctx.output_tokens   = output_tokens
-    ctx.is_streaming    = true
+    ctx.input_tokens          = input_tokens
+    ctx.output_tokens         = output_tokens
+    ctx.cache_creation_tokens = cache_creation_tokens
+    ctx.cache_read_tokens     = cache_read_tokens
+    ctx.is_streaming          = true
     ctx.provider_status = 200
 end
 
@@ -133,10 +137,12 @@ local function handle_buffered(ctx, res)
         return nil, "parse_response: " .. tostring(err)
     end
 
-    ctx.response_body   = body_str
-    ctx.input_tokens    = parsed.input_tokens
-    ctx.output_tokens   = parsed.output_tokens
-    ctx.provider_status = res.status
+    ctx.response_body         = body_str
+    ctx.input_tokens          = parsed.input_tokens
+    ctx.output_tokens         = parsed.output_tokens
+    ctx.cache_creation_tokens = parsed.cache_creation_tokens or 0
+    ctx.cache_read_tokens     = parsed.cache_read_tokens     or 0
+    ctx.provider_status       = res.status
     ctx.is_streaming    = false
     return true
 end

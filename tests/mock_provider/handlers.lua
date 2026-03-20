@@ -115,6 +115,23 @@ local function handle_chat(req_headers, body)
                    or scenario == "streaming"
 
     if is_stream then
+        local path = ngx.var.uri
+        if path:find("/messages", 1, true) then
+            -- Anthropic SSE format
+            local chunks = read_file("anthropic_streaming.txt")
+            if chunks then
+                ngx.status = 200
+                ngx.header["Content-Type"]      = "text/event-stream"
+                ngx.header["Cache-Control"]     = "no-cache"
+                ngx.header["X-Accel-Buffering"] = "no"
+                for line in (chunks .. "\n"):gmatch("([^\n]*)\n") do
+                    ngx.print(line .. "\n")
+                    ngx.flush(true)
+                    ngx.sleep(0.01)
+                end
+                return
+            end
+        end
         send_streaming(body)
         return
     end

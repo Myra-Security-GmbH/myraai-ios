@@ -91,10 +91,12 @@ function M.parse_response(body_str)
 
     local usage = body.usage or {}
     return {
-        content       = content,
-        input_tokens  = usage.input_tokens  or 0,
-        output_tokens = usage.output_tokens or 0,
-        raw           = body,
+        content               = content,
+        input_tokens          = usage.input_tokens          or 0,
+        output_tokens         = usage.output_tokens         or 0,
+        cache_creation_tokens = usage.cache_creation_input_tokens or 0,
+        cache_read_tokens     = usage.cache_read_input_tokens     or 0,
+        raw                   = body,
     }
 end
 
@@ -113,19 +115,24 @@ function M.parse_sse_chunk(line)
 
     local done = (chunk.type == "message_stop")
 
-    local input_tokens, output_tokens
+    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
     if chunk.type == "message_delta" and chunk.usage then
         output_tokens = chunk.usage.output_tokens
     end
     if chunk.type == "message_start" and chunk.message and chunk.message.usage then
-        input_tokens = chunk.message.usage.input_tokens
+        local u = chunk.message.usage
+        input_tokens          = u.input_tokens
+        cache_creation_tokens = u.cache_creation_input_tokens
+        cache_read_tokens     = u.cache_read_input_tokens
     end
 
     return {
-        delta         = delta,
-        done          = done,
-        input_tokens  = input_tokens,
-        output_tokens = output_tokens,
+        delta                 = delta,
+        done                  = done,
+        input_tokens          = input_tokens,
+        output_tokens         = output_tokens,
+        cache_creation_tokens = cache_creation_tokens,
+        cache_read_tokens     = cache_read_tokens,
     }
 end
 

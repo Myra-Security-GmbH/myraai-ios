@@ -30,21 +30,23 @@ function M.stats()
         local lsum   = gv("aig_latency_ms_sum")
         local lcount = gv("aig_latency_ms_count")
         data.live = {
-            requests      = gv("aig_requests_total"),
-            input_tokens  = gv("aig_input_tokens_total"),
-            output_tokens = gv("aig_output_tokens_total"),
+            requests       = gv("aig_requests_total"),
+            input_tokens   = gv("aig_input_tokens_total"),
+            output_tokens  = gv("aig_output_tokens_total"),
             avg_latency_ms = lcount > 0 and math.floor(lsum / lcount) or 0,
+            blocked        = gv("aig_blocked_total"),
         }
     end
 
     -- SQLite stats via the already-open storage handles
     local ok, stats = pcall(storage.get_usage_stats)
     if ok and stats then
-        data.today     = stats.today
-        data.hour      = stats.hour
-        data.last_min  = stats.last_min
-        data.by_tenant = stats.by_tenant
-        data.recent    = stats.recent
+        data.today          = stats.today
+        data.hour           = stats.hour
+        data.last_min       = stats.last_min
+        data.by_tenant      = stats.by_tenant
+        data.recent         = stats.recent
+        data.recent_blocked = stats.recent_blocked
     end
 
     ngx.header["Content-Type"] = "application/json"
@@ -82,6 +84,7 @@ function M.dashboard()
   .card.blue  .value { color: #63b3ed; }
   .card.yellow .value { color: #f6e05e; }
   .card.purple .value { color: #b794f4; }
+  .card.red   .value { color: #fc8181; }
   section { padding: 0 24px 24px; }
   h2 { font-size: 13px; color: #718096; text-transform: uppercase;
        letter-spacing: .05em; margin-bottom: 12px; padding-top: 4px; }
@@ -92,9 +95,10 @@ function M.dashboard()
   tr:hover td { background: #1a202c; }
   .pill { display:inline-block; padding: 1px 6px; border-radius: 3px;
           font-size: 11px; font-weight: 600; }
-  .ok   { background:#2f855a; color:#c6f6d5; }
-  .err  { background:#742a2a; color:#fed7d7; }
-  .hit  { background:#2c5282; color:#bee3f8; }
+  .ok      { background:#2f855a; color:#c6f6d5; }
+  .err     { background:#742a2a; color:#fed7d7; }
+  .hit     { background:#2c5282; color:#bee3f8; }
+  .blocked { background:#744210; color:#fefcbf; }
   #error { color: #fc8181; padding: 16px 24px; }
 </style>
 </head>
@@ -137,6 +141,11 @@ function M.dashboard()
     <div class="value" id="c-req-min">—</div>
     <div class="sub" id="c-cost-min"></div>
   </div>
+  <div class="card red">
+    <div class="label">Blocked today</div>
+    <div class="value" id="c-blocked-today">—</div>
+    <div class="sub" id="c-blocked-hour">last hour: —</div>
+  </div>
 </div>
 
 <section>
@@ -158,6 +167,16 @@ function M.dashboard()
       <th>Status</th><th>In</th><th>Out</th><th>Cost</th><th>ms</th>
     </tr></thead>
     <tbody id="recent-body"></tbody>
+  </table>
+</section>
+
+<section style="margin-top:20px">
+  <h2>Recent blocked requests</h2>
+  <table id="blocked-table">
+    <thead><tr>
+      <th>Time</th><th>Tenant</th><th>Blocked by</th><th>Reason</th><th>ms</th>
+    </tr></thead>
+    <tbody id="blocked-body"></tbody>
   </table>
 </section>
 
@@ -202,6 +221,9 @@ async function refresh() {
     set('c-req-min',  fmt(m.requests));
     set('c-cost-min', '$' + fmt(m.cost_usd, 6));
 
+    set('c-blocked-today', fmt(t.blocked || 0));
+    set('c-blocked-hour',  'last hour: ' + fmt((d.hour || {}).blocked || 0));
+
     // Tenant table
     const tb = document.getElementById('tenant-body');
     tb.innerHTML = '';
@@ -230,13 +252,40 @@ async function refresh() {
         const td = tr.insertCell();
         if (i === 4) {
           const pill = document.createElement('span');
-          pill.className = 'pill ' + (row.cached ? 'hit' : (ok ? 'ok' : 'err'));
-          pill.textContent = row.cached ? 'cached' : status;
+          if (row.blocked) {
+            pill.className = 'pill blocked';
+            pill.textContent = row.blocked_by || 'blocked';
+          } else if (row.cached) {
+            pill.className = 'pill hit';
+            pill.textContent = 'cached';
+          } else {
+            pill.className = 'pill ' + (ok ? 'ok' : 'err');
+            pill.textContent = status;
+          }
           td.appendChild(pill);
         } else {
           td.textContent = v;
         }
       });
+    });
+
+    // Blocked requests
+    const bb = document.getElementById('blocked-body');
+    bb.innerHTML = '';
+    (d.recent_blocked || []).forEach(function(row) {
+      const tr = bb.insertRow();
+      [row.ts, row.tenant || row.tenant_id, row.blocked_by, row.block_reason, row.latency_ms]
+        .forEach(function(v, i) {
+          const td = tr.insertCell();
+          if (i === 2) {
+            const pill = document.createElement('span');
+            pill.className = 'pill blocked';
+            pill.textContent = v || '';
+            td.appendChild(pill);
+          } else {
+            td.textContent = v != null ? v : '';
+          }
+        });
     });
 
   } catch(e) {

@@ -39,6 +39,9 @@ function M.run(ctx)
         if in_cidr(client_ip, cidr) then return end
     end
 
+    ctx.log_fields = ctx.log_fields or {}
+    ctx.log_fields.blocked_by   = "ip_allowlist"
+    ctx.log_fields.block_reason = client_ip
     errors.send("FORBIDDEN", "Client IP not in allowlist")
 end
 

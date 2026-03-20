@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS request_logs (
     prompt         TEXT,
     response       TEXT,
     -- Custom metadata key=value pairs as JSON object
-    meta           TEXT NOT NULL DEFAULT '{}'
+    meta           TEXT NOT NULL DEFAULT '{}',
+    -- Block tracking (NULL blocked_by = request was not blocked)
+    blocked        INTEGER NOT NULL DEFAULT 0,
+    blocked_by     TEXT,    -- "guardrail" | "dlp" | "rate_limit" | "quota" | "ip_allowlist"
+    block_reason   TEXT     -- category codes (e.g. "S2,S9") or pattern name
 );
 
 CREATE INDEX IF NOT EXISTS idx_logs_tenant_ts   ON request_logs(tenant_id, ts);

@@ -5,6 +5,7 @@
 local cache_key_builder = require("cache.key")
 local state             = require("state")
 local json              = require("utils.json")
+local req_util          = require("utils.request")
 
 local M = {}
 
@@ -13,8 +14,7 @@ function M.run(ctx)
     if ttl <= 0 then return end  -- caching disabled
 
     -- Body isn't parsed yet — parse it now (cheaply; it's small for cache check)
-    ngx.req.read_body()
-    local raw = ngx.req.get_body_data()
+    local raw = req_util.read_body()
     if not raw then return end
 
     ctx.raw_request_body = raw

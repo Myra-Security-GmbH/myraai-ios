@@ -19,6 +19,9 @@ function M.run(ctx)
 
     local allowed, count = state.rate_limit_check(key, window_sec, limit)
     if not allowed then
+        ctx.log_fields = ctx.log_fields or {}
+        ctx.log_fields.blocked_by   = "rate_limit"
+        ctx.log_fields.block_reason = count .. "/" .. limit .. " per " .. window_sec .. "s"
         ngx.header["X-RateLimit-Limit"]     = limit
         ngx.header["X-RateLimit-Remaining"] = 0
         ngx.header["Retry-After"]           = window_sec
