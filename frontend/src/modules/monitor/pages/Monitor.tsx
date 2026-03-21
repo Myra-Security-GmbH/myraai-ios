@@ -31,7 +31,7 @@ function fmt(n: number | null | undefined, dec = 0) {
 
 function fmtCost(n: number | null | undefined) {
   if (n == null || n === 0) return "$0";
-  return `$${n.toFixed(5)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 function PeriodCard({ label, data }: { label: string; data: any }) {

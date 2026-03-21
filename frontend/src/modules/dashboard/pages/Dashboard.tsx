@@ -12,7 +12,7 @@ function fmt(n: number | undefined | null, decimals = 0) {
 
 function fmtCost(n: number | undefined | null) {
   if (n == null) return "—";
-  return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 function StatusBadge({ value, variant }: { value: string | number; variant: "success" | "error" | "warning" | "neutral" }) {
