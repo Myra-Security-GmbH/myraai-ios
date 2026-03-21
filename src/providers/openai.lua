@@ -7,9 +7,7 @@
 --   M.parse_response(body_str)   → { content, input_tokens, output_tokens } | nil, err
 --   M.parse_sse_chunk(line)      → { delta, input_tokens, output_tokens, done } | nil
 
-local json      = require("utils.json")
-local cjson_raw = require("cjson")
-local NULL      = cjson_raw.null  -- JSON null decodes to this, not Lua nil
+local json = require("utils.json")
 
 local M = {}
 
@@ -101,7 +99,7 @@ function M.parse_sse_chunk(line)
     local usage = chunk.usage
     return {
         delta         = delta,
-        done          = (choice and choice.finish_reason ~= nil and choice.finish_reason ~= NULL) or false,
+        done          = (choice and type(choice.finish_reason) == "string") or false,
         input_tokens  = usage and usage.prompt_tokens     or nil,
         output_tokens = usage and usage.completion_tokens or nil,
     }

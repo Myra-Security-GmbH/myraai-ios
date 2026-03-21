@@ -1,8 +1,6 @@
 -- providers/gemini.lua — Google Gemini (generativelanguage.googleapis.com)
 
-local json      = require("utils.json")
-local cjson_raw = require("cjson")
-local NULL      = cjson_raw.null  -- JSON null decodes to this, not Lua nil
+local json = require("utils.json")
 
 local M = {}
 
@@ -106,8 +104,7 @@ function M.parse_sse_chunk(line)
     end
 
     local meta = chunk.usageMetadata or {}
-    local done = candidate and candidate.finishReason ~= nil
-                           and candidate.finishReason ~= NULL
+    local done = candidate and type(candidate.finishReason) == "string"
                            and candidate.finishReason ~= ""
 
     return {
