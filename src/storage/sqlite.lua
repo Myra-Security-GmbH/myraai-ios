@@ -875,10 +875,12 @@ function M.get_usage_stats()
     for _, r in ipairs(slug_rows) do slugs[r.id] = r.slug end
 
     -- Pre-compute period thresholds as INTEGER milliseconds (avoids SQL strftime)
-    local now         = math.floor(ngx.now())
-    local today_ms    = (now - (now % 86400)) * 1000
-    local hour_ms     = (now - 3600) * 1000
-    local last_min_ms = (now - 60) * 1000
+    local now           = math.floor(ngx.now())
+    local today_ms      = (now - (now % 86400)) * 1000
+    local yesterday_ms  = today_ms - 86400 * 1000
+    local last_7d_ms    = today_ms - 7 * 86400 * 1000
+    local hour_ms       = (now - 3600) * 1000
+    local last_min_ms   = (now - 60) * 1000
 
     local function period(since_ms)
         return query_one(ldb, [[
@@ -892,6 +894,20 @@ function M.get_usage_stats()
                    ROUND(COALESCE(AVG(latency_ms),0))         AS avg_latency_ms,
                    ROUND(COALESCE(AVG(upstream_latency_ms),0)) AS avg_upstream_latency_ms
             FROM request_log WHERE ts >= ?]], since_ms) or {}
+    end
+
+    local function period_range(from_ms, to_ms)
+        return query_one(ldb, [[
+            SELECT COUNT(*) AS requests,
+                   SUM(CASE WHEN cached=1  THEN 1 ELSE 0 END) AS cached,
+                   SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
+                   COALESCE(SUM(input_tokens),0)              AS input_tokens,
+                   COALESCE(SUM(output_tokens),0)             AS output_tokens,
+                   ROUND(COALESCE(SUM(cost_usd),0),6)         AS cost_usd,
+                   ROUND(COALESCE(SUM(saved_cost_usd),0),6)   AS saved_cost_usd,
+                   ROUND(COALESCE(AVG(latency_ms),0))         AS avg_latency_ms,
+                   ROUND(COALESCE(AVG(upstream_latency_ms),0)) AS avg_upstream_latency_ms
+            FROM request_log WHERE ts >= ? AND ts < ?]], from_ms, to_ms) or {}
     end
 
     local by_tenant = query_all(ldb, [[
@@ -939,12 +955,64 @@ function M.get_usage_stats()
 
     return {
         today          = period(today_ms),
+        yesterday      = period_range(yesterday_ms, today_ms),
+        last_7d        = period(last_7d_ms),
         hour           = period(hour_ms),
         last_min       = period(last_min_ms),
         by_tenant      = by_tenant,
         recent         = recent,
         recent_blocked = recent_blocked,
     }
+end
+
+-- ---------------------------------------------------------------------------
+-- Time-series stats
+-- ---------------------------------------------------------------------------
+
+-- Returns n buckets of (requests, blocked, cost_usd) aggregated per bucket_sec
+-- seconds, ordered oldest → newest, zero-filling any empty buckets.
+-- Supported bucket_sec values: 300, 900, 1800, 3600, 21600, 86400.
+function M.get_stats_timeseries(bucket_sec, n, end_sec)
+    local ldb      = log_db()
+    local ref      = end_sec or math.floor(ngx.now())
+    local bms      = bucket_sec * 1000   -- bucket size in milliseconds
+
+    -- Align reference time to bucket boundary, compute window start
+    local now_bucket_sec = math.floor(ref / bucket_sec) * bucket_sec
+    local since_ms       = (now_bucket_sec - (n - 1) * bucket_sec) * 1000
+
+    -- bms is embedded as a literal (not a bind param) to ensure SQLite uses
+    -- integer division. Binding it as a Lua number causes real-number division,
+    -- making every row its own unique bucket.
+    local sql = string.format([[
+        SELECT (ts / %d) * %d AS bucket_ts,
+               COUNT(*) AS requests,
+               SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
+               ROUND(COALESCE(SUM(cost_usd),0),6) AS cost_usd
+        FROM request_log
+        WHERE ts >= ?
+        GROUP BY bucket_ts
+        ORDER BY bucket_ts ASC
+    ]], bms, bms)
+    local rows = query_all(ldb, sql, since_ms) or {}
+
+    -- Index results by bucket start ms
+    local by_ts = {}
+    for _, r in ipairs(rows) do by_ts[r.bucket_ts] = r end
+
+    -- Build complete series with zero-fill for missing buckets
+    local result = setmetatable({}, require("cjson").array_mt)
+    for i = 0, n - 1 do
+        local bts = (now_bucket_sec - (n - 1 - i) * bucket_sec) * 1000
+        local r   = by_ts[bts] or {}
+        result[#result + 1] = {
+            ts       = bts,
+            requests = r.requests or 0,
+            blocked  = r.blocked  or 0,
+            cost_usd = r.cost_usd or 0,
+        }
+    end
+    return result
 end
 
 -- ---------------------------------------------------------------------------

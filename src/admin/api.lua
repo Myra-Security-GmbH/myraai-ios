@@ -22,6 +22,7 @@
 --   DELETE /admin/v1/users/:id/gateways/:gw_id
 --   DELETE /admin/v1/users/:id/budget
 --   GET    /admin/v1/stats
+--   GET    /admin/v1/stats/timeseries
 --   GET    /admin/v1/logs
 --   GET    /admin/v1/models
 --   GET    /admin/v1/providers
@@ -74,6 +75,18 @@ end
 -- ---------------------------------------------------------------------------
 route("GET", "^/admin/v1/stats$", function()
     send(200, storage.get_usage_stats())
+end)
+
+-- GET /admin/v1/stats/timeseries?bucket=1h&n=24
+-- bucket: 5m | 15m | 30m | 1h (default) | 6h | 1d
+-- n: number of buckets to return (default 24, max 168)
+local BUCKET_SIZES = { ["5m"]=300, ["15m"]=900, ["30m"]=1800, ["1h"]=3600, ["6h"]=21600, ["1d"]=86400 }
+route("GET", "^/admin/v1/stats/timeseries$", function()
+    local args       = ngx.req.get_uri_args()
+    local bucket_sec = BUCKET_SIZES[args.bucket or "1h"] or 3600
+    local n          = math.min(math.max(tonumber(args.n) or 24, 1), 168)
+    local end_sec = tonumber(args["until"])  -- optional unix seconds; defaults to now
+    send(200, storage.get_stats_timeseries(bucket_sec, n, end_sec))
 end)
 
 route("GET", "^/admin/v1/logs$", function()

@@ -169,8 +169,19 @@ export interface TenantStats {
   cost_usd: number;
 }
 
+export type TimeseriesBucket = "5m" | "15m" | "30m" | "1h" | "6h" | "1d";
+
+export interface TimeseriesPoint {
+  ts: number;        // Unix ms, start of bucket
+  requests: number;
+  blocked: number;
+  cost_usd: number;
+}
+
 export interface UsageStats {
   today: PeriodStats;
+  yesterday: PeriodStats;
+  last_7d: PeriodStats;
   hour: PeriodStats;
   last_min: PeriodStats;
   by_tenant: TenantStats[];

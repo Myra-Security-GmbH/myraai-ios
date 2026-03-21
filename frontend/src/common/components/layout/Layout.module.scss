@@ -100,6 +100,101 @@
   margin-top: tools.pixelToRem(4);
 }
 
+// Hero metric cards (Dashboard)
+.hero-section {
+  margin-bottom: tools.pixelToRem(24);
+}
+
+.hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: tools.pixelToRem(12);
+}
+
+.timeframe-tabs {
+  display: inline-flex;
+  background: var(--section-bg);
+  border: 1px solid var(--card-border);
+  border-radius: tools.pixelToRem(6);
+  padding: tools.pixelToRem(3);
+  gap: tools.pixelToRem(2);
+}
+
+.timeframe-tab {
+  padding: tools.pixelToRem(5) tools.pixelToRem(12);
+  border-radius: tools.pixelToRem(4);
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(12);
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: background 0.12s, color 0.12s;
+
+  &:hover:not(&--active) { color: var(--text-primary); }
+
+  &--active {
+    background: var(--card-bg);
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  }
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: tools.pixelToRem(16);
+
+  @media (max-width: 640px) { grid-template-columns: 1fr; }
+}
+
+.hero-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: tools.pixelToRem(10);
+  padding: tools.pixelToRem(24) tools.pixelToRem(28) tools.pixelToRem(16);
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-sparkline {
+  margin-top: tools.pixelToRem(16);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.hero-label {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(12);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-secondary);
+  margin-bottom: tools.pixelToRem(10);
+}
+
+.hero-value {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(36);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: tools.pixelToRem(8);
+}
+
+.hero-sub {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(12);
+  color: var(--text-secondary);
+}
+
+.hero-sub-highlight {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 // Period stats grid (Dashboard + Monitor)
 .periods-grid {
   display: grid;
