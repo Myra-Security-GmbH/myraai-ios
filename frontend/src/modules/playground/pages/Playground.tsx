@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "src/api/client";
@@ -76,16 +76,15 @@ interface ModelPickerProps {
 function ModelPicker({ models, value, onChange, runnableProviders, id }: ModelPickerProps) {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  const [onlyRunnable, setOnlyRunnable] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const lower = search.toLowerCase();
-  const filtered = search
-    ? models.filter(
-        (m) =>
-          m.model.toLowerCase().includes(lower) ||
-          m.provider.toLowerCase().includes(lower)
-      )
-    : models;
+  const filtered = models.filter((m) => {
+    if (onlyRunnable && !runnableProviders.has(m.provider)) return false;
+    if (search && !m.model.toLowerCase().includes(lower) && !m.provider.toLowerCase().includes(lower)) return false;
+    return true;
+  });
 
   // Group by provider
   const byProvider: Record<string, ModelPrice[]> = {};
@@ -167,6 +166,15 @@ function ModelPicker({ models, value, onChange, runnableProviders, id }: ModelPi
               style={{ margin: 0 }}
               aria-label="Search models"
             />
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer", userSelect: "none" }}>
+              <input
+                type="checkbox"
+                checked={onlyRunnable}
+                onChange={(e) => setOnlyRunnable(e.target.checked)}
+                aria-label="Only show runnable models"
+              />
+              Only show runnable models
+            </label>
           </div>
           <div style={{ overflowY: "auto", flex: 1 }}>
             {providers.length === 0 && (

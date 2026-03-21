@@ -69,8 +69,11 @@ function setupDefaultMocks() {
   mockApi.get.mockImplementation((path: string) => {
     if (path === "/tenants") return Promise.resolve([TENANT1, TENANT2]);
     if (path === "/models") return Promise.resolve(MODELS);
+    if (path === "/providers") return Promise.resolve(PROVIDER_META);
     if (path === "/tenants/t1/gateways") return Promise.resolve([GW1, GW2]);
     if (path === "/tenants/t2/gateways") return Promise.resolve([]);
+    if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+    if (path === "/gateways/gw2/keys") return Promise.resolve([]);
     return Promise.resolve([]);
   });
   mockApi.post.mockResolvedValue(PLAY_TOKEN);
@@ -137,10 +140,12 @@ describe("Playground — initial render", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument());
   });
 
-  it("loads and displays model count hint", async () => {
+  it("loads and displays runnable/catalog model counts", async () => {
     setupDefaultMocks();
     renderPlayground();
-    await waitFor(() => expect(screen.getByText(/3 models available/i)).toBeInTheDocument());
+    // GW_KEYS has 4 providers configured; MODELS has 4 models across 4 providers → all 4 runnable
+    await waitFor(() => expect(screen.getByText(/in catalog/i)).toBeInTheDocument());
+    expect(screen.getByText(/runnable/i)).toBeInTheDocument();
   });
 
   it("shows Tenant and Gateway selectors", async () => {
@@ -320,7 +325,7 @@ describe("Playground — ModelPicker", () => {
   it("shows search input in open dropdown", async () => {
     setupDefaultMocks();
     renderPlayground();
-    await waitFor(() => expect(screen.getByText(/models available/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/in catalog/i)).toBeInTheDocument());
     const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"));
     await userEvent.click(pickerBtn!);
     await waitFor(() => expect(screen.getByLabelText("Search models")).toBeInTheDocument());
@@ -329,7 +334,7 @@ describe("Playground — ModelPicker", () => {
   it("filters models by search text", async () => {
     setupDefaultMocks();
     renderPlayground();
-    await waitFor(() => expect(screen.getByText(/models available/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/in catalog/i)).toBeInTheDocument());
     const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"));
     await userEvent.click(pickerBtn!);
     await waitFor(() => expect(screen.getByLabelText("Search models")).toBeInTheDocument());
@@ -341,7 +346,7 @@ describe("Playground — ModelPicker", () => {
   it("shows 'No models match' when search has no results", async () => {
     setupDefaultMocks();
     renderPlayground();
-    await waitFor(() => expect(screen.getByText(/models available/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/in catalog/i)).toBeInTheDocument());
     const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"));
     await userEvent.click(pickerBtn!);
     await waitFor(() => expect(screen.getByLabelText("Search models")).toBeInTheDocument());
@@ -352,7 +357,7 @@ describe("Playground — ModelPicker", () => {
   it("selects a model and closes dropdown on option click", async () => {
     setupDefaultMocks();
     renderPlayground();
-    await waitFor(() => expect(screen.getByText(/models available/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/in catalog/i)).toBeInTheDocument());
     const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"));
     await userEvent.click(pickerBtn!);
     await waitFor(() => expect(screen.getByRole("option", { name: "gpt-4o" })).toBeInTheDocument());
@@ -360,6 +365,71 @@ describe("Playground — ModelPicker", () => {
     await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
     // Button now shows selected model name
     expect(screen.getAllByRole("button").some((b) => b.textContent?.includes("gpt-4o"))).toBe(true);
+  });
+
+  it("'only show runnable models' checkbox is unchecked by default", async () => {
+    setupDefaultMocks();
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText(/in catalog/i)).toBeInTheDocument());
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"));
+    await userEvent.click(pickerBtn!);
+    await waitFor(() => expect(screen.getByLabelText("Only show runnable models")).toBeInTheDocument());
+    expect(screen.getByLabelText("Only show runnable models")).not.toBeChecked();
+  });
+
+  it("checking 'only show runnable models' hides models without a configured key", async () => {
+    // GW_KEYS has anthropic, openai, gemini, perplexity — but NOT ollama
+    // Add an ollama model to MODELS to have something to filter
+    const modelsWithOllama = [
+      ...MODELS,
+      { provider: "ollama", model: "llama3", input_per_1k: 0, output_per_1k: 0, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z" },
+    ];
+    // ollama requires_key=false so it IS runnable; use a provider with no key instead
+    // Simulate perplexity having no key configured
+    const keysWithoutPerplexity = GW_KEYS.filter((k) => k.provider !== "perplexity");
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve(modelsWithOllama);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(keysWithoutPerplexity);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"));
+    await userEvent.click(pickerBtn!);
+    await waitFor(() => expect(screen.getByRole("option", { name: "sonar-pro" })).toBeInTheDocument());
+
+    // Check the "only runnable" checkbox
+    await userEvent.click(screen.getByLabelText("Only show runnable models"));
+
+    // sonar-pro (perplexity, no key) should be hidden
+    await waitFor(() => expect(screen.queryByRole("option", { name: "sonar-pro" })).not.toBeInTheDocument());
+    // gpt-4o (openai, has key) should still be visible
+    expect(screen.getByRole("option", { name: "gpt-4o" })).toBeInTheDocument();
+    // llama3 (ollama, requires_key=false) should still be visible
+    expect(screen.getByRole("option", { name: "llama3" })).toBeInTheDocument();
+  });
+
+  it("unchecking 'only show runnable models' restores all models", async () => {
+    setupDefaultMocks();
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText(/in catalog/i)).toBeInTheDocument());
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"));
+    await userEvent.click(pickerBtn!);
+    await waitFor(() => expect(screen.getByLabelText("Only show runnable models")).toBeInTheDocument());
+
+    // Check then uncheck
+    await userEvent.click(screen.getByLabelText("Only show runnable models"));
+    await userEvent.click(screen.getByLabelText("Only show runnable models"));
+
+    // All models visible again
+    expect(screen.getByRole("option", { name: "gpt-4o" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "claude-sonnet-4-6" })).toBeInTheDocument();
   });
 });
 
@@ -1131,7 +1201,9 @@ function setupWebSearchMocks(opts: {
   mockApi.get.mockImplementation((path: string) => {
     if (path === "/tenants") return Promise.resolve([TENANT1]);
     if (path === "/models") return Promise.resolve(MODELS_WITH_CLAUDE);
+    if (path === "/providers") return Promise.resolve(PROVIDER_META);
     if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+    if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
     return Promise.resolve([]);
   });
   mockApi.post.mockResolvedValue(PLAY_TOKEN);
@@ -1460,8 +1532,8 @@ describe("Playground — web search", () => {
     await waitFor(() => expect(screen.queryByLabelText("Web search hint")).not.toBeInTheDocument());
   });
 
-  it("fix 2: hint not shown for non-Claude models", async () => {
-    setupDefaultMocks(); // uses MODELS which has gpt-4o but no claude-haiku-4-5
+  it("fix 2: hint not shown for models without web search support (gpt-4o)", async () => {
+    setupDefaultMocks();
     renderPlayground();
     await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
     const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
@@ -1469,15 +1541,74 @@ describe("Playground — web search", () => {
     await waitFor(() => expect(screen.getByRole("option", { name: "gpt-4o" })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("option", { name: "gpt-4o" }));
     await userEvent.type(screen.getByLabelText("User message"), "What is the latest news?");
-    // No hint — gpt-4o doesn't use the agentic loop
+    // gpt-4o doesn't support web search → no hint
     expect(screen.queryByLabelText("Web search hint")).not.toBeInTheDocument();
   });
 
-  it("non-Claude models use compat path even with web search enabled (no agentic loop)", async () => {
+  it("fix 2: search hint shown for Gemini models", async () => {
+    setupDefaultMocks();
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
+    await userEvent.click(pickerBtn);
+    await waitFor(() => expect(screen.getByRole("option", { name: "gemini-2.0-flash" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("option", { name: "gemini-2.0-flash" }));
+    await userEvent.type(screen.getByLabelText("User message"), "What is the latest news?");
+    await waitFor(() => expect(screen.getByLabelText("Web search hint")).toBeInTheDocument());
+  });
+
+  it("fix 2: search hint shown for Perplexity models", async () => {
+    setupDefaultMocks();
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
+    await userEvent.click(pickerBtn);
+    await waitFor(() => expect(screen.getByRole("option", { name: "sonar-pro" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("option", { name: "sonar-pro" }));
+    await userEvent.type(screen.getByLabelText("User message"), "What is the latest news?");
+    await waitFor(() => expect(screen.getByLabelText("Web search hint")).toBeInTheDocument());
+  });
+
+  it("shows 'not supported' warning when web search enabled on unsupported model (gpt-4o)", async () => {
+    setupDefaultMocks();
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
+    await userEvent.click(pickerBtn);
+    await waitFor(() => expect(screen.getByRole("option", { name: "gpt-4o" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("option", { name: "gpt-4o" }));
+    // Enable web search
+    await userEvent.click(screen.getByRole("button", { name: "Web Search" }));
+    await waitFor(() => expect(screen.getByLabelText("Web search not supported")).toBeInTheDocument());
+  });
+
+  it("'not supported' warning absent when web search enabled on Claude model", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve(MODELS_WITH_CLAUDE);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
+    await userEvent.click(pickerBtn);
+    await waitFor(() => expect(screen.getByRole("option", { name: "claude-haiku-4-5" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("option", { name: "claude-haiku-4-5" }));
+    await userEvent.click(screen.getByRole("button", { name: "Web Search" }));
+    expect(screen.queryByLabelText("Web search not supported")).not.toBeInTheDocument();
+  });
+
+  it("non-search models use compat path even with web search enabled (no agentic loop)", async () => {
     mockApi.get.mockImplementation((path: string) => {
       if (path === "/tenants") return Promise.resolve([TENANT1]);
       if (path === "/models") return Promise.resolve(MODELS);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
       if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
       return Promise.resolve([]);
     });
     mockApi.post.mockResolvedValue(PLAY_TOKEN);
@@ -1487,7 +1618,7 @@ describe("Playground — web search", () => {
     renderPlayground();
     await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
 
-    // Select gpt-4o (non-Claude)
+    // Select gpt-4o (no web search support)
     const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
     await userEvent.click(pickerBtn);
     await waitFor(() => expect(screen.getByRole("option", { name: "gpt-4o" })).toBeInTheDocument());
@@ -1510,5 +1641,80 @@ describe("Playground — web search", () => {
       expect.stringContaining("/anthropic/v1/messages"),
       expect.anything()
     );
+  });
+
+  it("Gemini with web search enabled injects web_search tool in compat request", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve(MODELS);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    let capturedBody: any = null;
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      capturedBody = init?.body ? JSON.parse(String(init.body)) : null;
+      return makeSseResponse("gemini grounded answer");
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
+    await userEvent.click(pickerBtn);
+    await waitFor(() => expect(screen.getByRole("option", { name: "gemini-2.0-flash" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("option", { name: "gemini-2.0-flash" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Web Search" }));
+    await userEvent.type(screen.getByLabelText("User message"), "latest AI news");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).not.toBeDisabled());
+    await userEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => expect(screen.getByText("gemini grounded answer")).toBeInTheDocument());
+    // Must have injected the web_search tool for the backend to convert to googleSearch grounding
+    expect(capturedBody?.tools).toBeDefined();
+    expect(capturedBody.tools[0]?.name).toBe("web_search");
+  });
+
+  it("Perplexity with web search enabled uses compat path without extra tool injection", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve(MODELS);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    let capturedBody: any = null;
+    let capturedUrl = "";
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      capturedUrl = String(url);
+      capturedBody = init?.body ? JSON.parse(String(init.body)) : null;
+      return makeSseResponse("perplexity answer");
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
+    await userEvent.click(pickerBtn);
+    await waitFor(() => expect(screen.getByRole("option", { name: "sonar-pro" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("option", { name: "sonar-pro" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Web Search" }));
+    await userEvent.type(screen.getByLabelText("User message"), "latest AI news");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).not.toBeDisabled());
+    await userEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => expect(screen.getByText("perplexity answer")).toBeInTheDocument());
+    // Uses compat path (search is built-in to Perplexity — no tool injection needed)
+    expect(capturedUrl).toContain("/compat/chat/completions");
+    expect(capturedBody?.tools).toBeUndefined();
+    expect(capturedUrl).not.toContain("/anthropic/v1/messages");
   });
 });
