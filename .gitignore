@@ -1,8 +1,12 @@
 # Generated databases
 data/
+*.db
 
 # Logs
 logs/
+
+# Docs build output
+docs/out/
 
 # Nginx temporary directories
 client_body_temp/
@@ -10,6 +14,9 @@ fastcgi_temp/
 proxy_temp/
 scgi_temp/
 uwsgi_temp/
+
+# Root node_modules (e.g. from npx/playwright installs at repo root)
+node_modules/
 
 # Frontend dependencies and build output
 frontend/node_modules/
