@@ -61,6 +61,15 @@ function M.run(ctx)
     ctx.token_budget_usd = row.budget_usd
     ctx.token_rate_limit = row.rate_limit  -- raw JSON string, parsed by rate_limit middleware
 
+    -- Start a playground trace for playground tokens
+    if row.label == "playground" then
+        ctx.trace_id  = ctx.request_id  -- reuse request_id as trace_id
+        ctx.trace_seq = 0
+        pcall(function()
+            storage.create_playground_trace(ctx.trace_id, ctx.gateway_id, nil)
+        end)
+    end
+
     -- User-bound token checks
     if row.user_id then
         local user, uerr = storage.get_user(row.user_id)

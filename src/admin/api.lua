@@ -28,6 +28,7 @@
 --   GET    /admin/v1/providers
 --   POST   /admin/v1/playground/token
 --   GET    /admin/v1/playground/search
+--   GET    /admin/v1/playground/trace/:id
 --   POST   /admin/v1/client-errors
 --   GET    /admin/v1/client-errors
 
@@ -283,8 +284,10 @@ route("POST", "^/admin/v1/playground/token$", function()
     local gw = storage.get_gateway_with_tenant_slug(b.gateway_id)
     if not gw then return send(404, { error = "gateway not found" }) end
 
-    -- Remove any previous playground tokens for this gateway before issuing a new one.
-    storage.delete_playground_tokens(b.gateway_id)
+    -- Remove only *expired* playground tokens for this gateway.
+    -- Do not delete valid tokens — that would invalidate concurrent sessions
+    -- (e.g. another browser tab or a Playwright test run).
+    storage.delete_expired_playground_tokens(b.gateway_id)
 
     local raw_token = crypto.random_hex(32)
     local hash      = crypto.sha256_hex(raw_token)
@@ -336,6 +339,20 @@ route("GET", "^/admin/v1/playground/search$", function()
         }
     end
     send(200, { results = results, query = q })
+end)
+
+-- GET /admin/v1/playground/trace/:id
+route("GET", "^/admin/v1/playground/trace/([^/]+)$", function(trace_id)
+    local t = storage.get_playground_trace(trace_id)
+    if not t then
+        return send(404, { error = "trace not found" })
+    end
+    local steps = storage.get_playground_trace_steps(trace_id)
+    -- Decode JSON data fields
+    for _, s in ipairs(steps) do
+        s.data = json.decode(s.data) or s.data
+    end
+    return send(200, { trace = t, steps = steps })
 end)
 
 -- ---------------------------------------------------------------------------

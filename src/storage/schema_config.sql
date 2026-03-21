@@ -107,3 +107,27 @@ INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('gemini',    'gemini-1.5-flash',            0.000075, 0.0003,  NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('mistral',   'mistral-large-latest',        0.002,    0.006,   NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('groq',      'llama-3.3-70b-versatile',     0.00059,  0.00079, NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
+
+-- Playground query traces: one row per playground request
+CREATE TABLE IF NOT EXISTS playground_trace (
+    id           TEXT PRIMARY KEY,  -- UUID (= ctx.request_id)
+    gateway_id   TEXT NOT NULL,
+    model        TEXT,
+    created_at   INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    completed_at INTEGER,
+    status       TEXT NOT NULL DEFAULT 'running',  -- running|done|error
+    error        TEXT
+);
+
+-- Ordered event log for each trace step
+CREATE TABLE IF NOT EXISTS playground_trace_step (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    trace_id  TEXT NOT NULL REFERENCES playground_trace(id) ON DELETE CASCADE,
+    seq       INTEGER NOT NULL,
+    step      TEXT NOT NULL,
+    data      TEXT NOT NULL DEFAULT '{}',
+    ts        INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+);
+
+CREATE INDEX IF NOT EXISTS idx_pgt_gateway    ON playground_trace(gateway_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_pgts_trace_seq ON playground_trace_step(trace_id, seq);

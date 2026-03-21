@@ -72,6 +72,31 @@ local function migrate_columns(cfg)
     if not lcols.detectors_fired  then ldb:exec("ALTER TABLE request_log ADD COLUMN detectors_fired  TEXT") end
     if not lcols.scrub_applied    then ldb:exec("ALTER TABLE request_log ADD COLUMN scrub_applied    INTEGER NOT NULL DEFAULT 0") end
     ldb:close()
+
+    -- Playground trace tables (added after initial schema)
+    local cfg_db2 = open_db(cfg.sqlite.config_db)
+    cfg_db2:exec([[
+        CREATE TABLE IF NOT EXISTS playground_trace (
+            id           TEXT PRIMARY KEY,
+            gateway_id   TEXT NOT NULL,
+            model        TEXT,
+            created_at   INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            completed_at INTEGER,
+            status       TEXT NOT NULL DEFAULT 'running',
+            error        TEXT
+        );
+        CREATE TABLE IF NOT EXISTS playground_trace_step (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            trace_id  TEXT NOT NULL REFERENCES playground_trace(id) ON DELETE CASCADE,
+            seq       INTEGER NOT NULL,
+            step      TEXT NOT NULL,
+            data      TEXT NOT NULL DEFAULT '{}',
+            ts        INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+        );
+        CREATE INDEX IF NOT EXISTS idx_pgt_gateway    ON playground_trace(gateway_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_pgts_trace_seq ON playground_trace_step(trace_id, seq);
+    ]])
+    cfg_db2:close()
 end
 
 -- Detect whether a column is stored as TEXT (old schema) and rebuild the table
@@ -680,6 +705,15 @@ function M.delete_playground_tokens(gateway_id)
         gateway_id)
 end
 
+function M.delete_expired_playground_tokens(gateway_id)
+    return exec_one(cfg_db(), [[
+        DELETE FROM auth_token
+        WHERE  gateway_id = ? AND label = 'playground'
+          AND  expires_at IS NOT NULL
+          AND  expires_at <= CAST(strftime('%s','now') AS INTEGER)
+    ]], gateway_id)
+end
+
 function M.list_provider_configs(gateway_id)
     return query_all(cfg_db(), [[
         SELECT id, provider, alias,
@@ -1034,6 +1068,42 @@ function M.list_client_errors(limit)
         ORDER  BY ts DESC
         LIMIT  ?
     ]], limit or 200)
+end
+
+-- ---------------------------------------------------------------------------
+-- Playground trace API
+-- ---------------------------------------------------------------------------
+
+function M.create_playground_trace(id, gateway_id, model)
+    return exec_one(cfg_db(), [[
+        INSERT OR IGNORE INTO playground_trace (id, gateway_id, model)
+        VALUES (?, ?, ?)
+    ]], id, gateway_id, model)
+end
+
+function M.add_playground_trace_step(trace_id, seq, step, data_json)
+    return exec_one(cfg_db(), [[
+        INSERT INTO playground_trace_step (trace_id, seq, step, data)
+        VALUES (?, ?, ?, ?)
+    ]], trace_id, seq, step, data_json)
+end
+
+function M.complete_playground_trace(id, status, error_msg)
+    return exec_one(cfg_db(), [[
+        UPDATE playground_trace
+        SET status = ?, error = ?, completed_at = CAST(strftime('%s','now') AS INTEGER)
+        WHERE id = ?
+    ]], status, error_msg, id)
+end
+
+function M.get_playground_trace(id)
+    return query_one(cfg_db(), "SELECT * FROM playground_trace WHERE id = ?", id)
+end
+
+function M.get_playground_trace_steps(trace_id)
+    return query_all(cfg_db(), [[
+        SELECT * FROM playground_trace_step WHERE trace_id = ? ORDER BY seq
+    ]], trace_id)
 end
 
 return M
