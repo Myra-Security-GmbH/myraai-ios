@@ -75,9 +75,8 @@ Browse all documentation topics by category.
     ---
 
     - [Request Logging](../observability/logging.md)
-    - [Prometheus Metrics](../observability/prometheus.md)
     - [Admin Dashboard](../observability/dashboard.md)
-    - [Playground](../admin-ui/playground.md)
+    - [Playground](../observability/playground.md)
     - [Web Search](../features/web-search.md)
 
 -   **API Reference**
@@ -98,7 +97,7 @@ Browse all documentation topics by category.
     ---
 
     - [Gateway Configuration Reference](../reference/config-reference.md)
-    - [Changelog](../reference/changelog.md)
+    - [What's New](../reference/changelog.md)
     - [Glossary](../reference/glossary.md)
     - [Topic Map](../reference/topic-map.md)
 

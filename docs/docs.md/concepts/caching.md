@@ -27,17 +27,6 @@ All other fields (messages, temperature, max_tokens, system, tools, etc.) are in
 
 ---
 
-## Storage backends
-
-| Backend | Config | Notes |
-|---------|--------|-------|
-| In-process | Default (single-server) | Cached in-process for fast retrieval. |
-| Distributed | Contact Myra Security for cache backend configuration | Required for multi-node deployments; keys namespaced per tenant/gateway |
-
-The stored format is `{body, cost_usd}` — the original response body and the cost that was computed when the entry was written.
-
----
-
 ## TTL configuration
 
 Cache TTL is configured per gateway in the gateway config JSON:
@@ -59,12 +48,12 @@ There is no way to set a different TTL per model or per token — the TTL applie
 
 ## Cache hit behavior
 
-When a cache hit is found at step 6 of the [request pipeline](request-pipeline.md):
+On a cache hit:
 
 1. The stored response body is returned immediately with HTTP 200
 2. The `X-AIG-Cache: HIT` response header is set
-3. Steps 7–17 (detectors, routing, BYOK, upstream, cost, cache-store) are skipped
-4. The log phase still runs; `cached = true`, `saved_cost_usd`, and `saved_latency_ms` are recorded
+3. The provider is not called
+4. The log entry records `cached = true`, `saved_cost_usd`, and `saved_latency_ms`
 
 ```bash
 # Verify a cache hit

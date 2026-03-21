@@ -28,56 +28,7 @@ Each card contains an inline SVG sparkline that mirrors the chart for the select
 | Last hour | 5-minute buckets | 12 |
 | Last minute | 5-minute buckets | 12 |
 
-Selecting a timeframe triggers two API calls in parallel:
-
-- `GET /admin/v1/stats` — aggregate totals for the period (feeds hero cards)
-- `GET /admin/v1/stats/timeseries` — bucketed series data (feeds sparklines and the main chart)
-
-The dashboard continues to display the last available data if a metric fetch is temporarily unavailable.
-
----
-
-## Underlying APIs
-
-### Aggregates
-
-```
-GET /admin/v1/stats?from=<iso>&to=<iso>
-```
-
-Returns totals for the period:
-
-```json
-{
-  "requests":       1423,
-  "cached":          317,
-  "cache_hit_rate":  0.223,
-  "cost_usd":        4.81,
-  "saved_cost_usd":  0.94,
-  "blocked":          12,
-  "block_rate":       0.008
-}
-```
-
-### Timeseries
-
-```
-GET /admin/v1/stats/timeseries?from=<iso>&to=<iso>&bucket=1h
-```
-
-The `bucket` parameter specifies the bucket size using a string shorthand (`5m`, `15m`, `30m`, `1h`, `6h`, `1d`).
-
-Returns an array of time buckets:
-
-```json
-{
-  "buckets": [
-    {"ts": "2025-01-01T00:00:00Z", "requests": 82, "cost_usd": 0.21, "blocked": 0},
-    {"ts": "2025-01-01T01:00:00Z", "requests": 95, "cost_usd": 0.24, "blocked": 1},
-    ...
-  ]
-}
-```
+The dashboard continues to display the last available data if a fetch is temporarily unavailable.
 
 ---
 
@@ -134,5 +85,4 @@ A filtered view of the most recent blocked requests:
 ## See also
 
 - [Request Logging](logging.md)
-- [Prometheus Metrics](prometheus.md)
-- [Admin UI Overview](../admin-ui/overview.md)
+- [Stats API](../api-reference/stats.md)

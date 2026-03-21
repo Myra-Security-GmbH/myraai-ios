@@ -50,7 +50,7 @@ The admin UI uses the same token-based auth as the API. On first access, if no s
 
 ## See also
 
-- [Playground](playground.md)
+- [Playground](../observability/playground.md)
 - [Admin Dashboard](../observability/dashboard.md)
 - [Gateway Configuration](../configuration/gateway-config.md)
 - [Quick Start](../getting-started/quick-start.md)

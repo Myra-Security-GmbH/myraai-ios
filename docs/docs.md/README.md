@@ -65,10 +65,9 @@
 - [Prometheus Metrics](observability/prometheus.md)
 - [Dashboard](observability/dashboard.md)
 
-### Admin UI
+### Observability
 
-- [Overview](admin-ui/overview.md)
-- [Playground](admin-ui/playground.md)
+- [Playground](observability/playground.md)
 
 ### API Reference
 

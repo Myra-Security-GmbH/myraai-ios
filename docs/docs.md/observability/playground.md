@@ -4,12 +4,6 @@ The Playground lets you send prompts to one or more models simultaneously and co
 
 ---
 
-## Opening the Playground
-
-Navigate to `/admin/playground` in the admin UI, or click **Playground** in the left sidebar.
-
----
-
 ## Multi-panel comparison
 
 You can run up to **four model panels** side by side. All panels receive the same prompt at the same time when you click **Send**.
@@ -91,42 +85,6 @@ Conversation history is **not** persisted — each page load starts with an empt
 
 ---
 
-## Playground tokens
-
-The playground uses short-lived tokens rather than long-lived admin tokens for inference requests. This limits the blast radius if a token is exposed in browser network traffic.
-
-| Property | Value |
-|---|---|
-| TTL | 10 minutes |
-| Scope | Single gateway |
-| Issued via | `POST /admin/v1/playground/token` |
-
-A new token is requested automatically when you switch gateways or when the current token is about to expire. You do not manage tokens manually.
-
-```http
-POST /admin/v1/playground/token
-Content-Type: application/json
-x-aig-token: <admin-token>
-
-{
-  "gateway_id": "gw_..."
-}
-```
-
-Response:
-
-```json
-{
-  "token": "pt_...",
-  "expires_at": "2025-01-01T12:10:00Z"
-}
-```
-
-!!! note "Playground token vs admin token"
-    Playground tokens can only make inference requests through the specified gateway. They cannot access any admin API endpoints.
-
----
-
 ## Web search
 
 Web search is available when enabled by your Myra Security account configuration. Toggle it on in any panel to have the model search the web before answering.
@@ -135,6 +93,5 @@ Web search is available when enabled by your Myra Security account configuration
 
 ## See also
 
-- [Admin UI Overview](overview.md)
 - [Providers Overview](../providers/overview.md)
 - [Request Logging](../observability/logging.md)

@@ -89,7 +89,7 @@ nav:
   - Observability:
     - observability/logging.md
     - observability/dashboard.md
-    - admin-ui/playground.md
+    - observability/playground.md
     - features/web-search.md
   - API Reference:
     - api-reference/authentication.md
@@ -102,6 +102,6 @@ nav:
     - api-reference/error-codes.md
   - Reference:
     - reference/config-reference.md
-    - reference/changelog.md
+    - What's New: reference/changelog.md
     - reference/glossary.md
     - Topic Map: reference/topic-map.md

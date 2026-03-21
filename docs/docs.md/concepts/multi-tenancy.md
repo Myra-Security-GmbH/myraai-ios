@@ -7,20 +7,17 @@ AI Gateway is designed from the ground up for multi-tenant operation. A single g
 ## Object hierarchy
 
 ```
-Tenant  (id, slug, plan, budget_limit, deleted_at)
+Tenant
   │
-  ├── Gateway  (id, slug, config JSONB)
-  │     ├── ProviderConfig  (provider, alias, encrypted_key)   ← BYOK
-  │     ├── AuthToken       (token_hash, expiry, label, rate_limit, budget_usd, user_id)
-  │     └── RoutingRule     (priority, conditions JSONB, actions JSONB, enabled)
+  ├── Gateway  (config, provider keys, auth tokens, routing rules)
   │
-  └── User  (id, email, role: admin|member|viewer)
-        └── UserGatewayAccess  (user_id, gateway_id)
+  └── User  (role: admin | member | viewer)
+        └── per-gateway access grant
 ```
 
 A **Tenant** is the top-level billing and isolation boundary. Each tenant can have multiple **Gateways** — each gateway is an independent policy domain with its own config, keys, tokens, and rules.
 
-**Users** belong to a tenant and are granted per-gateway access via `UserGatewayAccess`. Their role (`admin`, `member`, or `viewer`) determines what they can do across all gateways in the tenant.
+**Users** belong to a tenant and are granted per-gateway access. Their role (`admin`, `member`, or `viewer`) determines what they can do across all gateways in the tenant.
 
 ---
 
@@ -33,10 +30,7 @@ POST /v1/{tenant_slug}/{gateway_slug}/{provider}/chat/completions
 POST /v1/{tenant_slug}/{gateway_slug}/compat/chat/completions
 ```
 
-At the access processing phase, the gateway resolves `{tenant_slug}` and `{gateway_slug}` to their internal UUIDs and loads the gateway config. The resolved identifiers are cached in in-process shared memory for `config_cache_ttl` seconds (default: 30 s) to avoid a database read on every request.
-
-!!! note "Slug changes"
-    Gateway configuration changes take effect within seconds.
+The gateway resolves `{tenant_slug}` and `{gateway_slug}` on every request and loads the corresponding gateway config. Configuration changes take effect within seconds.
 
 ---
 
@@ -47,7 +41,7 @@ At the access processing phase, the gateway resolves `{tenant_slug}` and `{gatew
 | URL routing | `{tenant_slug}/{gateway_slug}` prefix resolved at access processing phase; unknown slugs return `404 TENANT_NOT_FOUND` |
 | Internal state isolation | All internal state is namespaced per tenant and gateway — no cross-tenant data leakage is possible |
 | Database | `tenant_id` foreign key on all tables; all queries filter by tenant |
-| BYOK keys | Encrypted in the database, decrypted only for the matching `gateway_id`; cached in shared memory keyed by `gateway_id:provider:alias` |
+| BYOK keys | Encrypted at rest; decrypted only for the matching gateway at request time |
 | Auth tokens | Scoped to a single gateway; a token issued for gateway A is rejected on gateway B |
 | Rate limits and budgets | Tracked per gateway, not shared across tenants or gateways |
 
@@ -61,7 +55,7 @@ At the access processing phase, the gateway resolves `{tenant_slug}` and `{gatew
 | `member` | Yes, on gateways where `UserGatewayAccess` is granted | None |
 | `viewer` | No — returns `403 FORBIDDEN` | None |
 
-Role is enforced at the authentication middleware step (access phase, step 3). A `viewer` is blocked before the request body is read.
+Role is enforced at the authentication step. A `viewer` token is rejected before the request body is read.
 
 Per-user gateway access is managed via the admin API:
 

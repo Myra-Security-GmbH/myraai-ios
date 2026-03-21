@@ -1,34 +1,34 @@
 # Supported Providers
 
-AI Gateway supports 21 AI providers through a common internal interface. Each provider module implements five functions: `base_url`, `build_headers`, `build_request`, `parse_response`, and `parse_sse_chunk`.
+AI Gateway supports 21 AI providers through a unified OpenAI-compatible interface.
 
 ---
 
 ## Provider table
 
-| Provider | Wire format | Auth header | Notes |
-|----------|------------|-------------|-------|
-| OpenAI | Native OpenAI | `Authorization: Bearer` | Direct pass-through |
-| Azure OpenAI | OpenAI | `api-key` | Requires `azure_endpoint`, `azure_deployment`, `azure_api_version` in gateway config |
-| Anthropic | Messages API | `x-api-key` | System prompt extraction, extended thinking, prompt caching |
-| Google Gemini | GenerateContent | `Authorization: Bearer` | System instruction conversion, safety settings |
-| Vertex AI | GenerateContent | `x-goog-api-key` | Requires `vertex_project` and `vertex_region` in gateway config |
-| AWS Bedrock | Bedrock Converse | SigV4 HMAC-SHA256 | BYOK key format: `ACCESS_KEY_ID:SECRET_ACCESS_KEY[:SESSION_TOKEN]`; `bedrock_region` in config |
-| Mistral AI | OpenAI-compatible | `Authorization: Bearer` | |
-| Groq | OpenAI-compatible | `Authorization: Bearer` | |
-| Together AI | OpenAI-compatible | `Authorization: Bearer` | `meta-llama/`, `Qwen/`, `microsoft/` model prefixes |
-| Fireworks AI | OpenAI-compatible | `Authorization: Bearer` | `accounts/fireworks/models/` model prefix |
-| Cerebras | OpenAI-compatible | `Authorization: Bearer` | Fast inference hardware |
-| DeepSeek | OpenAI-compatible | `Authorization: Bearer` | `deepseek-` model prefix |
-| OpenRouter | OpenAI-compatible | `Authorization: Bearer` | Aggregates 300+ models; universal compat fallback |
-| Perplexity | OpenAI-compatible | `Authorization: Bearer` | `sonar-` model prefix |
-| SambaNova | OpenAI-compatible | `Authorization: Bearer` | |
-| xAI | OpenAI-compatible | `Authorization: Bearer` | `grok-` model prefix |
-| NVIDIA NIM | OpenAI-compatible | `Authorization: Bearer` | `nvidia/` model prefix |
-| Cloudflare Workers AI | OpenAI-compatible | `Authorization: Bearer` | `@cf/` model prefix |
-| Cohere | Cohere v2 Chat API | `Authorization: Bearer` | Native format; request and response translated to/from OpenAI shape |
-| HuggingFace | Inference API (OpenAI-compat) | `Authorization: Bearer` | Org/model routing (see below) |
-| Ollama | OpenAI-compatible | None | Local inference server; base URL from `provider_base_urls.ollama` |
+| Provider | Notes |
+|----------|-------|
+| OpenAI | Direct pass-through |
+| Azure OpenAI | Requires `azure_endpoint`, `azure_deployment`, `azure_api_version` in gateway config |
+| Anthropic | Extended thinking and prompt caching supported |
+| Google Gemini | Native grounding available for web search |
+| Vertex AI | Requires `vertex_project` and `vertex_region` in gateway config |
+| AWS Bedrock | BYOK key format: `ACCESS_KEY_ID:SECRET_ACCESS_KEY[:SESSION_TOKEN]`; `bedrock_region` in config |
+| Mistral AI | |
+| Groq | |
+| Together AI | `meta-llama/`, `Qwen/`, `microsoft/` model prefixes |
+| Fireworks AI | `accounts/fireworks/models/` model prefix |
+| Cerebras | Fast inference |
+| DeepSeek | `deepseek-` model prefix |
+| OpenRouter | Aggregates 300+ models; acts as universal compat fallback |
+| Perplexity | `sonar-` model prefix |
+| SambaNova | |
+| xAI | `grok-` model prefix |
+| NVIDIA NIM | `nvidia/` model prefix |
+| Cloudflare Workers AI | `@cf/` model prefix |
+| Cohere | Request and response translated to/from OpenAI shape |
+| HuggingFace | Org-prefix routing (see below) |
+| Ollama | Local inference; set base URL via `provider_base_urls.ollama` |
 
 ---
 

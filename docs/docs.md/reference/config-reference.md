@@ -74,18 +74,21 @@ Example:
 
 ---
 
-## Detectors
+## Guardrails
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `detectors` | array | `[]` | Ordered list of detector configs. Evaluated in array order. First `block` action short-circuits the pipeline. |
+| `guardrails` | array | `[]` | Ordered list of guardrail configs. Evaluated in array order within each tier. First `block` verdict short-circuits the pipeline. |
 
-Each detector object has a common set of fields plus type-specific fields:
+!!! note "Backwards compatibility"
+    The legacy key `detectors` is still accepted and behaves identically to `guardrails`. New configurations should use `guardrails`.
+
+Each guardrail object has a common set of fields plus type-specific fields:
 
 | Field | Type | Description |
 |---|---|---|
 | `type` | string | Guardrail type: `regex`, `keyword`, `presidio`, `prompt_guard`, `pii_protector`. |
-| `name` | string | Human-readable name used in block error messages and logs. |
+| `name` | string | Human-readable name used in block messages and logs. |
 | `action` | string | One of `block`, `scrub`, or `flag`. |
 | `target` | string | One of `request`, `response`, or `both`. |
 
