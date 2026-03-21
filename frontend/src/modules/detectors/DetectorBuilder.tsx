@@ -9,6 +9,7 @@ import {
   KeywordDetector,
   PresidioDetector,
   LlmGuardDetector,
+  PiiProtectorDetector,
   DetectorAction,
   DetectorTarget,
   PatternName,
@@ -62,11 +63,22 @@ function emptyLlmGuard(): LlmGuardDetector {
   return { type: "llm_guard", name: "llm-guard", action: "block", target: "request", url: "http://127.0.0.1:8083", timeout_ms: 3000, categories: [], fail_open: true };
 }
 
+function emptyPiiProtector(): PiiProtectorDetector {
+  return { type: "pii_protector", name: "pii-protect", target: "both", analyzer_url: "http://127.0.0.1:5002", language: "en", entities: [], score_threshold: 0.7, fail_open: true };
+}
+
+// Type guard: detectors that carry an action field
+type ActionableDetector = RegexDetector | KeywordDetector | PresidioDetector | LlmGuardDetector;
+function hasAction(det: DetectorConfig): det is ActionableDetector {
+  return det.type !== "pii_protector";
+}
+
 // ---------------------------------------------------------------------------
 // Sub-editors for each detector type
 // ---------------------------------------------------------------------------
 
 function CommonFields({ det, onChange }: { det: DetectorConfig; onChange: (d: DetectorConfig) => void }) {
+  const isPiiProtector = det.type === "pii_protector";
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       <div className={s["form-group"]} style={{ flex: "2 1 160px" }}>
@@ -78,25 +90,34 @@ function CommonFields({ det, onChange }: { det: DetectorConfig; onChange: (d: De
           placeholder="detector-name"
         />
       </div>
-      <div className={s["form-group"]} style={{ flex: "1 1 100px" }}>
-        <label className={s["form-label"]}>Action</label>
-        <select
-          className={s["form-select"]}
-          value={det.action}
-          onChange={(e) => onChange({ ...det, action: e.target.value as DetectorAction })}
-        >
-          {DETECTOR_ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-      </div>
-      <div className={s["form-group"]} style={{ flex: "1 1 100px" }}>
+      {hasAction(det) && (
+        <div className={s["form-group"]} style={{ flex: "1 1 100px" }}>
+          <label className={s["form-label"]}>Action</label>
+          <select
+            className={s["form-select"]}
+            value={det.action}
+            onChange={(e) => onChange({ ...det, action: e.target.value as DetectorAction })}
+          >
+            {DETECTOR_ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+      )}
+      <div className={s["form-group"]} style={{ flex: "1 1 120px" }}>
         <label className={s["form-label"]}>Target</label>
-        <select
-          className={s["form-select"]}
-          value={det.target ?? "request"}
-          onChange={(e) => onChange({ ...det, target: e.target.value as DetectorTarget })}
-        >
-          {DETECTOR_TARGETS.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
+        {isPiiProtector ? (
+          <div style={{ fontSize: 12, color: "var(--text-muted, #888)", padding: "6px 0", lineHeight: "22px" }}>
+            request + response
+            <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.6 }}>(required)</span>
+          </div>
+        ) : (
+          <select
+            className={s["form-select"]}
+            value={det.target ?? "request"}
+            onChange={(e) => onChange({ ...det, target: e.target.value as DetectorTarget })}
+          >
+            {DETECTOR_TARGETS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
       </div>
     </div>
   );
@@ -413,6 +434,101 @@ function LlmGuardEditor({ det, onChange }: { det: LlmGuardDetector; onChange: (d
   );
 }
 
+function PiiProtectorEditor({ det, onChange }: { det: PiiProtectorDetector; onChange: (d: PiiProtectorDetector) => void }) {
+  const [entityInput, setEntityInput] = useState("");
+
+  function addEntity() {
+    const trimmed = entityInput.trim().toUpperCase();
+    if (!trimmed) return;
+    onChange({ ...det, entities: [...(det.entities ?? []), trimmed] });
+    setEntityInput("");
+  }
+
+  function removeEntity(i: number) {
+    const ents = [...(det.entities ?? [])];
+    ents.splice(i, 1);
+    onChange({ ...det, entities: ents });
+  }
+
+  return (
+    <>
+      <div style={{ fontSize: 12, color: "var(--text-muted, #888)", padding: "6px 0 10px", lineHeight: 1.5 }}>
+        Detects PII on the request and replaces it with opaque tokens
+        (e.g.&nbsp;<code style={{ fontSize: 11 }}>[PII:a3f9b2:1]</code>).
+        Tokens are swapped back to the original values in the response before the client sees it —
+        so the LLM never processes real PII while the user still receives meaningful output.
+      </div>
+      <div className={s["form-row"]}>
+        <div className={s["form-group"]}>
+          <label className={s["form-label"]}>Analyzer URL</label>
+          <input
+            className={s["form-input"]}
+            value={det.analyzer_url ?? "http://127.0.0.1:5002"}
+            onChange={(e) => onChange({ ...det, analyzer_url: e.target.value })}
+          />
+        </div>
+        <div className={s["form-group"]}>
+          <label className={s["form-label"]}>Language</label>
+          <select
+            className={s["form-select"]}
+            value={det.language ?? "en"}
+            onChange={(e) => onChange({ ...det, language: e.target.value })}
+          >
+            <option value="en">en</option>
+            <option value="de">de</option>
+          </select>
+        </div>
+      </div>
+      <div className={s["form-group"]}>
+        <label className={s["form-label"]}>Score threshold</label>
+        <input
+          className={s["form-input"]}
+          type="number"
+          min="0"
+          max="1"
+          step="0.05"
+          value={det.score_threshold ?? 0.7}
+          onChange={(e) => onChange({ ...det, score_threshold: parseFloat(e.target.value) })}
+        />
+        <p className={s["form-hint"]}>0 = detect everything, 1 = only high-confidence hits</p>
+      </div>
+      <div className={s["form-group"]}>
+        <label className={s["form-label"]}>Entity types (leave empty = all)</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            className={s["form-input"]}
+            value={entityInput}
+            onChange={(e) => setEntityInput(e.target.value)}
+            placeholder="PERSON, EMAIL_ADDRESS…"
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addEntity())}
+          />
+          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addEntity}>Add</button>
+        </div>
+        {(det.entities ?? []).length > 0 && (
+          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {(det.entities ?? []).map((ent, i) => (
+              <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface-2, #f4f4f5)", borderRadius: 4, padding: "2px 8px", fontSize: 12 }}>
+                {ent}
+                <button type="button" onClick={() => removeEntity(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--text-muted, #888)" }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className={s["form-group"]}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={det.fail_open ?? true}
+            onChange={(e) => onChange({ ...det, fail_open: e.target.checked })}
+          />
+          <span className={s["form-label"]} style={{ margin: 0 }}>Fail open (pass requests through if Presidio is unreachable)</span>
+        </label>
+      </div>
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Detector card (one entry in the list)
 // ---------------------------------------------------------------------------
@@ -422,6 +538,7 @@ const TYPE_LABELS: Record<DetectorConfig["type"], string> = {
   keyword: "Keyword",
   presidio: "Presidio (NLP)",
   llm_guard: "Llama Guard",
+  pii_protector: "PII Protector",
 };
 
 const TYPE_BADGE_COLORS: Record<DetectorConfig["type"], string> = {
@@ -429,6 +546,16 @@ const TYPE_BADGE_COLORS: Record<DetectorConfig["type"], string> = {
   keyword: "#8b5cf6",
   presidio: "#10b981",
   llm_guard: "#f59e0b",
+  pii_protector: "#06b6d4",
+};
+
+// Tier assignment mirrors src/detectors/orchestrator.lua
+const DETECTOR_TIER: Record<DetectorConfig["type"], number> = {
+  regex: 1,
+  keyword: 1,
+  presidio: 2,
+  llm_guard: 2,
+  pii_protector: 2,
 };
 
 function DetectorCard({
@@ -453,6 +580,7 @@ function DetectorCard({
     if (det.type === "keyword") return <KeywordEditor det={det} onChange={onUpdate} />;
     if (det.type === "presidio") return <PresidioEditor det={det} onChange={onUpdate} />;
     if (det.type === "llm_guard") return <LlmGuardEditor det={det} onChange={onUpdate} />;
+    if (det.type === "pii_protector") return <PiiProtectorEditor det={det} onChange={onUpdate} />;
     return null;
   }
 
@@ -516,7 +644,7 @@ function DetectorCard({
           {det.name}
         </span>
         <span style={{ fontSize: 11, color: "var(--text-muted, #888)", whiteSpace: "nowrap" }}>
-          {det.action} · {det.target ?? "request"}
+          {det.type === "pii_protector" ? "⟳ protect" : det.action} · {det.target ?? (det.type === "pii_protector" ? "both" : "request")}
         </span>
 
         {/* Expand toggle */}
@@ -545,6 +673,76 @@ function DetectorCard({
 }
 
 // ---------------------------------------------------------------------------
+// Execution plan: read-only phase/tier visualization
+// ---------------------------------------------------------------------------
+
+function DetectorPhaseSummary({ detectors }: { detectors: DetectorConfig[] }) {
+  if (detectors.length === 0) return null;
+
+  const sorted = detectors
+    .map((det, i) => ({ det, i }))
+    .sort((a, b) => {
+      const ta = DETECTOR_TIER[a.det.type] ?? 99;
+      const tb = DETECTOR_TIER[b.det.type] ?? 99;
+      return ta !== tb ? ta - tb : a.i - b.i;
+    });
+
+  function phaseArrow(det: DetectorConfig) {
+    const target = det.target ?? (det.type === "pii_protector" ? "both" : "request");
+    if (target === "both") return "⇄";
+    if (target === "response") return "←";
+    return "→";
+  }
+
+  function phaseLabel(det: DetectorConfig) {
+    const target = det.target ?? (det.type === "pii_protector" ? "both" : "request");
+    return target;
+  }
+
+  function modeLabel(det: DetectorConfig) {
+    if (det.type === "pii_protector") return "⟳ reversible";
+    return det.action;
+  }
+
+  return (
+    <div style={{ marginTop: 16, borderTop: "1px solid var(--border, #e4e4e7)", paddingTop: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted, #888)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        Execution plan
+      </div>
+      <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {["Tier", "Name", "Phase", "Mode"].map((h) => (
+              <th key={h} style={{ textAlign: "left", fontWeight: 500, color: "var(--text-muted, #888)", padding: "2px 10px 4px 0", whiteSpace: "nowrap" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(({ det }, idx) => (
+            <tr key={idx} style={{ borderTop: "1px solid var(--border, #e4e4e7)" }}>
+              <td style={{ padding: "5px 10px 5px 0", color: "var(--text-muted, #888)", fontVariantNumeric: "tabular-nums" }}>
+                {DETECTOR_TIER[det.type] ?? "?"}
+              </td>
+              <td style={{ padding: "5px 10px 5px 0" }}>
+                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: TYPE_BADGE_COLORS[det.type], marginRight: 6, verticalAlign: "middle", flexShrink: 0 }} />
+                {det.name}
+              </td>
+              <td style={{ padding: "5px 10px 5px 0", whiteSpace: "nowrap" }}>
+                <span style={{ fontFamily: "monospace", fontSize: 11, marginRight: 4 }}>{phaseArrow(det)}</span>
+                {phaseLabel(det)}
+              </td>
+              <td style={{ padding: "5px 0", color: det.type === "pii_protector" ? "var(--badge-info-text, #0891b2)" : undefined }}>
+                {modeLabel(det)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main DetectorBuilder component
 // ---------------------------------------------------------------------------
 
@@ -559,6 +757,7 @@ export function DetectorBuilder({ value, onChange }: DetectorBuilderProps) {
     if (type === "regex") d = emptyRegex();
     else if (type === "keyword") d = emptyKeyword();
     else if (type === "presidio") d = emptyPresidio();
+    else if (type === "pii_protector") d = emptyPiiProtector();
     else d = emptyLlmGuard();
     onChange([...value, d]);
   }
@@ -588,7 +787,7 @@ export function DetectorBuilder({ value, onChange }: DetectorBuilderProps) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span className={s["form-label"]} style={{ margin: 0 }}>Detectors ({value.length})</span>
         <div style={{ display: "flex", gap: 6 }}>
-          {(["regex", "keyword", "presidio", "llm_guard"] as const).map((type) => (
+          {(["regex", "keyword", "presidio", "llm_guard", "pii_protector"] as const).map((type) => (
             <button
               key={type}
               type="button"
@@ -619,6 +818,8 @@ export function DetectorBuilder({ value, onChange }: DetectorBuilderProps) {
           onRemove={() => removeDetector(i)}
         />
       ))}
+
+      <DetectorPhaseSummary detectors={value} />
     </div>
   );
 }

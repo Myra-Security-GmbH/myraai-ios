@@ -101,24 +101,6 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
   );
 }
 
-// If an existing gateway has guardrails.enabled=true but no detectors, synthesize
-// a legacy llm_guard detector from the old config so the user sees it immediately.
-function migrateDetectors(cfg: Gateway["config"]): DetectorConfig[] {
-  if ((cfg.detectors ?? []).length > 0) return cfg.detectors!;
-  if (cfg.guardrails?.enabled) {
-    return [{
-      type: "llm_guard",
-      name: "llm-guard",
-      action: "block",
-      target: "request",
-      url: cfg.guardrails.llama_guard_url ?? "http://127.0.0.1:8083",
-      timeout_ms: cfg.guardrails.timeout_ms ?? 3000,
-      fail_open: cfg.guardrails.fail_open ?? true,
-    }];
-  }
-  return [];
-}
-
 function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () => void; onSaved: (updated: Gateway) => void }) {
   const cfg = gw.config;
   const [budgetUsd, setBudgetUsd] = useState(cfg.budget_usd != null ? String(cfg.budget_usd) : "");
@@ -572,9 +554,8 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
   const [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
   const [budgetResetting, setBudgetResetting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [detectors, setDetectors] = useState<DetectorConfig[]>(() => migrateDetectors(initialGw.config));
+  const [detectors, setDetectors] = useState<DetectorConfig[]>(() => initialGw.config.detectors ?? []);
   const [detectorsChanged, setDetectorsChanged] = useState(false);
-  const [detectorsMigrated] = useState(() => (initialGw.config.detectors ?? []).length === 0 && !!initialGw.config.guardrails?.enabled);
   const [savingDetectors, setSavingDetectors] = useState(false);
   const [detectorsError, setDetectorsError] = useState<string | null>(null);
   const [detectorsSaved, setDetectorsSaved] = useState(false);
@@ -623,7 +604,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
   async function saveDetectors() {
     setSavingDetectors(true); setDetectorsError(null); setDetectorsSaved(false);
     try {
-      const newConfig = { ...gw.config, detectors, guardrails: { enabled: false } };
+      const newConfig = { ...gw.config, detectors };
       await api.patch(`/gateways/${gw.id}`, { config: newConfig });
       setGw({ ...gw, config: newConfig });
       setDetectorsChanged(false);
@@ -778,12 +759,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
             </button>
           </div>
         </div>
-        {detectorsMigrated && (
-          <div className={`${s.alert} ${s["alert--warning"]}`} style={{ marginBottom: 16 }}>
-            Legacy guardrail converted to a Llama Guard detector. Save to apply.
-          </div>
-        )}
-        {detectorsError && <div className={`${s.alert} ${s["alert--error"]}`}>{detectorsError}</div>}
+        {detectorsError &&<div className={`${s.alert} ${s["alert--error"]}`}>{detectorsError}</div>}
         <DetectorBuilder
           value={detectors}
           onChange={(d) => { setDetectors(d); setDetectorsChanged(true); }}
@@ -980,8 +956,6 @@ export default function Gateways() {
                         <span className={`${s.badge} ${s["badge--warning"]}`}>
                           {g.config.detectors!.length}
                         </span>
-                      ) : g.config.guardrails?.enabled ? (
-                        <span className={`${s.badge} ${s["badge--neutral"]}`} title="Legacy guardrail — open Edit to migrate">legacy</span>
                       ) : (
                         <span className={`${s.badge} ${s["badge--neutral"]}`}>—</span>
                       )}

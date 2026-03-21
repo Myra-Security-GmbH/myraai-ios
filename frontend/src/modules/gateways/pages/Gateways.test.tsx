@@ -44,12 +44,6 @@ const GW2: Gateway = {
   created_at: "2024-02-02T00:00:00Z",
 };
 
-const GW_LEGACY: Gateway = {
-  id: "gw3", slug: "old", tenant_id: "t1",
-  config: { auth_required: true, guardrails: { enabled: true, llama_guard_url: "http://127.0.0.1:8083", timeout_ms: 3000, fail_open: true } },
-  created_at: "2024-02-03T00:00:00Z",
-};
-
 const GW_WITH_DETECTORS: Gateway = {
   id: "gw4", slug: "secure", tenant_id: "t1",
   config: {
@@ -356,32 +350,10 @@ describe("Gateways — Detectors card", () => {
     });
     renderAtPath(`/tenants/${TENANT.id}/gateways/${GW_WITH_DETECTORS.id}`);
     await waitFor(() => expect(screen.getByRole("heading", { name: "Detectors" })).toBeInTheDocument());
-    expect(screen.getByText("kw-check")).toBeInTheDocument();
+    expect(screen.getAllByText("kw-check")[0]).toBeInTheDocument();
     expect(screen.getByText(/Detectors \(1\)/)).toBeInTheDocument();
   });
 
-  it("shows legacy guardrail migration warning when guardrails.enabled=true and no detectors", async () => {
-    mockApi.get.mockImplementation((path: string) => {
-      if (path === "/tenants") return Promise.resolve([TENANT]);
-      if (path === `/tenants/${TENANT.id}/gateways`) return Promise.resolve([GW_LEGACY]);
-      if (path.endsWith("/tokens")) return Promise.resolve([]);
-      if (path.endsWith("/keys")) return Promise.resolve([]);
-      if (path.endsWith("/rules")) return Promise.resolve([]);
-      return Promise.resolve([]);
-    });
-    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW_LEGACY.id}`);
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Detectors" })).toBeInTheDocument());
-    expect(screen.getByText(/Legacy guardrail converted/i)).toBeInTheDocument();
-    // The migrated llm_guard detector should be pre-populated
-    expect(screen.getByText("llm-guard")).toBeInTheDocument();
-  });
-
-  it("does NOT show legacy migration warning for a gateway with no guardrails config", async () => {
-    setupDefaultMocks();
-    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Detectors" })).toBeInTheDocument());
-    expect(screen.queryByText(/Legacy guardrail converted/i)).not.toBeInTheDocument();
-  });
 });
 
 // ---------------------------------------------------------------------------

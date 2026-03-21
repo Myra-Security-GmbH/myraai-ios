@@ -67,11 +67,24 @@ export interface LlmGuardDetector {
   fail_open?: boolean;
 }
 
+export interface PiiProtectorDetector {
+  type: "pii_protector";
+  name: string;
+  /** Always runs on both request and response phases. */
+  target?: DetectorTarget;
+  analyzer_url?: string;
+  language?: string;
+  entities?: string[];
+  score_threshold?: number;
+  fail_open?: boolean;
+}
+
 export type DetectorConfig =
   | RegexDetector
   | KeywordDetector
   | PresidioDetector
-  | LlmGuardDetector;
+  | LlmGuardDetector
+  | PiiProtectorDetector;
 
 // ---------------------------------------------------------------------------
 // Gateway config
@@ -85,7 +98,6 @@ export interface GatewayConfig {
   timeout_ms?: number;
   log_payloads?: boolean;
   rate_limit?: { requests: number; window_sec: number };
-  guardrails?: { enabled: boolean; llama_guard_url?: string; timeout_ms?: number; fail_open?: boolean };
   detectors?: DetectorConfig[];
   provider_base_urls?: Record<string, string>;
 }
