@@ -26,6 +26,7 @@ local function content_to_text(content)
 end
 
 -- Llama Guard 3 max context is 4096 tokens; approximate at ~3 chars/token.
+-- Note: when context_prompt is set it consumes ~200 chars, leaving ~8800 for user content.
 local MAX_CHARS = 9000
 
 local function truncate(text)
@@ -36,13 +37,16 @@ end
 
 -- Extract the last user message for request-phase classification.
 -- Only sends the last user turn to avoid alternating-role issues.
-local function extract_request_messages(body)
+local function extract_request_messages(body, context_prompt)
     if not body then return nil end
     if body.messages and #body.messages > 0 then
         for i = #body.messages, 1, -1 do
             local msg = body.messages[i]
             if msg.role == "user" then
                 local text = content_to_text(msg.content)
+                if context_prompt then
+                    text = "[Context: " .. context_prompt .. "]\n\n" .. text
+                end
                 if text ~= "" then
                     return {{ role = "user", content = truncate(text) }}
                 end
@@ -51,14 +55,18 @@ local function extract_request_messages(body)
         return nil
     end
     if body.prompt then
-        return {{ role = "user", content = truncate(tostring(body.prompt)) }}
+        local text = tostring(body.prompt)
+        if context_prompt then
+            text = "[Context: " .. context_prompt .. "]\n\n" .. text
+        end
+        return {{ role = "user", content = truncate(text) }}
     end
     return nil
 end
 
 -- Extract assistant text from a JSON response body for response-phase classification.
 -- Falls back to raw text if parsing fails or no assistant content found.
-local function extract_response_messages(response_body_text)
+local function extract_response_messages(response_body_text, context_prompt)
     if not response_body_text or response_body_text == "" then return nil end
 
     local ok, parsed = pcall(json.decode, response_body_text)
@@ -69,6 +77,9 @@ local function extract_response_messages(response_body_text)
             local msg    = choice.message or choice.delta
             if msg then
                 local text = content_to_text(msg.content)
+                if context_prompt then
+                    text = "[Context: " .. context_prompt .. "]\n\n" .. text
+                end
                 if text ~= "" then
                     return {{ role = "assistant", content = truncate(text) }}
                 end
@@ -77,6 +88,9 @@ local function extract_response_messages(response_body_text)
         -- Anthropic: content array of blocks
         if parsed.content then
             local text = content_to_text(parsed.content)
+            if context_prompt then
+                text = "[Context: " .. context_prompt .. "]\n\n" .. text
+            end
             if text ~= "" then
                 return {{ role = "assistant", content = truncate(text) }}
             end
@@ -84,7 +98,11 @@ local function extract_response_messages(response_body_text)
     end
 
     -- Fall back to raw text
-    return {{ role = "assistant", content = truncate(response_body_text) }}
+    local text = response_body_text
+    if context_prompt then
+        text = "[Context: " .. context_prompt .. "]\n\n" .. text
+    end
+    return {{ role = "assistant", content = truncate(text) }}
 end
 
 -- Call Llama Guard 3.
@@ -157,12 +175,13 @@ function M.run(ctx, detector, phase)
     local fail_open = detector.fail_open
     if fail_open == nil then fail_open = true end
 
-    local action = detector.action or "block"
+    local action         = detector.action or "block"
+    local context_prompt = detector.context_prompt or nil
 
     -- Build the messages list based on phase
     local messages
     if phase == "response" then
-        messages = extract_response_messages(ctx.response_body)
+        messages = extract_response_messages(ctx.response_body, context_prompt)
     else
         -- request phase: parse body if needed
         if not ctx.request_body then
@@ -172,7 +191,7 @@ function M.run(ctx, detector, phase)
             end
             ctx.request_body = json.decode(ctx.raw_request_body) or {}
         end
-        messages = extract_request_messages(ctx.request_body)
+        messages = extract_request_messages(ctx.request_body, context_prompt)
     end
 
     if not messages then

@@ -52,7 +52,7 @@ const LLAMA_GUARD_CATEGORIES: Array<{
   in_recommended: boolean;
 }> = [
   { code: "S1",  label: "Violent Crimes",          description: "Murder, terrorism, assault",                      fp_risk: "low",    in_recommended: true  },
-  { code: "S2",  label: "Non-Violent Crimes",       description: "Fraud, hacking, drug synthesis — triggers on security/education content", fp_risk: "high",   in_recommended: false },
+  { code: "S2",  label: "Non-Violent Crimes",       description: "Fraud, hacking, drug synthesis — 14.5% FP without context / 7.2% with context on security/education text", fp_risk: "high",   in_recommended: false },
   { code: "S3",  label: "Sex-Related Crimes",       description: "Sexual assault, trafficking",                    fp_risk: "low",    in_recommended: true  },
   { code: "S4",  label: "Child Sexual Exploitation",description: "CSAM",                                           fp_risk: "low",    in_recommended: true  },
   { code: "S5",  label: "Defamation",               description: "False statements of fact",                       fp_risk: "medium", in_recommended: false },
@@ -627,19 +627,19 @@ function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChan
               type="button"
               className={`${s.btn} ${isRecommended ? s["btn--primary"] : s["btn--secondary"]}`}
               style={{ fontSize: 11, padding: "2px 8px" }}
-              title="All low-FP categories: S1, S3, S4, S9, S11, S12, S14 — ~1% FP on real corpora (OR-Bench + XSTest). Avoids S2 and S6 which cause high FP on security/education content."
+              title="All low-FP categories: S1, S3, S4, S9, S11, S12, S14 — ~1.7% FP without context / ~1.1% FP with context_prompt on OR-Bench-hard. Avoids S2 and S6 which cause high FP on security/education content."
               onClick={() => onChange({ ...det, categories: [...RECOMMENDED_BLOCK_CATEGORIES] })}
             >
-              Recommended block (~1% FP)
+              Recommended block (~1.7% FP)
             </button>
             <button
               type="button"
               className={`${s.btn} ${isAll ? s["btn--primary"] : s["btn--secondary"]}`}
               style={{ fontSize: 11, padding: "2px 8px" }}
-              title="All 13 categories — ~7.5% FP rate on OR-Bench-hard. S2 and S6 are the main drivers."
+              title="All 14 categories — ~18.6% FP rate on OR-Bench-hard. S2 (14.5% alone) and S6 are the main drivers."
               onClick={() => onChange({ ...det, categories: [] })}
             >
-              All categories (~7.5% FP)
+              All categories (~18.6% FP)
             </button>
           </div>
         </div>
@@ -686,11 +686,27 @@ function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChan
         </div>
         {isAll && (
           <p className={s["form-hint"]} style={{ color: "var(--warning-text, #92400e)" }}>
-            All categories selected — expect ~7.5% false positives. S2 (Non-Violent Crimes) and
-            S6 (Specialized Advice) are the main drivers. Use <strong>Recommended block</strong> to
-            reduce to ~1% FP.
+            All categories selected — expect ~18.6% false positives on security/education content.
+            S2 (Non-Violent Crimes, 14.5% FP) and S6 (Specialized Advice) are the main drivers.
+            Use <strong>Recommended block</strong> to reduce to ~1.7% FP.
           </p>
         )}
+      </div>
+      <div className={s["form-group"]}>
+        <label className={s["form-label"]}>Context prompt (optional)</label>
+        <textarea
+          className={s["form-input"]}
+          rows={3}
+          style={{ resize: "vertical", fontFamily: "inherit", fontSize: 12 }}
+          placeholder="Describe your deployment context to reduce false positives. E.g.: 'This platform serves security professionals and researchers. Classify as unsafe only requests clearly seeking operational assistance for causing direct harm.'"
+          value={det.context_prompt ?? ""}
+          onChange={(e) => onChange({ ...det, context_prompt: e.target.value || undefined })}
+        />
+        <p className={s["form-hint"]}>
+          Injected before each user message to give Llama Guard deployment context.
+          Reduces FP on security/education platforms: S2 drops from 14.5% → 7.2% FP;
+          recommended_block drops from ~1.7% → ~1.1% FP (benchmarked on OR-Bench-hard).
+        </p>
       </div>
       <div className={s["form-group"]}>
         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>

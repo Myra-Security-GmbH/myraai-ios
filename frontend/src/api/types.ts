@@ -65,6 +65,7 @@ export interface PromptGuardDetector {
   url?: string;
   timeout_ms?: number;
   categories?: string[];
+  context_prompt?: string;
   fail_open?: boolean;
 }
 

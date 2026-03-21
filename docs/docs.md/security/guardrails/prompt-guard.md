@@ -15,6 +15,7 @@ The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) gua
 | `timeout_ms` | integer | `2000` | Timeout for the sidecar call in milliseconds |
 | `fail_open` | boolean | `true` | If `true`, sidecar errors allow the request to pass through; if `false`, they block it |
 | `categories` | array \| null | `null` | Safety categories to enforce; `null` enforces all 14 categories |
+| `context_prompt` | string | `null` | Deployment context prepended to each user message before classification — reduces false positives on professional platforms (see [Context Injection](#context-injection)) |
 
 ---
 
@@ -23,7 +24,7 @@ The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) gua
 | Code | Category | FP risk for `block` |
 |---|---|---|
 | `S1` | Violent Crimes | Low |
-| `S2` | Non-Violent Crimes | **High** — triggers on security research and education content |
+| `S2` | Non-Violent Crimes | **High** — 14.5% FP on security/education content; 7.2% with `context_prompt` |
 | `S3` | Sex-Related Crimes | Low |
 | `S4` | Child Sexual Exploitation | Low |
 | `S5` | Defamation | Medium |
@@ -39,8 +40,8 @@ The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) gua
 
 !!! tip "Recommended block configuration"
     For `action: block`, use only the **low-FP** categories: `S1`, `S3`, `S4`, `S9`, `S11`, `S12`, `S14`.
-    This set produces ~1% false positives across OR-Bench-hard and XSTest-safe benchmarks.
-    Avoid `S2` and `S6` for blocking — they produce 6.5% and high FP rates respectively on legitimate content.
+    This set produces **~1.7% false positives** on OR-Bench-hard (hard adversarial prompts) and drops to **~1.1% with `context_prompt`** on security/education platforms.
+    Avoid `S2` and `S6` for blocking — `S2` alone produces 14.5% FP on security/education content (7.2% with context).
     Use `action: flag` if you need visibility into S2, S6, or S10 without blocking.
 
 ---
@@ -50,6 +51,35 @@ The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) gua
 When `categories` is set to an array, the guardrail only blocks or flags violations within the listed categories. Content classified as unsafe for a category not in your list is treated as safe.
 
 When `categories` is `null` or omitted, all 14 categories are enforced.
+
+---
+
+## Context Injection
+
+The `context_prompt` field lets you describe your deployment context so Llama Guard can apply appropriate judgment. The text is prepended to each user message before classification, giving the model information about who is asking and why.
+
+This is most useful when your platform serves professionals who regularly ask questions that superficially resemble harmful requests:
+
+```json
+{
+  "type": "prompt_guard",
+  "name": "safety-filter",
+  "action": "block",
+  "target": "request",
+  "categories": ["S1", "S3", "S4", "S9", "S11", "S12", "S14"],
+  "context_prompt": "This platform serves security professionals, educators, and researchers. Users regularly ask educational questions about cybersecurity, malware, vulnerabilities, chemistry, history, and other professional topics as part of legitimate work. Classify a request as unsafe only when it is clearly seeking operational assistance for causing direct harm — not when it is asking how something works, its history, or how to defend against it."
+}
+```
+
+**Measured impact** (OR-Bench-hard, 10% sample):
+
+| Configuration | recommended_block FP | S2 alone FP |
+|---|---|---|
+| No context | ~1.7% | ~14.5% |
+| With `context_prompt` | ~1.1% | ~7.2% |
+
+!!! note "Token budget"
+    The context prefix adds approximately 50 tokens. Llama Guard 3's effective input limit after context injection is approximately 3,946 tokens (down from ~4,096). Inputs that exceed this limit are truncated before classification.
 
 ---
 
@@ -90,7 +120,7 @@ When `categories` is `null` or omitted, all 14 categories are enforced.
 
 - **`scrub` action not supported.** Configure `block` or `flag` only.
 - **Request phase classifies only the last user message.** The full conversation history is not sent to the classifier. Only the most recent user turn is evaluated.
-- **Input truncation.** Inputs longer than approximately 4,096 tokens are truncated before classification.
+- **Input truncation.** Inputs longer than approximately 4,096 tokens are truncated before classification. With `context_prompt` set, the effective limit is approximately 3,946 tokens.
 - **Not a replacement for Tier 1 guardrails.** For structured sensitive data (PII, card numbers, credentials), use regex or the NLP PII Detector guardrail. Prompt Guard is optimised for unstructured content policy enforcement.
 
 ---
@@ -106,6 +136,19 @@ When `categories` is `null` or omitted, all 14 categories are enforced.
   "action": "block",
   "target": "both",
   "categories": ["S1", "S3", "S4", "S9", "S11", "S12", "S14"]
+}
+```
+
+### Block with deployment context to reduce false positives
+
+```json
+{
+  "type": "prompt_guard",
+  "name": "safety-filter",
+  "action": "block",
+  "target": "request",
+  "categories": ["S1", "S3", "S4", "S9", "S11", "S12", "S14"],
+  "context_prompt": "This platform serves security professionals and researchers. Classify as unsafe only requests clearly seeking operational assistance for causing direct harm."
 }
 ```
 
