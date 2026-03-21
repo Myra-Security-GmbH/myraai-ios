@@ -4,12 +4,30 @@
 local M = {}
 
 local REGISTRY = {
-    openai    = "providers.openai",
-    anthropic = "providers.anthropic",
-    gemini    = "providers.gemini",
-    mistral   = "providers.mistral",
-    groq      = "providers.groq",
-    -- extend here as more providers are implemented
+    -- Native adapters
+    openai      = "providers.openai",
+    anthropic   = "providers.anthropic",
+    gemini      = "providers.gemini",
+    cohere      = "providers.cohere",
+    bedrock     = "providers.bedrock",
+    vertex      = "providers.vertex",
+    -- OpenAI-compatible (established)
+    mistral     = "providers.mistral",
+    groq        = "providers.groq",
+    together    = "providers.together",
+    fireworks   = "providers.fireworks",
+    deepseek    = "providers.deepseek",
+    xai         = "providers.xai",
+    perplexity  = "providers.perplexity",
+    openrouter  = "providers.openrouter",
+    ollama      = "providers.ollama",
+    -- OpenAI-compatible (new)
+    azure       = "providers.azure",
+    huggingface = "providers.huggingface",
+    cerebras    = "providers.cerebras",
+    nvidia      = "providers.nvidia",
+    cloudflare  = "providers.cloudflare",
+    sambanova   = "providers.sambanova",
 }
 
 -- Returns provider module or nil, err

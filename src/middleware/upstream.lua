@@ -67,6 +67,103 @@ local function call_provider(ctx, provider_name, model, is_streaming)
     }
 end
 
+-- Stream SSE from provider → client for compat requests.
+-- Converts provider-native SSE (Anthropic, Gemini, etc.) to OpenAI
+-- chat.completion.chunk format so any OpenAI-compatible client works.
+local function handle_compat_streaming(ctx, res)
+    ngx.status = 200
+    ngx.header["Content-Type"]      = "text/event-stream"
+    ngx.header["Cache-Control"]     = "no-cache"
+    ngx.header["X-Accel-Buffering"] = "no"
+    ngx.header["X-AIG-Provider"]    = res.provider_name
+    ngx.header["X-AIG-Cache"]       = "MISS"
+
+    local reader       = res.body
+    local provider_mod = res.provider_mod
+    local buf          = ""
+    local chat_id      = "chatcmpl-" .. (ctx.request_id or "aig")
+    local model        = ctx.model
+    local input_tokens, output_tokens = 0, 0
+    local first_chunk_seen = false
+    local done_sent        = false
+
+    -- Initial role delta (mirrors OpenAI behaviour)
+    local role_line = "data: " .. json.encode({
+        id      = chat_id,
+        object  = "chat.completion.chunk",
+        model   = model,
+        choices = {{ index = 0, delta = { role = "assistant", content = "" },
+                     finish_reason = json.null }},
+    }) .. "\n\n"
+    ngx.print(role_line)
+    ngx.flush(true)
+
+    while true do
+        local chunk, err = reader(8192)
+        if err then ngx.log(ngx.ERR, "compat streaming read error: ", err); break end
+        if not chunk then break end
+
+        if not first_chunk_seen and chunk ~= "" then
+            first_chunk_seen = true
+            ctx.time_to_first_token_ms = math.floor(ngx.now() * 1000 - ctx.start_ms)
+        end
+
+        buf = buf .. chunk
+
+        local pos = 1
+        while true do
+            local nl = buf:find("\n", pos, true)
+            if not nl then buf = buf:sub(pos); break end
+            local line = buf:sub(pos, nl - 1):gsub("\r$", "")
+            pos = nl + 1
+
+            local parsed = provider_mod.parse_sse_chunk(line)
+            if parsed then
+                if parsed.input_tokens          then input_tokens  = parsed.input_tokens          end
+                if parsed.output_tokens         then output_tokens = parsed.output_tokens         end
+                if parsed.cache_creation_tokens then end  -- tracked internally only
+                if parsed.cache_read_tokens     then end
+
+                if parsed.done and not done_sent then
+                    local finish_line = "data: " .. json.encode({
+                        id      = chat_id,
+                        object  = "chat.completion.chunk",
+                        model   = model,
+                        choices = {{ index = 0, delta = {}, finish_reason = "stop" }},
+                    }) .. "\n\ndata: [DONE]\n\n"
+                    ngx.print(finish_line)
+                    ngx.flush(true)
+                    done_sent = true
+                elseif parsed.delta and parsed.delta ~= "" then
+                    local delta_line = "data: " .. json.encode({
+                        id      = chat_id,
+                        object  = "chat.completion.chunk",
+                        model   = model,
+                        choices = {{ index = 0, delta = { content = parsed.delta },
+                                     finish_reason = json.null }},
+                    }) .. "\n\n"
+                    ngx.print(delta_line)
+                    ngx.flush(true)
+                end
+            end
+        end
+    end
+
+    if not done_sent then
+        ngx.print("data: [DONE]\n\n")
+        ngx.flush(true)
+    end
+
+    if res.httpc then res.httpc:set_keepalive() end
+
+    ctx.input_tokens          = input_tokens
+    ctx.output_tokens         = output_tokens
+    ctx.cache_creation_tokens = 0
+    ctx.cache_read_tokens     = 0
+    ctx.is_streaming          = true
+    ctx.provider_status       = 200
+end
+
 -- Stream SSE from provider to client, accumulating token usage.
 local function handle_streaming(ctx, res)
     ngx.status = 200
@@ -142,6 +239,26 @@ local function handle_buffered(ctx, res)
     local parsed, err = provider_mod.parse_response(body_str)
     if not parsed then
         return nil, "parse_response: " .. tostring(err)
+    end
+
+    -- For compat requests the client speaks OpenAI format, so convert the
+    -- provider-native response back to an OpenAI chat.completion envelope.
+    if ctx.is_compat then
+        body_str = json.encode({
+            id      = "chatcmpl-" .. (ctx.request_id or "aig"),
+            object  = "chat.completion",
+            model   = ctx.model,
+            choices = {{
+                index         = 0,
+                message       = { role = "assistant", content = parsed.content },
+                finish_reason = "stop",
+            }},
+            usage   = {
+                prompt_tokens     = parsed.input_tokens,
+                completion_tokens = parsed.output_tokens,
+                total_tokens      = (parsed.input_tokens or 0) + (parsed.output_tokens or 0),
+            },
+        })
     end
 
     ctx.response_body         = body_str
@@ -262,7 +379,11 @@ function M.run(ctx)
             ngx.header["X-AIG-Model"]    = model
 
             if is_streaming then
-                handle_streaming(ctx, res)
+                if ctx.is_compat then
+                    handle_compat_streaming(ctx, res)
+                else
+                    handle_streaming(ctx, res)
+                end
                 return  -- response already sent; skip rest of pipeline
             else
                 local ok, parse_err = handle_buffered(ctx, res)

@@ -38,15 +38,10 @@ function M.run(ctx)
         return
     end
 
-    -- For compat endpoint: infer the real provider from the model name
+    -- For compat endpoint: infer the real provider from the model name.
+    -- infer_provider() always returns a provider string (falls back to openrouter).
     if ctx.is_compat then
-        local inferred = compat.infer_provider(ctx.model)
-        if not inferred then
-            errors.send("INVALID_REQUEST",
-                "Cannot infer provider for model '" .. ctx.model ..
-                "'. Set routing rules or use the native endpoint.")
-        end
-        ctx.provider      = inferred
+        ctx.provider      = compat.infer_provider(ctx.model)
         ctx.provider_path = compat.provider_path(ctx.provider_path)
     end
 
