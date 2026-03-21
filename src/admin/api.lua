@@ -93,12 +93,13 @@ end)
 route("GET", "^/admin/v1/logs$", function()
     local args = ngx.req.get_uri_args()
     send(200, storage.list_logs({
-        tenant_id  = args.tenant_id,
-        gateway_id = args.gateway_id,
-        provider   = args.provider,
-        since      = args.since,
-        limit      = tonumber(args.limit),
-        offset     = tonumber(args.offset),
+        tenant_id         = args.tenant_id,
+        gateway_id        = args.gateway_id,
+        provider          = args.provider,
+        since             = args.since,
+        guardrail_outcome = args.guardrail_outcome,
+        limit             = tonumber(args.limit),
+        offset            = tonumber(args.offset),
     }))
 end)
 
@@ -227,6 +228,15 @@ end)
 route("DELETE", "^/admin/v1/gateways/([^/]+)/rules/([^/]+)$", function(_, rule_id)
     storage.delete_routing_rule(rule_id)
     send(200, { ok = true })
+end)
+
+route("GET", "^/admin/v1/gateways/([^/]+)/guardrail%-stats$", function(gateway_id)
+    send(200, storage.get_gateway_guardrail_stats(gateway_id))
+end)
+
+route("GET", "^/admin/v1/gateways/([^/]+)/guardrail%-events$", function(gateway_id)
+    local args = ngx.req.get_uri_args()
+    send(200, storage.list_guardrail_events(gateway_id, tonumber(args.limit)))
 end)
 
 -- ---------------------------------------------------------------------------

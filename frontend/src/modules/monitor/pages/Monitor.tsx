@@ -39,6 +39,8 @@ function PeriodCard({ label, data }: { label: string; data: any }) {
     ["Requests",      fmt(data?.requests)],
     ["Cached",        fmt(data?.cached)],
     ["Blocked",       fmt(data?.blocked)],
+    ["Scrubbed",      fmt(data?.scrubbed ?? 0)],
+    ["Flagged",       fmt(data?.flagged ?? 0)],
     ["Cost",          fmtCost(data?.cost_usd)],
     ["Saved",         fmtCost(data?.saved_cost_usd)],
     ["Avg latency",   data?.avg_latency_ms != null ? `${fmt(data.avg_latency_ms)} ms` : "—"],
@@ -268,11 +270,11 @@ export default function Monitor() {
             )}
           </div>
 
-          {/* Last 10 blocked */}
+          {/* Recent guardrail events */}
           {(stats.recent_blocked?.length ?? 0) > 0 && (
             <div className={s.card}>
               <div className={s["card-header"]}>
-                <h2 className={s["card-title"]}>Last 10 Blocked Requests</h2>
+                <h2 className={s["card-title"]}>Recent Guardrail Events</h2>
               </div>
               <div className={s["table-wrapper"]}>
                 <table className={s.table}>
@@ -280,23 +282,34 @@ export default function Monitor() {
                     <tr>
                       <th>Time</th>
                       <th>Tenant</th>
-                      <th>Blocked By</th>
+                      <th>Outcome</th>
+                      <th>Detectors</th>
                       <th>Reason</th>
                       <th>Latency</th>
                       <th>Guardrail</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {stats.recent_blocked.map((row: any, i: number) => (
-                      <tr key={i} className={s.blocked}>
-                        <td className={s.mono} style={{ fontSize: 11 }}>{fmtDateTime(row.ts)}</td>
-                        <td><span className={s.code}>{row.tenant ?? row.tenant_id?.slice(0, 8)}</span></td>
-                        <td><span className={`${s.badge} ${s["badge--error"]}`}>{row.blocked_by ?? "?"}</span></td>
-                        <td style={{ maxWidth: 280, fontSize: 12 }}>{decodeBlockReason(row.block_reason)}</td>
-                        <td>{fmt(row.latency_ms)} ms</td>
-                        <td>{(row as any).guardrail_latency_ms != null ? `${fmt((row as any).guardrail_latency_ms)} ms` : "—"}</td>
-                      </tr>
-                    ))}
+                    {stats.recent_blocked.map((row: any, i: number) => {
+                      const outcome = row.blocked ? "blocked" : row.scrub_applied ? "scrubbed" : "flagged";
+                      const outcomeVariant = outcome === "blocked" ? s["badge--error"] : outcome === "scrubbed" ? s["badge--warning"] : s["badge--neutral"];
+                      const rowClass = outcome === "blocked" ? s.blocked : "";
+                      return (
+                        <tr key={i} className={rowClass}>
+                          <td className={s.mono} style={{ fontSize: 11 }}>{fmtDateTime(row.ts)}</td>
+                          <td><span className={s.code}>{row.tenant ?? row.tenant_id?.slice(0, 8)}</span></td>
+                          <td><span className={`${s.badge} ${outcomeVariant}`}>{outcome}</span></td>
+                          <td style={{ fontSize: 11 }}>
+                            {(row.detectors_fired?.length ?? 0) > 0
+                              ? row.detectors_fired.join(", ")
+                              : (row.blocked_by ?? "—")}
+                          </td>
+                          <td style={{ maxWidth: 240, fontSize: 12 }}>{decodeBlockReason(row.block_reason)}</td>
+                          <td>{fmt(row.latency_ms)} ms</td>
+                          <td>{row.guardrail_latency_ms != null ? `${fmt(row.guardrail_latency_ms)} ms` : "—"}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

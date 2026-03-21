@@ -67,11 +67,16 @@ start_analyzer() {
         build_analyzer
     fi
 
-    log "Starting analyzer on 127.0.0.1:$ANALYZER_PORT (GPU 0)..."
+    local _uid
+    _uid=$(docker run --rm --entrypoint '' "$ANALYZER_IMAGE" id -u presidio 2>/dev/null)
+    log "Starting analyzer on 127.0.0.1:$ANALYZER_PORT (GPU 0, uid=${_uid})..."
     docker run -d \
         --name "$ANALYZER_CONTAINER" \
         --restart unless-stopped \
         --gpus device=0 \
+        --user "$_uid" \
+        --cap-drop all \
+        --security-opt no-new-privileges:true \
         -p "127.0.0.1:${ANALYZER_PORT}:3000" \
         "$ANALYZER_IMAGE"
     log "Analyzer started."

@@ -35,13 +35,25 @@ local CONFIGS = {
     { id = "pci_pan",           patterns = { "pci_pan" } },
     { id = "credentials",       patterns = { "credentials" } },
     { id = "all_sets",          patterns = { "pii_basic", "hipaa_structured", "gdpr_structured", "pci_pan", "credentials" } },
-    -- Individual high-FP suspects
+    -- Individual pattern sweep — one pattern at a time
+    -- Benchmarked 6 (high-FP suspects)
     { id = "phone_only",        patterns = { "phone" } },
     { id = "ssn_only",          patterns = { "ssn" } },
     { id = "dob_only",          patterns = { "dob" } },
     { id = "ip_only",           patterns = { "ip_address" } },
     { id = "routing_only",      patterns = { "routing_number" } },
     { id = "email_only",        patterns = { "email" } },
+    -- Previously untested individual patterns
+    { id = "cc_only",           patterns = { "cc" } },
+    { id = "cvv_only",          patterns = { "cvv" } },
+    { id = "card_expiry_only",  patterns = { "card_expiry" } },
+    { id = "iban_only",         patterns = { "iban" } },
+    { id = "mrn_only",          patterns = { "mrn" } },
+    { id = "npi_only",          patterns = { "npi" } },
+    { id = "national_id_only",  patterns = { "national_id" } },
+    { id = "passport_only",     patterns = { "passport_number" } },
+    { id = "api_key_only",      patterns = { "api_key" } },
+    { id = "jwt_only",          patterns = { "jwt" } },
 }
 
 local CORPUS_FILES = {

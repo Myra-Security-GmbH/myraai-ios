@@ -42,6 +42,7 @@ export interface KeywordDetector {
   target?: DetectorTarget;
   keywords: string[];
   case_sensitive?: boolean;
+  whole_word?: boolean;
 }
 
 export interface PresidioDetector {
@@ -99,6 +100,8 @@ export interface GatewayConfig {
   log_payloads?: boolean;
   rate_limit?: { requests: number; window_sec: number };
   guardrails?: DetectorConfig[];
+  /** @deprecated Use `guardrails`. Accepted for backwards compatibility with configs saved before the rename. */
+  detectors?: DetectorConfig[];
   provider_base_urls?: Record<string, string>;
 }
 
@@ -158,18 +161,43 @@ export interface LogEntry {
   fallback_model: string | null;
   saved_cost_usd: number | null;
   request_size_bytes: number;
+  detectors_fired: string[];
+  scrub_applied: number;
 }
 
 export interface PeriodStats {
   requests: number;
   cached: number;
   blocked: number;
+  scrubbed: number;
+  flagged: number;
   input_tokens: number;
   output_tokens: number;
   cost_usd: number;
   saved_cost_usd: number;
   avg_latency_ms: number;
   avg_upstream_latency_ms: number;
+}
+
+export interface GatewayGuardrailStats {
+  blocked: number;
+  scrubbed: number;
+  flagged: number;
+  avg_guardrail_ms: number;
+}
+
+export interface GuardrailEvent {
+  ts: string;
+  blocked: number;
+  scrub_applied: number;
+  detectors_fired: string[];
+  blocked_by: string | null;
+  block_reason: string | null;
+  guardrail_latency_ms: number | null;
+  guardrail_verdict: string | null;
+  provider: string;
+  model: string;
+  latency_ms: number;
 }
 
 export interface TenantStats {

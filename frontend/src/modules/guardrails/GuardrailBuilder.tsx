@@ -33,12 +33,77 @@ const PATTERN_SETS: PatternSetName[] = [
 ];
 
 const PATTERN_SET_DESCRIPTIONS: Record<PatternSetName, string> = {
-  pci_pan: "PCI — credit card, CVV, expiry, IBAN, routing",
-  hipaa_structured: "HIPAA — SSN, MRN, NPI, DOB, phone, email, IP",
-  gdpr_structured: "GDPR — email, phone, IP, IBAN, national ID, passport",
-  credentials: "Credentials — API keys, JWTs",
-  pii_basic: "PII basic — email, phone, SSN",
+  pci_pan:          "PCI — credit card, CVV, expiry, IBAN, routing  ·  FP rate: <2% (Luhn-validated, format-specific)  ·  safe for action:block",
+  hipaa_structured: "HIPAA — SSN, MRN, NPI, DOB, phone, email, IP  ·  FP rate: up to 26% (phone/SSN/IP appear in general text)  ·  use action:scrub",
+  gdpr_structured:  "GDPR — email, phone, IP, IBAN, national ID, passport  ·  FP rate: up to 26% (phone/IP)  ·  use action:scrub",
+  credentials:      "Credentials — API keys, JWTs  ·  FP rate: 0% (strict format)  ·  safe for action:block",
+  pii_basic:        "PII basic — email, phone, SSN  ·  FP rate: up to 26% (phone)  ·  use action:scrub",
 };
+
+// Llama Guard 3 safety categories (S1–S14).
+// fp_risk: "low" = <1% FP on OR-Bench, "medium" = 1–4%, "high" = >4%.
+// Recommended block set = all low-FP categories → ~1% FP on real corpora.
+// Adding S2 (Non-Violent Crimes) alone raises FP to ~6.5% due to security/education content.
+const LLAMA_GUARD_CATEGORIES: Array<{
+  code: string;
+  label: string;
+  description: string;
+  fp_risk: "low" | "medium" | "high";
+  in_recommended: boolean;
+}> = [
+  { code: "S1",  label: "Violent Crimes",          description: "Murder, terrorism, assault",                      fp_risk: "low",    in_recommended: true  },
+  { code: "S2",  label: "Non-Violent Crimes",       description: "Fraud, hacking, drug synthesis — triggers on security/education content", fp_risk: "high",   in_recommended: false },
+  { code: "S3",  label: "Sex-Related Crimes",       description: "Sexual assault, trafficking",                    fp_risk: "low",    in_recommended: true  },
+  { code: "S4",  label: "Child Sexual Exploitation",description: "CSAM",                                           fp_risk: "low",    in_recommended: true  },
+  { code: "S5",  label: "Defamation",               description: "False statements of fact",                       fp_risk: "medium", in_recommended: false },
+  { code: "S6",  label: "Specialized Advice",       description: "Medical/legal/financial — high FP on pro contexts", fp_risk: "high", in_recommended: false },
+  { code: "S7",  label: "Privacy",                  description: "Doxing, surveillance",                           fp_risk: "medium", in_recommended: false },
+  { code: "S8",  label: "Intellectual Property",    description: "Verbatim reproduction, plagiarism",              fp_risk: "medium", in_recommended: false },
+  { code: "S9",  label: "CBRN Weapons",             description: "Bio/chem/nuclear/radiological weapons",          fp_risk: "low",    in_recommended: true  },
+  { code: "S10", label: "Hate",                     description: "Slurs, discrimination — triggers on academic/historical text", fp_risk: "medium", in_recommended: false },
+  { code: "S11", label: "Suicide / Self-Harm",      description: "Self-harm instructions",                         fp_risk: "low",    in_recommended: true  },
+  { code: "S12", label: "Sexual Content",           description: "Explicit adult content",                         fp_risk: "low",    in_recommended: true  },
+  { code: "S13", label: "Elections",                description: "Voter suppression, electoral misinformation",    fp_risk: "medium", in_recommended: false },
+  { code: "S14", label: "Code Interpreter Abuse",  description: "Exploiting code execution environments (agentic/tool-use scenarios)", fp_risk: "low", in_recommended: true  },
+];
+
+const RECOMMENDED_BLOCK_CATEGORIES = LLAMA_GUARD_CATEGORIES.filter((c) => c.fp_risk === "low").map((c) => c.code);
+
+// Entity catalog for Presidio / PII Protector.
+// fp_risk mirrors the FP benchmarks in tests/false_positives/.
+// High-FP entities have their score threshold auto-raised to 0.9 by the gateway.
+const PRESIDIO_ENTITY_CATALOG: Array<{
+  entity: string;
+  label: string;
+  fp_risk: "low" | "medium" | "high";
+  description: string;
+}> = [
+  // ── Low FP — 0% FP benchmarked (OR-Bench-hard, XSTest-safe, Dolly-15k, handcrafted) ──
+  { entity: "EMAIL_ADDRESS",     label: "Email Address",                      fp_risk: "low",    description: "Email addresses" },
+  { entity: "PHONE_NUMBER",      label: "Phone Number",                       fp_risk: "low",    description: "Phone numbers in various formats" },
+  { entity: "US_SSN",            label: "SSN",                                fp_risk: "low",    description: "US Social Security Numbers" },
+  { entity: "CREDIT_CARD",       label: "Credit Card",                        fp_risk: "low",    description: "Credit/debit card numbers (Luhn-validated)" },
+  { entity: "US_BANK_NUMBER",    label: "US Bank Account",                    fp_risk: "low",    description: "US bank account numbers" },
+  { entity: "IBAN_CODE",         label: "IBAN",                               fp_risk: "low",    description: "International Bank Account Numbers" },
+  { entity: "US_PASSPORT",       label: "US Passport",                        fp_risk: "low",    description: "US passport numbers" },
+  { entity: "US_DRIVER_LICENSE", label: "US Driver License",                  fp_risk: "low",    description: "US driver license numbers" },
+  { entity: "US_ITIN",           label: "ITIN",                               fp_risk: "low",    description: "Individual Taxpayer Identification Numbers" },
+  { entity: "CRYPTO",            label: "Crypto Address",                     fp_risk: "low",    description: "Cryptocurrency wallet addresses" },
+  // ── Low FP (continued) — 0% FP benchmarked ──────────────────────────────
+  { entity: "IP_ADDRESS",        label: "IP Address",                         fp_risk: "low",    description: "IPv4 and IPv6 addresses (0% FP benchmarked)" },
+  { entity: "MEDICAL_LICENSE",   label: "Medical License",                    fp_risk: "low",    description: "US medical license numbers (0% FP benchmarked)" },
+  { entity: "URL",               label: "URL",                                fp_risk: "low",    description: "Web URLs (0% FP benchmarked)" },
+  // ── High FP — gateway auto-raises score threshold to 0.9 ─────────────────
+  { entity: "PERSON",            label: "Person Name",                        fp_risk: "high",   description: "Personal names — ~20% FP on XSTest/Dolly; threshold auto-raised to 0.9" },
+  { entity: "LOCATION",          label: "Location",                           fp_risk: "high",   description: "Cities, countries — ~18% FP on Dolly/XSTest; threshold auto-raised to 0.9" },
+  { entity: "DATE_TIME",         label: "Date / Time",                        fp_risk: "high",   description: "Dates and times — ~7–14% FP on general text; threshold auto-raised to 0.9" },
+  { entity: "NRP",               label: "Nationality / Religion / Politics",  fp_risk: "high",   description: "Nationalities, religions, politics — ~5% FP on XSTest/Dolly; threshold auto-raised to 0.9" },
+];
+
+// "pii_focused" = all 13 low-FP entities; achieves 0% FP on OR-Bench-hard, XSTest-safe, and Dolly-15k.
+const PII_FOCUSED_ENTITIES = PRESIDIO_ENTITY_CATALOG
+  .filter((e) => e.fp_risk === "low")
+  .map((e) => e.entity);
 
 const DETECTOR_ACTIONS: DetectorAction[] = ["block", "scrub", "flag"];
 const DETECTOR_TARGETS: DetectorTarget[] = ["request", "response", "both"];
@@ -52,19 +117,20 @@ function emptyRegex(): RegexDetector {
 }
 
 function emptyKeyword(): KeywordDetector {
-  return { type: "keyword", name: "keyword-check", action: "flag", target: "request", keywords: [], case_sensitive: false };
+  return { type: "keyword", name: "keyword-check", action: "flag", target: "request", keywords: [], case_sensitive: false, whole_word: true };
 }
 
 function emptyPresidio(): PresidioDetector {
-  return { type: "presidio", name: "presidio-pii", action: "block", target: "request", url: "http://127.0.0.1:5002", language: "en", entities: [], score_threshold: 0.7, fail_open: true };
+  return { type: "presidio", name: "presidio-pii", action: "block", target: "request", url: "http://127.0.0.1:5002", language: "en", entities: [...PII_FOCUSED_ENTITIES], score_threshold: 0.7, fail_open: true };
 }
 
 function emptyPromptGuard(): PromptGuardDetector {
-  return { type: "prompt_guard", name: "prompt-guard", action: "block", target: "request", url: "http://127.0.0.1:8083", timeout_ms: 3000, categories: [], fail_open: true };
+  const lowFpCategories = LLAMA_GUARD_CATEGORIES.filter((c) => c.fp_risk === "low").map((c) => c.code);
+  return { type: "prompt_guard", name: "prompt-guard", action: "block", target: "request", url: "http://127.0.0.1:8083", timeout_ms: 3000, categories: lowFpCategories, fail_open: true };
 }
 
 function emptyPiiProtector(): PiiProtectorDetector {
-  return { type: "pii_protector", name: "pii-protect", target: "both", analyzer_url: "http://127.0.0.1:5002", language: "en", entities: [], score_threshold: 0.7, fail_open: true };
+  return { type: "pii_protector", name: "pii-protect", target: "both", analyzer_url: "http://127.0.0.1:5002", language: "en", entities: [...PII_FOCUSED_ENTITIES], score_threshold: 0.7, fail_open: true };
 }
 
 // Type guard: guardrails that carry an action field
@@ -189,6 +255,12 @@ function RegexEditor({ det, onChange }: { det: RegexDetector; onChange: (d: Rege
           />
           <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addCustom}>Add</button>
         </div>
+        <p className={s["form-hint"]}>
+          Tip: anchor to word boundaries to reduce false positives —
+          use <code style={{ fontSize: 11 }}>%f[%w]pattern%f[%W]</code> or wrap
+          with <code style={{ fontSize: 11 }}>%b</code> guards. Example:
+          &nbsp;<code style={{ fontSize: 11 }}>%f[%w]PROJ%-%d+%f[%W]</code> matches "PROJ-123" but not "MPROJ-123".
+        </p>
         {(det.custom_patterns ?? []).length > 0 && (
           <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
             {(det.custom_patterns ?? []).map((cp, i) => (
@@ -230,10 +302,42 @@ function KeywordEditor({ det, onChange }: { det: KeywordDetector; onChange: (d: 
     onChange({ ...det, keywords: kws });
   }
 
+  const isBlockAction = (det as KeywordDetector).action === "block";
+
   return (
     <>
+      {isBlockAction && (
+        <div style={{ background: "var(--warning-bg, #fef9c3)", border: "1px solid var(--warning-border, #fde047)", borderRadius: 6, padding: "8px 12px", marginBottom: 10, fontSize: 12, lineHeight: 1.5 }}>
+          <strong>Block action:</strong> every keyword match hard-blocks the request. Use exact,
+          unambiguous terms only (e.g. internal code names, product IDs). Broad words like
+          "kill" or "attack" cause high false-positive rates — use <strong>flag</strong> for those.
+        </div>
+      )}
       <div className={s["form-group"]}>
-        <label className={s["form-label"]}>Keywords</label>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <label className={s["form-label"]} style={{ margin: 0 }}>Keywords</label>
+          <div style={{ display: "flex", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted, #888)", alignSelf: "center", marginRight: 4 }}>Presets:</span>
+            <button
+              type="button"
+              className={`${s.btn} ${s["btn--secondary"]}`}
+              style={{ fontSize: 11, padding: "2px 8px" }}
+              title="Unambiguous internal labels safe for block action — near-zero FP rate"
+              onClick={() => onChange({ ...det, action: "block", whole_word: true, keywords: ["CONFIDENTIAL", "TOP SECRET", "INTERNAL USE ONLY", "DO NOT DISTRIBUTE"] })}
+            >
+              Block-safe example
+            </button>
+            <button
+              type="button"
+              className={`${s.btn} ${s["btn--secondary"]}`}
+              style={{ fontSize: 11, padding: "2px 8px" }}
+              title="Broad sensitive terms — use flag action; too many FPs for block"
+              onClick={() => onChange({ ...det, action: "flag", whole_word: true, keywords: ["password", "secret", "private key", "credentials"] })}
+            >
+              Flag-only example
+            </button>
+          </div>
+        </div>
         <div style={{ display: "flex", gap: 6 }}>
           <input
             className={s["form-input"]}
@@ -255,36 +359,167 @@ function KeywordEditor({ det, onChange }: { det: KeywordDetector; onChange: (d: 
           </div>
         )}
       </div>
-      <div className={s["form-group"]}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-          <input
-            type="checkbox"
-            checked={det.case_sensitive ?? false}
-            onChange={(e) => onChange({ ...det, case_sensitive: e.target.checked })}
-          />
-          <span className={s["form-label"]} style={{ margin: 0 }}>Case sensitive</span>
-        </label>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <div className={s["form-group"]} style={{ margin: 0 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={det.whole_word ?? true}
+              onChange={(e) => onChange({ ...det, whole_word: e.target.checked })}
+            />
+            <span className={s["form-label"]} style={{ margin: 0 }}>Whole-word matching</span>
+          </label>
+          <p className={s["form-hint"]} style={{ marginLeft: 24 }}>
+            Recommended: prevents "kill" matching "skill". Disable only for substrings like product codes.
+          </p>
+        </div>
+        <div className={s["form-group"]} style={{ margin: 0 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={det.case_sensitive ?? false}
+              onChange={(e) => onChange({ ...det, case_sensitive: e.target.checked })}
+            />
+            <span className={s["form-label"]} style={{ margin: 0 }}>Case sensitive</span>
+          </label>
+        </div>
       </div>
     </>
   );
 }
 
+function EntityEditor({
+  entities,
+  onChange,
+}: {
+  entities: string[];
+  onChange: (e: string[]) => void;
+}) {
+  const [customInput, setCustomInput] = useState("");
+
+  const catalogEntities = new Set(PRESIDIO_ENTITY_CATALOG.map((e) => e.entity));
+  const selectedSet = new Set(entities);
+  const customEntities = entities.filter((e) => !catalogEntities.has(e));
+
+  const isFocused = PII_FOCUSED_ENTITIES.every((e) => selectedSet.has(e))
+    && entities.every((e) => PII_FOCUSED_ENTITIES.includes(e));
+  const isAll = entities.length === 0;
+
+  function toggleEntity(entity: string) {
+    const next = new Set(selectedSet);
+    if (next.has(entity)) next.delete(entity); else next.add(entity);
+    onChange([...next]);
+  }
+
+  function addCustom() {
+    const trimmed = customInput.trim().toUpperCase();
+    if (!trimmed || selectedSet.has(trimmed)) return;
+    onChange([...entities, trimmed]);
+    setCustomInput("");
+  }
+
+  function removeCustom(entity: string) {
+    onChange(entities.filter((e) => e !== entity));
+  }
+
+  return (
+    <div className={s["form-group"]}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <label className={s["form-label"]} style={{ margin: 0 }}>Entity types</label>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button
+            type="button"
+            className={`${s.btn} ${isFocused ? s["btn--primary"] : s["btn--secondary"]}`}
+            style={{ fontSize: 11, padding: "2px 8px" }}
+            title="Email, phone, SSN, credit card, IBAN, passport, driver license, ITIN, crypto — 0% FP on all corpora"
+            onClick={() => onChange([...PII_FOCUSED_ENTITIES])}
+          >
+            Focused PII (0% FP)
+          </button>
+          <button
+            type="button"
+            className={`${s.btn} ${isAll ? s["btn--primary"] : s["btn--secondary"]}`}
+            style={{ fontSize: 11, padding: "2px 8px" }}
+            title="Scan all Presidio entities — PERSON, LOCATION, DATE_TIME auto-raised to 0.9 but still ~10–15% FP"
+            onClick={() => onChange([])}
+          >
+            All entities (~10% FP)
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 4 }}>
+        {PRESIDIO_ENTITY_CATALOG.map(({ entity, label, fp_risk, description }) => {
+          const badge = FP_RISK_BADGE[fp_risk];
+          return (
+            <label
+              key={entity}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+                cursor: "pointer",
+                padding: "5px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--border, #e4e4e7)",
+                background: selectedSet.has(entity) ? "var(--surface-2, #f4f4f5)" : "transparent",
+                fontSize: 12,
+                lineHeight: 1.4,
+                opacity: isAll ? 0.45 : 1,
+              }}
+              title={description}
+            >
+              <input
+                type="checkbox"
+                style={{ marginTop: 2, flexShrink: 0 }}
+                checked={selectedSet.has(entity)}
+                disabled={isAll}
+                onChange={() => toggleEntity(entity)}
+              />
+              <span style={{ flex: 1 }}>{label}</span>
+              <span style={{ fontSize: 10, background: badge.bg, color: badge.color, borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap", flexShrink: 0, fontWeight: 600 }}>
+                {badge.label}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      {isAll && (
+        <p className={s["form-hint"]} style={{ color: "var(--warning-text, #92400e)", marginTop: 6 }}>
+          All entities mode — PERSON, LOCATION, and DATE_TIME are high-FP (gateway auto-raises
+          their threshold to 0.9, but expect ~10–15% false positives on normal text).
+          Use <strong>Focused PII</strong> to eliminate false positives entirely.
+        </p>
+      )}
+
+      {customEntities.length > 0 && (
+        <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {customEntities.map((ent) => (
+            <span key={ent} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface-2, #f4f4f5)", borderRadius: 4, padding: "2px 8px", fontSize: 12 }}>
+              {ent}
+              <button type="button" onClick={() => removeCustom(ent)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--text-muted, #888)" }}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <input
+          className={s["form-input"]}
+          value={customInput}
+          onChange={(e) => setCustomInput(e.target.value)}
+          placeholder="Custom entity (e.g. IN_PAN, UK_NHS…)"
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustom())}
+          style={{ fontSize: 12 }}
+        />
+        <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addCustom} style={{ fontSize: 12 }}>Add</button>
+      </div>
+    </div>
+  );
+}
+
 function PresidioEditor({ det, onChange }: { det: PresidioDetector; onChange: (d: PresidioDetector) => void }) {
-  const [entityInput, setEntityInput] = useState("");
-
-  function addEntity() {
-    const trimmed = entityInput.trim().toUpperCase();
-    if (!trimmed) return;
-    onChange({ ...det, entities: [...(det.entities ?? []), trimmed] });
-    setEntityInput("");
-  }
-
-  function removeEntity(i: number) {
-    const ents = [...(det.entities ?? [])];
-    ents.splice(i, 1);
-    onChange({ ...det, entities: ents });
-  }
-
   return (
     <>
       <div className={s["form-row"]}>
@@ -319,31 +554,16 @@ function PresidioEditor({ det, onChange }: { det: PresidioDetector; onChange: (d
           value={det.score_threshold ?? 0.7}
           onChange={(e) => onChange({ ...det, score_threshold: parseFloat(e.target.value) })}
         />
-        <p className={s["form-hint"]}>0 = detect everything, 1 = only high-confidence hits</p>
+        <p className={s["form-hint"]}>
+          Global minimum confidence (0–1). High-FP entities (PERSON, LOCATION, DATE_TIME, NRP)
+          automatically use 0.9 regardless — raising the global threshold above 0.9 will also
+          filter those. Values below 0.85 have little effect on high-FP entities.
+        </p>
       </div>
-      <div className={s["form-group"]}>
-        <label className={s["form-label"]}>Entity types (leave empty = all)</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input
-            className={s["form-input"]}
-            value={entityInput}
-            onChange={(e) => setEntityInput(e.target.value)}
-            placeholder="PERSON, EMAIL_ADDRESS…"
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addEntity())}
-          />
-          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addEntity}>Add</button>
-        </div>
-        {(det.entities ?? []).length > 0 && (
-          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {(det.entities ?? []).map((ent, i) => (
-              <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface-2, #f4f4f5)", borderRadius: 4, padding: "2px 8px", fontSize: 12 }}>
-                {ent}
-                <button type="button" onClick={() => removeEntity(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--text-muted, #888)" }}>×</button>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      <EntityEditor
+        entities={det.entities ?? []}
+        onChange={(e) => onChange({ ...det, entities: e })}
+      />
       <div className={s["form-group"]}>
         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
           <input
@@ -358,20 +578,22 @@ function PresidioEditor({ det, onChange }: { det: PresidioDetector; onChange: (d
   );
 }
 
+const FP_RISK_BADGE: Record<"low" | "medium" | "high", { label: string; bg: string; color: string }> = {
+  low:    { label: "low FP",    bg: "#dcfce7", color: "#166534" },
+  medium: { label: "medium FP", bg: "#fef9c3", color: "#854d0e" },
+  high:   { label: "high FP",   bg: "#fee2e2", color: "#991b1b" },
+};
+
 function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChange: (d: PromptGuardDetector) => void }) {
-  const [catInput, setCatInput] = useState("");
+  const selected = new Set(det.categories ?? []);
+  const isAll = selected.size === 0;
+  const isRecommended = RECOMMENDED_BLOCK_CATEGORIES.every((c) => selected.has(c))
+    && selected.size === RECOMMENDED_BLOCK_CATEGORIES.length;
 
-  function addCategory() {
-    const trimmed = catInput.trim();
-    if (!trimmed) return;
-    onChange({ ...det, categories: [...(det.categories ?? []), trimmed] });
-    setCatInput("");
-  }
-
-  function removeCategory(i: number) {
-    const cats = [...(det.categories ?? [])];
-    cats.splice(i, 1);
-    onChange({ ...det, categories: cats });
+  function toggleCategory(code: string) {
+    const next = new Set(selected);
+    if (next.has(code)) next.delete(code); else next.add(code);
+    onChange({ ...det, categories: next.size === 0 ? [] : [...next].sort() });
   }
 
   return (
@@ -398,26 +620,76 @@ function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChan
         </div>
       </div>
       <div className={s["form-group"]}>
-        <label className={s["form-label"]}>Safety categories (leave empty = all)</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input
-            className={s["form-input"]}
-            value={catInput}
-            onChange={(e) => setCatInput(e.target.value)}
-            placeholder="S1, S2…"
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCategory())}
-          />
-          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addCategory}>Add</button>
-        </div>
-        {(det.categories ?? []).length > 0 && (
-          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {(det.categories ?? []).map((cat, i) => (
-              <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface-2, #f4f4f5)", borderRadius: 4, padding: "2px 8px", fontSize: 12 }}>
-                {cat}
-                <button type="button" onClick={() => removeCategory(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--text-muted, #888)" }}>×</button>
-              </span>
-            ))}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <label className={s["form-label"]} style={{ margin: 0 }}>Safety categories</label>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button
+              type="button"
+              className={`${s.btn} ${isRecommended ? s["btn--primary"] : s["btn--secondary"]}`}
+              style={{ fontSize: 11, padding: "2px 8px" }}
+              title="All low-FP categories: S1, S3, S4, S9, S11, S12, S14 — ~1% FP on real corpora (OR-Bench + XSTest). Avoids S2 and S6 which cause high FP on security/education content."
+              onClick={() => onChange({ ...det, categories: [...RECOMMENDED_BLOCK_CATEGORIES] })}
+            >
+              Recommended block (~1% FP)
+            </button>
+            <button
+              type="button"
+              className={`${s.btn} ${isAll ? s["btn--primary"] : s["btn--secondary"]}`}
+              style={{ fontSize: 11, padding: "2px 8px" }}
+              title="All 13 categories — ~7.5% FP rate on OR-Bench-hard. S2 and S6 are the main drivers."
+              onClick={() => onChange({ ...det, categories: [] })}
+            >
+              All categories (~7.5% FP)
+            </button>
           </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 4 }}>
+          {[...LLAMA_GUARD_CATEGORIES]
+            .sort((a, b) => ({ low: 0, medium: 1, high: 2 }[a.fp_risk] - { low: 0, medium: 1, high: 2 }[b.fp_risk]))
+            .map(({ code, label, description, fp_risk, in_recommended }) => {
+            const badge = FP_RISK_BADGE[fp_risk];
+            return (
+              <label
+                key={code}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  cursor: "pointer",
+                  padding: "5px 8px",
+                  borderRadius: 6,
+                  border: "1px solid var(--border, #e4e4e7)",
+                  background: selected.has(code) ? "var(--surface-2, #f4f4f5)" : "transparent",
+                  fontSize: 12,
+                  lineHeight: 1.4,
+                }}
+                title={`${code} — ${description}`}
+              >
+                <input
+                  type="checkbox"
+                  style={{ marginTop: 2, flexShrink: 0 }}
+                  checked={selected.has(code)}
+                  onChange={() => toggleCategory(code)}
+                />
+                <span style={{ flex: 1 }}>
+                  {label}
+                  {in_recommended && (
+                    <span style={{ marginLeft: 5, fontSize: 10, background: "#dcfce7", color: "#166534", borderRadius: 3, padding: "1px 4px", fontWeight: 600 }}>rec</span>
+                  )}
+                </span>
+                <span style={{ fontSize: 10, background: badge.bg, color: badge.color, borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap", flexShrink: 0, fontWeight: 600 }}>
+                  {badge.label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        {isAll && (
+          <p className={s["form-hint"]} style={{ color: "var(--warning-text, #92400e)" }}>
+            All categories selected — expect ~7.5% false positives. S2 (Non-Violent Crimes) and
+            S6 (Specialized Advice) are the main drivers. Use <strong>Recommended block</strong> to
+            reduce to ~1% FP.
+          </p>
         )}
       </div>
       <div className={s["form-group"]}>
@@ -435,21 +707,6 @@ function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChan
 }
 
 function PiiProtectorEditor({ det, onChange }: { det: PiiProtectorDetector; onChange: (d: PiiProtectorDetector) => void }) {
-  const [entityInput, setEntityInput] = useState("");
-
-  function addEntity() {
-    const trimmed = entityInput.trim().toUpperCase();
-    if (!trimmed) return;
-    onChange({ ...det, entities: [...(det.entities ?? []), trimmed] });
-    setEntityInput("");
-  }
-
-  function removeEntity(i: number) {
-    const ents = [...(det.entities ?? [])];
-    ents.splice(i, 1);
-    onChange({ ...det, entities: ents });
-  }
-
   return (
     <>
       <div style={{ fontSize: 12, color: "var(--text-muted, #888)", padding: "6px 0 10px", lineHeight: 1.5 }}>
@@ -490,31 +747,16 @@ function PiiProtectorEditor({ det, onChange }: { det: PiiProtectorDetector; onCh
           value={det.score_threshold ?? 0.7}
           onChange={(e) => onChange({ ...det, score_threshold: parseFloat(e.target.value) })}
         />
-        <p className={s["form-hint"]}>0 = detect everything, 1 = only high-confidence hits</p>
+        <p className={s["form-hint"]}>
+          Global minimum confidence (0–1). High-FP entities (PERSON, LOCATION, DATE_TIME, NRP)
+          automatically use 0.9 regardless — raising the global threshold above 0.9 will also
+          filter those. Values below 0.85 have little effect on high-FP entities.
+        </p>
       </div>
-      <div className={s["form-group"]}>
-        <label className={s["form-label"]}>Entity types (leave empty = all)</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input
-            className={s["form-input"]}
-            value={entityInput}
-            onChange={(e) => setEntityInput(e.target.value)}
-            placeholder="PERSON, EMAIL_ADDRESS…"
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addEntity())}
-          />
-          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addEntity}>Add</button>
-        </div>
-        {(det.entities ?? []).length > 0 && (
-          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {(det.entities ?? []).map((ent, i) => (
-              <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface-2, #f4f4f5)", borderRadius: 4, padding: "2px 8px", fontSize: 12 }}>
-                {ent}
-                <button type="button" onClick={() => removeEntity(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--text-muted, #888)" }}>×</button>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      <EntityEditor
+        entities={det.entities ?? []}
+        onChange={(e) => onChange({ ...det, entities: e })}
+      />
       <div className={s["form-group"]}>
         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
           <input

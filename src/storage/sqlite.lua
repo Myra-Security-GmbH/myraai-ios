@@ -879,6 +879,19 @@ function M.list_logs(filters)
         where[#where+1] = "ts >= CAST(strftime('%s', ?) AS INTEGER) * 1000"
         params[#params+1] = filters.since
     end
+    -- guardrail_outcome filter: "blocked" | "scrubbed" | "flagged" | "any"
+    if filters.guardrail_outcome then
+        local o = filters.guardrail_outcome
+        if o == "blocked" then
+            where[#where+1] = "blocked = 1"
+        elseif o == "scrubbed" then
+            where[#where+1] = "scrub_applied = 1 AND blocked = 0"
+        elseif o == "flagged" then
+            where[#where+1] = "detectors_fired IS NOT NULL AND detectors_fired != '[]' AND blocked = 0 AND scrub_applied = 0"
+        elseif o == "any" then
+            where[#where+1] = "(blocked = 1 OR scrub_applied = 1 OR (detectors_fired IS NOT NULL AND detectors_fired != '[]'))"
+        end
+    end
     local limit  = math.min(filters.limit or 50, 200)
     local offset = filters.offset or 0
     local sql = string.format([[
@@ -889,10 +902,20 @@ function M.list_logs(filters)
                blocked_by, block_reason, guardrail_verdict,
                input_tokens, output_tokens, cost_usd, latency_ms,
                upstream_latency_ms, guardrail_latency_ms, upstream_attempts,
-               fallback_provider, fallback_model, saved_cost_usd, request_size_bytes
+               fallback_provider, fallback_model, saved_cost_usd, request_size_bytes,
+               detectors_fired, scrub_applied
         FROM request_log WHERE %s ORDER BY ts DESC LIMIT %d OFFSET %d
     ]], table.concat(where, " AND "), limit, offset)
-    return query_all(log_db(), sql, table.unpack(params)) or {}
+    local rows = query_all(log_db(), sql, table.unpack(params)) or {}
+    -- parse detectors_fired JSON array for each row
+    for _, row in ipairs(rows) do
+        if row.detectors_fired and row.detectors_fired ~= "" then
+            row.detectors_fired = json.decode(row.detectors_fired) or {}
+        else
+            row.detectors_fired = {}
+        end
+    end
+    return rows
 end
 
 -- ---------------------------------------------------------------------------
@@ -921,6 +944,10 @@ function M.get_usage_stats()
             SELECT COUNT(*) AS requests,
                    SUM(CASE WHEN cached=1  THEN 1 ELSE 0 END) AS cached,
                    SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
+                   SUM(CASE WHEN scrub_applied=1 AND blocked=0 THEN 1 ELSE 0 END) AS scrubbed,
+                   SUM(CASE WHEN blocked=0 AND scrub_applied=0
+                                 AND detectors_fired IS NOT NULL AND detectors_fired != '[]'
+                            THEN 1 ELSE 0 END) AS flagged,
                    COALESCE(SUM(input_tokens),0)              AS input_tokens,
                    COALESCE(SUM(output_tokens),0)             AS output_tokens,
                    ROUND(COALESCE(SUM(cost_usd),0),6)         AS cost_usd,
@@ -935,6 +962,10 @@ function M.get_usage_stats()
             SELECT COUNT(*) AS requests,
                    SUM(CASE WHEN cached=1  THEN 1 ELSE 0 END) AS cached,
                    SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
+                   SUM(CASE WHEN scrub_applied=1 AND blocked=0 THEN 1 ELSE 0 END) AS scrubbed,
+                   SUM(CASE WHEN blocked=0 AND scrub_applied=0
+                                 AND detectors_fired IS NOT NULL AND detectors_fired != '[]'
+                            THEN 1 ELSE 0 END) AS flagged,
                    COALESCE(SUM(input_tokens),0)              AS input_tokens,
                    COALESCE(SUM(output_tokens),0)             AS output_tokens,
                    ROUND(COALESCE(SUM(cost_usd),0),6)         AS cost_usd,
@@ -978,13 +1009,23 @@ function M.get_usage_stats()
 
     local recent_blocked = query_all(ldb, [[
         SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
-               tenant_id, blocked_by, block_reason, latency_ms
-        FROM request_log WHERE blocked = 1
+               tenant_id, blocked_by, block_reason, latency_ms,
+               guardrail_latency_ms, guardrail_verdict,
+               blocked, scrub_applied, detectors_fired
+        FROM request_log
+        WHERE blocked = 1
+           OR scrub_applied = 1
+           OR (detectors_fired IS NOT NULL AND detectors_fired != '[]')
         ORDER BY ts DESC LIMIT 20
     ]]) or {}
 
     for _, row in ipairs(recent_blocked) do
         row.tenant = slugs[row.tenant_id] or row.tenant_id
+        if row.detectors_fired and row.detectors_fired ~= "" then
+            row.detectors_fired = json.decode(row.detectors_fired) or {}
+        else
+            row.detectors_fired = {}
+        end
     end
 
     return {
@@ -1104,6 +1145,57 @@ function M.get_playground_trace_steps(trace_id)
     return query_all(cfg_db(), [[
         SELECT * FROM playground_trace_step WHERE trace_id = ? ORDER BY seq
     ]], trace_id)
+end
+
+-- ---------------------------------------------------------------------------
+-- Per-gateway guardrail stats (last 24h) and recent events
+-- ---------------------------------------------------------------------------
+
+function M.get_gateway_guardrail_stats(gateway_id)
+    local ldb  = log_db()
+    local since_ms = (math.floor(ngx.now()) - 86400) * 1000
+    local stats = query_one(ldb, [[
+        SELECT
+            SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
+            SUM(CASE WHEN scrub_applied=1 AND blocked=0 THEN 1 ELSE 0 END) AS scrubbed,
+            SUM(CASE WHEN blocked=0 AND scrub_applied=0
+                          AND detectors_fired IS NOT NULL AND detectors_fired != '[]'
+                     THEN 1 ELSE 0 END) AS flagged,
+            ROUND(COALESCE(AVG(CASE WHEN guardrail_latency_ms IS NOT NULL THEN guardrail_latency_ms END), 0)) AS avg_guardrail_ms
+        FROM request_log
+        WHERE gateway_id = ? AND ts >= ?
+    ]], gateway_id, since_ms) or {}
+    return {
+        blocked  = stats.blocked  or 0,
+        scrubbed = stats.scrubbed or 0,
+        flagged  = stats.flagged  or 0,
+        avg_guardrail_ms = stats.avg_guardrail_ms or 0,
+    }
+end
+
+function M.list_guardrail_events(gateway_id, limit)
+    limit = math.min(limit or 50, 200)
+    local rows = query_all(log_db(), string.format([[
+        SELECT strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ', ts/1000, 'unixepoch') AS ts,
+               blocked, scrub_applied, detectors_fired,
+               blocked_by, block_reason,
+               guardrail_latency_ms, guardrail_verdict,
+               provider, model, latency_ms
+        FROM request_log
+        WHERE gateway_id = ?
+          AND (blocked = 1
+               OR scrub_applied = 1
+               OR (detectors_fired IS NOT NULL AND detectors_fired != '[]'))
+        ORDER BY ts DESC LIMIT %d
+    ]], limit), gateway_id) or {}
+    for _, row in ipairs(rows) do
+        if row.detectors_fired and row.detectors_fired ~= "" then
+            row.detectors_fired = json.decode(row.detectors_fired) or {}
+        else
+            row.detectors_fired = {}
+        end
+    end
+    return rows
 end
 
 return M

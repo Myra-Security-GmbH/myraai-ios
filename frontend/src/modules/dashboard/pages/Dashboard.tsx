@@ -124,12 +124,12 @@ function HeroCards({ data, series }: { data: PeriodStats; series: TimeseriesPoin
       </div>
 
       <div className={s["hero-card"]}>
-        <div className={s["hero-label"]}>Blocked</div>
-        <div className={s["hero-value"]}>{fmt(data.blocked)}</div>
+        <div className={s["hero-label"]}>Guardrail Hits</div>
+        <div className={s["hero-value"]}>{fmt((data.blocked ?? 0) + (data.scrubbed ?? 0) + (data.flagged ?? 0))}</div>
         <div className={s["hero-sub"]}>
-          {blockRate != null && data.blocked > 0
-            ? <><span className={s["hero-sub-highlight"]}>{blockRate}%</span> of requests blocked</>
-            : "No blocked requests"}
+          {(data.blocked ?? 0) > 0 || (data.scrubbed ?? 0) > 0 || (data.flagged ?? 0) > 0 ? (
+            <>{fmt(data.blocked ?? 0)} blocked · {fmt(data.scrubbed ?? 0)} scrubbed · {fmt(data.flagged ?? 0)} flagged</>
+          ) : "No guardrail hits"}
         </div>
         {blockedSeries && <Sparkline values={blockedSeries} />}
       </div>
@@ -169,7 +169,7 @@ export default function Dashboard() {
 
   if (loading) return <div className={s.page}><p className={s.empty}>Loading…</p></div>;
 
-  const emptyPeriod: PeriodStats = { requests: 0, cached: 0, blocked: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, saved_cost_usd: 0, avg_latency_ms: 0, avg_upstream_latency_ms: 0 };
+  const emptyPeriod: PeriodStats = { requests: 0, cached: 0, blocked: 0, scrubbed: 0, flagged: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, saved_cost_usd: 0, avg_latency_ms: 0, avg_upstream_latency_ms: 0 };
   const periodData: Record<Timeframe, PeriodStats> = {
     today:     stats?.today     ?? emptyPeriod,
     yesterday: stats?.yesterday ?? emptyPeriod,
@@ -330,11 +330,11 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Recent blocked */}
+      {/* Recent guardrail events */}
       {(stats?.recent_blocked?.length ?? 0) > 0 && (
         <div className={s.card}>
           <div className={s["card-header"]}>
-            <h2 className={s["card-title"]}>Recently Blocked</h2>
+            <h2 className={s["card-title"]}>Recent Guardrail Events</h2>
           </div>
           <div className={s["table-wrapper"]}>
             <table className={s.table}>
@@ -342,21 +342,31 @@ export default function Dashboard() {
                 <tr>
                   <th>Time</th>
                   <th>Tenant</th>
-                  <th>Blocked By</th>
+                  <th>Outcome</th>
+                  <th>Detector</th>
                   <th>Reason</th>
                   <th>Latency</th>
                 </tr>
               </thead>
               <tbody>
-                {stats?.recent_blocked.map((row, i) => (
-                  <tr key={i} className={s.blocked}>
-                    <td className={s.mono}>{fmtDateTime(row.ts)}</td>
-                    <td><span className={s.code}>{row.tenant}</span></td>
-                    <td>{row.blocked_by ?? "—"}</td>
-                    <td>{row.block_reason ?? "—"}</td>
-                    <td>{fmt(row.latency_ms)} ms</td>
-                  </tr>
-                ))}
+                {stats?.recent_blocked.map((row: any, i) => {
+                  const outcome = row.blocked ? "blocked" : row.scrub_applied ? "scrubbed" : "flagged";
+                  const variant = outcome === "blocked" ? "error" : outcome === "scrubbed" ? "warning" : "neutral";
+                  return (
+                    <tr key={i} className={outcome === "blocked" ? s.blocked : ""}>
+                      <td className={s.mono}>{fmtDateTime(row.ts)}</td>
+                      <td><span className={s.code}>{row.tenant}</span></td>
+                      <td><StatusBadge value={outcome} variant={variant} /></td>
+                      <td style={{ fontSize: 12 }}>
+                        {(row.detectors_fired?.length ?? 0) > 0
+                          ? row.detectors_fired.join(", ")
+                          : (row.blocked_by ?? "—")}
+                      </td>
+                      <td style={{ fontSize: 12 }}>{row.block_reason ?? "—"}</td>
+                      <td>{fmt(row.latency_ms)} ms</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

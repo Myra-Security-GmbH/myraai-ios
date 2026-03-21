@@ -36,10 +36,32 @@ ENTITY_COMBOS = [
     ("identity_docs",       ["US_SSN", "US_PASSPORT", "US_DRIVER_LICENSE"]),
     ("person_email_only",   ["PERSON", "EMAIL_ADDRESS"]),
     # pii_focused: excludes high-FP entities (PERSON, LOCATION, DATE_TIME, NRP).
-    # Mirrors the HIGH_FP_ENTITY_THRESHOLDS=0.9 default added to pii_protector.lua.
+    # 13 low-FP entities benchmarked at 0% FP across OR-Bench, XSTest, Dolly.
     ("pii_focused",         ["EMAIL_ADDRESS", "PHONE_NUMBER", "US_SSN", "CREDIT_CARD",
                              "US_BANK_NUMBER", "IBAN_CODE", "US_PASSPORT",
-                             "US_DRIVER_LICENSE", "US_ITIN", "CRYPTO"]),
+                             "US_DRIVER_LICENSE", "US_ITIN", "CRYPTO",
+                             "IP_ADDRESS", "MEDICAL_LICENSE", "URL"]),
+
+    # ── Per-entity sweep ───────────────────────────────────────────────────────
+    # Mirrors test_presidio_fp.py per-entity configs.  Results used to validate
+    # that tokenization FP risk matches detection FP risk.
+    ("e_EMAIL_ADDRESS",     ["EMAIL_ADDRESS"]),
+    ("e_PHONE_NUMBER",      ["PHONE_NUMBER"]),
+    ("e_US_SSN",            ["US_SSN"]),
+    ("e_CREDIT_CARD",       ["CREDIT_CARD"]),
+    ("e_US_BANK_NUMBER",    ["US_BANK_NUMBER"]),
+    ("e_IBAN_CODE",         ["IBAN_CODE"]),
+    ("e_US_PASSPORT",       ["US_PASSPORT"]),
+    ("e_US_DRIVER_LICENSE", ["US_DRIVER_LICENSE"]),
+    ("e_US_ITIN",           ["US_ITIN"]),
+    ("e_CRYPTO",            ["CRYPTO"]),
+    ("e_IP_ADDRESS",        ["IP_ADDRESS"]),
+    ("e_MEDICAL_LICENSE",   ["MEDICAL_LICENSE"]),
+    ("e_URL",               ["URL"]),
+    ("e_PERSON",            ["PERSON"]),
+    ("e_LOCATION",          ["LOCATION"]),
+    ("e_DATE_TIME",         ["DATE_TIME"]),
+    ("e_NRP",               ["NRP"]),
 ]
 
 

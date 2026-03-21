@@ -28,6 +28,20 @@ ENV PRESIDIO_SUPPORTED_LANGUAGES=en,de
 ENV DEFAULT_MODEL_FOR_LANG_en=en_core_web_lg
 ENV DEFAULT_MODEL_FOR_LANG_de=de_core_news_lg
 
+# CuPy compiles CUDA kernels on first use and caches them.
+# Point the cache to a directory the non-root user owns.
+ENV CUPY_CACHE_DIR=/opt/cupy-cache
+
+# Create a non-root user and a writable CuPy kernel cache directory.
+# All runtime reads (spaCy models, entrypoint) are world-readable so no
+# ownership changes are needed for those paths.
+RUN useradd --no-create-home --shell /usr/sbin/nologin --uid 1000 presidio \
+    && mkdir -p /opt/cupy-cache \
+    && chown -R presidio:presidio /opt/cupy-cache
+
+ENV HOME=/opt/cupy-cache
+
 COPY config/presidio_entrypoint.py /entrypoint.py
+USER presidio
 EXPOSE 3000
 CMD ["python3", "/entrypoint.py"]

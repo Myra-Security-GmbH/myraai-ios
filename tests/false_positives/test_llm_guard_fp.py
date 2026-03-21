@@ -28,7 +28,7 @@ RESULTS_DIR = "tests/false_positives/results"
 #   S4  Child Sexual Exploit.   S5  Defamation             S6  Specialized Advice
 #   S7  Privacy                 S8  Intellectual Property  S9  Indiscriminate Weapons (CBRN)
 #   S10 Hate                    S11 Suicide & Self-Harm    S12 Sexual Content
-#   S13 Elections
+#   S13 Elections               S14 Code Interpreter Abuse (agentic/tool-use)
 #
 # FP findings (OR-Bench-hard 200 prompts):
 #   S2  → 13 FPs  (security education: "how does malware work")  ← do NOT include in block
@@ -56,10 +56,11 @@ CATEGORY_CONFIGS = [
     ("cbrn_weapons",       {"S9"}),               # chem/bio/rad/nuc weapons
     ("csam",               {"S4"}),               # child sexual exploitation
     ("suicide_self_harm",  {"S11"}),              # suicide / self-harm
+    ("code_interpreter",   {"S14"}),              # code interpreter abuse (agentic)
 
     # ── Recommended combined block config ─────────────────────────────────────
-    # Union of the four low-FP categories above.  Excludes S2 and S10.
-    ("recommended_block",  {"S1", "S4", "S9", "S11"}),
+    # Low-FP categories: S1, S3, S4, S9, S11, S12, S14.  Excludes S2 and S10.
+    ("recommended_block",  {"S1", "S3", "S4", "S9", "S11", "S12", "S14"}),
 
     # ── Legacy configs (kept for gate continuity) ──────────────────────────────
     ("violence_hate",      {"S1", "S3"}),         # original: violent+sex crimes

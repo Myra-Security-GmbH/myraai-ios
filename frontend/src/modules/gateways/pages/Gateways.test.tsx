@@ -53,6 +53,27 @@ const GW_WITH_DETECTORS: Gateway = {
   created_at: "2024-02-04T00:00:00Z",
 };
 
+// Legacy schema: guardrails is a {enabled:false} object; detectors is the real array.
+const GW_LEGACY_SCHEMA: Gateway = {
+  id: "gw5", slug: "legacy", tenant_id: "t1",
+  config: {
+    auth_required: true,
+    guardrails: { enabled: false } as any,
+    detectors: [{ type: "keyword", name: "legacy-kw", action: "flag", keywords: ["foo"] }] as any,
+  },
+  created_at: "2024-02-05T00:00:00Z",
+};
+
+// Legacy schema: guardrails is object, no detectors key at all.
+const GW_LEGACY_NO_DETECTORS: Gateway = {
+  id: "gw6", slug: "legacy-empty", tenant_id: "t1",
+  config: {
+    auth_required: true,
+    guardrails: { enabled: false } as any,
+  },
+  created_at: "2024-02-06T00:00:00Z",
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -354,6 +375,101 @@ describe("Gateways — Guardrails card", () => {
     expect(screen.getByText(/Guardrails \(1\)/)).toBeInTheDocument();
   });
 
+  it("does not crash when guardrails is a legacy object (falls back to detectors array)", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT]);
+      if (path === `/tenants/${TENANT.id}/gateways`) return Promise.resolve([GW_LEGACY_SCHEMA]);
+      if (path.endsWith("/tokens")) return Promise.resolve([]);
+      if (path.endsWith("/keys")) return Promise.resolve([]);
+      if (path.endsWith("/rules")) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW_LEGACY_SCHEMA.id}`);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Guardrails" })).toBeInTheDocument());
+    // Detectors from the legacy detectors array are loaded
+    expect(screen.getAllByText("legacy-kw")[0]).toBeInTheDocument();
+    expect(screen.getByText(/Guardrails \(1\)/)).toBeInTheDocument();
+  });
+
+  it("shows empty state when guardrails is a legacy object and no detectors key exists", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT]);
+      if (path === `/tenants/${TENANT.id}/gateways`) return Promise.resolve([GW_LEGACY_NO_DETECTORS]);
+      if (path.endsWith("/tokens")) return Promise.resolve([]);
+      if (path.endsWith("/keys")) return Promise.resolve([]);
+      if (path.endsWith("/rules")) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW_LEGACY_NO_DETECTORS.id}`);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Guardrails" })).toBeInTheDocument());
+    expect(screen.getByText(/No guardrails configured/i)).toBeInTheDocument();
+    expect(screen.getByText(/Guardrails \(0\)/)).toBeInTheDocument();
+  });
+
+  it("migrates legacy schema to guardrails array on Save Guardrails", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT]);
+      if (path === `/tenants/${TENANT.id}/gateways`) return Promise.resolve([GW_LEGACY_SCHEMA]);
+      if (path.endsWith("/tokens")) return Promise.resolve([]);
+      if (path.endsWith("/keys")) return Promise.resolve([]);
+      if (path.endsWith("/rules")) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+    mockApi.patch.mockResolvedValue({ ok: true });
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW_LEGACY_SCHEMA.id}`);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save Guardrails" })).toBeInTheDocument());
+    // Trigger a change so Save becomes enabled
+    await userEvent.click(screen.getByRole("button", { name: /\+ Keyword/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Save Guardrails" }));
+    await waitFor(() => expect(mockApi.patch).toHaveBeenCalledWith(
+      `/gateways/${GW_LEGACY_SCHEMA.id}`,
+      expect.objectContaining({
+        config: expect.objectContaining({ guardrails: expect.any(Array) }),
+      })
+    ));
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// Guardrails list badge — legacy schema
+// ---------------------------------------------------------------------------
+
+describe("Gateways — list view guardrail badge", () => {
+  it("shows correct count for array guardrails", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT]);
+      if (path === `/tenants/${TENANT.id}/gateways`) return Promise.resolve([GW_WITH_DETECTORS]);
+      return Promise.resolve([]);
+    });
+    renderAtPath(`/tenants/${TENANT.id}/gateways`);
+    await waitFor(() => expect(screen.getByText("secure")).toBeInTheDocument());
+    expect(screen.getByText("1")).toBeInTheDocument(); // badge count
+  });
+
+  it("shows — badge when guardrails is a legacy object", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT]);
+      if (path === `/tenants/${TENANT.id}/gateways`) return Promise.resolve([GW_LEGACY_NO_DETECTORS]);
+      return Promise.resolve([]);
+    });
+    renderAtPath(`/tenants/${TENANT.id}/gateways`);
+    await waitFor(() => expect(screen.getByText("legacy-empty")).toBeInTheDocument());
+    // The detectors column badge shows — (neutral badge, not a number badge)
+    const row = screen.getByText("legacy-empty").closest("tr")!;
+    expect(within(row).getByText("—", { selector: "span" })).toBeInTheDocument();
+  });
+
+  it("shows correct count when guardrails is a legacy object with detectors array", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT]);
+      if (path === `/tenants/${TENANT.id}/gateways`) return Promise.resolve([GW_LEGACY_SCHEMA]);
+      return Promise.resolve([]);
+    });
+    renderAtPath(`/tenants/${TENANT.id}/gateways`);
+    await waitFor(() => expect(screen.getByText("legacy")).toBeInTheDocument());
+    expect(screen.getByText("1")).toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------

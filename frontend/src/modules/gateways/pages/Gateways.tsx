@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
-import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig } from "src/api/types";
+import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig, GatewayGuardrailStats, GuardrailEvent } from "src/api/types";
 import { GuardrailBuilder } from "src/modules/guardrails/GuardrailBuilder";
 import { fmtDate, fmtDateTime } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
@@ -554,11 +554,17 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
   const [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
   const [budgetResetting, setBudgetResetting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [guardrails, setGuardrails] = useState<DetectorConfig[]>(() => initialGw.config.guardrails ?? (initialGw.config as any).detectors ?? []);
+  const [guardrails, setGuardrails] = useState<DetectorConfig[]>(() => {
+    const g = initialGw.config.guardrails;
+    return Array.isArray(g) ? g : ((initialGw.config as any).detectors ?? []);
+  });
   const [guardrailsChanged, setGuardrailsChanged] = useState(false);
   const [savingGuardrails, setSavingGuardrails] = useState(false);
   const [guardrailsError, setGuardrailsError] = useState<string | null>(null);
   const [guardrailsSaved, setGuardrailsSaved] = useState(false);
+  const [guardrailStats, setGuardrailStats] = useState<GatewayGuardrailStats | null>(null);
+  const [guardrailEvents, setGuardrailEvents] = useState<GuardrailEvent[]>([]);
+  const [showGuardrailEvents, setShowGuardrailEvents] = useState(false);
 
   function loadTokens() {
     setLoadingTokens(true);
@@ -571,7 +577,14 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
     api.get<RoutingRule[]>(`/gateways/${gw.id}/rules`).then(setRules);
   }
 
-  useEffect(() => { loadTokens(); loadKeys(); loadRules(); }, [gw.id]);
+  function loadGuardrailStats() {
+    api.get<GatewayGuardrailStats>(`/gateways/${gw.id}/guardrail-stats`).then(setGuardrailStats).catch(() => {});
+  }
+  function loadGuardrailEvents() {
+    api.get<GuardrailEvent[]>(`/gateways/${gw.id}/guardrail-events`).then(setGuardrailEvents).catch(() => {});
+  }
+
+  useEffect(() => { loadTokens(); loadKeys(); loadRules(); loadGuardrailStats(); }, [gw.id]);
 
   async function deleteToken(tokenId: string) {
     if (!confirm("Delete this token? Requests using it will fail.")) return;
@@ -759,11 +772,79 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
             </button>
           </div>
         </div>
-        {guardrailsError &&<div className={`${s.alert} ${s["alert--error"]}`}>{guardrailsError}</div>}
+        {guardrailStats && (guardrailStats.blocked > 0 || guardrailStats.scrubbed > 0 || guardrailStats.flagged > 0 || guardrailStats.avg_guardrail_ms > 0) && (
+          <div style={{ display: "flex", gap: 16, padding: "8px 0 12px", fontSize: 13, color: "var(--text-secondary)" }}>
+            {guardrailStats.blocked > 0 && (
+              <span><span className={`${s.badge} ${s["badge--error"]}`}>{guardrailStats.blocked} blocked</span></span>
+            )}
+            {guardrailStats.scrubbed > 0 && (
+              <span><span className={`${s.badge} ${s["badge--warning"]}`}>{guardrailStats.scrubbed} scrubbed</span></span>
+            )}
+            {guardrailStats.flagged > 0 && (
+              <span><span className={`${s.badge} ${s["badge--neutral"]}`}>{guardrailStats.flagged} flagged</span></span>
+            )}
+            {guardrailStats.avg_guardrail_ms > 0 && (
+              <span style={{ marginLeft: "auto" }}>avg {guardrailStats.avg_guardrail_ms} ms guardrail latency · last 24h</span>
+            )}
+          </div>
+        )}
+        {guardrailsError && <div className={`${s.alert} ${s["alert--error"]}`}>{guardrailsError}</div>}
         <GuardrailBuilder
           value={guardrails}
           onChange={(d) => { setGuardrails(d); setGuardrailsChanged(true); }}
         />
+        {/* Recent activity */}
+        <div style={{ marginTop: 16 }}>
+          <button
+            className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
+            onClick={() => {
+              if (!showGuardrailEvents) loadGuardrailEvents();
+              setShowGuardrailEvents((v) => !v);
+            }}
+          >
+            {showGuardrailEvents ? "Hide" : "Show"} recent activity
+          </button>
+          {showGuardrailEvents && (
+            guardrailEvents.length === 0 ? (
+              <p style={{ fontSize: 13, color: "var(--text-muted, #888)", marginTop: 12 }}>
+                No guardrail events recorded for this gateway yet.
+              </p>
+            ) : (
+              <div className={s["table-wrapper"]} style={{ marginTop: 12 }}>
+                <table className={s.table}>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Outcome</th>
+                      <th>Detectors</th>
+                      <th>Reason</th>
+                      <th>Guardrail ms</th>
+                      <th>Total ms</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {guardrailEvents.map((ev, i) => {
+                      const outcome = ev.blocked ? "blocked" : ev.scrub_applied ? "scrubbed" : "flagged";
+                      const variant = outcome === "blocked" ? s["badge--error"] : outcome === "scrubbed" ? s["badge--warning"] : s["badge--neutral"];
+                      return (
+                        <tr key={i} className={outcome === "blocked" ? s.blocked : ""}>
+                          <td className={s.mono} style={{ fontSize: 11 }}>{fmtDateTime(ev.ts)}</td>
+                          <td><span className={`${s.badge} ${variant}`}>{outcome}</span></td>
+                          <td style={{ fontSize: 11 }}>
+                            {ev.detectors_fired.length > 0 ? ev.detectors_fired.join(", ") : (ev.blocked_by ?? "—")}
+                          </td>
+                          <td style={{ fontSize: 11, maxWidth: 220 }}>{ev.block_reason ?? "—"}</td>
+                          <td>{ev.guardrail_latency_ms != null ? `${ev.guardrail_latency_ms} ms` : "—"}</td>
+                          <td>{ev.latency_ms} ms</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </div>
       </div>
 
       {/* Routing Rules */}
@@ -952,9 +1033,9 @@ export default function Gateways() {
                       {g.config.rate_limit ? `${g.config.rate_limit.requests}/${g.config.rate_limit.window_sec}s` : "—"}
                     </td>
                     <td>
-                      {((g.config.guardrails ?? (g.config as any).detectors) ?? []).length > 0 ? (
+                      {(Array.isArray(g.config.guardrails) ? g.config.guardrails : ((g.config as any).detectors ?? [])).length > 0 ? (
                         <span className={`${s.badge} ${s["badge--warning"]}`}>
-                          {((g.config.guardrails ?? (g.config as any).detectors) ?? []).length}
+                          {(Array.isArray(g.config.guardrails) ? g.config.guardrails : ((g.config as any).detectors ?? [])).length}
                         </span>
                       ) : (
                         <span className={`${s.badge} ${s["badge--neutral"]}`}>—</span>

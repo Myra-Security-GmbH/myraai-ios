@@ -798,7 +798,7 @@ export default function Playground() {
   const tokenExpiresAt = useRef<Date | null>(null);
 
   // Prompt
-  const [systemPrompt, setSystemPrompt] = useState(persisted.current.systemPrompt ?? DEFAULT_SYSTEM_PROMPT);
+  const [systemPrompt, setSystemPrompt] = useState(persisted.current.systemPrompt ?? "");
   const [userMessage, setUserMessage] = useState("");
   const [showSystem, setShowSystem] = useState(!!(persisted.current.systemPrompt));
 
@@ -885,7 +885,7 @@ export default function Playground() {
         tenantId: selectedTenantId,
         gatewayId: selectedGatewayId,
         panelModels: panels.map((p) => p.model),
-        systemPrompt: systemPrompt === DEFAULT_SYSTEM_PROMPT ? undefined : systemPrompt,
+        systemPrompt: systemPrompt || undefined,
         webSearch,
         temperature,
         maxTokens,
@@ -940,9 +940,6 @@ export default function Playground() {
       const meta = models.find((m) => m.model === model);
       if (meta?.provider === "gemini") return "gemini";
       if (meta?.provider === "perplexity") return "perplexity";
-      // All other known providers go through the compat path; the gateway
-      // handles the 2-leg web_search tool loop server-side for these too.
-      if (meta) return "openai";
       return null;
     },
     [models]
@@ -1040,26 +1037,165 @@ export default function Playground() {
         ));
       }
 
-      // Claude models: use the native Anthropic endpoint (streaming)
+      // Claude models: use the native Anthropic endpoint
       if (searchMode === "claude") {
         const anthropicMessages = messages
           .filter((m) => m.role !== "system")
           .map((m) => ({ role: m.role, content: m.content }));
-        const system = systemPrompt.trim() || undefined;
+        const userSys = systemPrompt.trim();
+        // When web search is active, always inject the web search instruction into the system field.
+        // User's own system prompt is preserved by prepending it.
+        const claudeSystem = webSearch
+          ? (userSys ? `${userSys}\n\n${DEFAULT_SYSTEM_PROMPT}` : DEFAULT_SYSTEM_PROMPT)
+          : (userSys || undefined);
 
-        const claudeRequestBody = {
-          model: panel.model,
-          max_tokens: maxTokens,
-          temperature,
-          stream: true,
-          messages: anthropicMessages,
-          ...(system ? { system } : {}),
-        };
         try {
+          // ── Web search: client-side 2-leg agentic loop ─────────────────────
+          if (webSearch) {
+            // Leg 1: non-streaming — get tool_use decision from model
+            const leg1Res = await fetch(anthropicBase, {
+              method: "POST",
+              headers: commonHeaders,
+              body: JSON.stringify({
+                model: panel.model,
+                max_tokens: maxTokens,
+                temperature,
+                stream: false,
+                messages: anthropicMessages,
+                system: claudeSystem,
+                tools: [WEB_SEARCH_TOOL],
+              }),
+            });
+
+            if (!leg1Res.ok) {
+              const latencyMs = Math.round(performance.now() - start);
+              let msg = `HTTP ${leg1Res.status}`;
+              try { const d = await leg1Res.json(); msg = d?.error?.message ?? d?.error?.type ?? msg; }
+              catch { /* keep */ }
+              setPanels((prev) => prev.map((p) =>
+                p.id === panel.id ? { ...p, loading: false, error: msg, errorStatus: leg1Res.status, latencyMs } : p
+              ));
+              return;
+            }
+
+            const leg1Data = await leg1Res.json();
+            const toolUseBlocks: Array<{ id: string; name: string; input: { query?: string } }> =
+              (leg1Data.content ?? []).filter((b: { type: string }) => b.type === "tool_use");
+
+            // Show "searching" chip
+            setPanels((prev) => prev.map((p) =>
+              p.id === panel.id ? { ...p, searchQuery: "" } : p
+            ));
+
+            // Search for each tool_use block in parallel
+            const toolResults = await Promise.all(
+              toolUseBlocks.map(async (block) => {
+                const q = block.input?.query ?? "";
+                const searchRes = await fetch(
+                  `/playground/search?q=${encodeURIComponent(q)}`,
+                  { headers: commonHeaders }
+                );
+                const searchData = searchRes.ok ? await searchRes.json() : { results: [] };
+                return {
+                  type: "tool_result",
+                  tool_use_id: block.id,
+                  content: JSON.stringify(searchData.results ?? []),
+                };
+              })
+            );
+
+            // Surface search query in UI (use first tool_use query)
+            if (toolUseBlocks.length > 0) {
+              setPanels((prev) => prev.map((p) =>
+                p.id === panel.id ? { ...p, searchQuery: toolUseBlocks[0].input?.query ?? "" } : p
+              ));
+            }
+
+            // Leg 2: streaming — send tool results and get final answer
+            const leg2Messages = [
+              ...anthropicMessages,
+              { role: "assistant", content: leg1Data.content },
+              { role: "user", content: toolResults },
+            ];
+
+            const res = await fetch(anthropicBase, {
+              method: "POST",
+              headers: commonHeaders,
+              body: JSON.stringify({
+                model: panel.model,
+                max_tokens: maxTokens,
+                temperature,
+                stream: true,
+                messages: leg2Messages,
+                system: claudeSystem,
+                tools: [WEB_SEARCH_TOOL],
+              }),
+            });
+
+            if (!res.ok) {
+              const latencyMs = Math.round(performance.now() - start);
+              let msg = `HTTP ${res.status}`;
+              try { const d = await res.json(); msg = d?.error?.message ?? d?.error?.type ?? msg; }
+              catch { /* keep */ }
+              setPanels((prev) => prev.map((p) =>
+                p.id === panel.id ? { ...p, loading: false, error: msg, errorStatus: res.status, latencyMs } : p
+              ));
+              return;
+            }
+
+            // Stream Anthropic SSE format (leg 2)
+            const reader = res.body!.getReader();
+            const decoder = new TextDecoder();
+            let accumulated = "";
+            let buf = "";
+            let inputTokens: number | null = null;
+            let outputTokens: number | null = null;
+
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buf += decoder.decode(value, { stream: true });
+              const lines = buf.split("\n");
+              buf = lines.pop() ?? "";
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const raw = line.slice(6).trim();
+                if (!raw) continue;
+                try {
+                  const chunk = JSON.parse(raw);
+                  if (chunk.type === "content_block_delta" && chunk.delta?.type === "text_delta") {
+                    accumulated += chunk.delta.text ?? "";
+                    setPanels((prev) => prev.map((p) =>
+                      p.id === panel.id ? { ...p, content: accumulated } : p
+                    ));
+                  }
+                  if (chunk.type === "message_start") inputTokens = chunk.message?.usage?.input_tokens ?? null;
+                  if (chunk.type === "message_delta") outputTokens = chunk.usage?.output_tokens ?? null;
+                } catch { /* skip malformed */ }
+              }
+            }
+
+            const latencyMs = Math.round(performance.now() - start);
+            setPanels((prev) => prev.map((p) =>
+              p.id === panel.id
+                ? { ...p, loading: false, content: accumulated || "(no content)", latencyMs, inputTokens, outputTokens }
+                : p
+            ));
+            return;
+          }
+
+          // ── Non-web-search Claude path: single streaming request ────────────
           const res = await fetch(anthropicBase, {
             method: "POST",
-            headers: wsHeaders,
-            body: JSON.stringify(claudeRequestBody),
+            headers: commonHeaders,
+            body: JSON.stringify({
+              model: panel.model,
+              max_tokens: maxTokens,
+              temperature,
+              stream: true,
+              messages: anthropicMessages,
+              ...(claudeSystem ? { system: claudeSystem } : {}),
+            }),
           });
 
           if (!res.ok) {
@@ -1071,14 +1207,6 @@ export default function Playground() {
               p.id === panel.id ? { ...p, loading: false, error: msg, errorStatus: res.status, latencyMs } : p
             ));
             return;
-          }
-
-          // Surface the search query from response header (set by gateway after Brave search)
-          const searched = res.headers.get("X-Web-Search-Query");
-          if (searched) {
-            setPanels((prev) => prev.map((p) =>
-              p.id === panel.id ? { ...p, searchQuery: searched } : p
-            ));
           }
 
           // Stream Anthropic SSE format
@@ -1101,7 +1229,6 @@ export default function Playground() {
               if (!raw) continue;
               try {
                 const chunk = JSON.parse(raw);
-                // Gateway status event — update fetching badge
                 if (chunk?.aig_status === "fetching") {
                   setPanels((prev) => prev.map((p) =>
                     p.id === panel.id ? { ...p, fetchingUrls: chunk.count ?? 1 } : p
@@ -1145,6 +1272,7 @@ export default function Playground() {
         temperature,
         max_tokens: maxTokens,
         stream: true,
+        ...(webSearchActive && searchMode === "gemini" ? { tools: [WEB_SEARCH_TOOL] } : {}),
       };
       const compatUrl = `${compatBase}/chat/completions`;
       try {
@@ -1452,10 +1580,10 @@ export default function Playground() {
           <div style={{ marginTop: 16 }}>
             <label className={s["form-label"]}>
               System prompt{" "}
-              {systemPrompt !== DEFAULT_SYSTEM_PROMPT && (
+              {!!systemPrompt && (
                 <button
                   type="button"
-                  onClick={() => setSystemPrompt(DEFAULT_SYSTEM_PROMPT)}
+                  onClick={() => setSystemPrompt("")}
                   style={{ background: "none", border: "none", padding: 0,
                            fontSize: 11, color: "var(--text-secondary)",
                            cursor: "pointer", textDecoration: "underline" }}

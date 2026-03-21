@@ -32,6 +32,28 @@ ENTITY_COMBOS = [
     ("pii_focused",   ["EMAIL_ADDRESS", "PHONE_NUMBER", "US_SSN", "CREDIT_CARD",
                        "US_BANK_NUMBER", "IBAN_CODE", "US_PASSPORT",
                        "US_DRIVER_LICENSE", "US_ITIN", "CRYPTO"]),
+
+    # ── Per-entity sweep ───────────────────────────────────────────────────────
+    # Each entry isolates a single entity type so we can measure its individual
+    # FP rate.  Results at threshold=0.7 are used to assign fp_risk ratings in
+    # PRESIDIO_ENTITY_CATALOG in GuardrailBuilder.tsx.
+    ("e_EMAIL_ADDRESS",     ["EMAIL_ADDRESS"]),
+    ("e_PHONE_NUMBER",      ["PHONE_NUMBER"]),
+    ("e_US_SSN",            ["US_SSN"]),
+    ("e_CREDIT_CARD",       ["CREDIT_CARD"]),
+    ("e_US_BANK_NUMBER",    ["US_BANK_NUMBER"]),
+    ("e_IBAN_CODE",         ["IBAN_CODE"]),
+    ("e_US_PASSPORT",       ["US_PASSPORT"]),
+    ("e_US_DRIVER_LICENSE", ["US_DRIVER_LICENSE"]),
+    ("e_US_ITIN",           ["US_ITIN"]),
+    ("e_CRYPTO",            ["CRYPTO"]),
+    ("e_IP_ADDRESS",        ["IP_ADDRESS"]),
+    ("e_MEDICAL_LICENSE",   ["MEDICAL_LICENSE"]),
+    ("e_URL",               ["URL"]),
+    ("e_PERSON",            ["PERSON"]),
+    ("e_LOCATION",          ["LOCATION"]),
+    ("e_DATE_TIME",         ["DATE_TIME"]),
+    ("e_NRP",               ["NRP"]),
 ]
 
 
