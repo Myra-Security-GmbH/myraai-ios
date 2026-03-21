@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
-import { Gateway, Tenant, ProviderConfig, RoutingRule } from "src/api/types";
+import { Gateway, Tenant, ProviderConfig, RoutingRule, DetectorConfig } from "src/api/types";
+import { DetectorBuilder } from "src/modules/detectors/DetectorBuilder";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -18,8 +19,7 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
   const [cacheTtl, setCacheTtl] = useState("300");
   const [retryCount, setRetryCount] = useState("2");
   const [timeoutMs, setTimeoutMs] = useState("120000");
-  const [guardrailsEnabled, setGuardrailsEnabled] = useState(false);
-  const [llamaGuardUrl, setLlamaGuardUrl] = useState("http://127.0.0.1:8083");
+  const [detectors, setDetectors] = useState<DetectorConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,9 +36,7 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
           retry_count: parseInt(retryCount) || 2,
           timeout_ms: parseInt(timeoutMs) || 120000,
           log_payloads: true,
-          guardrails: guardrailsEnabled
-            ? { enabled: true, llama_guard_url: llamaGuardUrl, timeout_ms: 3000, fail_open: true }
-            : { enabled: false },
+          detectors,
         },
       });
       onCreated(); onClose();
@@ -88,18 +86,8 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
               <span className={s["form-label"]} style={{ margin: 0 }}>Require auth token</span>
             </label>
           </div>
-          <div className={s["form-group"]}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-              <input type="checkbox" checked={guardrailsEnabled} onChange={(e) => setGuardrailsEnabled(e.target.checked)} />
-              <span className={s["form-label"]} style={{ margin: 0 }}>Enable guardrails (Llama Guard)</span>
-            </label>
-          </div>
-          {guardrailsEnabled && (
-            <div className={s["form-group"]}>
-              <label htmlFor="llamaguardurl" className={s["form-label"]}>Llama Guard URL</label>
-              <input id="llamaguardurl" className={s["form-input"]} value={llamaGuardUrl} onChange={(e) => setLlamaGuardUrl(e.target.value)} />
-            </div>
-          )}
+          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          <DetectorBuilder value={detectors} onChange={setDetectors} />
           <div className={s["form-actions"]}>
             <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
             <button type="submit" className={`${s.btn} ${s["btn--primary"]}`} disabled={loading}>
@@ -112,6 +100,24 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
   );
 }
 
+// If an existing gateway has guardrails.enabled=true but no detectors, synthesize
+// a legacy llm_guard detector from the old config so the user sees it immediately.
+function migrateDetectors(cfg: Gateway["config"]): DetectorConfig[] {
+  if ((cfg.detectors ?? []).length > 0) return cfg.detectors!;
+  if (cfg.guardrails?.enabled) {
+    return [{
+      type: "llm_guard",
+      name: "llm-guard",
+      action: "block",
+      target: "request",
+      url: cfg.guardrails.llama_guard_url ?? "http://127.0.0.1:8083",
+      timeout_ms: cfg.guardrails.timeout_ms ?? 3000,
+      fail_open: cfg.guardrails.fail_open ?? true,
+    }];
+  }
+  return [];
+}
+
 function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () => void; onSaved: (updated: Gateway) => void }) {
   const cfg = gw.config;
   const [budgetUsd, setBudgetUsd] = useState(cfg.budget_usd != null ? String(cfg.budget_usd) : "");
@@ -120,10 +126,6 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
   const [timeoutMs, setTimeoutMs] = useState(String(cfg.timeout_ms ?? 120000));
   const [authRequired, setAuthRequired] = useState(cfg.auth_required !== false);
   const [logPayloads, setLogPayloads] = useState(cfg.log_payloads !== false);
-  const [guardrailsEnabled, setGuardrailsEnabled] = useState(cfg.guardrails?.enabled ?? false);
-  const [llamaGuardUrl, setLlamaGuardUrl] = useState(cfg.guardrails?.llama_guard_url ?? "http://127.0.0.1:8083");
-  const [guardrailTimeout, setGuardrailTimeout] = useState(String(cfg.guardrails?.timeout_ms ?? 3000));
-  const [failOpen, setFailOpen] = useState(cfg.guardrails?.fail_open ?? true);
   const [rateRequests, setRateRequests] = useState(String(cfg.rate_limit?.requests ?? 500));
   const [rateWindow, setRateWindow] = useState(String(cfg.rate_limit?.window_sec ?? 60));
   const [loading, setLoading] = useState(false);
@@ -140,9 +142,6 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
         retry_count: parseInt(retryCount) || 2,
         timeout_ms: parseInt(timeoutMs) || 120000,
         rate_limit: { requests: parseInt(rateRequests) || 500, window_sec: parseInt(rateWindow) || 60 },
-        guardrails: guardrailsEnabled
-          ? { enabled: true, llama_guard_url: llamaGuardUrl, timeout_ms: parseInt(guardrailTimeout) || 3000, fail_open: failOpen }
-          : { enabled: false },
       };
       if (budgetUsd !== "") newConfig.budget_usd = parseFloat(budgetUsd);
       else newConfig.budget_usd = null;
@@ -206,32 +205,6 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
               <span className={s["form-label"]} style={{ margin: 0 }}>Log request/response payloads</span>
             </label>
           </div>
-          <div className={s["form-group"]}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-              <input type="checkbox" checked={guardrailsEnabled} onChange={(e) => setGuardrailsEnabled(e.target.checked)} />
-              <span className={s["form-label"]} style={{ margin: 0 }}>Enable guardrails (Llama Guard)</span>
-            </label>
-          </div>
-          {guardrailsEnabled && (
-            <>
-              <div className={s["form-group"]}>
-                <label htmlFor="llamaguardurl" className={s["form-label"]}>Llama Guard URL</label>
-                <input id="llamaguardurl" className={s["form-input"]} value={llamaGuardUrl} onChange={(e) => setLlamaGuardUrl(e.target.value)} />
-              </div>
-              <div className={s["form-row"]}>
-                <div className={s["form-group"]}>
-                  <label htmlFor="guardrailstimeout" className={s["form-label"]}>Guardrail Timeout (ms)</label>
-                  <input id="guardrailstimeout" className={s["form-input"]} type="number" min="500" value={guardrailTimeout} onChange={(e) => setGuardrailTimeout(e.target.value)} />
-                </div>
-                <div className={s["form-group"]}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 24 }}>
-                    <input type="checkbox" checked={failOpen} onChange={(e) => setFailOpen(e.target.checked)} />
-                    <span className={s["form-label"]} style={{ margin: 0 }}>Fail open (allow on error)</span>
-                  </label>
-                </div>
-              </div>
-            </>
-          )}
           <div className={s["form-actions"]}>
             <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
             <button type="submit" className={`${s.btn} ${s["btn--primary"]}`} disabled={loading}>
@@ -543,6 +516,12 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
   const [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
   const [budgetResetting, setBudgetResetting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [detectors, setDetectors] = useState<DetectorConfig[]>(() => migrateDetectors(initialGw.config));
+  const [detectorsChanged, setDetectorsChanged] = useState(false);
+  const [detectorsMigrated] = useState(() => (initialGw.config.detectors ?? []).length === 0 && !!initialGw.config.guardrails?.enabled);
+  const [savingDetectors, setSavingDetectors] = useState(false);
+  const [detectorsError, setDetectorsError] = useState<string | null>(null);
+  const [detectorsSaved, setDetectorsSaved] = useState(false);
 
   function loadTokens() {
     setLoadingTokens(true);
@@ -585,6 +564,19 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
     onDeleted();
   }
 
+  async function saveDetectors() {
+    setSavingDetectors(true); setDetectorsError(null); setDetectorsSaved(false);
+    try {
+      const newConfig = { ...gw.config, detectors, guardrails: { enabled: false } };
+      await api.patch(`/gateways/${gw.id}`, { config: newConfig });
+      setGw({ ...gw, config: newConfig });
+      setDetectorsChanged(false);
+      setDetectorsSaved(true);
+      setTimeout(() => setDetectorsSaved(false), 3000);
+    } catch (err: any) { setDetectorsError(err.message); }
+    finally { setSavingDetectors(false); }
+  }
+
   const cfg = gw.config;
   const baseUrl = `http://127.0.0.1:8081/v1/${tenantSlug}/${gw.slug}/<provider>/v1`;
 
@@ -597,7 +589,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
       {editingRule && <RuleModal gatewayId={gw.id} rule={editingRule} onClose={() => setEditingRule(null)} onSaved={loadRules} />}
 
       <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={onBack} style={{ marginBottom: 16 }}>
-        ← Back
+        ← Gateways
       </button>
 
       {/* Config card */}
@@ -639,13 +631,9 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Rate Limit</div>
-            <div className={s["stat-value"]} style={{ fontSize: 14 }}>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>
               {cfg.rate_limit ? `${cfg.rate_limit.requests}/${cfg.rate_limit.window_sec}s` : "—"}
             </div>
-          </div>
-          <div className={s["stat-card"]}>
-            <div className={s["stat-label"]}>Guardrails</div>
-            <div className={s["stat-value"]}>{cfg.guardrails?.enabled ? "on" : "off"}</div>
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Log Payloads</div>
@@ -719,6 +707,33 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
         )}
       </div>
 
+      {/* Detectors */}
+      <div className={s.card}>
+        <div className={s["card-header"]}>
+          <h2 className={s["card-title"]}>Detectors</h2>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {detectorsSaved && <span style={{ fontSize: 12, color: "var(--badge-success-text)" }}>Saved</span>}
+            <button
+              className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`}
+              onClick={saveDetectors}
+              disabled={savingDetectors || !detectorsChanged}
+            >
+              {savingDetectors ? "Saving…" : "Save Detectors"}
+            </button>
+          </div>
+        </div>
+        {detectorsMigrated && (
+          <div className={`${s.alert} ${s["alert--warning"]}`} style={{ marginBottom: 16 }}>
+            Legacy guardrail converted to a Llama Guard detector. Save to apply.
+          </div>
+        )}
+        {detectorsError && <div className={`${s.alert} ${s["alert--error"]}`}>{detectorsError}</div>}
+        <DetectorBuilder
+          value={detectors}
+          onChange={(d) => { setDetectors(d); setDetectorsChanged(true); }}
+        />
+      </div>
+
       {/* Routing Rules */}
       <div className={s.card}>
         <div className={s["card-header"]}>
@@ -781,38 +796,33 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
 
 export default function Gateways() {
   useDocumentTitle("Gateways");
-  const { tenantId } = useParams<{ tenantId?: string }>();
+  const { tenantId, gatewayId } = useParams<{ tenantId?: string; gatewayId?: string }>();
+  const navigate = useNavigate();
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [gateways, setGateways] = useState<Gateway[]>([]);
-  const [selectedGateway, setSelectedGateway] = useState<Gateway | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  useEffect(() => {
-    api.get<Tenant[]>("/tenants").then((ts) => {
-      setTenants(ts);
-      if (tenantId) {
-        const t = ts.find((x) => x.id === tenantId);
-        if (t) setSelectedTenant(t);
-      }
-    });
-  }, [tenantId]);
+  const selectedTenant = tenants.find((t) => t.id === tenantId) ?? null;
+  const selectedGateway = gateways.find((g) => g.id === gatewayId) ?? null;
 
   useEffect(() => {
-    if (!selectedTenant) { setLoading(false); return; }
+    api.get<Tenant[]>("/tenants").then(setTenants);
+  }, []);
+
+  useEffect(() => {
+    if (!tenantId) { setLoading(false); return; }
     setLoading(true);
-    setSelectedGateway(null);
-    api.get<Gateway[]>(`/tenants/${selectedTenant.id}/gateways`)
+    api.get<Gateway[]>(`/tenants/${tenantId}/gateways`)
       .then(setGateways)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [selectedTenant]);
+  }, [tenantId]);
 
   function loadGateways() {
-    if (!selectedTenant) return;
-    api.get<Gateway[]>(`/tenants/${selectedTenant.id}/gateways`).then(setGateways);
+    if (!tenantId) return;
+    api.get<Gateway[]>(`/tenants/${tenantId}/gateways`).then(setGateways);
   }
 
   async function deleteGateway(g: Gateway) {
@@ -821,17 +831,22 @@ export default function Gateways() {
     loadGateways();
   }
 
-  if (selectedGateway && selectedTenant) {
+  const listUrl = tenantId ? `/tenants/${tenantId}/gateways` : "/gateways";
+
+  if (gatewayId && selectedTenant) {
+    if (loading) return <main className={s.page}><div className={s.empty}>Loading…</div></main>;
+    if (!selectedGateway) return <Navigate to={listUrl} replace />;
     return (
       <main className={s.page}>
         <h1 className={s["page-title"]} style={{ marginBottom: 20 }}>
           {selectedTenant.slug} / {selectedGateway.slug}
         </h1>
         <GatewayDetail
+          key={gatewayId}
           gw={selectedGateway}
           tenantSlug={selectedTenant.slug}
-          onBack={() => setSelectedGateway(null)}
-          onDeleted={() => { setSelectedGateway(null); loadGateways(); }}
+          onBack={() => navigate(listUrl)}
+          onDeleted={() => { navigate(listUrl); loadGateways(); }}
         />
       </main>
     );
@@ -867,7 +882,7 @@ export default function Gateways() {
             <button
               key={t.id}
               className={`${s.btn} ${selectedTenant?.id === t.id ? s["btn--primary"] : s["btn--secondary"]}`}
-              onClick={() => setSelectedTenant(t)}
+              onClick={() => navigate(`/tenants/${t.id}/gateways`)}
             >
               {t.slug}
             </button>
@@ -887,12 +902,12 @@ export default function Gateways() {
             <table className={s.table}>
               <thead>
                 <tr>
-                  <th>Slug</th><th>Auth</th><th>Budget</th><th>Cache</th><th>Rate Limit</th><th>Guardrails</th><th>Created</th><th></th>
+                  <th>Slug</th><th>Auth</th><th>Budget</th><th>Cache</th><th>Rate Limit</th><th>Detectors</th><th>Created</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {gateways.map((g) => (
-                  <tr key={g.id}>
+                  <tr key={g.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/tenants/${tenantId}/gateways/${g.id}`)}>
                     <td><span className={s.code}>{g.slug}</span></td>
                     <td>
                       <span className={`${s.badge} ${g.config.auth_required !== false ? s["badge--success"] : s["badge--neutral"]}`}>
@@ -905,14 +920,20 @@ export default function Gateways() {
                       {g.config.rate_limit ? `${g.config.rate_limit.requests}/${g.config.rate_limit.window_sec}s` : "—"}
                     </td>
                     <td>
-                      <span className={`${s.badge} ${g.config.guardrails?.enabled ? s["badge--warning"] : s["badge--neutral"]}`}>
-                        {g.config.guardrails?.enabled ? "on" : "off"}
-                      </span>
+                      {(g.config.detectors ?? []).length > 0 ? (
+                        <span className={`${s.badge} ${s["badge--warning"]}`}>
+                          {g.config.detectors!.length}
+                        </span>
+                      ) : g.config.guardrails?.enabled ? (
+                        <span className={`${s.badge} ${s["badge--neutral"]}`} title="Legacy guardrail — open Edit to migrate">legacy</span>
+                      ) : (
+                        <span className={`${s.badge} ${s["badge--neutral"]}`}>—</span>
+                      )}
                     </td>
                     <td className={s.mono}>{g.created_at.slice(0, 10)}</td>
                     <td style={{ display: "flex", gap: 6 }}>
-                      <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={() => setSelectedGateway(g)}>Manage →</button>
-                      <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={() => deleteGateway(g)}>Del</button>
+                      <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/tenants/${tenantId}/gateways/${g.id}`); }}>Open →</button>
+                      <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); deleteGateway(g); }}>Delete</button>
                     </td>
                   </tr>
                 ))}
