@@ -72,6 +72,34 @@ function M.build_request(ctx)
                                                     and src.stop or {src.stop} end
     if src.stream        then body.stream         = true end
 
+    -- Convert OpenAI-format tools → Anthropic tools
+    if src.tools and #src.tools > 0 then
+        local ant_tools = {}
+        for _, t in ipairs(src.tools) do
+            if t.type == "function" and t["function"] then
+                ant_tools[#ant_tools + 1] = {
+                    name         = t["function"].name,
+                    description  = t["function"].description,
+                    input_schema = t["function"].parameters
+                                   or { type = "object", properties = {} },
+                }
+            end
+        end
+        if #ant_tools > 0 then body.tools = ant_tools end
+    end
+
+    -- Convert OpenAI tool_choice → Anthropic tool_choice
+    if src.tool_choice then
+        if type(src.tool_choice) == "string" then
+            local map = { none = "none", auto = "auto", required = "any" }
+            if map[src.tool_choice] then
+                body.tool_choice = { type = map[src.tool_choice] }
+            end
+        elseif type(src.tool_choice) == "table" and src.tool_choice.type then
+            body.tool_choice = { type = src.tool_choice.type }
+        end
+    end
+
     return json.encode(body)
 end
 
