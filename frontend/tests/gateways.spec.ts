@@ -70,7 +70,7 @@ test.describe("Gateways page", () => {
     await expect(page.getByLabel("Cache TTL (s)")).toBeVisible();
     await expect(page.getByLabel("Retry Count")).toBeVisible();
     await expect(page.getByText(/Require auth token/i)).toBeVisible();
-    await expect(page.getByText(/guardrails/i)).toBeVisible();
+    await expect(page.getByText(/Guardrails \(/i).first()).toBeVisible();
   });
 
   test("gateway detail shows all sections", async ({ page }) => {

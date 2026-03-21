@@ -43,8 +43,8 @@ test.describe("Model Prices page", () => {
   });
 
   test("Add Price modal opens with all fields", async ({ page }) => {
-    await page.getByRole("button", { name: /\+ Add Price/i }).click();
-    await expect(page.getByRole("heading", { name: /Add Model Price/i })).toBeVisible();
+    await page.getByRole("button", { name: /\+ New Price/i }).click();
+    await expect(page.getByRole("heading", { name: /New Model Price/i })).toBeVisible();
     await expect(page.getByLabel("Provider")).toBeVisible();
     await expect(page.getByLabel("Model *")).toBeVisible();
     await expect(page.getByLabel(/Input \$\/1K/i)).toBeVisible();
@@ -64,9 +64,9 @@ test.describe("Model Prices page", () => {
   });
 
   test("modal closes on Cancel", async ({ page }) => {
-    await page.getByRole("button", { name: /\+ Add Price/i }).click();
+    await page.getByRole("button", { name: /\+ New Price/i }).click();
     await page.getByRole("button", { name: /Cancel/i }).click();
-    await expect(page.getByRole("heading", { name: /Add Model Price/i })).not.toBeVisible();
+    await expect(page.getByRole("heading", { name: /New Model Price/i })).not.toBeVisible();
   });
 
   test("table has correct columns", async ({ page }) => {

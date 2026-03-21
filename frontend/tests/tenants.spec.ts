@@ -17,7 +17,7 @@ test.describe("Tenants page", () => {
     const rows = page.locator("tbody tr");
     if (await rows.count() === 0) { test.skip(); return; }
     await rows.first().click();
-    await expect(page.getByText(/Back to Tenants/i)).toBeVisible();
+    await expect(page.getByText(/← Tenants/i)).toBeVisible();
     await expect(page.getByText(/Tenant:/i)).toBeVisible();
   });
 
@@ -33,7 +33,7 @@ test.describe("Tenants page", () => {
     const rows = page.locator("tbody tr");
     if (await rows.count() === 0) { test.skip(); return; }
     await rows.first().click();
-    await page.getByText(/Back to Tenants/i).click();
+    await page.getByText(/← Tenants/i).click();
     await expect(page.getByRole("heading", { name: "Tenants" })).toBeVisible();
   });
 
