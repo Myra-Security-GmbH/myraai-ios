@@ -5,6 +5,33 @@
 
 local json = require("utils.json")
 
+local CATEGORY_LABELS = {
+    S1  = "Violent Crimes",
+    S2  = "Non-Violent Crimes",
+    S3  = "Sex-Related Crimes",
+    S4  = "Child Sexual Exploitation",
+    S5  = "Defamation",
+    S6  = "Specialized Advice (medical / legal / financial)",
+    S7  = "Privacy Violations",
+    S8  = "Intellectual Property Infringement",
+    S9  = "Weapons of Mass Destruction (CBRN)",
+    S10 = "Hate Speech",
+    S11 = "Suicide and Self-Harm",
+    S12 = "Explicit Sexual Content",
+    S13 = "Elections Integrity",
+    S14 = "Code Interpreter Abuse",
+}
+
+local function expand_categories(reason)
+    if not reason then return "policy" end
+    local labels = {}
+    for code in reason:gmatch("[^,]+") do
+        local c = code:match("^%s*(.-)%s*$")
+        labels[#labels + 1] = CATEGORY_LABELS[c] and (c .. " – " .. CATEGORY_LABELS[c]) or c
+    end
+    return #labels > 0 and table.concat(labels, ", ") or reason
+end
+
 local M = {}
 
 -- Send a synthetic 200 assistant response so the client sees a normal reply,
@@ -80,7 +107,7 @@ end
 function M.run(ctx)
     local result = require("detectors.orchestrator").run_phase(ctx, "request")
     if result == "block" then
-        local reason = ctx.log_fields.block_reason or "policy"
+        local reason = expand_categories(ctx.log_fields.block_reason)
         send_synthetic(ctx, "Request blocked by content policy (" ..
             (ctx.log_fields.blocked_by or "detector") .. "): " .. reason)
     end
