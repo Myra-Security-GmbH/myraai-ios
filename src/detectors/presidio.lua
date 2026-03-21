@@ -97,7 +97,7 @@ local function call_anonymizer(text, analyzer_results, detector)
     return result.text
 end
 
--- Collect unique entity_type values from analyzer results.
+-- Collect unique entity_type values from analyzer results (for block_reason string).
 local function collect_types(entities)
     local seen, types = {}, {}
     for _, e in ipairs(entities) do
@@ -108,6 +108,29 @@ local function collect_types(entities)
         end
     end
     return table.concat(types, ",")
+end
+
+-- Build a structured list and a one-line summary for logging.
+-- Returns detail_list, summary_string.
+-- detail_list entries: {entity_type, start, ["end"], score}
+-- Does NOT include the matched text to avoid writing PII into logs.
+local function build_entity_detail(entities)
+    local detail = {}
+    local parts  = {}
+    for _, e in ipairs(entities) do
+        local et    = e.entity_type or e.type or "?"
+        local s     = e.start  or 0
+        local en    = e["end"] or 0
+        local score = e.score  or 0
+        detail[#detail + 1] = {
+            entity_type = et,
+            start       = s,
+            ["end"]     = en,
+            score       = math.floor(score * 100) / 100,
+        }
+        parts[#parts + 1] = string.format("%s@%d-%d(%.2f)", et, s, en, score)
+    end
+    return detail, table.concat(parts, ", ")
 end
 
 function M.run(ctx, detector, phase)
@@ -136,7 +159,8 @@ function M.run(ctx, detector, phase)
         return { verdict = "pass" }
     end
 
-    local entity_types = collect_types(entities)
+    local entity_types         = collect_types(entities)
+    local entity_detail, summary = build_entity_detail(entities)
 
     if action == "scrub" then
         -- Step 2: anonymize
@@ -146,16 +170,19 @@ function M.run(ctx, detector, phase)
             if fail_open then
                 return { verdict = "pass" }
             else
-                return { verdict = "block", pattern = entity_types }
+                ngx.log(ngx.WARN, "presidio: blocking — ", summary)
+                return { verdict = "block", pattern = entity_types, entities = entity_detail }
             end
         end
         set_body(ctx, phase, anonymized)
-        return { verdict = "scrubbed", pattern = entity_types }
+        return { verdict = "scrubbed", pattern = entity_types, entities = entity_detail }
     elseif action == "block" then
-        return { verdict = "block", pattern = entity_types }
+        ngx.log(ngx.WARN, "presidio: blocking — ", summary)
+        return { verdict = "block", pattern = entity_types, entities = entity_detail }
     else
         -- flag (default)
-        return { verdict = "flagged", pattern = entity_types }
+        ngx.log(ngx.INFO, "presidio: flagged — ", summary)
+        return { verdict = "flagged", pattern = entity_types, entities = entity_detail }
     end
 end
 

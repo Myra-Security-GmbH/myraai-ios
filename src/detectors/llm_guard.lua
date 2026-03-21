@@ -25,6 +25,15 @@ local function content_to_text(content)
     return ""
 end
 
+-- Llama Guard 3 max context is 4096 tokens; approximate at ~3 chars/token.
+local MAX_CHARS = 9000
+
+local function truncate(text)
+    if #text <= MAX_CHARS then return text end
+    -- Keep the tail (most recent content is most relevant for safety)
+    return "...[truncated]...\n" .. text:sub(-MAX_CHARS)
+end
+
 -- Extract the last user message for request-phase classification.
 -- Only sends the last user turn to avoid alternating-role issues.
 local function extract_request_messages(body)
@@ -35,14 +44,14 @@ local function extract_request_messages(body)
             if msg.role == "user" then
                 local text = content_to_text(msg.content)
                 if text ~= "" then
-                    return {{ role = "user", content = text }}
+                    return {{ role = "user", content = truncate(text) }}
                 end
             end
         end
         return nil
     end
     if body.prompt then
-        return {{ role = "user", content = tostring(body.prompt) }}
+        return {{ role = "user", content = truncate(tostring(body.prompt)) }}
     end
     return nil
 end
@@ -61,7 +70,7 @@ local function extract_response_messages(response_body_text)
             if msg then
                 local text = content_to_text(msg.content)
                 if text ~= "" then
-                    return {{ role = "assistant", content = text }}
+                    return {{ role = "assistant", content = truncate(text) }}
                 end
             end
         end
@@ -69,13 +78,13 @@ local function extract_response_messages(response_body_text)
         if parsed.content then
             local text = content_to_text(parsed.content)
             if text ~= "" then
-                return {{ role = "assistant", content = text }}
+                return {{ role = "assistant", content = truncate(text) }}
             end
         end
     end
 
     -- Fall back to raw text
-    return {{ role = "assistant", content = response_body_text }}
+    return {{ role = "assistant", content = truncate(response_body_text) }}
 end
 
 -- Call Llama Guard 3.

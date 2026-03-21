@@ -85,14 +85,20 @@ function M.run_phase(ctx, phase)
                 local verdict = result and result.verdict or "pass"
 
                 if verdict == "block" then
-                    ctx.log_fields.blocked_by   = det.name or det.type
-                    ctx.log_fields.block_reason = result.pattern
+                    ctx.log_fields.blocked_by      = det.name or det.type
+                    ctx.log_fields.block_reason    = result.pattern
+                    if result.entities then
+                        ctx.log_fields.block_entities = result.entities
+                    end
                     local fired = ctx.log_fields.detectors_fired
                     fired[#fired + 1] = det.name or det.type
                     return "block"
 
                 elseif verdict == "scrubbed" then
                     ctx.log_fields.scrub_applied = true
+                    if result.entities then
+                        ctx.log_fields.scrub_entities = result.entities
+                    end
                     local fired = ctx.log_fields.detectors_fired
                     fired[#fired + 1] = det.name or det.type
                     -- For request phase, propagate the scrubbed body to nginx
