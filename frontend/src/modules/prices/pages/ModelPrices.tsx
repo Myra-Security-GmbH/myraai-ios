@@ -40,7 +40,7 @@ function PriceModal({ price, onClose, onSaved }: {
     <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={s.modal}>
         <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>{isEdit ? `Edit: ${price!.provider}/${price!.model}` : "Add Model Price"}</h2>
+          <h2 className={s["modal-title"]}>{isEdit ? `Edit: ${price!.provider}/${price!.model}` : "New Model Price"}</h2>
           <button className={s["modal-close"]} onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -134,7 +134,7 @@ export default function ModelPrices() {
           <p className={s["page-subtitle"]}>{prices.length} entries — used for cost attribution</p>
         </div>
         <button className={`${s.btn} ${s["btn--primary"]}`} onClick={() => setShowAdd(true)}>
-          + Add Price
+          + New Price
         </button>
       </div>
 
@@ -159,10 +159,10 @@ export default function ModelPrices() {
               <tr>
                 <th>Provider</th>
                 <th>Model</th>
-                <th>Input /1K</th>
-                <th>Output /1K</th>
-                <th>Cache Write /1K</th>
-                <th>Cache Read /1K</th>
+                <th>Input $/1K tokens</th>
+                <th>Output $/1K tokens</th>
+                <th>Cache Write $/1K</th>
+                <th>Cache Read $/1K</th>
                 <th>Updated</th>
                 <th></th>
               </tr>
@@ -179,7 +179,7 @@ export default function ModelPrices() {
                   <td className={s.mono} style={{ fontSize: 11 }}>{p.updated_at.slice(0, 10)}</td>
                   <td style={{ display: "flex", gap: 6 }}>
                     <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={() => setEditing(p)}>Edit</button>
-                    <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={() => deletePrice(p)}>Del</button>
+                    <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={() => deletePrice(p)}>Delete</button>
                   </td>
                 </tr>
               ))}

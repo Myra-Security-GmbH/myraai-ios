@@ -54,6 +54,9 @@ function UsersIcon() {
 function PricesIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 }
+function PlaygroundIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>;
+}
 
 function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean }) {
   if (collapsed) return <div className={styles["section-divider"]} />;
@@ -113,6 +116,7 @@ export default function Sidebar() {
         <NavItem to="/users" label="Users" icon={<UsersIcon />} collapsed={collapsed} />
 
         <SectionLabel label="OBSERVABILITY" collapsed={collapsed} />
+        <NavItem to="/playground" label="Playground" icon={<PlaygroundIcon />} collapsed={collapsed} />
         <NavItem to="/monitor" label="Live Monitor" icon={<MonitorIcon />} collapsed={collapsed} />
         <NavItem to="/logs" label="Request Logs" icon={<LogsIcon />} collapsed={collapsed} />
 

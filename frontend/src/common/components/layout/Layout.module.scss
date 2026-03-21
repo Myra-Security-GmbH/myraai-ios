@@ -54,7 +54,7 @@
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(tools.pixelToRem(160), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(tools.pixelToRem(200), 1fr));
   gap: tools.pixelToRem(16);
   margin-bottom: tools.pixelToRem(24);
 }
@@ -82,6 +82,15 @@
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1;
+
+  // Use for text values (emails, slugs, dates) that don't need large numerals
+  &--text {
+    font-size: tools.pixelToRem(15);
+    font-weight: 500;
+    line-height: 1.4;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
 }
 
 .stat-sub {
@@ -310,6 +319,7 @@ table.table tbody tr.blocked td {
 
   &--success { background: var(--badge-success-bg); color: var(--badge-success-text); border: 1px solid currentColor; }
   &--error   { background: var(--badge-error-bg);   color: var(--badge-error-text);   border: 1px solid currentColor; }
+  &--warning { background: #fef9c3;                 color: #854d0e;                   border: 1px solid #ca8a04; }
 }
 
 // Empty state
