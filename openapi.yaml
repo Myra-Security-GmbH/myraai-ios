@@ -1,0 +1,2231 @@
+openapi: 3.1.0
+
+info:
+  title: Myra AI Gateway API
+  version: "1.0.0"
+  description: |
+    The Myra AI Gateway exposes two API surfaces:
+
+    **Inference API** — `POST /v1/{tenant}/{gateway}/...`
+    Send chat completions, text completions, and embedding requests to any
+    supported provider through the gateway. Use the unified `/compat/` prefix
+    for provider-agnostic routing, or address a specific provider directly.
+
+    **Admin API** — `/admin/v1/...`
+    Manage tenants, gateways, provider keys (BYOK), routing rules, auth tokens,
+    users, and view logs and statistics. The Admin API is typically only
+    accessible from within your private network.
+
+    All error responses follow the structure:
+    ```json
+    { "error": { "code": "ERROR_CODE", "message": "Human-readable detail" } }
+    ```
+
+servers:
+  - url: https://{host}
+    description: Your AI Gateway instance
+    variables:
+      host:
+        default: your-gateway-host
+        description: Hostname of the gateway deployment
+
+tags:
+  - name: Inference
+    description: Send inference requests to AI providers through the gateway.
+  - name: Tenants
+    description: Top-level organisational units. Each tenant holds gateways, users, and tokens.
+  - name: Gateways
+    description: A gateway holds a configuration, provider keys, routing rules, and auth tokens.
+  - name: BYOK Keys
+    description: Bring-your-own provider API keys. Stored encrypted at rest.
+  - name: Routing Rules
+    description: Priority-ordered rules that rewrite the provider and model for matching requests.
+  - name: Auth Tokens
+    description: Bearer tokens used to authenticate inference requests.
+  - name: Users
+    description: Identity records within a tenant. Users hold tokens and have roles.
+  - name: Stats
+    description: Aggregated request metrics and time-series data.
+  - name: Logs
+    description: Per-request structured audit log.
+  - name: Models
+    description: Model catalog and per-model pricing configuration.
+  - name: Guardrails
+    description: Guardrail event counts and recent events per gateway.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Security
+# ─────────────────────────────────────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Auth token issued via `POST /admin/v1/gateways/{id}/tokens`.
+        Pass as `Authorization: Bearer <token>`.
+        Required for all inference requests when `auth_required: true` is set
+        on the gateway (the default). Not required for Admin API calls, which
+        are typically protected at the network level.
+
+  schemas:
+
+    # ── Shared ───────────────────────────────────────────────────────────────
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: UNAUTHORIZED
+            message:
+              type: string
+              example: Token is expired or has been revoked.
+
+    OkResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    RateLimit:
+      type: object
+      required: [requests, window_sec]
+      properties:
+        requests:
+          type: integer
+          description: Maximum number of requests allowed within the window.
+          example: 100
+        window_sec:
+          type: integer
+          description: Sliding window size in seconds.
+          example: 60
+
+    # ── Tenants ──────────────────────────────────────────────────────────────
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          example: ten_abc123
+        slug:
+          type: string
+          example: myapp
+        plan:
+          type: [string, "null"]
+          example: starter
+        budget_usd:
+          type: [number, "null"]
+          description: Tenant-level spend cap in USD. null disables the cap.
+          example: null
+        created_at:
+          type: integer
+          description: Unix timestamp (seconds).
+          example: 1742544000
+
+    TenantCreate:
+      type: object
+      required: [slug]
+      properties:
+        slug:
+          type: string
+          description: URL-safe identifier. Must be globally unique. Appears in all inference endpoint URLs.
+          pattern: "^[a-z0-9-]+$"
+          example: myapp
+        plan:
+          type: [string, "null"]
+          description: Arbitrary plan label (not enforced by the gateway).
+          example: starter
+        budget_usd:
+          type: [number, "null"]
+          description: Tenant-level spend cap in USD. null disables the cap.
+          example: null
+
+    TenantUpdate:
+      type: object
+      properties:
+        plan:
+          type: [string, "null"]
+          example: pro
+        budget_usd:
+          type: [number, "null"]
+          example: 1000.00
+
+    # ── Gateways ─────────────────────────────────────────────────────────────
+
+    GatewayConfig:
+      type: object
+      description: |
+        Gateway configuration object. All fields are optional; omitted fields use the
+        defaults shown. The config is merged shallowly on PATCH — only fields you include
+        are changed. To remove a nested object (e.g. clear a rate limit), set it to null.
+      properties:
+        auth_required:
+          type: boolean
+          default: true
+          description: Whether inference requests must include a valid auth token.
+        budget_usd:
+          type: [number, "null"]
+          default: null
+          description: Gateway-level spend cap in USD. Resets via DELETE /gateways/{id}/budget.
+        cache_ttl:
+          type: integer
+          default: 0
+          description: Exact-match response cache TTL in seconds. 0 disables caching.
+        retry_count:
+          type: integer
+          default: 2
+          description: Number of times to retry a failed upstream request before walking the fallback chain.
+        timeout_ms:
+          type: integer
+          default: 60000
+          description: Per-request upstream timeout in milliseconds.
+        log_payloads:
+          type: boolean
+          default: true
+          description: Whether to store request and response body text in the log. Set to false to log metadata only.
+        rate_limit:
+          $ref: "#/components/schemas/RateLimit"
+          nullable: true
+          default: null
+          description: Gateway-level rate limit applied to every token. Per-token limits take precedence.
+        ip_allowlist:
+          type: array
+          items:
+            type: string
+          default: []
+          description: List of allowed client IP addresses or CIDR ranges. Empty list allows all IPs.
+          example: ["10.0.0.0/8", "203.0.113.5"]
+        guardrails:
+          type: array
+          items:
+            type: object
+          default: []
+          description: |
+            Ordered guardrail pipeline configuration. See the Guardrail Pipeline documentation
+            for the full schema of each guardrail type (regex, keyword, presidio, prompt_guard,
+            pii_protector).
+        azure_endpoint:
+          type: [string, "null"]
+          default: null
+          description: Azure OpenAI endpoint URL (required when using the azure provider).
+          example: "https://my-resource.openai.azure.com"
+        azure_deployment:
+          type: [string, "null"]
+          default: null
+          description: Azure OpenAI deployment name.
+        azure_api_version:
+          type: string
+          default: "2024-02-01"
+          description: Azure OpenAI API version string.
+        bedrock_region:
+          type: string
+          default: us-east-1
+          description: AWS region for Bedrock requests.
+        vertex_project:
+          type: [string, "null"]
+          default: null
+          description: Google Cloud project ID for Vertex AI.
+        vertex_region:
+          type: string
+          default: us-central1
+          description: Google Cloud region for Vertex AI.
+        provider_base_urls:
+          type: object
+          additionalProperties:
+            type: string
+          default: {}
+          description: Override the default base URL for any provider. Useful for local models (e.g. Ollama).
+          example:
+            ollama: "http://192.168.1.50:11434"
+
+    Gateway:
+      type: object
+      properties:
+        id:
+          type: string
+          example: gw_xyz789
+        tenant_id:
+          type: string
+          example: ten_abc123
+        slug:
+          type: string
+          example: production
+        config:
+          $ref: "#/components/schemas/GatewayConfig"
+        spend_usd:
+          type: number
+          description: Cumulative spend in USD since last budget reset.
+          example: 12.34
+        created_at:
+          type: integer
+          description: Unix timestamp (seconds).
+          example: 1742544000
+
+    GatewayCreate:
+      type: object
+      required: [slug]
+      properties:
+        slug:
+          type: string
+          description: URL-safe identifier, unique within the tenant.
+          pattern: "^[a-z0-9-]+$"
+          example: production
+        config:
+          $ref: "#/components/schemas/GatewayConfig"
+
+    GatewayUpdate:
+      type: object
+      properties:
+        config:
+          $ref: "#/components/schemas/GatewayConfig"
+
+    # ── BYOK Keys ────────────────────────────────────────────────────────────
+
+    ProviderKeyEntry:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: openai
+        alias:
+          type: string
+          example: default
+
+    ProviderKeyCreate:
+      type: object
+      required: [provider, key]
+      properties:
+        provider:
+          type: string
+          description: Provider identifier (e.g. openai, anthropic, gemini).
+          example: openai
+        key:
+          type: string
+          description: Provider API key. Stored encrypted at rest; not retrievable after creation.
+          example: sk-...
+        alias:
+          type: string
+          description: Label for this key. Use aliases to store multiple keys per provider.
+          default: default
+          example: default
+
+    # ── Routing Rules ────────────────────────────────────────────────────────
+
+    RuleCondition:
+      type: object
+      required: [field, op]
+      properties:
+        field:
+          type: string
+          description: |
+            Field to match against. One of: `model`, `provider`, `tenant`,
+            `gateway`, or `meta.<key>` (custom metadata from `x-aig-meta-*` headers).
+          example: model
+        op:
+          type: string
+          enum: [eq, neq, prefix, suffix, contains, regex, exists]
+          description: Comparison operator.
+          example: prefix
+        value:
+          type: string
+          description: Value to compare against. Not required when op is `exists`.
+          example: gpt-
+
+    RuleActions:
+      type: object
+      properties:
+        provider:
+          type: string
+          description: Override the inference provider.
+          example: openai
+        model:
+          type: string
+          description: Rewrite the model name sent to the provider.
+          example: gpt-4o
+        fallbacks:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+                example: anthropic
+              model:
+                type: string
+                example: claude-sonnet-4-6
+          description: Ordered fallback chain. Each entry is attempted once if the primary fails all retries.
+
+    RoutingRule:
+      type: object
+      properties:
+        id:
+          type: string
+          example: rule_abc123
+        priority:
+          type: integer
+          description: Evaluation order. Lower numbers run first. First matching rule wins.
+          example: 10
+        conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleCondition"
+          description: All conditions must match (logical AND). Empty array matches every request.
+        actions:
+          $ref: "#/components/schemas/RuleActions"
+        enabled:
+          type: boolean
+          default: true
+
+    RoutingRuleCreate:
+      type: object
+      required: [conditions, actions]
+      properties:
+        priority:
+          type: integer
+          example: 10
+        conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleCondition"
+        actions:
+          $ref: "#/components/schemas/RuleActions"
+        enabled:
+          type: boolean
+          default: true
+
+    # ── Auth Tokens ──────────────────────────────────────────────────────────
+
+    AuthToken:
+      type: object
+      properties:
+        id:
+          type: string
+          example: tok_def456
+        label:
+          type: [string, "null"]
+          example: CI bot
+        user_id:
+          type: [string, "null"]
+          example: usr_abc123
+        scopes:
+          type: array
+          items:
+            type: string
+          example: [inference]
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          example: null
+        rate_limit:
+          $ref: "#/components/schemas/RateLimit"
+          nullable: true
+        budget_usd:
+          type: [number, "null"]
+          example: null
+        created_at:
+          type: [string, integer]
+          example: "2026-03-21T10:00:00Z"
+
+    AuthTokenCreate:
+      type: object
+      properties:
+        label:
+          type: [string, "null"]
+          description: Human-readable name shown in the admin UI and logs.
+          example: production-client
+        scopes:
+          type: array
+          items:
+            type: string
+          default: []
+          description: Permission scopes. Use ["inference"] to grant inference access.
+          example: [inference]
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: ISO 8601 expiry. null means the token never expires.
+          example: null
+        rate_limit:
+          $ref: "#/components/schemas/RateLimit"
+          nullable: true
+          description: Per-token rate limit. Overrides the gateway-level rate limit.
+        budget_usd:
+          type: [number, "null"]
+          description: Per-token spend cap in USD.
+          example: 100.00
+
+    AuthTokenCreated:
+      allOf:
+        - $ref: "#/components/schemas/AuthToken"
+        - type: object
+          properties:
+            token:
+              type: string
+              description: Plaintext token value. Returned once only — store it securely.
+              example: aig_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+    # ── Users ────────────────────────────────────────────────────────────────
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: usr_abc123
+        tenant_id:
+          type: string
+          example: ten_xyz
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        name:
+          type: [string, "null"]
+          example: Alice
+        role:
+          type: string
+          enum: [admin, member, viewer]
+          example: member
+        created_at:
+          type: integer
+          example: 1742544000
+
+    UserCreate:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        name:
+          type: [string, "null"]
+          example: Alice
+        role:
+          type: string
+          enum: [admin, member, viewer]
+          example: member
+
+    UserUpdate:
+      type: object
+      properties:
+        email:
+          type: [string, "null"]
+          format: email
+        name:
+          type: [string, "null"]
+        role:
+          type: string
+          enum: [admin, member, viewer]
+
+    # ── Stats ────────────────────────────────────────────────────────────────
+
+    PeriodStats:
+      type: object
+      properties:
+        requests:
+          type: integer
+          description: Total inference requests in the period.
+        cached:
+          type: integer
+          description: Requests served from cache (no provider call).
+        blocked:
+          type: integer
+          description: Requests blocked by auth, rate limit, quota, or guardrails.
+        input_tokens:
+          type: integer
+          description: Total prompt tokens consumed.
+        output_tokens:
+          type: integer
+          description: Total completion tokens generated.
+        cost_usd:
+          type: number
+          description: Total cost in USD.
+        saved_cost_usd:
+          type: number
+          description: Cost saved by cache hits.
+        avg_latency_ms:
+          type: number
+          description: Average end-to-end request latency in milliseconds.
+        avg_upstream_latency_ms:
+          type: number
+          description: Average time waiting for the upstream provider.
+
+    TenantStats:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        tenant:
+          type: string
+        requests:
+          type: integer
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        cost_usd:
+          type: number
+
+    TimeseriesPoint:
+      type: object
+      properties:
+        ts:
+          type: integer
+          description: Bucket start time as Unix milliseconds.
+        requests:
+          type: integer
+        blocked:
+          type: integer
+        cost_usd:
+          type: number
+
+    # ── Logs ─────────────────────────────────────────────────────────────────
+
+    LogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          example: log_abc789
+        ts:
+          type: integer
+          description: Request timestamp as Unix milliseconds.
+          example: 1742547632000
+        tenant:
+          type: string
+          example: myapp
+        tenant_id:
+          type: string
+          example: ten_abc123
+        gateway_id:
+          type: string
+          example: gw_xyz789
+        provider:
+          type: string
+          example: openai
+        model:
+          type: string
+          example: gpt-4o
+        status:
+          type: integer
+          description: HTTP status code returned to the client.
+          example: 200
+        cached:
+          type: boolean
+        blocked:
+          type: boolean
+        blocked_by:
+          type: [string, "null"]
+          description: Which middleware blocked the request.
+          enum: [auth, rate_limit, ip_allowlist, detector, guardrail, quota, null]
+        block_reason:
+          type: [string, "null"]
+        guardrail_verdict:
+          type: [string, "null"]
+          description: Llama Guard verdict string if a guardrail fired (e.g. "unsafe S1").
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        cost_usd:
+          type: number
+        latency_ms:
+          type: integer
+        upstream_latency_ms:
+          type: integer
+        guardrail_latency_ms:
+          type: integer
+        upstream_attempts:
+          type: integer
+          description: Number of upstream attempts (1 = no retries).
+        fallback_provider:
+          type: [string, "null"]
+        fallback_model:
+          type: [string, "null"]
+        saved_cost_usd:
+          type: number
+          description: For cache hits — cost that would have been incurred without cache.
+        request_size_bytes:
+          type: integer
+
+    # ── Models ───────────────────────────────────────────────────────────────
+
+    ModelEntry:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: openai
+        model:
+          type: string
+          example: gpt-4o
+        context_window:
+          type: [integer, "null"]
+          example: 128000
+        requires_key:
+          type: boolean
+          example: true
+
+    ModelPrice:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: openai
+        model:
+          type: string
+          example: gpt-4o
+        input_per_1k:
+          type: [number, "null"]
+          description: Cost in USD per 1,000 input tokens.
+          example: 0.005
+        output_per_1k:
+          type: [number, "null"]
+          description: Cost in USD per 1,000 output tokens.
+          example: 0.015
+        cache_write_per_1k:
+          type: [number, "null"]
+          description: Cost per 1,000 tokens written to provider prompt cache (Anthropic). null if not applicable.
+          example: null
+        cache_read_per_1k:
+          type: [number, "null"]
+          description: Cost per 1,000 tokens read from provider prompt cache (Anthropic). null if not applicable.
+          example: null
+
+    ModelPriceUpsert:
+      type: object
+      required: [provider, model]
+      properties:
+        provider:
+          type: string
+          example: openai
+        model:
+          type: string
+          example: gpt-4o
+        input_per_1k:
+          type: [number, "null"]
+          example: 0.005
+        output_per_1k:
+          type: [number, "null"]
+          example: 0.015
+        cache_write_per_1k:
+          type: [number, "null"]
+          example: null
+        cache_read_per_1k:
+          type: [number, "null"]
+          example: null
+
+    # ── Inference ────────────────────────────────────────────────────────────
+
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+        content:
+          type: [string, array, "null"]
+          description: Message content. String for text, array for multi-modal content parts.
+        name:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            type: object
+        tool_call_id:
+          type: string
+
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      properties:
+        model:
+          type: string
+          description: |
+            Model identifier. On the `/compat/` endpoint the gateway resolves the
+            provider automatically using prefix matching and an OpenRouter fallback.
+            On provider-native paths (`/{provider}/`) the model name is passed
+            directly to that provider.
+          example: gpt-4o
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+          description: Conversation history. Must contain at least one message.
+        stream:
+          type: boolean
+          default: false
+          description: If true, the response is streamed as Server-Sent Events.
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          example: 0.7
+        max_tokens:
+          type: integer
+          example: 1024
+        top_p:
+          type: number
+        n:
+          type: integer
+          default: 1
+        stop:
+          type: [string, array]
+          items:
+            type: string
+        tools:
+          type: array
+          items:
+            type: object
+        tool_choice:
+          type: [string, object]
+        response_format:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [text, json_object, json_schema]
+        user:
+          type: string
+        metadata:
+          type: object
+          description: Arbitrary key-value metadata. Not forwarded to the provider.
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: chatcmpl-abc123
+        object:
+          type: string
+          example: chat.completion
+        created:
+          type: integer
+        model:
+          type: string
+          example: gpt-4o
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              message:
+                $ref: "#/components/schemas/ChatMessage"
+              finish_reason:
+                type: [string, "null"]
+                enum: [stop, length, tool_calls, content_filter, null]
+              logprobs:
+                type: [object, "null"]
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+
+    EmbeddingRequest:
+      type: object
+      required: [model, input]
+      properties:
+        model:
+          type: string
+          example: text-embedding-3-small
+        input:
+          type: [string, array]
+          description: Text or array of texts to embed.
+          example: "The quick brown fox"
+        encoding_format:
+          type: string
+          enum: [float, base64]
+          default: float
+
+    EmbeddingResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          example: list
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              object:
+                type: string
+                example: embedding
+              index:
+                type: integer
+              embedding:
+                type: array
+                items:
+                  type: number
+        model:
+          type: string
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+
+    TextCompletionRequest:
+      type: object
+      required: [model, prompt]
+      properties:
+        model:
+          type: string
+          example: gpt-3.5-turbo-instruct
+        prompt:
+          type: [string, array]
+          description: Text prompt(s) to complete.
+        max_tokens:
+          type: integer
+          example: 256
+        temperature:
+          type: number
+        stream:
+          type: boolean
+          default: false
+
+    ProviderEntry:
+      type: object
+      properties:
+        name:
+          type: string
+          example: openai
+        requires_key:
+          type: boolean
+          example: true
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Paths
+# ─────────────────────────────────────────────────────────────────────────────
+
+paths:
+
+  # ── Health ──────────────────────────────────────────────────────────────────
+
+  /healthz:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      description: Returns "ok" when the gateway process is running.
+      tags: []
+      responses:
+        "200":
+          description: Gateway is healthy.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  # ── Inference ───────────────────────────────────────────────────────────────
+
+  /v1/{tenant}/{gateway}/compat/chat/completions:
+    post:
+      operationId: compatChatCompletions
+      summary: Chat completions (unified compat endpoint)
+      description: |
+        Send a chat completion request to the gateway. The gateway resolves the provider
+        automatically from the model name using prefix matching, with OpenRouter as the
+        catch-all fallback. Always returns an OpenAI-shaped response regardless of which
+        provider handled the request.
+
+        Existing clients using the OpenAI SDK can switch to this endpoint by changing
+        only the `base_url` — no other code changes are required.
+      tags: [Inference]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/tenantSlug"
+        - $ref: "#/components/parameters/gatewaySlug"
+        - $ref: "#/components/parameters/byokAlias"
+        - $ref: "#/components/parameters/metaHeaders"
+        - $ref: "#/components/parameters/collectLogPayload"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+      responses:
+        "200":
+          description: Chat completion response (or SSE stream when stream=true).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream of chat.completion.chunk objects.
+        "400":
+          description: Request blocked by guardrail or invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid auth token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Token valid but lacks permission, or IP not in allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit or budget quota exceeded.
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Upstream provider error (all retries and fallbacks exhausted).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/{tenant}/{gateway}/compat/embeddings:
+    post:
+      operationId: compatEmbeddings
+      summary: Embeddings (unified compat endpoint)
+      description: Generate embeddings via the gateway's provider-agnostic endpoint.
+      tags: [Inference]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/tenantSlug"
+        - $ref: "#/components/parameters/gatewaySlug"
+        - $ref: "#/components/parameters/byokAlias"
+        - $ref: "#/components/parameters/collectLogPayload"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingRequest"
+      responses:
+        "200":
+          description: Embedding response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+
+  /v1/{tenant}/{gateway}/compat/completions:
+    post:
+      operationId: compatTextCompletions
+      summary: Text completions (unified compat endpoint)
+      description: Legacy text completions via the provider-agnostic endpoint.
+      tags: [Inference]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/tenantSlug"
+        - $ref: "#/components/parameters/gatewaySlug"
+        - $ref: "#/components/parameters/byokAlias"
+        - $ref: "#/components/parameters/collectLogPayload"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TextCompletionRequest"
+      responses:
+        "200":
+          description: Text completion response.
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+
+  /v1/{tenant}/{gateway}/{provider}/chat/completions:
+    post:
+      operationId: providerChatCompletions
+      summary: Chat completions (provider-native path)
+      description: |
+        Send a chat completion request to a specific provider. The request is forwarded
+        to `{provider}`'s API in its native wire format. The response is normalised to
+        OpenAI format.
+      tags: [Inference]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/tenantSlug"
+        - $ref: "#/components/parameters/gatewaySlug"
+        - $ref: "#/components/parameters/providerName"
+        - $ref: "#/components/parameters/byokAlias"
+        - $ref: "#/components/parameters/collectLogPayload"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+      responses:
+        "200":
+          description: Chat completion response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+
+  /v1/{tenant}/{gateway}/{provider}/embeddings:
+    post:
+      operationId: providerEmbeddings
+      summary: Embeddings (provider-native path)
+      description: Generate embeddings via a specific provider.
+      tags: [Inference]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/tenantSlug"
+        - $ref: "#/components/parameters/gatewaySlug"
+        - $ref: "#/components/parameters/providerName"
+        - $ref: "#/components/parameters/byokAlias"
+        - $ref: "#/components/parameters/collectLogPayload"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingRequest"
+      responses:
+        "200":
+          description: Embedding response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+
+  # ── Tenants ─────────────────────────────────────────────────────────────────
+
+  /admin/v1/tenants:
+    get:
+      operationId: listTenants
+      summary: List all tenants
+      tags: [Tenants]
+      responses:
+        "200":
+          description: List of tenants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenants:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tenant"
+    post:
+      operationId: createTenant
+      summary: Create a tenant
+      tags: [Tenants]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantCreate"
+      responses:
+        "201":
+          description: Tenant created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  slug:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /admin/v1/tenants/{tenant_id}:
+    patch:
+      operationId: updateTenant
+      summary: Update a tenant
+      tags: [Tenants]
+      parameters:
+        - $ref: "#/components/parameters/tenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    delete:
+      operationId: deleteTenant
+      summary: Delete a tenant
+      description: |
+        Permanently removes the tenant and all associated gateways, users, tokens,
+        routing rules, and provider keys. This action cannot be undone.
+      tags: [Tenants]
+      parameters:
+        - $ref: "#/components/parameters/tenantId"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  /admin/v1/tenants/{tenant_id}/gateways:
+    get:
+      operationId: listGateways
+      summary: List gateways for a tenant
+      tags: [Gateways]
+      parameters:
+        - $ref: "#/components/parameters/tenantId"
+      responses:
+        "200":
+          description: List of gateways.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gateways:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Gateway"
+    post:
+      operationId: createGateway
+      summary: Create a gateway
+      tags: [Gateways]
+      parameters:
+        - $ref: "#/components/parameters/tenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GatewayCreate"
+      responses:
+        "201":
+          description: Gateway created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  slug:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /admin/v1/gateways/{gateway_id}:
+    get:
+      operationId: getGateway
+      summary: Get a gateway
+      tags: [Gateways]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "200":
+          description: Gateway object.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gateway"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateGateway
+      summary: Update gateway config
+      description: |
+        Merges the provided `config` object into the existing config at the top level.
+        Only fields you include are changed. To clear a nested object, set it to null.
+      tags: [Gateways]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GatewayUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteGateway
+      summary: Delete a gateway
+      tags: [Gateways]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  /admin/v1/gateways/{gateway_id}/budget:
+    delete:
+      operationId: resetGatewayBudget
+      summary: Reset gateway spend counter
+      description: |
+        Clears the accumulated spend counter for this gateway. Requests blocked by
+        `QUOTA_EXCEEDED` will be allowed again up to the configured `budget_usd`.
+      tags: [Gateways]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  # ── BYOK Keys ────────────────────────────────────────────────────────────────
+
+  /admin/v1/gateways/{gateway_id}/keys:
+    get:
+      operationId: listProviderKeys
+      summary: List stored provider keys
+      description: Returns provider and alias for each stored key. Key values are never returned.
+      tags: [BYOK Keys]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "200":
+          description: List of stored provider keys.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProviderKeyEntry"
+    post:
+      operationId: storeProviderKey
+      summary: Store a provider key
+      description: Stores an API key for a provider. The key is encrypted at rest and cannot be retrieved after creation.
+      tags: [BYOK Keys]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderKeyCreate"
+      responses:
+        "201":
+          description: Key stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  provider:
+                    type: string
+                  alias:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /admin/v1/gateways/{gateway_id}/keys/{provider}/{alias}:
+    delete:
+      operationId: deleteProviderKey
+      summary: Delete a provider key
+      tags: [BYOK Keys]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+          example: openai
+        - name: alias
+          in: path
+          required: true
+          schema:
+            type: string
+          example: default
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  # ── Routing Rules ─────────────────────────────────────────────────────────────
+
+  /admin/v1/gateways/{gateway_id}/rules:
+    get:
+      operationId: listRoutingRules
+      summary: List routing rules
+      tags: [Routing Rules]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "200":
+          description: Ordered list of routing rules.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RoutingRule"
+    post:
+      operationId: createRoutingRule
+      summary: Create a routing rule
+      tags: [Routing Rules]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingRuleCreate"
+      responses:
+        "201":
+          description: Rule created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /admin/v1/gateways/{gateway_id}/rules/{rule_id}:
+    patch:
+      operationId: updateRoutingRule
+      summary: Update a routing rule
+      tags: [Routing Rules]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+        - $ref: "#/components/parameters/ruleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingRuleCreate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    delete:
+      operationId: deleteRoutingRule
+      summary: Delete a routing rule
+      tags: [Routing Rules]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+        - $ref: "#/components/parameters/ruleId"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  # ── Auth Tokens ────────────────────────────────────────────────────────────────
+
+  /admin/v1/gateways/{gateway_id}/tokens:
+    get:
+      operationId: listGatewayTokens
+      summary: List tokens for a gateway
+      tags: [Auth Tokens]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "200":
+          description: List of auth tokens (plaintext values not included).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuthToken"
+    post:
+      operationId: createGatewayToken
+      summary: Create a gateway-scoped token
+      description: |
+        Creates an auth token for this gateway. The plaintext token is returned
+        once in the response and cannot be retrieved later.
+      tags: [Auth Tokens]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthTokenCreate"
+      responses:
+        "201":
+          description: Token created. Store the `token` value securely — it is not retrievable later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenCreated"
+
+  /admin/v1/gateways/{gateway_id}/tokens/{token_id}:
+    delete:
+      operationId: revokeGatewayToken
+      summary: Revoke a token
+      description: Revocation is immediate. Subsequent inference requests with this token return 401.
+      tags: [Auth Tokens]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+        - $ref: "#/components/parameters/tokenId"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  /admin/v1/users/{user_id}/tokens:
+    get:
+      operationId: listUserTokens
+      summary: List tokens belonging to a user
+      tags: [Auth Tokens]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: List of auth tokens for this user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuthToken"
+    post:
+      operationId: createUserToken
+      summary: Create a user-scoped token
+      description: Creates a token associated with a specific user.
+      tags: [Auth Tokens]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AuthTokenCreate"
+                - type: object
+                  required: [gateway_id]
+                  properties:
+                    gateway_id:
+                      type: string
+                      description: Gateway this token grants access to.
+                      example: gw_xyz789
+      responses:
+        "201":
+          description: Token created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenCreated"
+
+  # ── Users ──────────────────────────────────────────────────────────────────────
+
+  /admin/v1/tenants/{tenant_id}/users:
+    get:
+      operationId: listUsers
+      summary: List users for a tenant
+      tags: [Users]
+      parameters:
+        - $ref: "#/components/parameters/tenantId"
+      responses:
+        "200":
+          description: List of users.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      summary: Create a user
+      tags: [Users]
+      parameters:
+        - $ref: "#/components/parameters/tenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
+      responses:
+        "201":
+          description: User created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  email:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /admin/v1/users/{user_id}:
+    patch:
+      operationId: updateUser
+      summary: Update a user
+      tags: [Users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    delete:
+      operationId: deleteUser
+      summary: Delete a user
+      description: Deletes the user and immediately disables all their tokens.
+      tags: [Users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  /admin/v1/users/{user_id}/budget:
+    delete:
+      operationId: resetUserBudget
+      summary: Reset all token spend counters for a user
+      tags: [Users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  /admin/v1/users/{user_id}/gateways:
+    get:
+      operationId: listUserGatewayAccess
+      summary: List gateways the user can access
+      tags: [Users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: List of gateways the user has been granted access to.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gateways:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        slug:
+                          type: string
+                        tenant_id:
+                          type: string
+
+  /admin/v1/users/{user_id}/gateways/{gateway_id}:
+    post:
+      operationId: grantGatewayAccess
+      summary: Grant a user access to a gateway
+      tags: [Users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "201":
+          $ref: "#/components/responses/Ok"
+    delete:
+      operationId: revokeGatewayAccess
+      summary: Revoke a user's access to a gateway
+      description: Does not revoke the user's existing tokens — they become unusable on this gateway but are not deleted.
+      tags: [Users]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  # ── Stats ──────────────────────────────────────────────────────────────────────
+
+  /admin/v1/stats:
+    get:
+      operationId: getStats
+      summary: Get aggregated request statistics
+      description: Returns request counts, token usage, cost, and latency across several time windows, plus a per-tenant breakdown and recent log entries.
+      tags: [Stats]
+      responses:
+        "200":
+          description: Statistics snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  today:
+                    $ref: "#/components/schemas/PeriodStats"
+                  yesterday:
+                    $ref: "#/components/schemas/PeriodStats"
+                  last_7d:
+                    $ref: "#/components/schemas/PeriodStats"
+                  hour:
+                    $ref: "#/components/schemas/PeriodStats"
+                  last_min:
+                    $ref: "#/components/schemas/PeriodStats"
+                  by_tenant:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TenantStats"
+                  recent:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LogEntry"
+                  recent_blocked:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LogEntry"
+
+  /admin/v1/stats/timeseries:
+    get:
+      operationId: getTimeseries
+      summary: Get time-series statistics
+      description: |
+        Returns an array of time-bucketed data points suitable for charts. Buckets with
+        no activity are included as zero-filled entries so the array length is always
+        exactly `n`.
+      tags: [Stats]
+      parameters:
+        - name: bucket
+          in: query
+          schema:
+            type: string
+            enum: [5m, 15m, 30m, 1h, 6h, 1d]
+            default: 1h
+          description: Bucket size.
+        - name: n
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 24
+          description: Number of buckets to return.
+        - name: until
+          in: query
+          schema:
+            type: integer
+          description: End of the time range as a Unix timestamp in seconds. Defaults to now.
+      responses:
+        "200":
+          description: Array of time-bucketed data points.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimeseriesPoint"
+
+  # ── Logs ───────────────────────────────────────────────────────────────────────
+
+  /admin/v1/logs:
+    get:
+      operationId: listLogs
+      summary: List request logs
+      description: Returns log entries in reverse-chronological order (newest first). All filters are optional and combinable.
+      tags: [Logs]
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+          description: Filter by tenant UUID.
+        - name: gateway_id
+          in: query
+          schema:
+            type: string
+          description: Filter by gateway UUID.
+        - name: provider
+          in: query
+          schema:
+            type: string
+          description: Filter by provider name (e.g. openai, anthropic).
+        - name: since
+          in: query
+          schema:
+            type: string
+          description: Return entries at or after this time. Accepts ISO 8601 datetime or Unix milliseconds.
+          example: "2026-03-01T00:00:00Z"
+        - name: guardrail_outcome
+          in: query
+          schema:
+            type: string
+          description: Filter by guardrail outcome.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: Maximum number of entries to return.
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Skip this many entries (for pagination).
+      responses:
+        "200":
+          description: List of log entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LogEntry"
+
+  /admin/v1/logs/{log_id}:
+    get:
+      operationId: getLog
+      summary: Get a single log entry
+      tags: [Logs]
+      parameters:
+        - name: log_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: log_abc789
+      responses:
+        "200":
+          description: Log entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogEntry"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Models ─────────────────────────────────────────────────────────────────────
+
+  /admin/v1/providers:
+    get:
+      operationId: listProviders
+      summary: List supported providers
+      description: Returns all registered providers and whether they require an API key.
+      tags: [Models]
+      responses:
+        "200":
+          description: List of providers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProviderEntry"
+
+  /admin/v1/models:
+    get:
+      operationId: listModels
+      summary: List model catalog
+      description: Returns known models. Optionally filter by provider.
+      tags: [Models]
+      parameters:
+        - name: provider
+          in: query
+          schema:
+            type: string
+          description: Filter by provider name (e.g. anthropic, openai).
+          example: anthropic
+      responses:
+        "200":
+          description: Model catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModelEntry"
+
+  /admin/v1/model-prices:
+    get:
+      operationId: listModelPrices
+      summary: List model pricing
+      description: Returns all stored per-model pricing records used for spend tracking.
+      tags: [Models]
+      responses:
+        "200":
+          description: Pricing records.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prices:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModelPrice"
+    put:
+      operationId: upsertModelPrice
+      summary: Create or update a model price
+      description: |
+        Upserts a pricing record using `(provider, model)` as the key. If a record
+        already exists it is replaced.
+      tags: [Models]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelPriceUpsert"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /admin/v1/model-prices/{provider}/{model}:
+    delete:
+      operationId: deleteModelPrice
+      summary: Delete a model price
+      description: |
+        Removes the pricing record. Subsequent requests for this model fall back to
+        built-in price defaults, or report zero cost if not in the defaults.
+        URL-encode the model name if it contains slashes.
+      tags: [Models]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+          example: openai
+        - name: model
+          in: path
+          required: true
+          schema:
+            type: string
+          example: gpt-4o
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+
+  # ── Guardrails ─────────────────────────────────────────────────────────────────
+
+  /admin/v1/gateways/{gateway_id}/guardrail-stats:
+    get:
+      operationId: getGuardrailStats
+      summary: Get guardrail trigger counts
+      description: Returns aggregate trigger counts per guardrail and action for this gateway.
+      tags: [Guardrails]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "200":
+          description: Guardrail statistics.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /admin/v1/gateways/{gateway_id}/guardrail-events:
+    get:
+      operationId: listGuardrailEvents
+      summary: List recent guardrail events
+      description: Returns the most recent guardrail trigger events for this gateway.
+      tags: [Guardrails]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Maximum number of events to return.
+      responses:
+        "200":
+          description: Recent guardrail events.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reusable parameters and responses
+# ─────────────────────────────────────────────────────────────────────────────
+
+  parameters:
+
+    tenantSlug:
+      name: tenant
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Tenant slug (from the tenant's `slug` field).
+      example: myapp
+
+    gatewaySlug:
+      name: gateway
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Gateway slug (from the gateway's `slug` field).
+      example: production
+
+    providerName:
+      name: provider
+      in: path
+      required: true
+      schema:
+        type: string
+      description: |
+        Provider identifier. One of: `openai`, `anthropic`, `gemini`, `bedrock`,
+        `azure`, `ollama`, `mistral`, `groq`, `cohere`, `deepseek`, `fireworks`,
+        `perplexity`, `together`, `openrouter`, and others.
+      example: openai
+
+    tenantId:
+      name: tenant_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: ten_abc123
+
+    gatewayId:
+      name: gateway_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: gw_xyz789
+
+    userId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: usr_abc123
+
+    tokenId:
+      name: token_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: tok_def456
+
+    ruleId:
+      name: rule_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: rule_abc123
+
+    byokAlias:
+      name: x-aig-byok-alias
+      in: header
+      required: false
+      schema:
+        type: string
+        default: default
+      description: |
+        Selects which stored BYOK key to use for this request. Defaults to `default`.
+        Use when you have stored multiple keys for the same provider under different aliases.
+      example: team-a
+
+    metaHeaders:
+      name: x-aig-meta-*
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        Custom metadata attached to this request. Any header matching `x-aig-meta-{key}`
+        is captured in the log entry and can be used as a routing rule condition via
+        `{"field": "meta.{key}", "op": "eq", "value": "..."}`.
+      example: x-aig-meta-env=production
+
+    collectLogPayload:
+      name: x-aig-collect-log-payload
+      in: header
+      required: false
+      schema:
+        type: string
+        enum: ["true", "false"]
+        default: "true"
+      description: |
+        Set to `false` to suppress storing the request and response body text in the
+        log for this specific request. Useful for requests containing sensitive data
+        that should not be logged even when `log_payloads: true` is configured on the gateway.
+
+  responses:
+
+    Ok:
+      description: Operation succeeded.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OkResponse"
+
+    BadRequest:
+      description: Invalid request body or missing required field.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    Unauthorized:
+      description: Missing or invalid auth token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    RateLimited:
+      description: Rate limit or budget quota exceeded.
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Configured request limit for the window.
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Estimated remaining requests in the current window.
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Unix timestamp (seconds) when the window resets.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    ProviderError:
+      description: All upstream providers failed (retries and fallbacks exhausted).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
