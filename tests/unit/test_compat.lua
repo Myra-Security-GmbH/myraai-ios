@@ -115,6 +115,12 @@ describe("providers.compat.infer_provider — prefix map", function()
     it("nvidia/future-model → nvidia  (nvidia/ prefix)", function()
         assert.equal("nvidia", compat.infer_provider("nvidia/future-model"))
     end)
+    it("ollama/llama3.1 → ollama  (ollama/ prefix)", function()
+        assert.equal("ollama", compat.infer_provider("ollama/llama3.1"))
+    end)
+    it("ollama/mistral → ollama  (ollama/ prefix)", function()
+        assert.equal("ollama", compat.infer_provider("ollama/mistral"))
+    end)
 end)
 
 -- ── HuggingFace prefixes (step 5) ────────────────────────────────────────────
