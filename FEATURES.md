@@ -16,20 +16,19 @@
 5. [Caching](#5-caching)
 6. [Rate Limiting](#6-rate-limiting)
 7. [Budget & Quota Enforcement](#7-budget--quota-enforcement)
-8. [Data Loss Prevention (DLP)](#8-data-loss-prevention-dlp)
-9. [Detector Pipeline](#9-detector-pipeline)
-10. [Content Moderation (Guardrails)](#10-content-moderation-guardrails)
-11. [Provider Key Management (BYOK)](#11-provider-key-management-byok)
-12. [IP Allowlist](#12-ip-allowlist)
-13. [Response Streaming](#13-response-streaming)
-14. [Cost Attribution & Pricing](#14-cost-attribution--pricing)
-15. [Observability & Logging](#15-observability--logging)
-16. [Prometheus Metrics](#16-prometheus-metrics)
-17. [Multi-Tenancy](#17-multi-tenancy)
-18. [Admin REST API](#18-admin-rest-api)
-19. [Playground UI](#19-playground-ui)
-20. [Gateway Configuration Reference](#20-gateway-configuration-reference)
-21. [Error Handling](#21-error-handling)
+8. [Detector Pipeline](#8-detector-pipeline)
+9. [Provider Key Management (BYOK)](#9-provider-key-management-byok)
+10. [IP Allowlist](#10-ip-allowlist)
+11. [Response Streaming](#11-response-streaming)
+12. [Cost Attribution & Pricing](#12-cost-attribution--pricing)
+13. [Observability & Logging](#13-observability--logging)
+14. [Prometheus Metrics](#14-prometheus-metrics)
+15. [Multi-Tenancy](#15-multi-tenancy)
+16. [Admin REST API](#16-admin-rest-api)
+17. [Dashboard UI](#17-dashboard-ui)
+18. [Playground UI](#18-playground-ui)
+19. [Gateway Configuration Reference](#19-gateway-configuration-reference)
+20. [Error Handling](#20-error-handling)
 
 ---
 
@@ -46,18 +45,15 @@ Requests flow through a fixed middleware chain in phase order:
 
 **Content phase** (body available):
 1. `cache_check` — SHA-256 exact-match lookup; serve immediately on hit
-2. `dlp` — Pattern scan (block / scrub / flag)
-3. `detectors` — Tier 1 + Tier 2 prompt security classifiers (request)
-4. `guardrails_request` — Llama Guard 3 classifier
-5. `transform` — Parse and normalize request body
-6. `routing` — Rules engine (provider, model, fallback chain)
-7. `byok` — Decrypt and inject provider API key
-8. `upstream` — Call provider with retry + fallback
-9. `detectors_response` — Tier 1 response scan
-10. `guardrails_response` — Pattern-based response check
-11. `cost` — Token counting and budget increment
-12. `cache_store` — Persist non-streaming 200 responses
-13. `send_response` — Write buffered response body to client
+2. `detectors` — Tier 1 + Tier 2 prompt security classifiers (request)
+3. `transform` — Parse and normalize request body
+4. `routing` — Rules engine (provider, model, fallback chain)
+5. `byok` — Decrypt and inject provider API key
+6. `upstream` — Call provider with retry + fallback
+7. `detectors_response` — Tier 1 + Tier 2 response scan
+8. `cost` — Token counting and budget increment
+9. `cache_store` — Persist non-streaming 200 responses
+10. `send_response` — Write buffered response body to client
 
 **Log phase** (best-effort, after response sent):
 1. Structured JSON request log
@@ -281,40 +277,7 @@ Costs are stored as micro-dollars (`cost * 1e6`) to avoid floating-point precisi
 
 ---
 
-## 8. Data Loss Prevention (DLP)
-
-### Built-in Patterns
-
-| Name | Matches |
-|---|---|
-| `email` | Email addresses |
-| `ssn` | Social Security Numbers (XXX-XX-XXXX) |
-| `cc` | Credit card numbers (16 digits) |
-| `phone` | Phone numbers (international format) |
-| `api_key` | API key patterns (`key="..."`) |
-| `jwt` | JWT bearer tokens |
-
-### Actions
-
-| Action | Behavior |
-|---|---|
-| `block` | Reject request with `400 DLP_BLOCKED` |
-| `scrub` | Replace matches with `[REDACTED]` before forwarding |
-| `flag` | Log warning; request proceeds unmodified (default) |
-
-### Configuration
-
-```json
-"dlp": {
-  "enabled": true,
-  "action": "scrub",
-  "patterns": ["email", "ssn", "cc"]
-}
-```
-
----
-
-## 9. Detector Pipeline
+## 8. Detector Pipeline
 
 A two-tier prompt security system that runs on every request (and optionally on responses) before the upstream call is made.
 
@@ -362,47 +325,9 @@ Calls external HTTP services. Each detector has a configurable `url`, `timeout_m
 
 ---
 
-## 10. Content Moderation (Guardrails)
-
-### Request Guardrails (Llama Guard 3)
-
-The last user message is extracted and sent to a Llama Guard 3 HTTP service for classification.
-
-**Unsafe categories blocked:**
-
-| Code | Category |
-|---|---|
-| S1 | Violent Crimes |
-| S2 | Non-Violent Crimes |
-| S3 | Sex-Related Crimes |
-| S4 | Child Sexual Exploitation |
-| S5–S14 | Defamation, specialized advice, privacy, IP infringement, CBRN weapons, hate speech, self-harm, explicit content, election interference, code abuse |
-
-**Configuration:**
-```json
-"guardrails": {
-  "enabled": true,
-  "llama_guard_url": "http://127.0.0.1:8083",
-  "timeout_ms": 2000,
-  "fail_open": true
-}
-```
-
-- `fail_open: true` — allow request if classifier is unavailable (default)
-- `fail_open: false` — deny request if classifier is unavailable
-- Blocked responses respect the `stream` parameter (returns SSE for streaming, JSON for non-streaming)
-
-### Response Guardrails
-
-Pattern-based check on the provider response (before forwarding to client).
-
-- Categories: `self_harm`, `violence`
-- Non-blocking for streaming responses (already sent to client)
-- Sets `ctx.guardrail_response_blocked` for logging
-
 ---
 
-## 11. Provider Key Management (BYOK)
+## 9. Provider Key Management (BYOK)
 
 ### Encryption
 
@@ -435,7 +360,7 @@ GET    /admin/v1/gateways/{id}/keys
 
 ---
 
-## 12. IP Allowlist
+## 10. IP Allowlist
 
 - Configured as a list of CIDR blocks: `["10.0.0.0/8", "203.0.113.42/32"]`
 - Bare IPs treated as `/32`
@@ -444,7 +369,7 @@ GET    /admin/v1/gateways/{id}/keys
 
 ---
 
-## 13. Response Streaming
+## 11. Response Streaming
 
 - Server-Sent Events (SSE) pass-through via `text/event-stream`
 - Each chunk flushed to client immediately (`ngx.flush(true)`) — no buffering
@@ -453,7 +378,7 @@ GET    /admin/v1/gateways/{id}/keys
   - Anthropic: `content_block_delta`, `message_delta` (with usage), `message_stop`
   - Gemini / Vertex: candidate chunks with `usageMetadata`
 - `time_to_first_token_ms` tracked from request start to first non-header data chunk
-- Streaming responses are not cached and not subject to response guardrails
+- Streaming responses are not cached
 
 ### Compat Streaming (SSE Format Normalisation)
 
@@ -471,7 +396,7 @@ The compat endpoint converts provider-native SSE to OpenAI `chat.completion.chun
 
 ---
 
-## 14. Cost Attribution & Pricing
+## 12. Cost Attribution & Pricing
 
 ### Pricing Sources
 
@@ -506,7 +431,7 @@ Anthropic prompt caching has separate per-1k prices for cache write (typically 1
 
 ---
 
-## 15. Observability & Logging
+## 13. Observability & Logging
 
 ### Structured Request Logs (JSON)
 
@@ -536,7 +461,7 @@ Frontend JavaScript errors are reported to `POST /admin/v1/client-errors` and st
 
 ---
 
-## 16. Prometheus Metrics
+## 14. Prometheus Metrics
 
 Stored in `aig_metrics` shared dict. Exposed at `GET /metrics` (Prometheus text format 0.0.4, IP-restricted).
 
@@ -549,7 +474,7 @@ Stored in `aig_metrics` shared dict. Exposed at `GET /metrics` (Prometheus text 
 
 ---
 
-## 17. Multi-Tenancy
+## 15. Multi-Tenancy
 
 ### URL Structure
 
@@ -581,7 +506,7 @@ Tenant
 
 ---
 
-## 18. Admin REST API
+## 16. Admin REST API
 
 All endpoints are under `/admin/v1/`.
 
@@ -648,7 +573,8 @@ All endpoints are under `/admin/v1/`.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/stats` | Aggregated usage statistics |
+| GET | `/stats` | Aggregated usage statistics (last_min, hour, today, yesterday, last_7d; by_tenant; recent requests) |
+| GET | `/stats/timeseries` | Time-bucketed request/cost/blocked counts (params: `bucket` 5m/15m/30m/1h/6h/1d, `n` 1–168, `until` unix seconds) |
 | GET | `/logs` | Query request logs (filters: `tenant_id`, `gateway_id`, `provider`, `since`, `limit`, `offset`) |
 
 ### Playground
@@ -667,7 +593,41 @@ All endpoints are under `/admin/v1/`.
 
 ---
 
-## 19. Playground UI
+## 17. Dashboard UI
+
+The Dashboard page displays real-time and historical gateway metrics as hero cards with sparklines.
+
+### Hero Cards
+
+Three top-level metric cards are always visible:
+
+| Card | Metric | Sub-label |
+|---|---|---|
+| Requests | Total request count | Cache hit rate (%) |
+| Cost | Total cost in USD | Savings via cache |
+| Blocked | Total blocked requests | Percentage of requests blocked |
+
+Each card contains an inline SVG sparkline showing the trend over the selected timeframe.
+
+### Timeframe Switcher
+
+A tab bar above the hero cards selects the reporting period:
+
+| Tab | Period | Chart granularity |
+|---|---|---|
+| Today | Since UTC midnight | 1 h buckets × hours elapsed today |
+| Yesterday | Previous UTC day | 1 h buckets × 24 |
+| Last 7 days | Rolling 7 days | 1 d buckets × 7 |
+| Last hour | Rolling 60 minutes | 5 m buckets × 12 |
+| Last minute | Rolling 60 seconds | 5 m buckets × 12 |
+
+### Data Fetching
+
+All API calls use `Promise.allSettled` — the dashboard always renders with whatever data arrived and never shows an error page. Missing or failed fetches fall back to zero values silently.
+
+---
+
+## 18. Playground UI
 
 A React single-page app (`frontend/`) for interactive model testing and comparison.
 
@@ -733,7 +693,7 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
 
 ---
 
-## 20. Gateway Configuration Reference
+## 19. Gateway Configuration Reference
 
 ```json
 {
@@ -745,17 +705,6 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
   "budget_usd": null,
   "rate_limit": {"requests": 100, "window_sec": 60},
   "ip_allowlist": [],
-  "dlp": {
-    "enabled": false,
-    "action": "flag",
-    "patterns": []
-  },
-  "guardrails": {
-    "enabled": false,
-    "llama_guard_url": "http://127.0.0.1:8083",
-    "timeout_ms": 2000,
-    "fail_open": true
-  },
   "detectors": {
     "enabled": false,
     "tiers": ["tier1"],
@@ -783,7 +732,7 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
 
 ---
 
-## 21. Error Handling
+## 20. Error Handling
 
 All errors return a JSON body:
 
@@ -799,7 +748,6 @@ All errors return a JSON body:
 | `INVALID_REQUEST` | 400 | Malformed request or missing required fields |
 | `RATE_LIMITED` | 429 | Sliding-window limit exceeded |
 | `QUOTA_EXCEEDED` | 429 | Budget cap reached |
-| `DLP_BLOCKED` | 400 | DLP pattern matched with `block` action |
 | `GUARDRAIL_BLOCKED` | 400 | Llama Guard classified content as unsafe |
 | `DETECTOR_BLOCKED` | 400 | Detector pipeline blocked the request |
 | `PROVIDER_ERROR` | 502 | Upstream provider returned 5xx |

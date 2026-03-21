@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 32" fill="none">
+  <rect x="0" y="6" width="20" height="20" rx="4" fill="#2ad9ff"/>
+  <path d="M4 22 L10 10 L16 22 M6.5 18 L13.5 18" stroke="#002b49" stroke-width="2" stroke-linecap="round"/>
+  <text x="28" y="23" font-family="system-ui,-apple-system,sans-serif" font-size="15" font-weight="700" fill="#002b49">AI Gateway</text>
+</svg>

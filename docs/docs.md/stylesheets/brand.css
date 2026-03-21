@@ -1,0 +1,77 @@
+/* ============================================================
+   AI Gateway documentation — brand overrides for MkDocs Material
+   Primary: dark navy #002b49   Accent: cyan #2ad9ff
+   ============================================================ */
+
+/* --- Brand colour palette ----------------------------------- */
+:root {
+  /* Primary = dark navy #002b49 */
+  --md-primary-fg-color:             #002b49;
+  --md-primary-fg-color--light:      #004070;
+  --md-primary-fg-color--dark:       #001830;
+
+  /* Accent = cyan #2ad9ff */
+  --md-accent-fg-color:              #2ad9ff;
+  --md-accent-fg-color--transparent: rgba(42, 217, 255, 0.1);
+
+  /* Link colour */
+  --md-typeset-a-color:              #0077aa;
+
+  --md-text-font: system-ui, -apple-system, sans-serif;
+  --md-code-font: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+}
+
+/* --- Code blocks -------------------------------------------- */
+.md-typeset code {
+  background-color: #f0f7fb;
+  color: #082433;
+}
+
+/* --- Admonitions -------------------------------------------- */
+.md-typeset .admonition.note,
+.md-typeset details.note {
+  border-color: #2ad9ff;
+}
+.md-typeset .admonition.note > .admonition-title,
+.md-typeset details.note > summary {
+  background-color: rgba(42, 217, 255, 0.12);
+}
+
+.md-typeset .admonition.warning,
+.md-typeset details.warning {
+  border-color: #f0a500;
+}
+
+/* --- Tables ------------------------------------------------- */
+.md-typeset table:not([class]) th {
+  background-color: #002b49;
+  color: #ffffff;
+}
+.md-typeset table:not([class]) tr:nth-child(even) {
+  background-color: #f0f7fb;
+}
+
+.md-typeset table:not([class]) td code,
+.md-typeset table:not([class]) th code {
+  white-space: nowrap;
+}
+
+.md-typeset table:not([class]) {
+  overflow-x: auto;
+  display: block;
+}
+
+/* --- Footer ------------------------------------------------- */
+.md-footer {
+  background-color: #002b49;
+}
+.md-footer-meta {
+  background-color: #001830;
+}
+
+/* --- Logo size in header ------------------------------------ */
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 32px;
+  width: auto;
+}
