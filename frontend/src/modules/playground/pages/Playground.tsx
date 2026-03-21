@@ -1332,7 +1332,7 @@ export default function Playground() {
               type="button"
               className={`${s.btn} ${webSearch ? s["btn--primary"] : s["btn--secondary"]} ${s["btn--sm"]}`}
               onClick={() => setWebSearch((v) => !v)}
-              title="Inject a web_search tool so Claude can look up current information"
+              title="Enable web search (Claude: agentic loop · Gemini: grounding · Perplexity: built-in)"
             >
               {webSearch ? "Web Search ON" : "Web Search"}
             </button>
@@ -1479,6 +1479,20 @@ export default function Playground() {
         />
         <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <span>Tip: ⌘↵ / Ctrl↵ to run</span>
+          {webSearchUnsupported && (
+            <span
+              style={{
+                background: "var(--badge-warn-bg, #fef3c7)",
+                color: "var(--badge-warn-text, #92400e)",
+                borderRadius: 4,
+                padding: "2px 8px",
+                fontWeight: 500,
+              }}
+              aria-label="Web search not supported"
+            >
+              Web search is not available for the selected model
+            </span>
+          )}
           {showSearchHint && (
             <span
               style={{

@@ -54,6 +54,16 @@ function M.build_request(ctx)
         body.system_instruction = system_instruction
     end
 
+    -- Enable Google Search grounding when client passes a web_search tool
+    if src.tools and type(src.tools) == "table" then
+        for _, tool in ipairs(src.tools) do
+            if tool.name == "web_search" then
+                body.tools = {{ ["googleSearch"] = {} }}
+                break
+            end
+        end
+    end
+
     return json.encode(body)
 end
 
