@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { User, Tenant, Gateway, AuthToken } from "src/api/types";
@@ -217,7 +218,7 @@ function TokenRevealModal({ token, onClose }: { token: string; onClose: () => vo
           <h2 className={s["modal-title"]}>Token Created</h2>
           <button className={s["modal-close"]} onClick={onClose}><CloseIcon /></button>
         </div>
-        <div className={`${s.alert} ${s["alert--error"]}`} style={{ marginBottom: 12 }}>
+        <div className={`${s.alert} ${s["alert--warning"]}`} style={{ marginBottom: 12 }}>
           Copy this token now — it will not be shown again.
         </div>
         <div className={s.mono} style={{ background: "var(--bg-secondary)", padding: "10px 14px", borderRadius: 6, wordBreak: "break-all", fontSize: 13, marginBottom: 14 }}>
@@ -236,15 +237,14 @@ function TokenRevealModal({ token, onClose }: { token: string; onClose: () => vo
 // User detail panel
 // ---------------------------------------------------------------------------
 
-function UserDetail({ user: initialUser, tenantGateways, allGateways, onBack, onDeleted, onUpdated }: {
+function UserDetail({ user: initialUser, onBack, onDeleted, onUpdated }: {
   user: User;
-  tenantGateways: Gateway[];
-  allGateways: Gateway[];
   onBack: () => void;
   onDeleted: () => void;
   onUpdated: (u: User) => void;
 }) {
   const [user, setUser] = useState(initialUser);
+  const [tenantGateways, setTenantGateways] = useState<Gateway[]>([]);
   const [tokens, setTokens] = useState<AuthToken[]>([]);
   const [accessGateways, setAccessGateways] = useState<{ id: string; slug: string }[]>([]);
   const [loadingTokens, setLoadingTokens] = useState(true);
@@ -263,8 +263,11 @@ function UserDetail({ user: initialUser, tenantGateways, allGateways, onBack, on
     setLoadingAccess(true);
     api.get<{ id: string; slug: string }[]>(`/users/${user.id}/gateways`).then(setAccessGateways).finally(() => setLoadingAccess(false));
   }
+  function loadGateways() {
+    api.get<Gateway[]>(`/tenants/${user.tenant_id}/gateways`).then(setTenantGateways).catch(() => {});
+  }
 
-  useEffect(() => { loadTokens(); loadAccess(); }, [user.id]);
+  useEffect(() => { loadTokens(); loadAccess(); loadGateways(); }, [user.id]);
 
   async function handleDelete() {
     if (!confirm(`Delete user "${user.email}"? Their tokens will also be revoked.`)) return;
@@ -308,7 +311,7 @@ function UserDetail({ user: initialUser, tenantGateways, allGateways, onBack, on
       {showToken && (
         <TokenModal
           user={user}
-          gateways={user.role === "admin" ? tenantGateways : tenantGateways.filter((g) => accessibleIds.has(g.id))}
+          gateways={tenantGateways}
           onClose={() => setShowToken(false)}
           onCreated={(t) => { setShowToken(false); setNewToken(t); loadTokens(); }}
         />
@@ -316,7 +319,7 @@ function UserDetail({ user: initialUser, tenantGateways, allGateways, onBack, on
       {newToken && <TokenRevealModal token={newToken} onClose={() => setNewToken(null)} />}
 
       <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={onBack} style={{ marginBottom: 16 }}>
-        ← Back to Users
+        ← Users
       </button>
 
       {/* User info card */}
@@ -333,11 +336,11 @@ function UserDetail({ user: initialUser, tenantGateways, allGateways, onBack, on
         <div className={s["stats-grid"]}>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Email</div>
-            <div className={s["stat-value"]} style={{ fontSize: 16 }}>{user.email}</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{user.email}</div>
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Name</div>
-            <div className={s["stat-value"]} style={{ fontSize: 16 }}>{user.name ?? <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>—</span>}</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{user.name ?? <span style={{ color: "var(--text-secondary)" }}>—</span>}</div>
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Role</div>
@@ -347,15 +350,15 @@ function UserDetail({ user: initialUser, tenantGateways, allGateways, onBack, on
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Tenant</div>
-            <div className={s["stat-value"]} style={{ fontSize: 16 }}><span className={s.code}>{user.tenant_slug}</span></div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}><span className={s.code}>{user.tenant_slug}</span></div>
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>User ID</div>
-            <div className={s.mono} style={{ fontSize: 11, marginTop: 8, color: "var(--text-secondary)", wordBreak: "break-all" }}>{user.id}</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ color: "var(--text-secondary)" }}>{user.id}</div>
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Created</div>
-            <div className={s["stat-value"]} style={{ fontSize: 16 }}>{user.created_at.slice(0, 10)}</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{user.created_at.slice(0, 10)}</div>
           </div>
         </div>
       </div>
@@ -389,7 +392,7 @@ function UserDetail({ user: initialUser, tenantGateways, allGateways, onBack, on
               </thead>
               <tbody>
                 {tokens.map((t) => {
-                  const gw = allGateways.find((g) => g.id === t.gateway_id);
+                  const gw = tenantGateways.find((g) => g.id === t.gateway_id);
                   const scopes = typeof t.scopes === "string" ? JSON.parse(t.scopes) : (t.scopes ?? []);
                   const rl = typeof t.rate_limit === "string" ? JSON.parse(t.rate_limit) : t.rate_limit;
                   return (
@@ -493,10 +496,10 @@ function UserDetail({ user: initialUser, tenantGateways, allGateways, onBack, on
 
 export default function Users() {
   useDocumentTitle("Users");
+  const { userId } = useParams<{ userId?: string }>();
+  const navigate = useNavigate();
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [allGateways, setAllGateways] = useState<Gateway[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [selected, setSelected] = useState<User | null>(null);
   const [filterTenantId, setFilterTenantId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -520,12 +523,7 @@ export default function Users() {
   }
 
   useEffect(() => {
-    api.get<Tenant[]>("/tenants").then((ts) => {
-      setTenants(ts);
-      // Load gateways for all tenants
-      Promise.all(ts.map((t) => api.get<Gateway[]>(`/tenants/${t.id}/gateways`).catch(() => [] as Gateway[])))
-        .then((gws) => setAllGateways(gws.flat()));
-    });
+    api.get<Tenant[]>("/tenants").then(setTenants);
     loadUsers();
   }, []);
 
@@ -533,24 +531,20 @@ export default function Users() {
     loadUsers(filterTenantId || undefined);
   }, [filterTenantId]);
 
-  const tenantGateways = selected
-    ? allGateways.filter((g) => g.tenant_id === selected.tenant_id)
-    : [];
+  const selected = users.find((u) => u.id === userId) ?? null;
 
-  if (selected) {
+  if (userId) {
+    if (loading) return <main className={s.page}><div className={s.empty}>Loading…</div></main>;
+    if (!selected) return <Navigate to="/users" replace />;
     return (
       <main className={s.page}>
         <h1 className={s["page-title"]} style={{ marginBottom: 20 }}>{selected.email}</h1>
         <UserDetail
+          key={userId}
           user={selected}
-          tenantGateways={tenantGateways}
-          allGateways={allGateways}
-          onBack={() => setSelected(null)}
-          onDeleted={() => { setSelected(null); loadUsers(filterTenantId || undefined); }}
-          onUpdated={(u) => {
-            setSelected(u);
-            setUsers((us) => us.map((x) => x.id === u.id ? u : x));
-          }}
+          onBack={() => navigate("/users")}
+          onDeleted={() => { navigate("/users"); loadUsers(filterTenantId || undefined); }}
+          onUpdated={(u) => setUsers((us) => us.map((x) => x.id === u.id ? u : x))}
         />
       </main>
     );
@@ -613,15 +607,15 @@ export default function Users() {
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id} style={{ cursor: "pointer" }} onClick={() => setSelected(u)}>
+                <tr key={u.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/users/${u.id}`)}>
                   <td>{u.email}</td>
                   <td style={{ color: u.name ? undefined : "var(--text-secondary)" }}>{u.name ?? "—"}</td>
                   <td><span className={`${s.badge} ${roleColor(u.role)}`}>{u.role}</span></td>
                   <td><span className={s.code}>{u.tenant_slug}</span></td>
                   <td className={s.mono}>{u.created_at.slice(0, 10)}</td>
                   <td>
-                    <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); setSelected(u); }}>
-                      Configure →
+                    <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/users/${u.id}`); }}>
+                      Open →
                     </button>
                   </td>
                 </tr>

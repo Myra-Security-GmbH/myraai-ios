@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { Tenant, Gateway } from "src/api/types";
@@ -128,7 +128,7 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
       {showEdit && <TenantModal tenant={tenant} onClose={() => setShowEdit(false)} onSaved={handleSaved} />}
 
       <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={onBack} style={{ marginBottom: 16 }}>
-        ← Back to Tenants
+        ← Tenants
       </button>
 
       {/* Config card */}
@@ -148,7 +148,7 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
         <div className={s["stats-grid"]}>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Slug</div>
-            <div className={s["stat-value"]} style={{ fontSize: 18 }}><span className={s.code}>{tenant.slug}</span></div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}><span className={s.code}>{tenant.slug}</span></div>
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Plan</div>
@@ -158,8 +158,8 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Budget Limit</div>
-            <div className={s["stat-value"]}>
-              {tenant.budget_usd != null ? `$${tenant.budget_usd.toFixed(2)}` : <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>unlimited</span>}
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>
+              {tenant.budget_usd != null ? `$${tenant.budget_usd.toFixed(2)}` : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}
             </div>
           </div>
           <div className={s["stat-card"]}>
@@ -168,11 +168,11 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Tenant ID</div>
-            <div className={s.mono} style={{ fontSize: 11, marginTop: 8, color: "var(--text-secondary)", wordBreak: "break-all" }}>{tenant.id}</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ color: "var(--text-secondary)" }}>{tenant.id}</div>
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Created</div>
-            <div className={s["stat-value"]} style={{ fontSize: 16 }}>{tenant.created_at.slice(0, 10)}</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{tenant.created_at.slice(0, 10)}</div>
           </div>
         </div>
       </div>
@@ -182,17 +182,17 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
         <div className={s["card-header"]}>
           <h2 className={s["card-title"]}>Gateways</h2>
           <button
-            className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`}
+            className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
             onClick={() => navigate(`/tenants/${tenant.id}/gateways`)}
           >
-            Manage Gateways →
+            All Gateways →
           </button>
         </div>
 
         {loadingGateways ? (
           <div className={s.empty}>Loading…</div>
         ) : gateways.length === 0 ? (
-          <div className={s.empty}>No gateways yet. Click "Manage Gateways" to create one.</div>
+          <div className={s.empty}>No gateways yet. Click "All Gateways" to create one.</div>
         ) : (
           <div className={s["table-wrapper"]}>
             <table className={s.table}>
@@ -202,14 +202,13 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
                   <th>Auth</th>
                   <th>Budget</th>
                   <th>Cache TTL</th>
-                  <th>Guardrails</th>
                   <th>Created</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {gateways.map((g) => (
-                  <tr key={g.id}>
+                  <tr key={g.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/tenants/${tenant.id}/gateways/${g.id}`)}>
                     <td><span className={s.code}>{g.slug}</span></td>
                     <td>
                       <span className={`${s.badge} ${g.config.auth_required !== false ? s["badge--success"] : s["badge--neutral"]}`}>
@@ -218,18 +217,13 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
                     </td>
                     <td>{g.config.budget_usd != null ? `$${g.config.budget_usd}` : "—"}</td>
                     <td>{g.config.cache_ttl ?? 0}s</td>
-                    <td>
-                      <span className={`${s.badge} ${g.config.guardrails?.enabled ? s["badge--warning"] : s["badge--neutral"]}`}>
-                        {g.config.guardrails?.enabled ? "on" : "off"}
-                      </span>
-                    </td>
                     <td className={s.mono}>{g.created_at.slice(0, 10)}</td>
                     <td>
                       <button
                         className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
-                        onClick={() => navigate(`/tenants/${tenant.id}/gateways`)}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/tenants/${tenant.id}/gateways/${g.id}`); }}
                       >
-                        Manage →
+                        Open →
                       </button>
                     </td>
                   </tr>
@@ -249,8 +243,9 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
 
 export default function Tenants() {
   useDocumentTitle("Tenants");
+  const { tenantId } = useParams<{ tenantId?: string }>();
+  const navigate = useNavigate();
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [selected, setSelected] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -265,18 +260,20 @@ export default function Tenants() {
 
   useEffect(load, []);
 
-  if (selected) {
+  const selected = tenants.find((t) => t.id === tenantId) ?? null;
+
+  if (tenantId) {
+    if (loading) return <main className={s.page}><div className={s.empty}>Loading…</div></main>;
+    if (!selected) return <Navigate to="/tenants" replace />;
     return (
       <main className={s.page}>
         <h1 className={s["page-title"]} style={{ marginBottom: 20 }}>{selected.slug}</h1>
         <TenantDetail
+          key={tenantId}
           tenant={selected}
-          onBack={() => setSelected(null)}
-          onDeleted={() => { setSelected(null); load(); }}
-          onUpdated={(t) => {
-            setSelected(t);
-            setTenants((ts) => ts.map((x) => x.id === t.id ? t : x));
-          }}
+          onBack={() => navigate("/tenants")}
+          onDeleted={() => { navigate("/tenants"); load(); }}
+          onUpdated={(t) => setTenants((ts) => ts.map((x) => x.id === t.id ? t : x))}
         />
       </main>
     );
@@ -318,7 +315,7 @@ export default function Tenants() {
             </thead>
             <tbody>
               {tenants.map((t) => (
-                <tr key={t.id} style={{ cursor: "pointer" }} onClick={() => setSelected(t)}>
+                <tr key={t.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/tenants/${t.id}`)}>
                   <td><span className={s.code}>{t.slug}</span></td>
                   <td>
                     <span className={`${s.badge} ${t.plan === "enterprise" ? s["badge--success"] : t.plan === "standard" ? s["badge--warning"] : s["badge--neutral"]}`}>
@@ -328,8 +325,8 @@ export default function Tenants() {
                   <td>{t.budget_usd != null ? `$${t.budget_usd.toFixed(2)}` : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}</td>
                   <td className={s.mono}>{t.created_at.slice(0, 10)}</td>
                   <td>
-                    <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); setSelected(t); }}>
-                      Configure →
+                    <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/tenants/${t.id}`); }}>
+                      Open →
                     </button>
                   </td>
                 </tr>
