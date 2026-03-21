@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { fmtDateTime } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
 
@@ -55,9 +55,8 @@ export function GuardrailEventsTable({ rows, showGuardrailLatency = false }: Pro
             const hasDetail = !!(row.response_raw || row.prompt_scrubbed);
             const isExpanded = expandedId === i;
             return (
-              <>
+              <Fragment key={i}>
                 <tr
-                  key={i}
                   className={outcome === "blocked" ? s.blocked : ""}
                   style={hasDetail ? { cursor: "pointer", background: "var(--bg-highlight, #fffbe6)" } : undefined}
                   onClick={hasDetail ? () => setExpandedId(isExpanded ? null : i) : undefined}
@@ -77,7 +76,7 @@ export function GuardrailEventsTable({ rows, showGuardrailLatency = false }: Pro
                   )}
                 </tr>
                 {hasDetail && isExpanded && (
-                  <tr key={`${i}-detail`}>
+                  <tr>
                     <td colSpan={colSpan} style={{ padding: "8px 12px", background: "var(--bg-subtle, #f6f8fa)" }}>
                       {row.prompt_scrubbed && (
                         <div style={{ marginBottom: row.response_raw ? 12 : 0 }}>
@@ -102,7 +101,7 @@ export function GuardrailEventsTable({ rows, showGuardrailLatency = false }: Pro
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             );
           })}
         </tbody>
