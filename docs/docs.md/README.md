@@ -38,7 +38,7 @@
 ### Security
 
 - [Authentication](security/authentication.md)
-- [Detector Pipeline](security/detectors.md)
+- [Guardrail Pipeline](security/guardrails.md)
 - [BYOK Key Vault](security/byok.md)
 - [IP Allowlist](security/ip-allowlist.md)
 

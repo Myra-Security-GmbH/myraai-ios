@@ -64,13 +64,13 @@ nav:
     - configuration/budgets.md
   - Security:
     - security/authentication.md
-    - Detectors:
-      - security/detectors.md
-      - security/detectors/regex.md
-      - security/detectors/keyword.md
-      - security/detectors/presidio.md
-      - security/detectors/llm-guard.md
-      - security/detectors/pii-protector.md
+    - Guardrails:
+      - security/guardrails.md
+      - security/guardrails/regex.md
+      - security/guardrails/keyword.md
+      - security/guardrails/presidio.md
+      - security/guardrails/prompt-guard.md
+      - security/guardrails/pii-protector.md
     - security/byok.md
     - security/ip-allowlist.md
   - Routing:

@@ -1,4 +1,4 @@
--- detectors/llm_guard.lua — Tier 2 Llama Guard sidecar detector
+-- guardrails/prompt_guard.lua — Tier 2 Llama Guard (Prompt Guard) sidecar guardrail
 -- Implements Llama Guard 3 sidecar classification for request and response phases.
 -- Supports request and response phases, category filtering, and flag action.
 
@@ -188,7 +188,7 @@ function M.run(ctx, detector, phase)
     ctx.log_fields.guardrail_latency_ms = latency_ms
 
     if not result then
-        ngx.log(ngx.WARN, "llm_guard: sidecar unavailable: ", classify_err,
+        ngx.log(ngx.WARN, "prompt_guard:sidecar unavailable: ", classify_err,
                 " detector=", detector.name or "?",
                 " tenant=", ctx.tenant_id)
         ctx.log_fields.guardrail_verdict = "error"
@@ -214,7 +214,7 @@ function M.run(ctx, detector, phase)
     end
 
     ctx.log_fields.guardrail_verdict = "unsafe"
-    ngx.log(ngx.WARN, "llm_guard: unsafe content detected detector=", detector.name or "?",
+    ngx.log(ngx.WARN, "prompt_guard:unsafe content detected detector=", detector.name or "?",
             " tenant=", ctx.tenant_id, " categories=", effective_cats)
 
     if action == "block" then

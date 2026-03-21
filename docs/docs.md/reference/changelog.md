@@ -61,5 +61,5 @@ Recent additions and fixes to the AI Gateway, organised by feature area.
 - [Gateway Configuration Reference](config-reference.md)
 - [Stats API](../api-reference/stats.md)
 - [Routing Rules API](../api-reference/routing-rules.md)
-- [Detector Pipeline](../security/detectors.md)
+- [Guardrail Pipeline](../security/guardrails.md)
 - [Glossary](glossary.md)

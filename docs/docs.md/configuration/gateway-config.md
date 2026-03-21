@@ -32,7 +32,7 @@ curl -X PATCH https://your-gateway-host/admin/v1/gateways/{id} \
 | `budget_usd` | number \| null | `null` | Monthly spend cap in USD for this gateway. `null` means no limit. Superseded by per-token budgets. |
 | `rate_limit` | object \| null | `null` (disabled) | Gateway-level rate limit. Default: `null` (disabled). Example: `{"requests": 100, "window_sec": 60}`. Applied before per-token limits. |
 | `ip_allowlist` | array | `[]` | List of CIDR blocks permitted to call this gateway. Empty list allows all sources. |
-| `detectors` | array | `[]` | Ordered list of detector configs (regex, keyword, pii, presidio, llm_guard). |
+| `guardrails` | array | `[]` | Ordered list of guardrail configs (regex, keyword, presidio, prompt_guard, pii_protector). |
 | `azure_endpoint` | string \| null | `null` | Azure OpenAI resource endpoint, e.g. `https://myresource.openai.azure.com`. |
 | `azure_deployment` | string \| null | `null` | Azure deployment name. Overrides the model name in the request path. |
 | `azure_api_version` | string | `"2024-02-01"` | Azure OpenAI API version query parameter. |
@@ -53,7 +53,7 @@ curl -X PATCH https://your-gateway-host/admin/v1/gateways/{id} \
   "budget_usd": null,
   "rate_limit": null,
   "ip_allowlist": [],
-  "detectors": [],
+  "guardrails": [],
   "azure_endpoint": null,
   "azure_deployment": null,
   "azure_api_version": "2024-02-01",
@@ -83,5 +83,5 @@ Certain behaviors can be overridden on individual requests without changing the 
 
 - [Rate Limiting](rate-limiting.md)
 - [Budget & Quota Enforcement](budgets.md)
-- [Detector Pipeline](../security/detectors.md)
+- [Guardrail Pipeline](../security/guardrails.md)
 - [Provider Key Management (BYOK)](../security/byok.md)

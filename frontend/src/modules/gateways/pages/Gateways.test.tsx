@@ -48,7 +48,7 @@ const GW_WITH_DETECTORS: Gateway = {
   id: "gw4", slug: "secure", tenant_id: "t1",
   config: {
     auth_required: true,
-    detectors: [{ type: "keyword", name: "kw-check", action: "flag", keywords: ["secret"] }],
+    guardrails: [{ type: "keyword", name: "kw-check", action: "flag", keywords: ["secret"] }],
   },
   created_at: "2024-02-04T00:00:00Z",
 };
@@ -218,15 +218,15 @@ describe("Gateways — detail view", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Routing Rules" })).toBeInTheDocument());
   });
 
-  it("shows Detectors card on the detail page", async () => {
+  it("shows Guardrails card on the detail page", async () => {
     setupDefaultMocks();
     renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Detectors" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Guardrails" })).toBeInTheDocument());
   });
 });
 
 // ---------------------------------------------------------------------------
-// Edit modal — no longer contains DetectorBuilder
+// Edit modal — no longer contains GuardrailBuilder
 // ---------------------------------------------------------------------------
 
 describe("Gateways — edit modal", () => {
@@ -250,15 +250,15 @@ describe("Gateways — edit modal", () => {
     expect(screen.getByLabelText(/Timeout/i)).toBeInTheDocument();
   });
 
-  it("edit modal does NOT contain DetectorBuilder", async () => {
+  it("edit modal does NOT contain GuardrailBuilder", async () => {
     setupDefaultMocks();
     renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
     await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: /Edit Gateway: prod/i })).toBeInTheDocument());
-    // DetectorBuilder has a label "Detectors (N)" — should NOT be inside the modal
+    // GuardrailBuilder has a label "Guardrails (N)" — should NOT be inside the modal
     const modal = screen.getByRole("heading", { name: /Edit Gateway: prod/i }).closest("div")!;
-    expect(within(modal).queryByText(/Detectors \(\d+\)/)).not.toBeInTheDocument();
+    expect(within(modal).queryByText(/Guardrails \(\d+\)/)).not.toBeInTheDocument();
   });
 
   it("submits PATCH with correct config on save", async () => {
@@ -287,59 +287,59 @@ describe("Gateways — edit modal", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Detectors card
+// Guardrails card
 // ---------------------------------------------------------------------------
 
-describe("Gateways — Detectors card", () => {
-  it("shows DetectorBuilder on the detail page", async () => {
+describe("Gateways — Guardrails card", () => {
+  it("shows GuardrailBuilder on the detail page", async () => {
     setupDefaultMocks();
     renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Detectors" })).toBeInTheDocument());
-    expect(screen.getByText(/Detectors \(0\)/)).toBeInTheDocument();
-    expect(screen.getByText(/No detectors configured/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Guardrails" })).toBeInTheDocument());
+    expect(screen.getByText(/Guardrails \(0\)/)).toBeInTheDocument();
+    expect(screen.getByText(/No guardrails configured/i)).toBeInTheDocument();
   });
 
-  it("Save Detectors button is disabled when no changes made", async () => {
+  it("Save Guardrails button is disabled when no changes made", async () => {
     setupDefaultMocks();
     renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save Detectors" })).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Save Detectors" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save Guardrails" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Save Guardrails" })).toBeDisabled();
   });
 
-  it("Save Detectors button becomes enabled after adding a detector", async () => {
+  it("Save Guardrails button becomes enabled after adding a guardrail", async () => {
     setupDefaultMocks();
     renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save Detectors" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save Guardrails" })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /\+ Keyword/i }));
-    expect(screen.getByRole("button", { name: "Save Detectors" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save Guardrails" })).not.toBeDisabled();
   });
 
-  it("calls PATCH /gateways/:id with detectors when Save Detectors is clicked", async () => {
+  it("calls PATCH /gateways/:id with guardrails when Save Guardrails is clicked", async () => {
     setupDefaultMocks();
     mockApi.patch.mockResolvedValue({ ok: true });
     renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save Detectors" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save Guardrails" })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /\+ Keyword/i }));
-    await userEvent.click(screen.getByRole("button", { name: "Save Detectors" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save Guardrails" }));
     await waitFor(() => expect(mockApi.patch).toHaveBeenCalledWith(
       `/gateways/${GW1.id}`,
       expect.objectContaining({
-        config: expect.objectContaining({ detectors: expect.any(Array) }),
+        config: expect.objectContaining({ guardrails: expect.any(Array) }),
       })
     ));
   });
 
-  it("Save Detectors button becomes disabled again after successful save", async () => {
+  it("Save Guardrails button becomes disabled again after successful save", async () => {
     setupDefaultMocks();
     mockApi.patch.mockResolvedValue({ ok: true });
     renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save Detectors" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save Guardrails" })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /\+ Keyword/i }));
-    await userEvent.click(screen.getByRole("button", { name: "Save Detectors" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save Detectors" })).toBeDisabled());
+    await userEvent.click(screen.getByRole("button", { name: "Save Guardrails" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save Guardrails" })).toBeDisabled());
   });
 
-  it("shows existing detectors from gateway config", async () => {
+  it("shows existing guardrails from gateway config", async () => {
     mockApi.get.mockImplementation((path: string) => {
       if (path === "/tenants") return Promise.resolve([TENANT]);
       if (path === `/tenants/${TENANT.id}/gateways`) return Promise.resolve([GW_WITH_DETECTORS]);
@@ -349,9 +349,9 @@ describe("Gateways — Detectors card", () => {
       return Promise.resolve([]);
     });
     renderAtPath(`/tenants/${TENANT.id}/gateways/${GW_WITH_DETECTORS.id}`);
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Detectors" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Guardrails" })).toBeInTheDocument());
     expect(screen.getAllByText("kw-check")[0]).toBeInTheDocument();
-    expect(screen.getByText(/Detectors \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Guardrails \(1\)/)).toBeInTheDocument();
   });
 
 });
@@ -369,15 +369,15 @@ describe("Gateways — create gateway modal", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "New Gateway" })).toBeInTheDocument());
   });
 
-  it("create modal contains slug field and DetectorBuilder", async () => {
+  it("create modal contains slug field and GuardrailBuilder", async () => {
     setupDefaultMocks();
     renderAtPath(`/tenants/${TENANT.id}/gateways`);
     await waitFor(() => expect(screen.getByRole("button", { name: "+ New Gateway" })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: "+ New Gateway" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "New Gateway" })).toBeInTheDocument());
     expect(screen.getByPlaceholderText("prod")).toBeInTheDocument();
-    // DetectorBuilder is still in the create modal
-    expect(screen.getByText(/Detectors \(0\)/)).toBeInTheDocument();
+    // GuardrailBuilder is still in the create modal
+    expect(screen.getByText(/Guardrails \(0\)/)).toBeInTheDocument();
   });
 
   it("closes create modal on Cancel", async () => {
@@ -390,7 +390,7 @@ describe("Gateways — create gateway modal", () => {
     expect(screen.queryByRole("heading", { name: "New Gateway" })).not.toBeInTheDocument();
   });
 
-  it("submits POST with slug and detectors", async () => {
+  it("submits POST with slug and guardrails", async () => {
     setupDefaultMocks();
     mockApi.post.mockResolvedValue({ id: "new-gw", slug: "dev" });
     renderAtPath(`/tenants/${TENANT.id}/gateways`);
@@ -401,7 +401,7 @@ describe("Gateways — create gateway modal", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create Gateway" }));
     await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith(
       `/tenants/${TENANT.id}/gateways`,
-      expect.objectContaining({ slug: "dev", config: expect.objectContaining({ detectors: [] }) })
+      expect.objectContaining({ slug: "dev", config: expect.objectContaining({ guardrails: [] }) })
     ));
   });
 });

@@ -1,4 +1,4 @@
--- detectors/pii_protector.lua — Tier-2 reversible PII tokenizer.
+-- guardrails/pii_protector.lua — Tier-2 reversible PII tokenizer.
 --
 -- Request phase:
 --   Calls Presidio /analyze to locate PII spans, replaces each unique value
@@ -20,7 +20,7 @@
 -- Plain-string restore avoids Lua magic-char issues with [ and ] in gsub patterns.
 --
 -- Known limitation: streaming responses are not buffered (ctx.response_body is nil).
--- The response-phase detector is skipped for streaming by detectors_response.lua.
+-- The response-phase guardrail is skipped for streaming by guardrails_response.lua.
 -- Tokens remain visible in streamed output. The LLM never saw real PII so security
 -- is preserved, but UX is degraded.
 
@@ -36,7 +36,7 @@ local DEFAULT_LANGUAGE        = "en"
 -- ---------------------------------------------------------------------------
 -- call_analyzer: POST to Presidio /analyze.
 -- Returns array of {entity_type, start, end, score} (0-based char offsets), or nil, err.
--- Mirrors the call pattern in detectors/presidio.lua.
+-- Mirrors the call pattern in guardrails/presidio.lua.
 -- ---------------------------------------------------------------------------
 local function call_analyzer(text, detector)
     local url     = (detector.analyzer_url or DEFAULT_ANALYZER_URL) .. "/analyze"

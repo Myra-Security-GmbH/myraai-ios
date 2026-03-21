@@ -21,13 +21,13 @@ Every request to the gateway passes through an ordered middleware chain split ac
     ▼  ── Content processing phase ─────────────────────────────────
     │
     ├─ 6.  cache_check      SHA-256(provider:model:canonical_body) → serve if HIT
-    ├─ 7.  detectors        Tier 1 (regex, keyword) → Tier 2 (presidio, llm_guard, pii_protector)
+    ├─ 7.  guardrails       Tier 1 (regex, keyword) → Tier 2 (presidio, prompt_guard, pii_protector)
     ├─ 8.  transform        Parse + normalize body; collect x-aig-meta-* headers
     ├─ 9.  routing          Evaluate ordered routing rules → provider, model, fallbacks
     ├─ 10. byok             Decrypt provider API key (cached for 60 seconds)
     ├─ 11. upstream         HTTP call to provider; retry on 5xx; walk fallback chain
     │                       [streaming: emit usage chunk + [DONE] after stream]
-    ├─ 12. detectors_resp   Response-phase detector pipeline
+    ├─ 12. guardrails_resp  Response-phase guardrail pipeline
     ├─ 13. cost             Count tokens; compute cost_usd; increment budget counter
     ├─ 14. cache_store      Persist response to cache (non-streaming, status 200)
     │

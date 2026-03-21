@@ -18,7 +18,7 @@ The config is **merged at the top level** on each PATCH — only the fields you 
   "log_payloads": true,
   "rate_limit": null,
   "ip_allowlist": [],
-  "detectors": [],
+  "guardrails": [],
   "azure_endpoint": null,
   "azure_deployment": null,
   "azure_api_version": "2024-02-01",
@@ -84,12 +84,12 @@ Each detector object has a common set of fields plus type-specific fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `type` | string | Detector type: `regex`, `keyword`, `pii`, `prompt_injection`, `presidio`, `llm_guard`. |
+| `type` | string | Guardrail type: `regex`, `keyword`, `presidio`, `prompt_guard`, `pii_protector`. |
 | `name` | string | Human-readable name used in block error messages and logs. |
 | `action` | string | One of `block`, `scrub`, or `flag`. |
 | `target` | string | One of `request`, `response`, or `both`. |
 
-See the [Detector Pipeline](../security/detectors.md) page for full per-type field documentation.
+See the [Guardrail Pipeline](../security/guardrails.md) page for full per-type field documentation.
 
 ---
 
@@ -182,4 +182,4 @@ curl -X PATCH https://<your-gateway-host>/admin/v1/gateways/{id} \
 - [Authentication](../api-reference/authentication.md)
 - [Rate Limiting](../configuration/rate-limiting.md)
 - [Budget & Quota Enforcement](../configuration/budgets.md)
-- [Detector Pipeline](../security/detectors.md)
+- [Guardrail Pipeline](../security/guardrails.md)

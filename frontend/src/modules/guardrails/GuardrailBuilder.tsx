@@ -1,5 +1,5 @@
-// modules/detectors/DetectorBuilder.tsx
-// Ordered list of detector configs for a gateway.
+// modules/guardrails/GuardrailBuilder.tsx
+// Ordered list of guardrail configs for a gateway.
 // Used inside the Gateways EditGatewayModal.
 
 import { useState } from "react";
@@ -8,7 +8,7 @@ import {
   RegexDetector,
   KeywordDetector,
   PresidioDetector,
-  LlmGuardDetector,
+  PromptGuardDetector,
   PiiProtectorDetector,
   DetectorAction,
   DetectorTarget,
@@ -59,16 +59,16 @@ function emptyPresidio(): PresidioDetector {
   return { type: "presidio", name: "presidio-pii", action: "block", target: "request", url: "http://127.0.0.1:5002", language: "en", entities: [], score_threshold: 0.7, fail_open: true };
 }
 
-function emptyLlmGuard(): LlmGuardDetector {
-  return { type: "llm_guard", name: "llm-guard", action: "block", target: "request", url: "http://127.0.0.1:8083", timeout_ms: 3000, categories: [], fail_open: true };
+function emptyPromptGuard(): PromptGuardDetector {
+  return { type: "prompt_guard", name: "prompt-guard", action: "block", target: "request", url: "http://127.0.0.1:8083", timeout_ms: 3000, categories: [], fail_open: true };
 }
 
 function emptyPiiProtector(): PiiProtectorDetector {
   return { type: "pii_protector", name: "pii-protect", target: "both", analyzer_url: "http://127.0.0.1:5002", language: "en", entities: [], score_threshold: 0.7, fail_open: true };
 }
 
-// Type guard: detectors that carry an action field
-type ActionableDetector = RegexDetector | KeywordDetector | PresidioDetector | LlmGuardDetector;
+// Type guard: guardrails that carry an action field
+type ActionableDetector = RegexDetector | KeywordDetector | PresidioDetector | PromptGuardDetector;
 function hasAction(det: DetectorConfig): det is ActionableDetector {
   return det.type !== "pii_protector";
 }
@@ -358,7 +358,7 @@ function PresidioEditor({ det, onChange }: { det: PresidioDetector; onChange: (d
   );
 }
 
-function LlmGuardEditor({ det, onChange }: { det: LlmGuardDetector; onChange: (d: LlmGuardDetector) => void }) {
+function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChange: (d: PromptGuardDetector) => void }) {
   const [catInput, setCatInput] = useState("");
 
   function addCategory() {
@@ -537,7 +537,7 @@ const TYPE_LABELS: Record<DetectorConfig["type"], string> = {
   regex: "Regex / Pattern",
   keyword: "Keyword",
   presidio: "Presidio (NLP)",
-  llm_guard: "Llama Guard",
+  prompt_guard: "Prompt Guard",
   pii_protector: "PII Protector",
 };
 
@@ -545,16 +545,16 @@ const TYPE_BADGE_COLORS: Record<DetectorConfig["type"], string> = {
   regex: "#3b82f6",
   keyword: "#8b5cf6",
   presidio: "#10b981",
-  llm_guard: "#f59e0b",
+  prompt_guard: "#f59e0b",
   pii_protector: "#06b6d4",
 };
 
-// Tier assignment mirrors src/detectors/orchestrator.lua
+// Tier assignment mirrors src/guardrails/orchestrator.lua
 const DETECTOR_TIER: Record<DetectorConfig["type"], number> = {
   regex: 1,
   keyword: 1,
   presidio: 2,
-  llm_guard: 2,
+  prompt_guard: 2,
   pii_protector: 2,
 };
 
@@ -579,7 +579,7 @@ function DetectorCard({
     if (det.type === "regex") return <RegexEditor det={det} onChange={onUpdate} />;
     if (det.type === "keyword") return <KeywordEditor det={det} onChange={onUpdate} />;
     if (det.type === "presidio") return <PresidioEditor det={det} onChange={onUpdate} />;
-    if (det.type === "llm_guard") return <LlmGuardEditor det={det} onChange={onUpdate} />;
+    if (det.type === "prompt_guard") return <PromptGuardEditor det={det} onChange={onUpdate} />;
     if (det.type === "pii_protector") return <PiiProtectorEditor det={det} onChange={onUpdate} />;
     return null;
   }
@@ -743,22 +743,22 @@ function DetectorPhaseSummary({ detectors }: { detectors: DetectorConfig[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Main DetectorBuilder component
+// Main GuardrailBuilder component
 // ---------------------------------------------------------------------------
 
-interface DetectorBuilderProps {
+interface GuardrailBuilderProps {
   value: DetectorConfig[];
-  onChange: (detectors: DetectorConfig[]) => void;
+  onChange: (guardrails: DetectorConfig[]) => void;
 }
 
-export function DetectorBuilder({ value, onChange }: DetectorBuilderProps) {
+export function GuardrailBuilder({ value, onChange }: GuardrailBuilderProps) {
   function addDetector(type: DetectorConfig["type"]) {
     let d: DetectorConfig;
     if (type === "regex") d = emptyRegex();
     else if (type === "keyword") d = emptyKeyword();
     else if (type === "presidio") d = emptyPresidio();
     else if (type === "pii_protector") d = emptyPiiProtector();
-    else d = emptyLlmGuard();
+    else d = emptyPromptGuard();
     onChange([...value, d]);
   }
 
@@ -785,9 +785,9 @@ export function DetectorBuilder({ value, onChange }: DetectorBuilderProps) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <span className={s["form-label"]} style={{ margin: 0 }}>Detectors ({value.length})</span>
+        <span className={s["form-label"]} style={{ margin: 0 }}>Guardrails ({value.length})</span>
         <div style={{ display: "flex", gap: 6 }}>
-          {(["regex", "keyword", "presidio", "llm_guard", "pii_protector"] as const).map((type) => (
+          {(["regex", "keyword", "presidio", "prompt_guard", "pii_protector"] as const).map((type) => (
             <button
               key={type}
               type="button"
@@ -803,7 +803,7 @@ export function DetectorBuilder({ value, onChange }: DetectorBuilderProps) {
 
       {value.length === 0 && (
         <p style={{ fontSize: 13, color: "var(--text-muted, #888)", margin: "12px 0" }}>
-          No detectors configured. Add one above to start scanning requests or responses.
+          No guardrails configured. Add one above to start scanning requests or responses.
         </p>
       )}
 

@@ -1,6 +1,6 @@
--- middleware/detectors.lua — Request-phase detector middleware entry point.
--- Runs request-phase detectors (regex, keyword, presidio, llm_guard, pii_protector).
--- On block: sends a synthetic blocked response (same format for all detector types).
+-- middleware/guardrails.lua — Request-phase guardrail middleware entry point.
+-- Runs request-phase guardrails (regex, keyword, presidio, prompt_guard, pii_protector).
+-- On block: sends a synthetic blocked response (same format for all guardrail types).
 
 local json = require("utils.json")
 
@@ -104,11 +104,11 @@ local function send_synthetic(ctx, text)
 end
 
 function M.run(ctx)
-    local result = require("detectors.orchestrator").run_phase(ctx, "request")
+    local result = require("guardrails.orchestrator").run_phase(ctx, "request")
     if result == "block" then
         local reason = expand_categories(ctx.log_fields.block_reason)
         send_synthetic(ctx, "Request blocked by content policy (" ..
-            (ctx.log_fields.blocked_by or "detector") .. "): " .. reason)
+            (ctx.log_fields.blocked_by or "guardrail") .. "): " .. reason)
     end
 end
 

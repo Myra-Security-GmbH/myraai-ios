@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DetectorBuilder } from "./DetectorBuilder";
+import { GuardrailBuilder } from "./GuardrailBuilder";
 import type { DetectorConfig } from "src/api/types";
 
 // ---------------------------------------------------------------------------
@@ -10,7 +10,7 @@ import type { DetectorConfig } from "src/api/types";
 
 function setup(initial: DetectorConfig[] = []) {
   const onChange = vi.fn();
-  const utils = render(<DetectorBuilder value={initial} onChange={onChange} />);
+  const utils = render(<GuardrailBuilder value={initial} onChange={onChange} />);
   return { onChange, ...utils };
 }
 
@@ -18,21 +18,21 @@ function setup(initial: DetectorConfig[] = []) {
 // Empty state
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — empty state", () => {
-  it("renders the add-detector buttons", () => {
+describe("GuardrailBuilder — empty state", () => {
+  it("renders the add-guardrail buttons", () => {
     setup();
     expect(screen.getByText(/\+ Regex \/ Pattern/i)).toBeInTheDocument();
     expect(screen.getByText(/\+ Keyword/i)).toBeInTheDocument();
     expect(screen.getByText(/\+ Presidio/i)).toBeInTheDocument();
-    expect(screen.getByText(/\+ Llama Guard/i)).toBeInTheDocument();
+    expect(screen.getByText(/\+ Prompt Guard/i)).toBeInTheDocument();
   });
 
-  it("shows empty-state message when no detectors", () => {
+  it("shows empty-state message when no guardrails", () => {
     setup();
-    expect(screen.getByText(/No detectors configured/i)).toBeInTheDocument();
+    expect(screen.getByText(/No guardrails configured/i)).toBeInTheDocument();
   });
 
-  it("does not show empty-state message when detectors exist", () => {
+  it("does not show empty-state message when guardrails exist", () => {
     const det: DetectorConfig = {
       type: "keyword",
       name: "test",
@@ -40,78 +40,78 @@ describe("DetectorBuilder — empty state", () => {
       keywords: [],
     };
     setup([det]);
-    expect(screen.queryByText(/No detectors configured/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No guardrails configured/i)).not.toBeInTheDocument();
   });
 });
 
 // ---------------------------------------------------------------------------
-// Adding detectors
+// Adding guardrails
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — adding detectors", () => {
-  it("calls onChange with a new regex detector when + Regex is clicked", async () => {
+describe("GuardrailBuilder — adding guardrails", () => {
+  it("calls onChange with a new regex guardrail when + Regex is clicked", async () => {
     const { onChange } = setup();
     await userEvent.click(screen.getByText(/\+ Regex \/ Pattern/i));
     expect(onChange).toHaveBeenCalledOnce();
-    const [detectors] = onChange.mock.calls[0];
-    expect(detectors).toHaveLength(1);
-    expect(detectors[0].type).toBe("regex");
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails).toHaveLength(1);
+    expect(guardrails[0].type).toBe("regex");
   });
 
-  it("calls onChange with a new keyword detector when + Keyword is clicked", async () => {
+  it("calls onChange with a new keyword guardrail when + Keyword is clicked", async () => {
     const { onChange } = setup();
     await userEvent.click(screen.getByText(/\+ Keyword/i));
     expect(onChange).toHaveBeenCalledOnce();
-    const [detectors] = onChange.mock.calls[0];
-    expect(detectors[0].type).toBe("keyword");
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].type).toBe("keyword");
   });
 
-  it("calls onChange with a new presidio detector when + Presidio is clicked", async () => {
+  it("calls onChange with a new presidio guardrail when + Presidio is clicked", async () => {
     const { onChange } = setup();
     await userEvent.click(screen.getByText(/\+ Presidio/i));
-    const [detectors] = onChange.mock.calls[0];
-    expect(detectors[0].type).toBe("presidio");
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].type).toBe("presidio");
   });
 
-  it("calls onChange with a new llm_guard detector when + Llama Guard is clicked", async () => {
+  it("calls onChange with a new prompt_guard guardrail when + Prompt Guard is clicked", async () => {
     const { onChange } = setup();
-    await userEvent.click(screen.getByText(/\+ Llama Guard/i));
-    const [detectors] = onChange.mock.calls[0];
-    expect(detectors[0].type).toBe("llm_guard");
+    await userEvent.click(screen.getByText(/\+ Prompt Guard/i));
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].type).toBe("prompt_guard");
   });
 
-  it("appends new detectors to existing list", async () => {
+  it("appends new guardrails to existing list", async () => {
     const existing: DetectorConfig[] = [{ type: "keyword", name: "existing", action: "flag", keywords: [] }];
     const { onChange } = setup(existing);
     await userEvent.click(screen.getByText(/\+ Regex \/ Pattern/i));
-    const [detectors] = onChange.mock.calls[0];
-    expect(detectors).toHaveLength(2);
-    expect(detectors[0].type).toBe("keyword");
-    expect(detectors[1].type).toBe("regex");
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails).toHaveLength(2);
+    expect(guardrails[0].type).toBe("keyword");
+    expect(guardrails[1].type).toBe("regex");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Detector count display
+// Guardrail count display
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — detector count", () => {
+describe("GuardrailBuilder — guardrail count", () => {
   it("shows count in label", () => {
     const dets: DetectorConfig[] = [
       { type: "keyword", name: "a", action: "flag", keywords: [] },
       { type: "regex", name: "b", action: "block", patterns: [] },
     ];
     setup(dets);
-    expect(screen.getByText(/Detectors \(2\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Guardrails \(2\)/i)).toBeInTheDocument();
   });
 });
 
 // ---------------------------------------------------------------------------
-// Detector card rendering
+// Guardrail card rendering
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — detector cards", () => {
-  it("renders a card for each detector", () => {
+describe("GuardrailBuilder — guardrail cards", () => {
+  it("renders a card for each guardrail", () => {
     const dets: DetectorConfig[] = [
       { type: "keyword", name: "kw-check", action: "flag", keywords: [] },
       { type: "regex", name: "pii-check", action: "block", patterns: [] },
@@ -121,10 +121,10 @@ describe("DetectorBuilder — detector cards", () => {
     expect(cards).toHaveLength(2);
   });
 
-  it("shows detector name and action in collapsed card", () => {
-    const det: DetectorConfig = { type: "keyword", name: "my-detector", action: "block", keywords: [] };
+  it("shows guardrail name and action in collapsed card", () => {
+    const det: DetectorConfig = { type: "keyword", name: "my-guardrail", action: "block", keywords: [] };
     setup([det]);
-    expect(screen.getAllByText("my-detector")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("my-guardrail")[0]).toBeInTheDocument();
     expect(screen.getAllByText(/block/i)[0]).toBeInTheDocument();
   });
 
@@ -136,11 +136,11 @@ describe("DetectorBuilder — detector cards", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Removing detectors
+// Removing guardrails
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — removing detectors", () => {
-  it("removes a detector when × is clicked", async () => {
+describe("GuardrailBuilder — removing guardrails", () => {
+  it("removes a guardrail when × is clicked", async () => {
     const dets: DetectorConfig[] = [
       { type: "keyword", name: "keep", action: "flag", keywords: [] },
       { type: "regex", name: "remove-me", action: "block", patterns: [] },
@@ -155,11 +155,11 @@ describe("DetectorBuilder — removing detectors", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Reordering detectors
+// Reordering guardrails
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — reordering", () => {
-  it("moves a detector up when ▲ is clicked", async () => {
+describe("GuardrailBuilder — reordering", () => {
+  it("moves a guardrail up when ▲ is clicked", async () => {
     const dets: DetectorConfig[] = [
       { type: "keyword", name: "first", action: "flag", keywords: [] },
       { type: "regex", name: "second", action: "block", patterns: [] },
@@ -173,7 +173,7 @@ describe("DetectorBuilder — reordering", () => {
     expect(updated[1].name).toBe("first");
   });
 
-  it("moves a detector down when ▼ is clicked", async () => {
+  it("moves a guardrail down when ▼ is clicked", async () => {
     const dets: DetectorConfig[] = [
       { type: "keyword", name: "first", action: "flag", keywords: [] },
       { type: "regex", name: "second", action: "block", patterns: [] },
@@ -207,7 +207,7 @@ describe("DetectorBuilder — reordering", () => {
 // Expanded editor — keyword
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — keyword editor", () => {
+describe("GuardrailBuilder — keyword editor", () => {
   it("expands when card header is clicked", async () => {
     const det: DetectorConfig = { type: "keyword", name: "kw", action: "flag", keywords: [] };
     setup([det]);
@@ -244,7 +244,7 @@ describe("DetectorBuilder — keyword editor", () => {
 // Expanded editor — regex
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — regex editor", () => {
+describe("GuardrailBuilder — regex editor", () => {
   it("shows pattern set checkboxes when expanded", async () => {
     const det: DetectorConfig = { type: "regex", name: "re", action: "block", patterns: [] };
     setup([det]);
@@ -279,7 +279,7 @@ describe("DetectorBuilder — regex editor", () => {
 // Expanded editor — presidio
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — presidio editor", () => {
+describe("GuardrailBuilder — presidio editor", () => {
   it("shows URL and language fields when expanded", async () => {
     const det: DetectorConfig = { type: "presidio", name: "presidio-check", action: "block" };
     setup([det]);
@@ -302,22 +302,22 @@ describe("DetectorBuilder — presidio editor", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Expanded editor — llm_guard
+// Expanded editor — prompt_guard
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — llm_guard editor", () => {
+describe("GuardrailBuilder — prompt_guard editor", () => {
   it("shows URL and timeout fields when expanded", async () => {
-    const det: DetectorConfig = { type: "llm_guard", name: "llm-check", action: "block" };
+    const det: DetectorConfig = { type: "prompt_guard", name: "pg-check", action: "block" };
     setup([det]);
-    await userEvent.click(screen.getAllByText("llm-check")[0]); // expand
+    await userEvent.click(screen.getAllByText("pg-check")[0]); // expand
     expect(screen.getByText("Llama Guard URL")).toBeInTheDocument();
     expect(screen.getByText("Timeout (ms)")).toBeInTheDocument();
   });
 
   it("adds a safety category", async () => {
-    const det: DetectorConfig = { type: "llm_guard", name: "llm", action: "block", categories: [] };
+    const det: DetectorConfig = { type: "prompt_guard", name: "pg", action: "block", categories: [] };
     const { onChange } = setup([det]);
-    await userEvent.click(screen.getAllByText("llm")[0]); // expand
+    await userEvent.click(screen.getAllByText("pg")[0]); // expand
     const catInput = screen.getByPlaceholderText(/S1, S2/);
     await userEvent.type(catInput, "S1");
     await userEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -327,43 +327,43 @@ describe("DetectorBuilder — llm_guard editor", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Adding pii_protector detector
+// Adding pii_protector guardrail
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — pii_protector add button", () => {
+describe("GuardrailBuilder — pii_protector add button", () => {
   it("renders the + PII Protector button", () => {
     setup();
     expect(screen.getByText(/\+ PII Protector/i)).toBeInTheDocument();
   });
 
-  it("calls onChange with a pii_protector detector when clicked", async () => {
+  it("calls onChange with a pii_protector guardrail when clicked", async () => {
     const { onChange } = setup();
     await userEvent.click(screen.getByText(/\+ PII Protector/i));
     expect(onChange).toHaveBeenCalledOnce();
-    const [detectors] = onChange.mock.calls[0];
-    expect(detectors).toHaveLength(1);
-    expect(detectors[0].type).toBe("pii_protector");
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails).toHaveLength(1);
+    expect(guardrails[0].type).toBe("pii_protector");
   });
 
   it("default pii_protector has target=both", async () => {
     const { onChange } = setup();
     await userEvent.click(screen.getByText(/\+ PII Protector/i));
-    const [detectors] = onChange.mock.calls[0];
-    expect(detectors[0].target).toBe("both");
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].target).toBe("both");
   });
 
   it("default pii_protector has no action field", async () => {
     const { onChange } = setup();
     await userEvent.click(screen.getByText(/\+ PII Protector/i));
-    const [detectors] = onChange.mock.calls[0];
-    expect(detectors[0].action).toBeUndefined();
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].action).toBeUndefined();
   });
 
   it("default pii_protector has score_threshold 0.7", async () => {
     const { onChange } = setup();
     await userEvent.click(screen.getByText(/\+ PII Protector/i));
-    const [detectors] = onChange.mock.calls[0];
-    expect(detectors[0].score_threshold).toBe(0.7);
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].score_threshold).toBe(0.7);
   });
 });
 
@@ -371,7 +371,7 @@ describe("DetectorBuilder — pii_protector add button", () => {
 // pii_protector card rendering
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — pii_protector card", () => {
+describe("GuardrailBuilder — pii_protector card", () => {
   const piiDet: DetectorConfig = {
     type: "pii_protector",
     name: "pii-protect",
@@ -415,7 +415,7 @@ describe("DetectorBuilder — pii_protector card", () => {
 // pii_protector editor fields
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — pii_protector editor", () => {
+describe("GuardrailBuilder — pii_protector editor", () => {
   const piiDet: DetectorConfig = {
     type: "pii_protector",
     name: "pii-protect",
@@ -470,19 +470,19 @@ describe("DetectorBuilder — pii_protector editor", () => {
 // Execution plan (DetectorPhaseSummary)
 // ---------------------------------------------------------------------------
 
-describe("DetectorBuilder — execution plan", () => {
-  it("does not render execution plan when no detectors", () => {
+describe("GuardrailBuilder — execution plan", () => {
+  it("does not render execution plan when no guardrails", () => {
     setup([]);
     expect(screen.queryByText(/Execution plan/i)).not.toBeInTheDocument();
   });
 
-  it("renders execution plan when detectors are present", () => {
+  it("renders execution plan when guardrails are present", () => {
     const det: DetectorConfig = { type: "keyword", name: "kw", action: "flag", keywords: [] };
     setup([det]);
     expect(screen.getByText(/Execution plan/i)).toBeInTheDocument();
   });
 
-  it("shows correct tier for each detector type", () => {
+  it("shows correct tier for each guardrail type", () => {
     const dets: DetectorConfig[] = [
       { type: "regex",    name: "re",  action: "block", patterns: [] },
       { type: "presidio", name: "pre", action: "flag" },
@@ -493,7 +493,7 @@ describe("DetectorBuilder — execution plan", () => {
     expect(tierCells.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("sorts tier-2 detectors after tier-1 in the plan", () => {
+  it("sorts tier-2 guardrails after tier-1 in the plan", () => {
     const dets: DetectorConfig[] = [
       { type: "presidio", name: "tier2-first", action: "block" },
       { type: "regex",    name: "tier1-second", action: "flag", patterns: [] },
@@ -515,7 +515,7 @@ describe("DetectorBuilder — execution plan", () => {
     expect(screen.getByText(/⟳ reversible/i)).toBeInTheDocument();
   });
 
-  it("shows ⇄ arrow for detectors with target=both", () => {
+  it("shows ⇄ arrow for guardrails with target=both", () => {
     const det: DetectorConfig = {
       type: "pii_protector",
       name: "protect",
@@ -525,26 +525,26 @@ describe("DetectorBuilder — execution plan", () => {
     expect(screen.getByText("⇄")).toBeInTheDocument();
   });
 
-  it("shows → arrow for request-phase detectors", () => {
+  it("shows → arrow for request-phase guardrails", () => {
     const det: DetectorConfig = { type: "keyword", name: "kw", action: "block", keywords: [], target: "request" };
     setup([det]);
     expect(screen.getByText("→")).toBeInTheDocument();
   });
 
-  it("shows ← arrow for response-phase detectors", () => {
+  it("shows ← arrow for response-phase guardrails", () => {
     const det: DetectorConfig = { type: "presidio", name: "p", action: "flag", target: "response" };
     setup([det]);
     expect(screen.getByText("←")).toBeInTheDocument();
   });
 
-  it("plan updates when a detector is added", async () => {
+  it("plan updates when a guardrail is added", async () => {
     const { onChange } = setup([]);
     expect(screen.queryByText(/Execution plan/i)).not.toBeInTheDocument();
     // Simulate parent passing new value after add
     const det: DetectorConfig = { type: "keyword", name: "new", action: "flag", keywords: [] };
-    const { rerender } = render(<DetectorBuilder value={[det]} onChange={onChange} />);
+    const { rerender } = render(<GuardrailBuilder value={[det]} onChange={onChange} />);
     expect(screen.getByText(/Execution plan/i)).toBeInTheDocument();
-    rerender(<DetectorBuilder value={[det]} onChange={onChange} />);
+    rerender(<GuardrailBuilder value={[det]} onChange={onChange} />);
   });
 
   it("plan shows pii_protector tier 2", () => {

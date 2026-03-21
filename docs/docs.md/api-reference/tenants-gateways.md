@@ -208,7 +208,7 @@ The complete config object with all defaults:
   "log_payloads": true,
   "rate_limit": null,
   "ip_allowlist": [],
-  "detectors": [],
+  "guardrails": [],
   "azure_endpoint": null,
   "azure_deployment": null,
   "azure_api_version": "2024-02-01",

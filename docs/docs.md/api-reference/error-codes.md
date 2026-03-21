@@ -149,5 +149,5 @@ This error is returned only when all of the following are true:
 - [Authentication](authentication.md)
 - [Rate Limiting](../configuration/rate-limiting.md)
 - [Budget & Quota Enforcement](../configuration/budgets.md)
-- [Detector Pipeline](../security/detectors.md)
+- [Guardrail Pipeline](../security/guardrails.md)
 - [Request Pipeline](../concepts/request-pipeline.md)

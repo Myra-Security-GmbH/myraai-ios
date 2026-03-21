@@ -56,8 +56,8 @@ export interface PresidioDetector {
   fail_open?: boolean;
 }
 
-export interface LlmGuardDetector {
-  type: "llm_guard";
+export interface PromptGuardDetector {
+  type: "prompt_guard";
   name: string;
   action: DetectorAction;
   target?: DetectorTarget;
@@ -83,7 +83,7 @@ export type DetectorConfig =
   | RegexDetector
   | KeywordDetector
   | PresidioDetector
-  | LlmGuardDetector
+  | PromptGuardDetector
   | PiiProtectorDetector;
 
 // ---------------------------------------------------------------------------
@@ -98,7 +98,7 @@ export interface GatewayConfig {
   timeout_ms?: number;
   log_payloads?: boolean;
   rate_limit?: { requests: number; window_sec: number };
-  detectors?: DetectorConfig[];
+  guardrails?: DetectorConfig[];
   provider_base_urls?: Record<string, string>;
 }
 

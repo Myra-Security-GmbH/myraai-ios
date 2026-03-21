@@ -35,7 +35,7 @@ Browse all documentation topics by category.
     ---
 
     - [Authentication & Tokens](../security/authentication.md)
-    - [Detector Pipeline](../security/detectors.md)
+    - [Guardrail Pipeline](../security/guardrails.md)
     - [Provider Key Management (BYOK)](../security/byok.md)
     - [IP Allowlist](../security/ip-allowlist.md)
 

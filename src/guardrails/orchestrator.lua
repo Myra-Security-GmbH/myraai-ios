@@ -1,6 +1,6 @@
--- detectors/orchestrator.lua — shared orchestration logic for the detector pipeline
--- Runs Tier 1 detectors (regex, keyword) before Tier 2 (presidio, llm_guard).
--- Within the same tier, detectors run in their original array order.
+-- guardrails/orchestrator.lua — shared orchestration logic for the guardrail pipeline
+-- Runs Tier 1 guardrails (regex, keyword) before Tier 2 (presidio, prompt_guard).
+-- Within the same tier, guardrails run in their original array order.
 
 local M = {}
 
@@ -9,22 +9,25 @@ local TIER = {
     regex         = 1,
     keyword       = 1,
     presidio      = 2,
-    llm_guard     = 2,
+    prompt_guard  = 2,
     pii_protector = 2,
 }
 
 local MODULES = {
-    regex         = "detectors.regex",
-    keyword       = "detectors.keyword",
-    presidio      = "detectors.presidio",
-    llm_guard     = "detectors.llm_guard",
-    pii_protector = "detectors.pii_protector",
+    regex         = "guardrails.regex",
+    keyword       = "guardrails.keyword",
+    presidio      = "guardrails.presidio",
+    prompt_guard  = "guardrails.prompt_guard",
+    pii_protector = "guardrails.pii_protector",
 }
 
--- Run all detectors applicable to `phase` ("request" or "response").
--- Returns "block" if any detector blocks, otherwise "pass".
+-- Run all guardrails applicable to `phase` ("request" or "response").
+-- Returns "block" if any guardrail blocks, otherwise "pass".
+-- Reads from ctx.gateway_config.guardrails; falls back to .detectors for
+-- backward compatibility with configs saved before the rename.
 function M.run_phase(ctx, phase)
-    local detectors_cfg = ctx.gateway_config and ctx.gateway_config.detectors
+    local detectors_cfg = ctx.gateway_config and
+        (ctx.gateway_config.guardrails or ctx.gateway_config.detectors)
     if not detectors_cfg or #detectors_cfg == 0 then
         return "pass"
     end
@@ -60,7 +63,7 @@ function M.run_phase(ctx, phase)
         local mod_name = MODULES[det.type]
 
         if not mod_name then
-            ngx.log(ngx.WARN, "detectors: unknown detector type '", tostring(det.type),
+            ngx.log(ngx.WARN, "guardrails: unknown guardrail type '", tostring(det.type),
                     "' name=", tostring(det.name))
             -- Unknown type: respect fail_open
             if det.fail_open == false then
@@ -75,7 +78,7 @@ function M.run_phase(ctx, phase)
 
             if not ok then
                 -- result holds the error message on pcall failure
-                ngx.log(ngx.WARN, "detectors: error running detector '",
+                ngx.log(ngx.WARN, "guardrails: error running guardrail '",
                         tostring(det.name or det.type), "': ", tostring(result))
                 if det.fail_open == false then
                     ctx.log_fields.blocked_by   = det.name or det.type

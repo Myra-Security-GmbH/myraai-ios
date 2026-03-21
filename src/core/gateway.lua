@@ -18,13 +18,13 @@ local ACCESS_PIPELINE = {
 -- Middleware executed in the content phase (body available).
 local CONTENT_PIPELINE = {
     "middleware.cache_check",
-    "middleware.detectors",          -- detector pipeline (request phase)
+    "middleware.guardrails",          -- guardrail pipeline (request phase)
     "middleware.transform",
     "middleware.routing",
     "middleware.byok",
     "middleware.web_search",
     "middleware.upstream",
-    "middleware.detectors_response", -- detector pipeline (response phase)
+    "middleware.guardrails_response", -- guardrail pipeline (response phase)
     "middleware.send_response",
     "middleware.cost",
     "middleware.cache_store",

@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig } from "src/api/types";
-import { DetectorBuilder } from "src/modules/detectors/DetectorBuilder";
+import { GuardrailBuilder } from "src/modules/guardrails/GuardrailBuilder";
 import { fmtDate, fmtDateTime } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
 
@@ -20,7 +20,7 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
   const [cacheTtl, setCacheTtl] = useState("300");
   const [retryCount, setRetryCount] = useState("2");
   const [timeoutMs, setTimeoutMs] = useState("120000");
-  const [detectors, setDetectors] = useState<DetectorConfig[]>([]);
+  const [guardrails, setGuardrails] = useState<DetectorConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +37,7 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
           retry_count: parseInt(retryCount) || 2,
           timeout_ms: parseInt(timeoutMs) || 120000,
           log_payloads: true,
-          detectors,
+          guardrails,
         },
       });
       onCreated(); onClose();
@@ -88,7 +88,7 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
             </label>
           </div>
           <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
-          <DetectorBuilder value={detectors} onChange={setDetectors} />
+          <GuardrailBuilder value={guardrails} onChange={setGuardrails} />
           <div className={s["form-actions"]}>
             <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
             <button type="submit" className={`${s.btn} ${s["btn--primary"]}`} disabled={loading}>
@@ -554,11 +554,11 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
   const [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
   const [budgetResetting, setBudgetResetting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [detectors, setDetectors] = useState<DetectorConfig[]>(() => initialGw.config.detectors ?? []);
-  const [detectorsChanged, setDetectorsChanged] = useState(false);
-  const [savingDetectors, setSavingDetectors] = useState(false);
-  const [detectorsError, setDetectorsError] = useState<string | null>(null);
-  const [detectorsSaved, setDetectorsSaved] = useState(false);
+  const [guardrails, setGuardrails] = useState<DetectorConfig[]>(() => initialGw.config.guardrails ?? (initialGw.config as any).detectors ?? []);
+  const [guardrailsChanged, setGuardrailsChanged] = useState(false);
+  const [savingGuardrails, setSavingGuardrails] = useState(false);
+  const [guardrailsError, setGuardrailsError] = useState<string | null>(null);
+  const [guardrailsSaved, setGuardrailsSaved] = useState(false);
 
   function loadTokens() {
     setLoadingTokens(true);
@@ -601,17 +601,17 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
     onDeleted();
   }
 
-  async function saveDetectors() {
-    setSavingDetectors(true); setDetectorsError(null); setDetectorsSaved(false);
+  async function saveGuardrails() {
+    setSavingGuardrails(true); setGuardrailsError(null); setGuardrailsSaved(false);
     try {
-      const newConfig = { ...gw.config, detectors };
+      const newConfig = { ...gw.config, guardrails };
       await api.patch(`/gateways/${gw.id}`, { config: newConfig });
       setGw({ ...gw, config: newConfig });
-      setDetectorsChanged(false);
-      setDetectorsSaved(true);
-      setTimeout(() => setDetectorsSaved(false), 3000);
-    } catch (err: any) { setDetectorsError(err.message); }
-    finally { setSavingDetectors(false); }
+      setGuardrailsChanged(false);
+      setGuardrailsSaved(true);
+      setTimeout(() => setGuardrailsSaved(false), 3000);
+    } catch (err: any) { setGuardrailsError(err.message); }
+    finally { setSavingGuardrails(false); }
   }
 
   const cfg = gw.config;
@@ -744,25 +744,25 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
         )}
       </div>
 
-      {/* Detectors */}
+      {/* Guardrails */}
       <div className={s.card}>
         <div className={s["card-header"]}>
-          <h2 className={s["card-title"]}>Detectors</h2>
+          <h2 className={s["card-title"]}>Guardrails</h2>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {detectorsSaved && <span style={{ fontSize: 12, color: "var(--badge-success-text)" }}>Saved</span>}
+            {guardrailsSaved && <span style={{ fontSize: 12, color: "var(--badge-success-text)" }}>Saved</span>}
             <button
               className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`}
-              onClick={saveDetectors}
-              disabled={savingDetectors || !detectorsChanged}
+              onClick={saveGuardrails}
+              disabled={savingGuardrails || !guardrailsChanged}
             >
-              {savingDetectors ? "Saving…" : "Save Detectors"}
+              {savingGuardrails ? "Saving…" : "Save Guardrails"}
             </button>
           </div>
         </div>
-        {detectorsError &&<div className={`${s.alert} ${s["alert--error"]}`}>{detectorsError}</div>}
-        <DetectorBuilder
-          value={detectors}
-          onChange={(d) => { setDetectors(d); setDetectorsChanged(true); }}
+        {guardrailsError &&<div className={`${s.alert} ${s["alert--error"]}`}>{guardrailsError}</div>}
+        <GuardrailBuilder
+          value={guardrails}
+          onChange={(d) => { setGuardrails(d); setGuardrailsChanged(true); }}
         />
       </div>
 
@@ -952,9 +952,9 @@ export default function Gateways() {
                       {g.config.rate_limit ? `${g.config.rate_limit.requests}/${g.config.rate_limit.window_sec}s` : "—"}
                     </td>
                     <td>
-                      {(g.config.detectors ?? []).length > 0 ? (
+                      {((g.config.guardrails ?? (g.config as any).detectors) ?? []).length > 0 ? (
                         <span className={`${s.badge} ${s["badge--warning"]}`}>
-                          {g.config.detectors!.length}
+                          {((g.config.guardrails ?? (g.config as any).detectors) ?? []).length}
                         </span>
                       ) : (
                         <span className={`${s.badge} ${s["badge--neutral"]}`}>—</span>

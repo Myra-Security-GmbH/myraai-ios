@@ -10,7 +10,7 @@ An opaque bearer credential issued by the Admin API that authenticates inference
 
 ## Block
 
-A detector or policy action that rejects a request entirely and returns an error response to the caller. Compare with **Scrub** (redact and continue) and **Flag** (log and continue). See [Detector Pipeline](../security/detectors.md).
+A guardrail or policy action that rejects a request entirely and returns an error response to the caller. Compare with **Scrub** (redact and continue) and **Flag** (log and continue). See [Guardrail Pipeline](../security/guardrails.md).
 
 ## Budget
 
@@ -36,13 +36,13 @@ The unified `POST /v1/{tenant}/{gateway}/compat/chat/completions` endpoint that 
 
 The estimated cost of an inference request in US dollars, calculated from token counts multiplied by the model's per-token pricing in the gateway's pricing table. Stored as micro-dollars internally. Appears in log entries and in the stats API. See [Models & Pricing API](../api-reference/models.md).
 
-## Detector
+## Guardrail
 
-A configurable content inspection component in the gateway's two-tier pipeline. Tier 1 detectors (regex, keyword, PII, prompt_injection) run in-process in microseconds. Tier 2 detectors (Presidio, LLM Guard) call external HTTP sidecars. Each detector has an action: `block`, `scrub`, or `flag`. See [Detector Pipeline](../security/detectors.md).
+A configurable content inspection component in the gateway's two-tier pipeline. Tier 1 guardrails (regex, keyword) run in-process in sub-milliseconds. Tier 2 guardrails (presidio, prompt_guard, pii_protector) call external HTTP sidecars. Each guardrail has an action: `block`, `scrub`, or `flag`. See [Guardrail Pipeline](../security/guardrails.md).
 
 ## DLP
 
-**Data Loss Prevention** — the practice of scanning request and response content for sensitive patterns (PII, credentials, etc.) before they leave or enter the system. In AI Gateway, DLP is implemented through the [detector pipeline](../security/detectors.md) using regex and keyword detectors, or the Presidio sidecar for NER-based PII detection.
+**Data Loss Prevention** — the practice of scanning request and response content for sensitive patterns (PII, credentials, etc.) before they leave or enter the system. In AI Gateway, DLP is implemented through the [guardrail pipeline](../security/guardrails.md) using regex and keyword guardrails, or the Presidio sidecar for NER-based PII detection.
 
 ## Exact-match cache
 
@@ -66,7 +66,7 @@ The gateway's in-process key/value store used for hot state: rate-limit counters
 
 ## Llama Guard
 
-An open-weight safety classification model (Meta's Llama Guard 3) that inspects prompt and response content for harm across 14 categories. In AI Gateway it is used as the `llm_guard` Tier-2 detector sidecar. See [LLM Guard detector](../security/detectors/llm-guard.md).
+An open-weight safety classification model (Meta's Llama Guard 3) that inspects prompt and response content for harm across 14 categories. In AI Gateway it is used as the `prompt_guard` Tier-2 guardrail sidecar. See [Prompt Guard](../security/guardrails/prompt-guard.md).
 
 ## Micro-dollars
 
@@ -82,7 +82,7 @@ A short-lived token issued for the Playground UI. Expires after 10 minutes and i
 
 ## Presidio
 
-[Microsoft Presidio](https://microsoft.github.io/presidio/) — an open-source NER-based PII detection service. Used as a Tier 2 detector sidecar in AI Gateway, operated as a managed sidecar by the Myra Security platform. More accurate than the in-process regex detectors for unstructured text but adds network round-trip latency. See [Detector Pipeline](../security/detectors.md).
+[Microsoft Presidio](https://microsoft.github.io/presidio/) — an open-source NER-based PII detection service. Used as a Tier 2 guardrail sidecar in AI Gateway, operated as a managed sidecar by the Myra Security platform. More accurate than the in-process regex guardrails for unstructured text but adds network round-trip latency. See [Guardrail Pipeline](../security/guardrails.md).
 
 ## Provider
 
@@ -132,13 +132,13 @@ The mode of operation when a request includes `"stream": true`. The provider sen
 
 The top-level organizational unit. A tenant corresponds to one application or team. Each tenant has a unique slug that appears in all inference endpoint URLs. Tenants contain gateways, users, and tokens. See [Tenants & Gateways API](../api-reference/tenants-gateways.md).
 
-## Tier 1 detector
+## Tier 1 guardrail
 
-An in-process detector (regex, keyword, PII, prompt_injection) that runs entirely inside the gateway process with no external calls. Execution time is in the microsecond range. Tier 1 detectors always run before Tier 2. See [Detector Pipeline](../security/detectors.md).
+An in-process guardrail (regex, keyword) that runs entirely inside the gateway process with no external calls. Execution time is in the sub-millisecond range. Tier 1 guardrails always run before Tier 2. See [Guardrail Pipeline](../security/guardrails.md).
 
-## Tier 2 detector
+## Tier 2 guardrail
 
-An HTTP-sidecar-based detector (Presidio, LLM Guard) that sends content to an external service for analysis. Execution time is in the millisecond range due to the network round trip. Tier 2 detectors run only if all Tier 1 detectors pass without blocking. See [Detector Pipeline](../security/detectors.md).
+An HTTP-sidecar-based guardrail (presidio, prompt_guard, pii_protector) that sends content to an external service for analysis. Execution time is in the millisecond range due to the network round trip. Tier 2 guardrails run only after all Tier 1 guardrails pass without blocking. See [Guardrail Pipeline](../security/guardrails.md).
 
 ---
 
