@@ -99,8 +99,11 @@ SQL_TOTAL=0
 [[ -n "$SQL_SRC" ]]  && SQL_TOTAL=$(echo "$SQL_SRC"  | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
 
 DOC_TOTAL=$(echo "$DOC_MD"  | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
+DOC_WORDS=$(echo "$DOC_MD"  | xargs wc -w 2>/dev/null | tail -1 | awk '{print $1}')
 ROOT_MD_TOTAL=0
+ROOT_MD_WORDS=0
 [[ -n "$ROOT_MD" ]] && ROOT_MD_TOTAL=$(echo "$ROOT_MD" | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
+[[ -n "$ROOT_MD" ]] && ROOT_MD_WORDS=$(echo "$ROOT_MD" | xargs wc -w 2>/dev/null | tail -1 | awk '{print $1}')
 
 DOC_FILES=$(echo "$DOC_MD" | grep -c '.' || true)
 ROOT_MD_FILES=$(echo "$ROOT_MD" | grep -c '.' 2>/dev/null || true)
@@ -173,10 +176,10 @@ printf "  %-36s %6d lines\n" "SOURCE CODE TOTAL" "$SRC_TOTAL"
 echo ""
 
 echo "── Documentation  ($DOC_FILES files + $ROOT_MD_FILES root md) ─────────────"
-row "  docs/docs.md/" "$DOC_TOTAL"
-[[ $ROOT_MD_TOTAL -gt 0 ]] && row "  /*.md (root)" "$ROOT_MD_TOTAL"
+printf "  %-36s %6d lines  %7d words\n" "  docs/docs.md/" "$DOC_TOTAL" "$DOC_WORDS"
+[[ $ROOT_MD_TOTAL -gt 0 ]] && printf "  %-36s %6d lines  %7d words\n" "  /*.md (root)" "$ROOT_MD_TOTAL" "$ROOT_MD_WORDS"
 echo ""
-printf "  %-36s %6d lines\n" "DOCS TOTAL" "$(( DOC_TOTAL + ROOT_MD_TOTAL ))"
+printf "  %-36s %6d lines  %7d words\n" "DOCS TOTAL" "$(( DOC_TOTAL + ROOT_MD_TOTAL ))" "$(( DOC_WORDS + ROOT_MD_WORDS ))"
 echo ""
 
 echo "═══════════════════════════════════════════════════════════════"
