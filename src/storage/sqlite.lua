@@ -71,6 +71,8 @@ local function migrate_columns(cfg)
     if not lcols.token_label      then ldb:exec("ALTER TABLE request_log ADD COLUMN token_label      TEXT") end
     if not lcols.detectors_fired  then ldb:exec("ALTER TABLE request_log ADD COLUMN detectors_fired  TEXT") end
     if not lcols.scrub_applied    then ldb:exec("ALTER TABLE request_log ADD COLUMN scrub_applied    INTEGER NOT NULL DEFAULT 0") end
+    if not lcols.response_raw     then ldb:exec("ALTER TABLE request_log ADD COLUMN response_raw     TEXT") end
+    if not lcols.prompt_scrubbed  then ldb:exec("ALTER TABLE request_log ADD COLUMN prompt_scrubbed  TEXT") end
     ldb:close()
 
     -- Playground trace tables (added after initial schema)
@@ -507,8 +509,8 @@ function M.insert_log(f)
              upstream_latency_ms, time_to_first_token_ms, upstream_attempts,
              fallback_provider, fallback_model, provider_request_id,
              request_size_bytes, quota_remaining, user_id, token_label,
-             detectors_fired, scrub_applied)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             detectors_fired, scrub_applied, response_raw, prompt_scrubbed)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
@@ -534,8 +536,10 @@ function M.insert_log(f)
         f.quota_remaining,
         f.user_id,
         f.token_label,
-        json.encode(f.detectors_fired or {}),
-        f.scrub_applied and 1 or 0
+        (f.detectors_fired and #f.detectors_fired > 0) and json.encode(f.detectors_fired) or nil,
+        f.scrub_applied and 1 or 0,
+        f.response_raw,
+        f.prompt_scrubbed
     )
     return err
 end
@@ -903,7 +907,7 @@ function M.list_logs(filters)
                input_tokens, output_tokens, cost_usd, latency_ms,
                upstream_latency_ms, guardrail_latency_ms, upstream_attempts,
                fallback_provider, fallback_model, saved_cost_usd, request_size_bytes,
-               detectors_fired, scrub_applied
+               detectors_fired, scrub_applied, response_raw
         FROM request_log WHERE %s ORDER BY ts DESC LIMIT %d OFFSET %d
     ]], table.concat(where, " AND "), limit, offset)
     local rows = query_all(log_db(), sql, table.unpack(params)) or {}
@@ -916,6 +920,28 @@ function M.list_logs(filters)
         end
     end
     return rows
+end
+
+function M.get_log(id)
+    local row = query_one(log_db(), [[
+        SELECT id,
+               strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
+               tenant_id, gateway_id, provider, model, status, cached, blocked,
+               blocked_by, block_reason, guardrail_verdict,
+               input_tokens, output_tokens, cost_usd, latency_ms,
+               upstream_latency_ms, guardrail_latency_ms, upstream_attempts,
+               fallback_provider, fallback_model, saved_cost_usd, request_size_bytes,
+               detectors_fired, scrub_applied,
+               prompt, response, response_raw, prompt_scrubbed
+        FROM request_log WHERE id = ?
+    ]], id)
+    if not row then return nil end
+    if row.detectors_fired and row.detectors_fired ~= "" then
+        row.detectors_fired = json.decode(row.detectors_fired) or {}
+    else
+        row.detectors_fired = {}
+    end
+    return row
 end
 
 -- ---------------------------------------------------------------------------
@@ -1011,7 +1037,7 @@ function M.get_usage_stats()
         SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
                tenant_id, blocked_by, block_reason, latency_ms,
                guardrail_latency_ms, guardrail_verdict,
-               blocked, scrub_applied, detectors_fired
+               blocked, scrub_applied, detectors_fired, response_raw, prompt_scrubbed
         FROM request_log
         WHERE blocked = 1
            OR scrub_applied = 1
