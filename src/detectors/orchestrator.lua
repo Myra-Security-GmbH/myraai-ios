@@ -6,17 +6,19 @@ local M = {}
 
 -- Tier assignment: lower number runs first.
 local TIER = {
-    regex     = 1,
-    keyword   = 1,
-    presidio  = 2,
-    llm_guard = 2,
+    regex         = 1,
+    keyword       = 1,
+    presidio      = 2,
+    llm_guard     = 2,
+    pii_protector = 2,
 }
 
 local MODULES = {
-    regex     = "detectors.regex",
-    keyword   = "detectors.keyword",
-    presidio  = "detectors.presidio",
-    llm_guard = "detectors.llm_guard",
+    regex         = "detectors.regex",
+    keyword       = "detectors.keyword",
+    presidio      = "detectors.presidio",
+    llm_guard     = "detectors.llm_guard",
+    pii_protector = "detectors.pii_protector",
 }
 
 -- Run all detectors applicable to `phase` ("request" or "response").
