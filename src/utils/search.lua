@@ -67,12 +67,24 @@ local function format(results, query)
 end
 
 -- Fetch results for multiple queries concurrently.
--- Returns array of formatted text strings, one per query.
+-- Returns array of {text=string, urls=string[]}, one entry per query.
+-- urls contains the raw result URLs so callers can fetch page content.
 -- Single query: no thread overhead.  Multiple: ngx.thread.spawn (non-blocking).
 function M.parallel(queries, api_key, n)
     if #queries == 0 then return {} end
+
+    local function to_entry(results, q)
+        local urls = {}
+        for _, r in ipairs(results) do
+            if r.url and r.url ~= "" then
+                urls[#urls + 1] = r.url
+            end
+        end
+        return { text = format(results, q), urls = urls }
+    end
+
     if #queries == 1 then
-        return { format(M.fetch(queries[1], api_key, n), queries[1]) }
+        return { to_entry(M.fetch(queries[1], api_key, n), queries[1]) }
     end
     local threads = {}
     for _, q in ipairs(queries) do
@@ -81,7 +93,14 @@ function M.parallel(queries, api_key, n)
     local out = {}
     for i, t in ipairs(threads) do
         local ok, res = ngx.thread.wait(t)
-        out[i] = format(ok and res or {}, queries[i])
+        out[i] = to_entry(ok and res or {}, queries[i])
+        if not ok then
+            for j = i + 1, #threads do
+                ngx.thread.kill(threads[j])
+                out[j] = to_entry({}, queries[j])
+            end
+            break
+        end
     end
     return out
 end

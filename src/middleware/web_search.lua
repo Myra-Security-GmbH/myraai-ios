@@ -13,14 +13,20 @@
 -- Gemini: uses native googleSearch grounding (single leg, no tool loop).
 --
 -- Flow:
---   Leg 1 — non-streaming buffered call with web_search tool injected
---   Search — parallel Brave API calls (ngx.thread.spawn, non-blocking)
---   Leg 2  — ctx.request_body updated with tool results; upstream.run() streams it
+--   Leg 1   — non-streaming buffered call with web_search tool injected
+--   Search  — parallel Brave API calls (ngx.thread.spawn, non-blocking)
+--   Fetch   — parallel HTTP page fetches for top-2 URLs (non-blocking)
+--             emits  data: {"aig_status":"fetching","count":N}  before fetching
+--   Leg 2   — ctx.request_body updated with enriched context; upstream.run() streams it
 
-local upstream  = require("middleware.upstream")
-local search    = require("utils.search")
-local providers = require("providers")
-local json      = require("utils.json")
+local upstream   = require("middleware.upstream")
+local search     = require("utils.search")
+local fetch_url  = require("utils.fetch_url")
+local providers  = require("providers")
+local json       = require("utils.json")
+local trace      = require("utils.trace")
+
+local FETCH_N = 2  -- max URLs to fetch per request
 
 local M = {}
 
@@ -208,6 +214,14 @@ function M.run(ctx)
     ctx.request_body.stream = false
     inject_tool(ctx)
 
+    trace.step(ctx, "leg1_request", {
+        model    = ctx.model,
+        provider = ctx.provider,
+        messages = ctx.request_body.messages,
+        tools    = ctx.request_body.tools,
+        stream   = false,
+    })
+
     local body_str, status, err = upstream.call_one(ctx)
     if err or not body_str then
         ngx.log(ngx.WARN, "web_search: leg1 failed (", tostring(err), ") — passing through")
@@ -216,10 +230,19 @@ function M.run(ctx)
         return
     end
 
+    trace.step(ctx, "leg1_response", {
+        status       = status,
+        body_preview = body_str and body_str:sub(1, 2000),
+        body_len     = body_str and #body_str,
+    })
+
     -- ── Check for tool_use ───────────────────────────────────────────────────
     local tool_calls = extract_tool_calls(body_str, is_anthropic)
 
     if not tool_calls then
+        trace.step(ctx, "leg1_direct_answer", {
+            body_preview = body_str and body_str:sub(1, 1000),
+        })
         -- Model answered directly — pass through Leg 1 response, skip upstream.run()
         local provider_mod = providers.get(provider)
         if provider_mod then
@@ -267,19 +290,133 @@ function M.run(ctx)
     for _, tc in ipairs(tool_calls) do
         queries[#queries + 1] = tc.query
     end
+    -- results is array of {text=string, urls=string[]}
     local results   = search.parallel(queries, ws.api_key, ws.max_results or 5)
     local query_str = table.concat(queries, "; ")
+
+    trace.step(ctx, "search_result", {
+        queries = queries,
+        results = (function()
+            local r = {}
+            for i, res in ipairs(results) do
+                r[i] = { text_len = #(res.text or ""), urls = res.urls }
+            end
+            return r
+        end)(),
+    })
 
     ngx.log(ngx.INFO, "web_search: searched query=\"", query_str,
             "\" provider=", provider)
     ctx.log_fields.web_search_query  = query_str
-    ngx.header["X-Web-Search-Query"] = query_str
 
-    -- ── Leg 2: inject results, restore stream, fall through to upstream ───────
-    inject_results(ctx, body_str, tool_calls, results, is_anthropic)
+    -- Set response headers now (before any possible early flush below).
+    -- upstream.run() → handle_*_streaming() will try to set these again but
+    -- OpenResty silently ignores header assignments after the first flush.
+    ngx.header["X-Web-Search-Query"] = query_str
+    ngx.header["X-AIG-Provider"]     = provider
+    ngx.header["X-AIG-Model"]        = ctx.model
+    ngx.header["X-AIG-Cache"]        = "MISS"
+
+    -- ── Fetch top page URLs (parallel, non-blocking) ──────────────────────────
+    -- Collect the first FETCH_N unique URLs across all query results.
+    -- For weather queries, prepend wttr.in which returns plain-text data that
+    -- JS-rendered weather sites (weather.com, wetter.de …) cannot provide.
+    local top_urls  = {}
+    local seen      = {}
+    -- wttr_by_result[i] = wttr.in URL injected for results[i], if any
+    local wttr_by_result = {}
+    for idx, tc in ipairs(tool_calls) do
+        local q = (tc.query or ""):lower()
+        if q:match("weather") then
+            local wttr = "https://wttr.in/" .. ngx.escape_uri(tc.query) .. "?format=4"
+            if not seen[wttr] then
+                seen[wttr]              = true
+                top_urls[#top_urls + 1] = wttr
+                wttr_by_result[idx]     = wttr
+            end
+        end
+    end
+    for _, r in ipairs(results) do
+        for _, u in ipairs(r.urls or {}) do
+            if not seen[u] and #top_urls < FETCH_N then
+                seen[u]            = true
+                top_urls[#top_urls + 1] = u
+            end
+        end
+    end
+
+    trace.step(ctx, "fetch_attempt", { urls = top_urls })
+
+    if orig_stream and #top_urls > 0 then
+        -- Flush SSE headers + emit fetching-status event so the client can
+        -- show a "fetching…" badge while pages are being downloaded.
+        if not ngx.headers_sent then
+            ngx.status                      = 200
+            ngx.header["Content-Type"]      = "text/event-stream"
+            ngx.header["Cache-Control"]     = "no-cache"
+            ngx.header["X-Accel-Buffering"] = "no"
+        end
+        local status_evt = json.encode({ aig_status = "fetching", count = #top_urls })
+        ngx.print("data: " .. status_evt .. "\n\n")
+        ngx.flush(true)
+    end
+
+    if #top_urls > 0 then
+        local fetched      = fetch_url.parallel(top_urls, FETCH_N)
+        do
+            local fetched_info = {}
+            for _, f in ipairs(fetched) do
+                fetched_info[#fetched_info+1] = {
+                    url      = f.url,
+                    ok       = f.text ~= nil,
+                    text_len = f.text and #f.text or 0,
+                    preview  = f.text and f.text:sub(1, 300) or nil,
+                }
+            end
+            trace.step(ctx, "fetch_result", { fetched = fetched_info })
+        end
+        local text_by_url  = {}
+        for _, f in ipairs(fetched) do
+            if f.text then text_by_url[f.url] = f.text end
+        end
+
+        -- Augment each query's result text with the fetched page content.
+        for i, r in ipairs(results) do
+            local pages = {}
+            -- Include wttr.in content first (plain-text, reliable for weather)
+            local wttr = wttr_by_result[i]
+            if wttr and text_by_url[wttr] then
+                pages[#pages + 1] = "### Source: " .. wttr .. "\n\n" .. text_by_url[wttr]
+            end
+            for _, u in ipairs(r.urls or {}) do
+                if text_by_url[u] then
+                    pages[#pages + 1] = "### Source: " .. u .. "\n\n" .. text_by_url[u]
+                end
+            end
+            if #pages > 0 then
+                results[i].text = r.text
+                    .. "\n\n## Page Content\n\n"
+                    .. table.concat(pages, "\n\n---\n\n")
+            end
+        end
+    end
+
+    -- ── Leg 2: inject enriched results, restore stream, fall through ──────────
+    local result_texts = {}
+    for _, r in ipairs(results) do
+        result_texts[#result_texts + 1] = r.text
+    end
+    inject_results(ctx, body_str, tool_calls, result_texts, is_anthropic)
     ctx.request_body.stream = orig_stream
     ctx.raw_request_body    = json.encode(ctx.request_body)
     ctx.web_search_leg2     = true
+
+    trace.step(ctx, "leg2_request", {
+        model    = ctx.model,
+        provider = ctx.provider,
+        messages = ctx.request_body.messages,
+        stream   = orig_stream,
+    })
 end
 
 return M
