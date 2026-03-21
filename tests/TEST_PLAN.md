@@ -20,7 +20,6 @@ AIG_CONFIG=config/gateway.lua resty -I src/ tests/fixtures/seed.lua
 | File | Covers |
 |---|---|
 | `test_cache_key.lua` | SHA-256 key construction, stream exclusion, field exclusion |
-| `test_dlp.lua` | block / scrub / flag actions, pattern matching |
 | `test_ip_allowlist.lua` | CIDR matching, exact IP, multi-CIDR |
 | `test_routing_engine.lua` | Rule evaluation, prefix/eq/regex ops, fallback chain, no-match |
 | `test_provider_openai.lua` | URL building, header construction, response parsing, SSE chunk parsing |
@@ -81,12 +80,6 @@ AIG_CONFIG=config/gateway.lua resty -I src/ tests/fixtures/seed.lua
 - Missing gateway segment returns 400
 - Path with extra slashes parses correctly
 
-### `tests/unit/test_guardrails.lua`
-- Clean prompt passes through
-- Prompt matching `self_harm` pattern blocked with 400
-- Guardrails disabled (`enabled=false`) → always passes
-- Empty `block_categories` → always passes
-
 ### `tests/unit/test_pipeline.lua`
 - Middlewares run in order (use a list of recorders)
 - A middleware that calls `errors.send()` stops the chain
@@ -131,11 +124,6 @@ GET /healthz → 200 "ok"
 - 101st request → 429 with `Retry-After` header
 - Rate limit counter is per-gateway (two gateways don't interfere)
 - `X-RateLimit-Remaining` decrements correctly
-
-### `tests/integration/test_dlp_integration.lua`
-- Request with email in prompt + `action=block` → 400 DLP_BLOCKED
-- Request with email in prompt + `action=scrub` → upstream called with `[REDACTED]`
-- Scrubbed body does not reach the log payload
 
 ### `tests/integration/test_streaming.lua`
 - Request with `stream=true` → response is `text/event-stream`

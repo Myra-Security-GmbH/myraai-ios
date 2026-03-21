@@ -152,7 +152,8 @@ end)
 -- ── compat.infer_provider — OpenRouter fallback used by playground ────────────
 
 describe("compat.infer_provider — playground OpenRouter fallback", function()
-    package.loaded["providers.compat"] = nil
+    package.loaded["providers.compat"]  = nil
+    package.preload["providers.compat"] = nil
     local compat = require("providers.compat")
 
     it("unknown model routes to openrouter (playground catch-all)", function()

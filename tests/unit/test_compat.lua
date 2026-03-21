@@ -13,8 +13,9 @@ _G.ngx = {
 
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
--- Force fresh load
-package.loaded["providers.compat"] = nil
+-- Force fresh load (clear preload too so test_bugs.lua mock doesn't leak in)
+package.loaded["providers.compat"]  = nil
+package.preload["providers.compat"] = nil
 local compat = require("providers.compat")
 
 -- ── exact map ────────────────────────────────────────────────────────────────

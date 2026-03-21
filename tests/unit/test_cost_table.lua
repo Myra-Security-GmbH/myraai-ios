@@ -226,8 +226,8 @@ describe("cost_table — unknown model", function()
 
     local ct = require("observability.cost_table")
 
-    it("calculate() returns 0 for an unknown model", function()
+    it("calculate() returns nil for an unknown model", function()
         local cost = ct.calculate("anthropic", "x-unknown-model", 100, 100, 0, 0)
-        assert.equal(0, cost, "unknown model should return cost=0")
+        assert.is_nil(cost, "unknown model should return nil (untracked, not free)")
     end)
 end)
