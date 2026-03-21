@@ -11,33 +11,17 @@ When `ip_allowlist` contains one or more entries, any request from a source IP t
 - Both IPv4 addresses are supported
 - The check is performed on the connecting client IP as seen by the gateway. If the gateway is deployed behind a load balancer, IP evaluation uses the original client IP from forwarding headers automatically.
 
-## Config example
+## Using the admin UI
 
-Set the allowlist via the gateway config:
+1. Open **Gateways** and click the gateway you want to restrict.
+2. Open the **Config** tab.
+3. Find the **IP Allowlist** field and add one entry per line, using bare IPs or CIDR notation.
+4. Click **Save**.
 
-```bash
-curl -X PATCH https://your-gateway-host/admin/v1/gateways/{id} \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "config": {
-      "ip_allowlist": [
-        "10.0.0.0/8",
-        "192.168.1.50",
-        "172.16.0.0/12"
-      ]
-    }
-  }'
-```
+To remove all restrictions and allow all source IPs, clear the IP Allowlist field and save.
 
-To remove the allowlist and allow all IPs again, set it to an empty array:
-
-```bash
-curl -X PATCH https://your-gateway-host/admin/v1/gateways/{id} \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"config": {"ip_allowlist": []}}'
-```
+!!! warning
+    If your gateway is behind a load balancer or reverse proxy, verify that the allowlist entries match your true client IP ranges. The gateway uses the original client IP from forwarding headers automatically, so proxy IPs are not evaluated.
 
 ## CIDR notation examples
 
@@ -68,8 +52,9 @@ The `blocked_by` field identifies the IP allowlist as the reason, which is usefu
 !!! note
     The IP allowlist applies only to inference endpoints. Admin API requests are subject to separate access controls and are not filtered by the gateway's `ip_allowlist` config.
 
-!!! warning
-    If your gateway is behind a load balancer or reverse proxy, verify that the allowlist entries match your true client IP ranges. The gateway uses the original client IP from forwarding headers automatically, so proxy IPs are not evaluated.
+## API
+
+The `ip_allowlist` field is part of the gateway config object. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for the PATCH endpoint and request examples.
 
 ## See also
 

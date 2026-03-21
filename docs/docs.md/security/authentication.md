@@ -1,6 +1,6 @@
 # Authentication & Tokens
 
-The gateway uses opaque bearer tokens for inference authentication. Tokens are short-lived or long-lived strings issued by the admin API. The gateway stores only the SHA-256 hash of each token — the plaintext is returned once at creation time and never stored again.
+The gateway uses opaque bearer tokens for inference authentication. Tokens are short-lived or long-lived strings issued via the admin UI or API. The gateway stores only the SHA-256 hash of each token — the plaintext is returned once at creation time and never stored again.
 
 ## Token acceptance order
 
@@ -43,70 +43,76 @@ Each token's `user_id` maps to a user record which has a `role` field:
 !!! warning
     The `viewer` role is intended for users who need read access to the admin UI only. Sending an inference request with a viewer-role token always returns `403 Forbidden`.
 
+## Two token flows
+
+There are two places in the admin UI where tokens can be created, and they serve different purposes:
+
+| | Gateway token | User token |
+|---|---|---|
+| **Where** | Gateways → [gateway] → Tokens tab | Users → [user] → New Token |
+| **Fields** | Expiration only | Label, gateway, expiry, budget, rate limit, scopes |
+| **Associated with** | No user identity | A specific user record |
+| **Budget tracking** | None | Per-user spend tracked |
+| **Use case** | Quick service-to-service token | Named credential tied to an identity |
+
+Use **gateway tokens** when you need a simple credential for a service or integration and don't need spend tracking per caller.
+
+Use **user tokens** when you need to attribute usage, enforce per-user budgets, or manage access for individual people or teams.
+
+## Token scopes
+
+When creating a user token, you select one or more scopes:
+
+| Scope | Description |
+|---|---|
+| `inference` | Grants access to inference endpoints. Select this for any token that will make model requests. |
+| `read` | Reserved for future use. |
+| `admin` | Reserved for future use. |
+
+Select `inference` for standard API access. Access to specific gateways is controlled by the user's role and gateway access grants, not by scopes.
+
+## Using the admin UI
+
+### Create a user
+
+1. Open **Users** in the left sidebar.
+2. Click **New User**.
+3. Select the tenant, enter an email and optional name, and choose a role:
+   - **admin** — full access to all gateways in the tenant
+   - **member** — access only to gateways explicitly granted to them
+   - **viewer** — read-only admin UI access; cannot make inference requests
+4. Click **Save**.
+
+For `member`-role users, assign gateway access after creating the user: open the user, click **Add Gateway**, and select the gateways they should be able to use.
+
+### Create a token
+
+1. Open **Users** and select the user.
+2. Click **New Token**.
+3. Select the gateway, set a label, configure optional expiry, budget, rate limit, and scopes.
+4. Click **Create**. The plaintext token is shown once — copy it now.
+
+### Revoke a token
+
+1. Open **Users** and select the user.
+2. Find the token in the token list and click the delete icon.
+
+Revocation is immediate. In-flight requests that have already passed the auth phase complete normally.
+
 ## Disabling authentication
 
-For development or internal networks, authentication can be disabled per gateway:
+For development or internal networks, authentication can be disabled per gateway via the **Config** tab:
 
-```bash
-curl -X PATCH https://your-gateway-host/admin/v1/gateways/{id} \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"config": {"auth_required": false}}'
-```
+1. Open **Gateways** and click the gateway.
+2. Open the **Config** tab.
+3. Set **Auth Required** to off and save.
 
 !!! warning
-    Never set `auth_required: false` in production. Any caller with network access to the gateway endpoint can make inference requests and incur costs.
+    Never disable authentication in production. Any caller with network access to the gateway endpoint can make inference requests and incur costs.
 
-## Creating tokens
+## API
 
-```bash
-curl -X POST https://your-gateway-host/admin/v1/gateways/{id}/tokens \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "label": "production-client",
-    "user_id": "user_42",
-    "scopes": ["inference"],
-    "expires_at": "2026-12-31T23:59:59Z",
-    "rate_limit": {
-      "requests": 100,
-      "window_sec": 60
-    },
-    "budget_usd": 50.00
-  }'
-```
-
-The response includes the plaintext token in a `token` field. Store it securely — it is not retrievable after this response.
-
-```json
-{
-  "id": "tok_abc123",
-  "token": "aig_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "label": "production-client",
-  "user_id": "user_42",
-  "scopes": ["inference"],
-  "expires_at": "2026-12-31T23:59:59Z",
-  "created_at": "2026-03-21T10:00:00Z"
-}
-```
-
-## Listing and revoking tokens
-
-**List tokens for a gateway:**
-
-```bash
-curl https://your-gateway-host/admin/v1/gateways/{id}/tokens \
-  -H "x-aig-token: <admin-token>"
-```
-
-**Revoke a token:**
-
-```bash
-curl -X DELETE https://your-gateway-host/admin/v1/gateways/{id}/tokens/{token_id} \
-  -H "x-aig-token: <admin-token>"
-```
-
-Revocation is immediate. In-flight requests that have already passed the auth phase will complete normally.
+Token and user management is also available via the Admin API. See [Users & Tokens API](../api-reference/users-tokens.md) for endpoint reference and request/response examples.
 
 ## See also
 

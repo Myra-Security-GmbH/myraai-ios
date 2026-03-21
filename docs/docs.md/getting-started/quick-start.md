@@ -8,47 +8,23 @@ Log in to the admin UI at `https://<your-gateway-host>/admin` using the credenti
 
 ## Step 1 — Create a tenant and gateway
 
-```bash
-# Create a tenant
-curl -s -X POST https://<your-gateway-host>/admin/v1/tenants \
-  -H 'Content-Type: application/json' \
-  -d '{"slug":"myapp","plan":"starter"}' | tee /tmp/tenant.json
+1. In the left sidebar, click **Tenants**.
+2. Click **New Tenant**, enter a slug (e.g. `myapp`), and save.
+3. Click **Gateways** in the sidebar, then **New Gateway**.
+4. Select your new tenant, enter a slug (e.g. `production`), and save.
 
-TENANT_ID=$(jq -r '.id' /tmp/tenant.json)
-
-# Create a gateway inside that tenant
-curl -s -X POST "https://<your-gateway-host>/admin/v1/tenants/${TENANT_ID}/gateways" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "slug": "production",
-    "config": {
-      "auth_required": false,
-      "cache_ttl": 0,
-      "retry_count": 2
-    }
-  }' | tee /tmp/gateway.json
-
-GW_ID=$(jq -r '.id' /tmp/gateway.json)
-```
-
-!!! note "auth_required: false"
-    Setting `auth_required: false` removes the need for an auth token on inference requests, which simplifies this quick start. For any real deployment you should leave it enabled and create auth tokens.
+!!! note "Auth for this quick start"
+    By default, gateways require an auth token on every inference request. To skip that for now, open the gateway's **Config** tab and set **Auth Required** to off. Re-enable it before going to production.
 
 ---
 
 ## Step 2 — Store a provider key
 
-```bash
-curl -s -X POST "https://<your-gateway-host>/admin/v1/gateways/${GW_ID}/keys" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "provider": "openai",
-    "alias": "default",
-    "key": "sk-..."
-  }'
-```
+1. In **Gateways**, click your new gateway.
+2. Open the **Keys** tab.
+3. Click **Add Key**, select a provider (e.g. `openai`), paste your API key, and save.
 
-The key is encrypted at rest. The plaintext is never persisted.
+The key is encrypted at rest immediately. The plaintext is never stored.
 
 ---
 
@@ -96,9 +72,7 @@ A successful response looks like:
 
 ## Step 4 — Check the request log
 
-```bash
-curl -s "https://<your-gateway-host>/admin/v1/logs?limit=1" | jq .
-```
+In the left sidebar, click **Logs**. Your request appears at the top of the list with provider, model, token count, cost, and latency.
 
 ---
 

@@ -6,16 +6,16 @@ The gateway tracks cumulative spend per gateway and per token and blocks request
 
 Two budget levels exist and are evaluated independently:
 
-1. **Per-token budget** (`auth_token.budget_usd`) — tracks spend for one specific token. Takes precedence in the sense that it is checked first; if the token budget is exhausted the request is blocked regardless of the gateway budget.
-2. **Per-gateway budget** (`gateway.budget_usd`) — tracks aggregate spend across all tokens on that gateway. Acts as a hard cap for the gateway as a whole.
+1. **Per-token budget** — tracks spend for one specific token. If the token budget is exhausted the request is blocked regardless of the gateway budget.
+2. **Per-gateway budget** — tracks aggregate spend across all tokens on that gateway. Acts as a hard cap for the gateway as a whole.
 
 Either level can be set independently. A gateway with no `budget_usd` set (`null`) has no gateway-level cap. A token with no `budget_usd` has no token-level cap.
 
 ## Cost calculation
 
-Cost is computed from the token usage returned in the provider response (prompt tokens + completion tokens) combined with per-model pricing data maintained by the gateway. The result is stored internally as **micro-dollars** (USD × 10⁶) for integer precision.
+Cost is computed from the token usage returned in the provider response (prompt tokens + completion tokens) combined with per-model pricing data maintained by the gateway.
 
-Spend is incremented atomically after each successful inference response. Streaming responses increment spend when the final `[DONE]` chunk is processed and usage data is available.
+Spend is incremented after each successful inference response. Streaming responses increment spend when the final chunk is processed and usage data is available.
 
 !!! note
     Cost data depends on the gateway's internal model pricing table. If a model's pricing is not known, spend may not be tracked for that model. Check the model list endpoint to confirm pricing coverage.
@@ -35,59 +35,28 @@ When a budget is exhausted, the gateway returns `HTTP 429`:
 
 This applies whether the token budget or the gateway budget triggered the block.
 
-## Resetting budgets
+## Using the admin UI
 
-### Reset gateway budget
+### Set a gateway budget
 
-Clears the accumulated spend counter for a gateway, allowing requests to flow again up to the configured `budget_usd`.
+1. Open **Gateways** and click the gateway.
+2. Open the **Config** tab.
+3. Set the **Budget (USD)** field to your desired monthly cap.
+4. Click **Save**.
 
-```bash
-curl -X DELETE https://your-gateway-host/admin/v1/gateways/{id}/budget \
-  -H "x-aig-token: <admin-token>"
-```
+### Set a per-token budget
 
-### Reset user token budgets
+Set the budget when creating or editing a token in the **Users** module — enter the spend cap in the **Budget (USD)** field.
 
-Clears the accumulated spend for all tokens belonging to a user.
+### Reset a budget
 
-```bash
-curl -X DELETE https://your-gateway-host/admin/v1/users/{user_id}/budget \
-  -H "x-aig-token: <admin-token>"
-```
+To clear accumulated spend so requests can flow again, use the **Reset Budget** action:
+
+- **Gateway budget**: In the **Config** tab, use the **Reset Budget** button.
+- **User token budgets**: In the **Users** module, use the **Reset Budget** action on the user.
 
 !!! warning
-    Budget resets are immediate and irreversible. There is no confirmation step. Automate resets with care — for example, a monthly cron job that resets at the start of each billing period.
-
-## Setting budgets
-
-### Gateway-level budget
-
-```bash
-curl -X PATCH https://your-gateway-host/admin/v1/gateways/{id} \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "config": {
-      "budget_usd": 500.00
-    }
-  }'
-```
-
-### Per-token budget
-
-Set when creating a token:
-
-```bash
-curl -X POST https://your-gateway-host/admin/v1/gateways/{id}/tokens \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "label": "client-a",
-    "user_id": "user_123",
-    "scopes": ["inference"],
-    "budget_usd": 20.00
-  }'
-```
+    Budget resets are immediate and irreversible. There is no confirmation step. Automate resets with care — for example, a monthly scheduled task that resets at the start of each billing period.
 
 ## Best practices
 
@@ -100,6 +69,10 @@ curl -X POST https://your-gateway-host/admin/v1/gateways/{id}/tokens \
 
 !!! note
     The gateway budget and per-token budget are not linked. Exhausting the gateway budget blocks all requests even if individual token budgets have remaining balance.
+
+## API
+
+Budget fields and reset endpoints are part of the gateway and user APIs. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) and [Users & Tokens API](../api-reference/users-tokens.md) for examples.
 
 ## See also
 

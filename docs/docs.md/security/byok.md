@@ -16,84 +16,28 @@ Each stored key is uniquely identified by the combination of:
 
 Multiple keys for the same provider on the same gateway can coexist under different aliases. This lets you rotate keys without downtime or assign different keys to different request flows.
 
-## Key caching
+## Using the admin UI
 
-Decrypted keys are cached in the `aig_byok` shared memory dictionary for **60 seconds**. This avoids decrypting the key on every request without holding plaintext indefinitely. After 60 seconds, the next request re-decrypts from the database.
+### Add a key
 
-## API reference
-
-### Store a key
-
-```bash
-curl -X POST https://your-gateway-host/admin/v1/gateways/{id}/keys \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "provider": "openai",
-    "alias": "default",
-    "key": "sk-proj-..."
-  }'
-```
-
-### List keys for a gateway
-
-Returns metadata only — the plaintext key and ciphertext are never returned.
-
-```bash
-curl https://your-gateway-host/admin/v1/gateways/{id}/keys \
-  -H "x-aig-token: <admin-token>"
-```
-
-Response:
-
-```json
-[
-  {
-    "provider": "openai",
-    "alias": "default",
-    "created_at": "2026-03-21T10:00:00Z"
-  },
-  {
-    "provider": "openai",
-    "alias": "backup",
-    "created_at": "2026-03-21T10:05:00Z"
-  }
-]
-```
+1. Open **Gateways** and click the gateway you want to configure.
+2. Open the **Keys** tab.
+3. Click **Add Key**.
+4. Select the provider, enter an alias (leave as `default` unless you need multiple keys for the same provider), and paste the API key.
+5. Click **Save**. The key is encrypted immediately — the plaintext is not stored.
 
 ### Delete a key
 
-```bash
-curl -X DELETE \
-  https://your-gateway-host/admin/v1/gateways/{id}/keys/{provider}/{alias} \
-  -H "x-aig-token: <admin-token>"
-```
+On the **Keys** tab, find the key and click the delete icon. Deletion is immediate.
 
-Example — delete the default OpenAI key:
-
-```bash
-curl -X DELETE \
-  https://your-gateway-host/admin/v1/gateways/gw_123/keys/openai/default \
-  -H "x-aig-token: <admin-token>"
-```
+!!! warning
+    Deleting the `default` key for a provider will cause all requests to that provider to fail until a new key is added.
 
 ## Using multiple keys per provider
 
-Store additional keys under named aliases:
+Store additional keys under named aliases via the Keys tab (set the **Alias** field to something other than `default`, e.g. `backup`).
 
-```bash
-# Store a backup key
-curl -X POST https://your-gateway-host/admin/v1/gateways/{id}/keys \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "provider": "openai",
-    "alias": "backup",
-    "key": "sk-proj-backup..."
-  }'
-```
-
-Select a non-default alias on a per-request basis using the `x-aig-byok-alias` header:
+To use a non-default alias on a specific inference request, send the `x-aig-byok-alias` header:
 
 ```bash
 curl https://your-gateway-host/v1/my-tenant/my-gateway/chat/completions \
@@ -104,11 +48,11 @@ curl https://your-gateway-host/v1/my-tenant/my-gateway/chat/completions \
 ```
 
 !!! note
-    The `x-aig-byok-alias` header is evaluated at request time. If the specified alias does not exist for the provider, the gateway falls back to the `"default"` alias.
+    If the specified alias does not exist for the provider, the gateway falls back to the `"default"` alias.
 
 ## Bedrock key format
 
-For AWS Bedrock, store credentials as a colon-delimited string:
+For AWS Bedrock, enter credentials as a colon-delimited string in the **Key** field:
 
 ```
 ACCESS_KEY_ID:SECRET_ACCESS_KEY
@@ -120,18 +64,9 @@ Or with a session token:
 ACCESS_KEY_ID:SECRET_ACCESS_KEY:SESSION_TOKEN
 ```
 
-Example:
+## API
 
-```bash
-curl -X POST https://your-gateway-host/admin/v1/gateways/{id}/keys \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "provider": "bedrock",
-    "alias": "default",
-    "key": "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-  }'
-```
+Key management is also available via the Admin API. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for endpoint reference and request/response examples.
 
 ## See also
 

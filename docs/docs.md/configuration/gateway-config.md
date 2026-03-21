@@ -1,24 +1,12 @@
 # Gateway Configuration
 
-Every gateway has a `config` object that controls caching, timeouts, security, routing, and provider-specific settings. You update it with a single `PATCH` request — only the fields you include are changed.
+Every gateway has a `config` object that controls caching, timeouts, security, routing, and provider-specific settings.
 
-## Updating gateway config
+## Using the admin UI
 
-```bash
-curl -X PATCH https://your-gateway-host/admin/v1/gateways/{id} \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "config": {
-      "retry_count": 3,
-      "timeout_ms": 30000,
-      "log_payloads": false
-    }
-  }'
-```
-
-!!! note
-    The `config` field is merged at the top level. Nested objects (such as `rate_limit`) are replaced in full when provided, not merged field-by-field.
+1. Open **Gateways** in the left sidebar and click the gateway you want to configure.
+2. Open the **Config** tab.
+3. Edit any field and click **Save**. Only the fields you change are updated — other settings are unaffected.
 
 ## Config fields reference
 
@@ -64,6 +52,37 @@ curl -X PATCH https://your-gateway-host/admin/v1/gateways/{id} \
 }
 ```
 
+## Provider Base URLs
+
+The `provider_base_urls` field lets you override the default upstream endpoint for any provider on a per-gateway basis. This is useful for:
+
+- **Local Ollama** — point the gateway at an Ollama instance running on a custom host or port
+- **Private deployments** — route to an on-premises or VPC-hosted model server
+- **Custom proxies** — send traffic through an intermediary before it reaches the provider
+
+### In the admin UI
+
+1. Open **Gateways** and click the gateway.
+2. Open the **Config** tab.
+3. Scroll to **Provider Base URLs** and click **Add**.
+4. Enter the provider name (e.g. `ollama`) and the base URL (e.g. `http://192.168.1.50:11434`).
+5. Click **Save**.
+
+### Format
+
+The value must be a bare `protocol://host:port` with no trailing slash or path. The gateway appends the provider's standard request path automatically.
+
+### Examples
+
+| Provider | Override value | When to use |
+|---|---|---|
+| `ollama` | `http://localhost:11434` | Ollama running locally on the default port |
+| `ollama` | `http://192.168.1.50:11434` | Ollama on another machine in the same network |
+| `openai` | `https://proxy.internal/openai` | Corporate proxy in front of the OpenAI API |
+| `anthropic` | `http://localhost:4010` | Local mock server for integration tests |
+
+Any of the 21 supported providers can be overridden. To remove an override, delete the entry and save.
+
 ## Per-request header overrides
 
 Certain behaviors can be overridden on individual requests without changing the gateway config.
@@ -78,6 +97,10 @@ Certain behaviors can be overridden on individual requests without changing the 
 
 !!! warning
     `x-aig-collect-log-payload: 0` suppresses body storage for that request only. It does not affect the gateway-level `log_payloads` setting for other requests.
+
+## API
+
+Gateway config can also be updated via the Admin API using a PATCH request. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for endpoint reference and examples.
 
 ## See also
 

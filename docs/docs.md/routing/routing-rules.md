@@ -7,8 +7,19 @@ Routing rules let you redirect requests to different providers and models based 
 - Rules are evaluated in **ascending priority order** (lower number = higher priority)
 - **First match wins** — evaluation stops at the first rule whose all conditions match
 - All conditions within a rule must match (logical AND)
-- Rules are **cached for 30 seconds** — changes propagate within one cache TTL
-- If no rule matches, the gateway uses the gateway's default provider and model
+- If no rule matches, the gateway uses the provider and model from the original request
+
+## Using the admin UI
+
+1. Open **Gateways** in the left sidebar and click the gateway.
+2. Open the **Routing** tab. The rule list shows all rules in priority order.
+3. Click **Add Rule**.
+4. Set the **Priority** (lower = higher priority; use increments of 10 to leave room for insertions).
+5. Add one or more **Conditions** — each condition picks a field, an operator, and a value.
+6. Set the **Actions**: choose a target provider, optionally rewrite the model name, and add fallback providers.
+7. Toggle **Enabled** on and click **Save**.
+
+To reorder rules, edit their priority values. To temporarily disable a rule without deleting it, toggle **Enabled** off.
 
 ## Condition fields and operators
 
@@ -39,72 +50,6 @@ Routing rules let you redirect requests to different providers and models based 
 | `provider` | string | Route the request to this provider. |
 | `model` | string | Replace the model name with this value when forwarding. |
 | `fallbacks` | array | Ordered list of `{provider, model}` objects to try if the primary fails. |
-
-## Admin API
-
-### List rules
-
-```bash
-curl https://your-gateway-host/admin/v1/gateways/{id}/rules \
-  -H "x-aig-token: <admin-token>"
-```
-
-### Create a rule
-
-```bash
-curl -X POST https://your-gateway-host/admin/v1/gateways/{id}/rules \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "priority": 10,
-    "conditions": [
-      {"field": "model", "op": "prefix", "value": "gpt-"}
-    ],
-    "actions": {
-      "provider": "openai",
-      "model": "gpt-4o",
-      "fallbacks": [
-        {"provider": "anthropic", "model": "claude-sonnet-4-6"}
-      ]
-    },
-    "enabled": true
-  }'
-```
-
-### Update a rule
-
-```bash
-curl -X PATCH https://your-gateway-host/admin/v1/gateways/{id}/rules/{rule_id} \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"enabled": false}'
-```
-
-### Delete a rule
-
-```bash
-curl -X DELETE https://your-gateway-host/admin/v1/gateways/{id}/rules/{rule_id} \
-  -H "x-aig-token: <admin-token>"
-```
-
-## Full rule example
-
-```json
-{
-  "priority": 10,
-  "conditions": [
-    {"field": "model", "op": "prefix", "value": "gpt-"}
-  ],
-  "actions": {
-    "provider": "openai",
-    "model": "gpt-4o",
-    "fallbacks": [
-      {"provider": "anthropic", "model": "claude-sonnet-4-6"}
-    ]
-  },
-  "enabled": true
-}
-```
 
 ## Common patterns
 
@@ -185,6 +130,10 @@ Attach the metadata with `x-aig-meta-region: eu` on the inference request.
 
 !!! note
     Priority values do not need to be contiguous. Using increments of 10 (10, 20, 30 ...) leaves room to insert rules between existing ones without renumbering.
+
+## API
+
+Routing rules are also fully manageable via the Admin API. See [Routing Rules API](../api-reference/routing-rules.md) for endpoint reference and request/response examples.
 
 ## See also
 
