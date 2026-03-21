@@ -6,7 +6,12 @@ Requires: Presidio analyzer running at http://127.0.0.1:5002 (or --url override)
           pip install requests
 
 Run from repo root:
-    python3 tests/false_positives/test_presidio_fp.py
+    python3 tests/false_positives/test_presidio_fp.py [--pct 20] [--min-full 10000] [--seed 42]
+
+--pct N         Sample N% of each corpus above --min-full size (default 100 = all).
+                Each prompt is included independently with this probability.
+--min-full N    Corpora with <= N prompts are always run in full (default 10000).
+                Only larger corpora are subject to --pct sampling.
 
 Results → tests/false_positives/results/presidio_fp_results.json
 """
@@ -14,6 +19,7 @@ Results → tests/false_positives/results/presidio_fp_results.json
 import argparse
 import json
 import os
+import random
 import sys
 import time
 
@@ -27,11 +33,11 @@ ENTITY_COMBOS = [
     ("person_email",  ["PERSON", "EMAIL_ADDRESS"]),
     ("pii_core",      ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "LOCATION"]),
     # pii_focused: excludes high-FP entities (PERSON, LOCATION, DATE_TIME, NRP).
-    # This mirrors the effect of HIGH_FP_ENTITY_THRESHOLDS=0.9 in presidio.lua.
     # Targets only genuinely sensitive data that rarely appears in benign text.
     ("pii_focused",   ["EMAIL_ADDRESS", "PHONE_NUMBER", "US_SSN", "CREDIT_CARD",
                        "US_BANK_NUMBER", "IBAN_CODE", "US_PASSPORT",
-                       "US_DRIVER_LICENSE", "US_ITIN", "CRYPTO"]),
+                       "US_DRIVER_LICENSE", "US_ITIN", "CRYPTO",
+                       "IP_ADDRESS", "MEDICAL_LICENSE", "URL"]),
 
     # ── Per-entity sweep ───────────────────────────────────────────────────────
     # Each entry isolates a single entity type so we can measure its individual
@@ -100,9 +106,16 @@ def check_health(url, timeout=3):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url",   default="http://127.0.0.1:5002", help="Presidio analyzer URL")
-    parser.add_argument("--limit", type=int, default=500,
-                        help="Max prompts per corpus (default 500, use 0 for all)")
+    parser.add_argument("--url",      default="http://127.0.0.1:5002",
+                        help="Presidio analyzer URL")
+    parser.add_argument("--pct",      type=float, default=100.0,
+                        help="Percentage of large corpora to sample (default 100 = all). "
+                             "Each prompt is included independently with this probability.")
+    parser.add_argument("--min-full", type=int, default=10000,
+                        help="Corpora with <= this many prompts are always run in full "
+                             "regardless of --pct (default 10000).")
+    parser.add_argument("--seed",     type=int, default=42,
+                        help="Random seed for --pct sampling (default 42)")
     args = parser.parse_args()
 
     try:
@@ -114,40 +127,64 @@ def main():
     if not check_health(args.url):
         print(f"SKIP: Presidio analyzer not reachable at {args.url}")
         print("      Start it with:")
-        print("        docker run -p 5002:5002 mcr.microsoft.com/presidio-analyzer:latest")
+        print("        docker start aig-presidio-analyzer")
         sys.exit(0)
 
     print(f"Presidio analyzer reachable at {args.url}")
+    if args.pct < 100.0:
+        print(f"Sampling {args.pct}% of corpora larger than {args.min_full:,} prompts (seed={args.seed})")
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     corpus_files = [
         ("or_bench_hard", os.path.join(CORPUS_DIR, "or_bench_hard.json")),
+        ("or_bench_80k",  os.path.join(CORPUS_DIR, "or_bench_80k.json")),
         ("xstest_safe",   os.path.join(CORPUS_DIR, "xstest_safe.json")),
         ("dolly_sample",  os.path.join(CORPUS_DIR, "dolly_sample.json")),
+        ("no_robots",     os.path.join(CORPUS_DIR, "no_robots.json")),
+        ("lima",          os.path.join(CORPUS_DIR, "lima.json")),
+        ("oasst2",        os.path.join(CORPUS_DIR, "oasst2.json")),
         ("handcrafted",   os.path.join(CORPUS_DIR, "handcrafted.json")),
     ]
 
-    all_results = []
-    col_w = 22
+    all_results   = []
+    total_fetched = 0
+    global_start  = time.time()
+    col_w         = 22
+    rng           = random.Random(args.seed)
 
-    header = f"{'corpus':<{col_w}} {'entities':<16} {'threshold':>10} {'total':>8} {'fp_count':>8} {'fp%':>7}"
+    header = (f"{'corpus':<{col_w}} {'entities':<20} {'threshold':>10} "
+              f"{'total':>8} {'fp_count':>8} {'fp%':>7}")
     print("─" * len(header))
     print(header)
     print("─" * len(header))
 
     for corpus_name, corpus_path in corpus_files:
-        prompts = load_corpus(corpus_path)
-        if prompts is None:
+        all_prompts = load_corpus(corpus_path)
+        if all_prompts is None:
             print(f"SKIP {corpus_name} (not found)")
             continue
 
-        if args.limit and len(prompts) > args.limit:
-            prompts = prompts[: args.limit]
+        # Apply --pct only to corpora larger than --min-full
+        if args.pct < 100.0 and len(all_prompts) > args.min_full:
+            keep_prob = args.pct / 100.0
+            prompts   = [p for p in all_prompts if rng.random() < keep_prob]
+            sampled   = True
+        else:
+            prompts = all_prompts
+            sampled = False
 
-        # Cache raw Presidio results at threshold=0.0 to avoid repeat API calls.
-        # We'll re-filter per threshold and entity combo in Python.
-        print(f"\n  Pre-fetching {len(prompts)} prompts for {corpus_name}…", flush=True)
-        raw_cache = []  # list of (prompt_text, entities_list_at_threshold_0)
+        if not prompts:
+            print(f"SKIP {corpus_name} (0 prompts after sampling)")
+            continue
+
+        # Fetch all detections at threshold=0.0 once; filter post-hoc per threshold/entity combo.
+        corpus_start = time.time()
+        label_str    = f"{len(prompts)}/{len(all_prompts)}" if sampled else str(len(prompts))
+        print(f"\n  Pre-fetching {label_str} prompts for {corpus_name}…", flush=True)
+
+        raw_cache = []
+        errors    = 0
+
         for i, entry in enumerate(prompts):
             text = (entry.get("prompt") or entry.get("instruction") or entry.get("text") or "").strip()
             if not text:
@@ -156,18 +193,28 @@ def main():
             result = analyze(text, args.url, score_threshold=0.0, entities=None)
             if result is None or isinstance(result, tuple):
                 raw_cache.append([])
+                errors += 1
             else:
                 raw_cache.append(result)
             if (i + 1) % 100 == 0:
-                print(f"    {i+1}/{len(prompts)}", flush=True)
+                elapsed = time.time() - corpus_start
+                rate    = (i + 1) / elapsed if elapsed > 0 else 0
+                eta     = (len(prompts) - i - 1) / rate if rate > 0 else 0
+                print(f"    {i+1}/{len(prompts)}  {rate:.1f} req/s  ETA {eta/60:.1f}m", flush=True)
+
+        corpus_elapsed = time.time() - corpus_start
+        total_fetched += len(prompts)
+        rate_corpus    = len(prompts) / corpus_elapsed if corpus_elapsed > 0 else 0
+        if errors:
+            print(f"  WARNING: {errors} errors (empty detections used as fallback)")
+        print(f"  Fetched {len(prompts)} prompts in {corpus_elapsed:.1f}s ({rate_corpus:.2f} req/s)", flush=True)
 
         for threshold in THRESHOLDS:
             for entity_label, entity_filter in ENTITY_COMBOS:
-                fp_count = 0
+                fp_count      = 0
                 entity_counts = {}
 
                 for detections in raw_cache:
-                    # Apply threshold and entity filter post-hoc
                     filtered = [
                         d for d in detections
                         if d.get("score", 0) >= threshold
@@ -182,21 +229,30 @@ def main():
                 total   = len(prompts)
                 fp_rate = round(fp_count / total * 100, 2) if total else 0.0
 
-                print(f"{corpus_name:<{col_w}} {entity_label:<16} {threshold:>10.1f} {total:>8} {fp_count:>8} {fp_rate:>6.1f}%")
+                print(f"{corpus_name:<{col_w}} {entity_label:<20} {threshold:>10.1f} "
+                      f"{total:>8} {fp_count:>8} {fp_rate:>6.1f}%")
 
                 all_results.append({
-                    "corpus":         corpus_name,
-                    "detector":       "presidio",
-                    "config_id":      f"threshold={threshold}_entities={entity_label}",
+                    "corpus":          corpus_name,
+                    "detector":        "presidio",
+                    "config_id":       f"threshold={threshold}_entities={entity_label}",
                     "score_threshold": threshold,
-                    "entities":       entity_filter,
-                    "total":          total,
-                    "fp_count":       fp_count,
-                    "fp_rate":        fp_rate,
-                    "top_entities":   entity_counts,
+                    "entities":        entity_filter,
+                    "total":           total,
+                    "fp_count":        fp_count,
+                    "fp_rate":         fp_rate,
+                    "top_entities":    entity_counts,
                 })
 
     print("\n" + "─" * len(header))
+    global_elapsed = time.time() - global_start
+    avg_rate       = total_fetched / global_elapsed if global_elapsed > 0 else 0
+    print(f"\nTotal: {total_fetched:,} prompts fetched in {global_elapsed/60:.1f}m ({avg_rate:.2f} req/s avg)")
+    if avg_rate > 0 and args.pct < 100.0:
+        full_size = 111268
+        eta_full  = full_size / avg_rate
+        print(f"Projected full-corpus ({full_size:,} prompts) at this rate: {eta_full/3600:.1f}h")
+
     out_path = os.path.join(RESULTS_DIR, "presidio_fp_results.json")
     with open(out_path, "w") as f:
         json.dump(all_results, f, indent=2)

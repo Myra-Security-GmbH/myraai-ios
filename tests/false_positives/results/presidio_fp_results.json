@@ -5,13 +5,14 @@
     "config_id": "threshold=0.5_entities=all_entities",
     "score_threshold": 0.5,
     "entities": null,
-    "total": 500,
-    "fp_count": 6,
-    "fp_rate": 1.2,
+    "total": 1319,
+    "fp_count": 10,
+    "fp_rate": 0.76,
     "top_entities": {
-      "PERSON": 2,
+      "PERSON": 4,
       "NRP": 2,
-      "DATE_TIME": 2
+      "DATE_TIME": 3,
+      "LOCATION": 1
     }
   },
   {
@@ -23,11 +24,11 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 4,
+    "fp_rate": 0.3,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4
     }
   },
   {
@@ -41,11 +42,12 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 5,
+    "fp_rate": 0.38,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4,
+      "LOCATION": 1
     }
   },
   {
@@ -63,9 +65,12 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -78,7 +83,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -91,7 +96,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -104,7 +109,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -117,7 +122,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -130,7 +135,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -143,7 +148,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -156,7 +161,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -169,7 +174,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -182,7 +187,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -195,7 +200,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -208,7 +213,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -221,7 +226,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -234,7 +239,7 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -247,11 +252,11 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 4,
+    "fp_rate": 0.3,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4
     }
   },
   {
@@ -262,10 +267,12 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 0,
-    "fp_rate": 0.0,
-    "top_entities": {}
+    "total": 1319,
+    "fp_count": 1,
+    "fp_rate": 0.08,
+    "top_entities": {
+      "LOCATION": 1
+    }
   },
   {
     "corpus": "or_bench_hard",
@@ -275,11 +282,11 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 3,
+    "fp_rate": 0.23,
     "top_entities": {
-      "DATE_TIME": 2
+      "DATE_TIME": 3
     }
   },
   {
@@ -290,9 +297,9 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 2,
-    "fp_rate": 0.4,
+    "fp_rate": 0.15,
     "top_entities": {
       "NRP": 2
     }
@@ -303,13 +310,14 @@
     "config_id": "threshold=0.6_entities=all_entities",
     "score_threshold": 0.6,
     "entities": null,
-    "total": 500,
-    "fp_count": 6,
-    "fp_rate": 1.2,
+    "total": 1319,
+    "fp_count": 10,
+    "fp_rate": 0.76,
     "top_entities": {
-      "PERSON": 2,
+      "PERSON": 4,
       "NRP": 2,
-      "DATE_TIME": 2
+      "DATE_TIME": 3,
+      "LOCATION": 1
     }
   },
   {
@@ -321,11 +329,11 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 4,
+    "fp_rate": 0.3,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4
     }
   },
   {
@@ -339,11 +347,12 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 5,
+    "fp_rate": 0.38,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4,
+      "LOCATION": 1
     }
   },
   {
@@ -361,9 +370,12 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -376,7 +388,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -389,7 +401,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -402,7 +414,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -415,7 +427,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -428,7 +440,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -441,7 +453,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -454,7 +466,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -467,7 +479,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -480,7 +492,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -493,7 +505,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -506,7 +518,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -519,7 +531,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -532,7 +544,7 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -545,11 +557,11 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 4,
+    "fp_rate": 0.3,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4
     }
   },
   {
@@ -560,10 +572,12 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 0,
-    "fp_rate": 0.0,
-    "top_entities": {}
+    "total": 1319,
+    "fp_count": 1,
+    "fp_rate": 0.08,
+    "top_entities": {
+      "LOCATION": 1
+    }
   },
   {
     "corpus": "or_bench_hard",
@@ -573,11 +587,11 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 3,
+    "fp_rate": 0.23,
     "top_entities": {
-      "DATE_TIME": 2
+      "DATE_TIME": 3
     }
   },
   {
@@ -588,9 +602,9 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 2,
-    "fp_rate": 0.4,
+    "fp_rate": 0.15,
     "top_entities": {
       "NRP": 2
     }
@@ -601,13 +615,14 @@
     "config_id": "threshold=0.7_entities=all_entities",
     "score_threshold": 0.7,
     "entities": null,
-    "total": 500,
-    "fp_count": 6,
-    "fp_rate": 1.2,
+    "total": 1319,
+    "fp_count": 10,
+    "fp_rate": 0.76,
     "top_entities": {
-      "PERSON": 2,
+      "PERSON": 4,
       "NRP": 2,
-      "DATE_TIME": 2
+      "DATE_TIME": 3,
+      "LOCATION": 1
     }
   },
   {
@@ -619,11 +634,11 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 4,
+    "fp_rate": 0.3,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4
     }
   },
   {
@@ -637,11 +652,12 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 5,
+    "fp_rate": 0.38,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4,
+      "LOCATION": 1
     }
   },
   {
@@ -659,9 +675,12 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -674,7 +693,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -687,7 +706,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -700,7 +719,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -713,7 +732,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -726,7 +745,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -739,7 +758,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -752,7 +771,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -765,7 +784,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -778,7 +797,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -791,7 +810,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -804,7 +823,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -817,7 +836,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -830,7 +849,7 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -843,11 +862,11 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 4,
+    "fp_rate": 0.3,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4
     }
   },
   {
@@ -858,10 +877,12 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 0,
-    "fp_rate": 0.0,
-    "top_entities": {}
+    "total": 1319,
+    "fp_count": 1,
+    "fp_rate": 0.08,
+    "top_entities": {
+      "LOCATION": 1
+    }
   },
   {
     "corpus": "or_bench_hard",
@@ -871,11 +892,11 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 3,
+    "fp_rate": 0.23,
     "top_entities": {
-      "DATE_TIME": 2
+      "DATE_TIME": 3
     }
   },
   {
@@ -886,9 +907,9 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 2,
-    "fp_rate": 0.4,
+    "fp_rate": 0.15,
     "top_entities": {
       "NRP": 2
     }
@@ -899,13 +920,14 @@
     "config_id": "threshold=0.8_entities=all_entities",
     "score_threshold": 0.8,
     "entities": null,
-    "total": 500,
-    "fp_count": 6,
-    "fp_rate": 1.2,
+    "total": 1319,
+    "fp_count": 10,
+    "fp_rate": 0.76,
     "top_entities": {
-      "PERSON": 2,
+      "PERSON": 4,
       "NRP": 2,
-      "DATE_TIME": 2
+      "DATE_TIME": 3,
+      "LOCATION": 1
     }
   },
   {
@@ -917,11 +939,11 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 4,
+    "fp_rate": 0.3,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4
     }
   },
   {
@@ -935,11 +957,12 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 5,
+    "fp_rate": 0.38,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4,
+      "LOCATION": 1
     }
   },
   {
@@ -957,9 +980,12 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -972,7 +998,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -985,7 +1011,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -998,7 +1024,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1011,7 +1037,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1024,7 +1050,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1037,7 +1063,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1050,7 +1076,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1063,7 +1089,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1076,7 +1102,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1089,7 +1115,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1102,7 +1128,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1115,7 +1141,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1128,7 +1154,7 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1141,11 +1167,11 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 4,
+    "fp_rate": 0.3,
     "top_entities": {
-      "PERSON": 2
+      "PERSON": 4
     }
   },
   {
@@ -1156,10 +1182,12 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 0,
-    "fp_rate": 0.0,
-    "top_entities": {}
+    "total": 1319,
+    "fp_count": 1,
+    "fp_rate": 0.08,
+    "top_entities": {
+      "LOCATION": 1
+    }
   },
   {
     "corpus": "or_bench_hard",
@@ -1169,11 +1197,11 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
-    "fp_count": 2,
-    "fp_rate": 0.4,
+    "total": 1319,
+    "fp_count": 3,
+    "fp_rate": 0.23,
     "top_entities": {
-      "DATE_TIME": 2
+      "DATE_TIME": 3
     }
   },
   {
@@ -1184,9 +1212,9 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 2,
-    "fp_rate": 0.4,
+    "fp_rate": 0.15,
     "top_entities": {
       "NRP": 2
     }
@@ -1197,7 +1225,7 @@
     "config_id": "threshold=0.9_entities=all_entities",
     "score_threshold": 0.9,
     "entities": null,
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1211,7 +1239,7 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1227,7 +1255,7 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1247,9 +1275,12 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1262,7 +1293,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1275,7 +1306,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1288,7 +1319,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1301,7 +1332,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1314,7 +1345,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1327,7 +1358,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1340,7 +1371,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1353,7 +1384,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1366,7 +1397,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1379,7 +1410,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1392,7 +1423,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1405,7 +1436,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1418,7 +1449,7 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1431,7 +1462,7 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1444,7 +1475,7 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1457,7 +1488,7 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
+    "total": 1319,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1470,7 +1501,1514 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
+    "total": 1319,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=all_entities",
+    "score_threshold": 0.5,
+    "entities": null,
+    "total": 8076,
+    "fp_count": 109,
+    "fp_rate": 1.35,
+    "top_entities": {
+      "PERSON": 22,
+      "NRP": 41,
+      "LOCATION": 18,
+      "DATE_TIME": 31
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=person_email",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 22,
+    "fp_rate": 0.27,
+    "top_entities": {
+      "PERSON": 22
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=pii_core",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 40,
+    "fp_rate": 0.5,
+    "top_entities": {
+      "PERSON": 22,
+      "LOCATION": 18
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=pii_focused",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.5,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_SSN",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_CREDIT_CARD",
+    "score_threshold": 0.5,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_IBAN_CODE",
+    "score_threshold": 0.5,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_PASSPORT",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_ITIN",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_CRYPTO",
+    "score_threshold": 0.5,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_IP_ADDRESS",
+    "score_threshold": 0.5,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.5,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_URL",
+    "score_threshold": 0.5,
+    "entities": [
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_PERSON",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 8076,
+    "fp_count": 22,
+    "fp_rate": 0.27,
+    "top_entities": {
+      "PERSON": 22
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_LOCATION",
+    "score_threshold": 0.5,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 18,
+    "fp_rate": 0.22,
+    "top_entities": {
+      "LOCATION": 18
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_DATE_TIME",
+    "score_threshold": 0.5,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 8076,
+    "fp_count": 31,
+    "fp_rate": 0.38,
+    "top_entities": {
+      "DATE_TIME": 31
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_NRP",
+    "score_threshold": 0.5,
+    "entities": [
+      "NRP"
+    ],
+    "total": 8076,
+    "fp_count": 39,
+    "fp_rate": 0.48,
+    "top_entities": {
+      "NRP": 41
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=all_entities",
+    "score_threshold": 0.6,
+    "entities": null,
+    "total": 8076,
+    "fp_count": 109,
+    "fp_rate": 1.35,
+    "top_entities": {
+      "PERSON": 22,
+      "NRP": 41,
+      "LOCATION": 18,
+      "DATE_TIME": 31
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=person_email",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 22,
+    "fp_rate": 0.27,
+    "top_entities": {
+      "PERSON": 22
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=pii_core",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 40,
+    "fp_rate": 0.5,
+    "top_entities": {
+      "PERSON": 22,
+      "LOCATION": 18
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=pii_focused",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.6,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_SSN",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_CREDIT_CARD",
+    "score_threshold": 0.6,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_IBAN_CODE",
+    "score_threshold": 0.6,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_PASSPORT",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_ITIN",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_CRYPTO",
+    "score_threshold": 0.6,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_IP_ADDRESS",
+    "score_threshold": 0.6,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.6,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_URL",
+    "score_threshold": 0.6,
+    "entities": [
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_PERSON",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 8076,
+    "fp_count": 22,
+    "fp_rate": 0.27,
+    "top_entities": {
+      "PERSON": 22
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_LOCATION",
+    "score_threshold": 0.6,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 18,
+    "fp_rate": 0.22,
+    "top_entities": {
+      "LOCATION": 18
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_DATE_TIME",
+    "score_threshold": 0.6,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 8076,
+    "fp_count": 31,
+    "fp_rate": 0.38,
+    "top_entities": {
+      "DATE_TIME": 31
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_NRP",
+    "score_threshold": 0.6,
+    "entities": [
+      "NRP"
+    ],
+    "total": 8076,
+    "fp_count": 39,
+    "fp_rate": 0.48,
+    "top_entities": {
+      "NRP": 41
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=all_entities",
+    "score_threshold": 0.7,
+    "entities": null,
+    "total": 8076,
+    "fp_count": 109,
+    "fp_rate": 1.35,
+    "top_entities": {
+      "PERSON": 22,
+      "NRP": 41,
+      "LOCATION": 18,
+      "DATE_TIME": 31
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=person_email",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 22,
+    "fp_rate": 0.27,
+    "top_entities": {
+      "PERSON": 22
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=pii_core",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 40,
+    "fp_rate": 0.5,
+    "top_entities": {
+      "PERSON": 22,
+      "LOCATION": 18
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=pii_focused",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.7,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_SSN",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_CREDIT_CARD",
+    "score_threshold": 0.7,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_IBAN_CODE",
+    "score_threshold": 0.7,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_PASSPORT",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_ITIN",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_CRYPTO",
+    "score_threshold": 0.7,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_IP_ADDRESS",
+    "score_threshold": 0.7,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.7,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_URL",
+    "score_threshold": 0.7,
+    "entities": [
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_PERSON",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 8076,
+    "fp_count": 22,
+    "fp_rate": 0.27,
+    "top_entities": {
+      "PERSON": 22
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_LOCATION",
+    "score_threshold": 0.7,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 18,
+    "fp_rate": 0.22,
+    "top_entities": {
+      "LOCATION": 18
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_DATE_TIME",
+    "score_threshold": 0.7,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 8076,
+    "fp_count": 31,
+    "fp_rate": 0.38,
+    "top_entities": {
+      "DATE_TIME": 31
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_NRP",
+    "score_threshold": 0.7,
+    "entities": [
+      "NRP"
+    ],
+    "total": 8076,
+    "fp_count": 39,
+    "fp_rate": 0.48,
+    "top_entities": {
+      "NRP": 41
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=all_entities",
+    "score_threshold": 0.8,
+    "entities": null,
+    "total": 8076,
+    "fp_count": 109,
+    "fp_rate": 1.35,
+    "top_entities": {
+      "PERSON": 22,
+      "NRP": 41,
+      "LOCATION": 18,
+      "DATE_TIME": 31
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=person_email",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 22,
+    "fp_rate": 0.27,
+    "top_entities": {
+      "PERSON": 22
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=pii_core",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 40,
+    "fp_rate": 0.5,
+    "top_entities": {
+      "PERSON": 22,
+      "LOCATION": 18
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=pii_focused",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.8,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_SSN",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_CREDIT_CARD",
+    "score_threshold": 0.8,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_IBAN_CODE",
+    "score_threshold": 0.8,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_PASSPORT",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_ITIN",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_CRYPTO",
+    "score_threshold": 0.8,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_IP_ADDRESS",
+    "score_threshold": 0.8,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.8,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_URL",
+    "score_threshold": 0.8,
+    "entities": [
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_PERSON",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 8076,
+    "fp_count": 22,
+    "fp_rate": 0.27,
+    "top_entities": {
+      "PERSON": 22
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_LOCATION",
+    "score_threshold": 0.8,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 18,
+    "fp_rate": 0.22,
+    "top_entities": {
+      "LOCATION": 18
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_DATE_TIME",
+    "score_threshold": 0.8,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 8076,
+    "fp_count": 31,
+    "fp_rate": 0.38,
+    "top_entities": {
+      "DATE_TIME": 31
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_NRP",
+    "score_threshold": 0.8,
+    "entities": [
+      "NRP"
+    ],
+    "total": 8076,
+    "fp_count": 39,
+    "fp_rate": 0.48,
+    "top_entities": {
+      "NRP": 41
+    }
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=all_entities",
+    "score_threshold": 0.9,
+    "entities": null,
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=person_email",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=pii_core",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=pii_focused",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.9,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_SSN",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_CREDIT_CARD",
+    "score_threshold": 0.9,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_IBAN_CODE",
+    "score_threshold": 0.9,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_PASSPORT",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_ITIN",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_CRYPTO",
+    "score_threshold": 0.9,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_IP_ADDRESS",
+    "score_threshold": 0.9,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.9,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_URL",
+    "score_threshold": 0.9,
+    "entities": [
+      "URL"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_PERSON",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_LOCATION",
+    "score_threshold": 0.9,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_DATE_TIME",
+    "score_threshold": 0.9,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 8076,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_80k",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_NRP",
+    "score_threshold": 0.9,
+    "entities": [
+      "NRP"
+    ],
+    "total": 8076,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -1541,7 +3079,10 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 250,
     "fp_count": 0,
@@ -1843,7 +3384,10 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 250,
     "fp_count": 0,
@@ -2145,7 +3689,10 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 250,
     "fp_count": 0,
@@ -2447,7 +3994,10 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 250,
     "fp_count": 0,
@@ -2739,7 +4289,10 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 250,
     "fp_count": 0,
@@ -2973,14 +4526,15 @@
     "config_id": "threshold=0.5_entities=all_entities",
     "score_threshold": 0.5,
     "entities": null,
-    "total": 500,
-    "fp_count": 200,
-    "fp_rate": 40.0,
+    "total": 2000,
+    "fp_count": 848,
+    "fp_rate": 42.4,
     "top_entities": {
-      "LOCATION": 253,
-      "NRP": 34,
-      "DATE_TIME": 85,
-      "PERSON": 130
+      "LOCATION": 731,
+      "NRP": 124,
+      "DATE_TIME": 216,
+      "PERSON": 534,
+      "URL": 2
     }
   },
   {
@@ -2992,11 +4546,11 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
-    "fp_count": 88,
-    "fp_rate": 17.6,
+    "total": 2000,
+    "fp_count": 388,
+    "fp_rate": 19.4,
     "top_entities": {
-      "PERSON": 130
+      "PERSON": 534
     }
   },
   {
@@ -3010,12 +4564,12 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 164,
-    "fp_rate": 32.8,
+    "total": 2000,
+    "fp_count": 698,
+    "fp_rate": 34.9,
     "top_entities": {
-      "LOCATION": 253,
-      "PERSON": 130
+      "LOCATION": 731,
+      "PERSON": 534
     }
   },
   {
@@ -3033,12 +4587,17 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
-    "fp_count": 0,
-    "fp_rate": 0.0,
-    "top_entities": {}
+    "total": 2000,
+    "fp_count": 2,
+    "fp_rate": 0.1,
+    "top_entities": {
+      "URL": 2
+    }
   },
   {
     "corpus": "dolly_sample",
@@ -3048,7 +4607,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3061,7 +4620,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3074,7 +4633,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3087,7 +4646,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3100,7 +4659,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3113,7 +4672,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3126,7 +4685,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3139,7 +4698,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3152,7 +4711,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3165,7 +4724,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3178,7 +4737,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3191,7 +4750,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3204,10 +4763,12 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
-    "fp_count": 0,
-    "fp_rate": 0.0,
-    "top_entities": {}
+    "total": 2000,
+    "fp_count": 2,
+    "fp_rate": 0.1,
+    "top_entities": {
+      "URL": 2
+    }
   },
   {
     "corpus": "dolly_sample",
@@ -3217,11 +4778,11 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
-    "fp_count": 88,
-    "fp_rate": 17.6,
+    "total": 2000,
+    "fp_count": 388,
+    "fp_rate": 19.4,
     "top_entities": {
-      "PERSON": 130
+      "PERSON": 534
     }
   },
   {
@@ -3232,11 +4793,11 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 90,
-    "fp_rate": 18.0,
+    "total": 2000,
+    "fp_count": 365,
+    "fp_rate": 18.25,
     "top_entities": {
-      "LOCATION": 253
+      "LOCATION": 731
     }
   },
   {
@@ -3247,11 +4808,11 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
-    "fp_count": 33,
-    "fp_rate": 6.6,
+    "total": 2000,
+    "fp_count": 140,
+    "fp_rate": 7.0,
     "top_entities": {
-      "DATE_TIME": 85
+      "DATE_TIME": 216
     }
   },
   {
@@ -3262,11 +4823,11 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
-    "fp_count": 23,
-    "fp_rate": 4.6,
+    "total": 2000,
+    "fp_count": 97,
+    "fp_rate": 4.85,
     "top_entities": {
-      "NRP": 34
+      "NRP": 124
     }
   },
   {
@@ -3275,14 +4836,14 @@
     "config_id": "threshold=0.6_entities=all_entities",
     "score_threshold": 0.6,
     "entities": null,
-    "total": 500,
-    "fp_count": 200,
-    "fp_rate": 40.0,
+    "total": 2000,
+    "fp_count": 846,
+    "fp_rate": 42.3,
     "top_entities": {
-      "LOCATION": 253,
-      "NRP": 34,
-      "DATE_TIME": 85,
-      "PERSON": 130
+      "LOCATION": 731,
+      "NRP": 124,
+      "DATE_TIME": 216,
+      "PERSON": 534
     }
   },
   {
@@ -3294,11 +4855,11 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
-    "fp_count": 88,
-    "fp_rate": 17.6,
+    "total": 2000,
+    "fp_count": 388,
+    "fp_rate": 19.4,
     "top_entities": {
-      "PERSON": 130
+      "PERSON": 534
     }
   },
   {
@@ -3312,12 +4873,12 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 164,
-    "fp_rate": 32.8,
+    "total": 2000,
+    "fp_count": 698,
+    "fp_rate": 34.9,
     "top_entities": {
-      "LOCATION": 253,
-      "PERSON": 130
+      "LOCATION": 731,
+      "PERSON": 534
     }
   },
   {
@@ -3335,9 +4896,12 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3350,7 +4914,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3363,7 +4927,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3376,7 +4940,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3389,7 +4953,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3402,7 +4966,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3415,7 +4979,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3428,7 +4992,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3441,7 +5005,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3454,7 +5018,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3467,7 +5031,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3480,7 +5044,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3493,7 +5057,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3506,7 +5070,7 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3519,11 +5083,11 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
-    "fp_count": 88,
-    "fp_rate": 17.6,
+    "total": 2000,
+    "fp_count": 388,
+    "fp_rate": 19.4,
     "top_entities": {
-      "PERSON": 130
+      "PERSON": 534
     }
   },
   {
@@ -3534,11 +5098,11 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 90,
-    "fp_rate": 18.0,
+    "total": 2000,
+    "fp_count": 365,
+    "fp_rate": 18.25,
     "top_entities": {
-      "LOCATION": 253
+      "LOCATION": 731
     }
   },
   {
@@ -3549,11 +5113,11 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
-    "fp_count": 33,
-    "fp_rate": 6.6,
+    "total": 2000,
+    "fp_count": 140,
+    "fp_rate": 7.0,
     "top_entities": {
-      "DATE_TIME": 85
+      "DATE_TIME": 216
     }
   },
   {
@@ -3564,11 +5128,11 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
-    "fp_count": 23,
-    "fp_rate": 4.6,
+    "total": 2000,
+    "fp_count": 97,
+    "fp_rate": 4.85,
     "top_entities": {
-      "NRP": 34
+      "NRP": 124
     }
   },
   {
@@ -3577,14 +5141,14 @@
     "config_id": "threshold=0.7_entities=all_entities",
     "score_threshold": 0.7,
     "entities": null,
-    "total": 500,
-    "fp_count": 200,
-    "fp_rate": 40.0,
+    "total": 2000,
+    "fp_count": 846,
+    "fp_rate": 42.3,
     "top_entities": {
-      "LOCATION": 253,
-      "NRP": 34,
-      "DATE_TIME": 85,
-      "PERSON": 130
+      "LOCATION": 731,
+      "NRP": 124,
+      "DATE_TIME": 216,
+      "PERSON": 534
     }
   },
   {
@@ -3596,11 +5160,11 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
-    "fp_count": 88,
-    "fp_rate": 17.6,
+    "total": 2000,
+    "fp_count": 388,
+    "fp_rate": 19.4,
     "top_entities": {
-      "PERSON": 130
+      "PERSON": 534
     }
   },
   {
@@ -3614,12 +5178,12 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 164,
-    "fp_rate": 32.8,
+    "total": 2000,
+    "fp_count": 698,
+    "fp_rate": 34.9,
     "top_entities": {
-      "LOCATION": 253,
-      "PERSON": 130
+      "LOCATION": 731,
+      "PERSON": 534
     }
   },
   {
@@ -3637,9 +5201,12 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3652,7 +5219,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3665,7 +5232,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3678,7 +5245,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3691,7 +5258,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3704,7 +5271,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3717,7 +5284,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3730,7 +5297,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3743,7 +5310,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3756,7 +5323,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3769,7 +5336,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3782,7 +5349,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3795,7 +5362,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3808,7 +5375,7 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3821,11 +5388,11 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
-    "fp_count": 88,
-    "fp_rate": 17.6,
+    "total": 2000,
+    "fp_count": 388,
+    "fp_rate": 19.4,
     "top_entities": {
-      "PERSON": 130
+      "PERSON": 534
     }
   },
   {
@@ -3836,11 +5403,11 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 90,
-    "fp_rate": 18.0,
+    "total": 2000,
+    "fp_count": 365,
+    "fp_rate": 18.25,
     "top_entities": {
-      "LOCATION": 253
+      "LOCATION": 731
     }
   },
   {
@@ -3851,11 +5418,11 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
-    "fp_count": 33,
-    "fp_rate": 6.6,
+    "total": 2000,
+    "fp_count": 140,
+    "fp_rate": 7.0,
     "top_entities": {
-      "DATE_TIME": 85
+      "DATE_TIME": 216
     }
   },
   {
@@ -3866,11 +5433,11 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
-    "fp_count": 23,
-    "fp_rate": 4.6,
+    "total": 2000,
+    "fp_count": 97,
+    "fp_rate": 4.85,
     "top_entities": {
-      "NRP": 34
+      "NRP": 124
     }
   },
   {
@@ -3879,14 +5446,14 @@
     "config_id": "threshold=0.8_entities=all_entities",
     "score_threshold": 0.8,
     "entities": null,
-    "total": 500,
-    "fp_count": 200,
-    "fp_rate": 40.0,
+    "total": 2000,
+    "fp_count": 846,
+    "fp_rate": 42.3,
     "top_entities": {
-      "LOCATION": 253,
-      "NRP": 34,
-      "DATE_TIME": 85,
-      "PERSON": 130
+      "LOCATION": 731,
+      "NRP": 124,
+      "DATE_TIME": 216,
+      "PERSON": 534
     }
   },
   {
@@ -3898,11 +5465,11 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
-    "fp_count": 88,
-    "fp_rate": 17.6,
+    "total": 2000,
+    "fp_count": 388,
+    "fp_rate": 19.4,
     "top_entities": {
-      "PERSON": 130
+      "PERSON": 534
     }
   },
   {
@@ -3916,12 +5483,12 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 164,
-    "fp_rate": 32.8,
+    "total": 2000,
+    "fp_count": 698,
+    "fp_rate": 34.9,
     "top_entities": {
-      "LOCATION": 253,
-      "PERSON": 130
+      "LOCATION": 731,
+      "PERSON": 534
     }
   },
   {
@@ -3939,9 +5506,12 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3954,7 +5524,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3967,7 +5537,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3980,7 +5550,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -3993,7 +5563,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4006,7 +5576,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4019,7 +5589,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4032,7 +5602,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4045,7 +5615,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4058,7 +5628,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4071,7 +5641,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4084,7 +5654,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4097,7 +5667,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4110,7 +5680,7 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4123,11 +5693,11 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
-    "fp_count": 88,
-    "fp_rate": 17.6,
+    "total": 2000,
+    "fp_count": 388,
+    "fp_rate": 19.4,
     "top_entities": {
-      "PERSON": 130
+      "PERSON": 534
     }
   },
   {
@@ -4138,11 +5708,11 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
-    "fp_count": 90,
-    "fp_rate": 18.0,
+    "total": 2000,
+    "fp_count": 365,
+    "fp_rate": 18.25,
     "top_entities": {
-      "LOCATION": 253
+      "LOCATION": 731
     }
   },
   {
@@ -4153,11 +5723,11 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
-    "fp_count": 33,
-    "fp_rate": 6.6,
+    "total": 2000,
+    "fp_count": 140,
+    "fp_rate": 7.0,
     "top_entities": {
-      "DATE_TIME": 85
+      "DATE_TIME": 216
     }
   },
   {
@@ -4168,11 +5738,11 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
-    "fp_count": 23,
-    "fp_rate": 4.6,
+    "total": 2000,
+    "fp_count": 97,
+    "fp_rate": 4.85,
     "top_entities": {
-      "NRP": 34
+      "NRP": 124
     }
   },
   {
@@ -4181,7 +5751,7 @@
     "config_id": "threshold=0.9_entities=all_entities",
     "score_threshold": 0.9,
     "entities": null,
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4195,7 +5765,7 @@
       "PERSON",
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4211,7 +5781,7 @@
       "PHONE_NUMBER",
       "LOCATION"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4231,9 +5801,12 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4246,7 +5819,7 @@
     "entities": [
       "EMAIL_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4259,7 +5832,7 @@
     "entities": [
       "PHONE_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4272,7 +5845,7 @@
     "entities": [
       "US_SSN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4285,7 +5858,7 @@
     "entities": [
       "CREDIT_CARD"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4298,7 +5871,7 @@
     "entities": [
       "US_BANK_NUMBER"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4311,7 +5884,7 @@
     "entities": [
       "IBAN_CODE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4324,7 +5897,7 @@
     "entities": [
       "US_PASSPORT"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4337,7 +5910,7 @@
     "entities": [
       "US_DRIVER_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4350,7 +5923,7 @@
     "entities": [
       "US_ITIN"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4363,7 +5936,7 @@
     "entities": [
       "CRYPTO"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4376,7 +5949,7 @@
     "entities": [
       "IP_ADDRESS"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4389,7 +5962,7 @@
     "entities": [
       "MEDICAL_LICENSE"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4402,7 +5975,7 @@
     "entities": [
       "URL"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4415,7 +5988,7 @@
     "entities": [
       "PERSON"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4428,7 +6001,7 @@
     "entities": [
       "LOCATION"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4441,7 +6014,7 @@
     "entities": [
       "DATE_TIME"
     ],
-    "total": 500,
+    "total": 2000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4454,7 +6027,3134 @@
     "entities": [
       "NRP"
     ],
-    "total": 500,
+    "total": 2000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=all_entities",
+    "score_threshold": 0.5,
+    "entities": null,
+    "total": 9499,
+    "fp_count": 4871,
+    "fp_rate": 51.28,
+    "top_entities": {
+      "DATE_TIME": 7082,
+      "PERSON": 9469,
+      "LOCATION": 6030,
+      "NRP": 1887,
+      "URL": 615,
+      "EMAIL_ADDRESS": 21,
+      "UK_NHS": 1,
+      "IP_ADDRESS": 5
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=person_email",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 2921,
+    "fp_rate": 30.75,
+    "top_entities": {
+      "PERSON": 9469,
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=pii_core",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 3850,
+    "fp_rate": 40.53,
+    "top_entities": {
+      "PERSON": 9469,
+      "LOCATION": 6030,
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=pii_focused",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 144,
+    "fp_rate": 1.52,
+    "top_entities": {
+      "URL": 615,
+      "EMAIL_ADDRESS": 21,
+      "IP_ADDRESS": 5
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.5,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_SSN",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_CREDIT_CARD",
+    "score_threshold": 0.5,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_IBAN_CODE",
+    "score_threshold": 0.5,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_PASSPORT",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_ITIN",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_CRYPTO",
+    "score_threshold": 0.5,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_IP_ADDRESS",
+    "score_threshold": 0.5,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 1,
+    "fp_rate": 0.01,
+    "top_entities": {
+      "IP_ADDRESS": 5
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.5,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_URL",
+    "score_threshold": 0.5,
+    "entities": [
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 144,
+    "fp_rate": 1.52,
+    "top_entities": {
+      "URL": 615
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_PERSON",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 9499,
+    "fp_count": 2916,
+    "fp_rate": 30.7,
+    "top_entities": {
+      "PERSON": 9469
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_LOCATION",
+    "score_threshold": 0.5,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 1796,
+    "fp_rate": 18.91,
+    "top_entities": {
+      "LOCATION": 6030
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_DATE_TIME",
+    "score_threshold": 0.5,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 9499,
+    "fp_count": 2206,
+    "fp_rate": 23.22,
+    "top_entities": {
+      "DATE_TIME": 7082
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_NRP",
+    "score_threshold": 0.5,
+    "entities": [
+      "NRP"
+    ],
+    "total": 9499,
+    "fp_count": 760,
+    "fp_rate": 8.0,
+    "top_entities": {
+      "NRP": 1887
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=all_entities",
+    "score_threshold": 0.6,
+    "entities": null,
+    "total": 9499,
+    "fp_count": 4834,
+    "fp_rate": 50.89,
+    "top_entities": {
+      "DATE_TIME": 7082,
+      "PERSON": 9469,
+      "LOCATION": 6030,
+      "NRP": 1887,
+      "URL": 14,
+      "EMAIL_ADDRESS": 21,
+      "UK_NHS": 1,
+      "IP_ADDRESS": 5
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=person_email",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 2921,
+    "fp_rate": 30.75,
+    "top_entities": {
+      "PERSON": 9469,
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=pii_core",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 3850,
+    "fp_rate": 40.53,
+    "top_entities": {
+      "PERSON": 9469,
+      "LOCATION": 6030,
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=pii_focused",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 23,
+    "fp_rate": 0.24,
+    "top_entities": {
+      "URL": 14,
+      "EMAIL_ADDRESS": 21,
+      "IP_ADDRESS": 5
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.6,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_SSN",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_CREDIT_CARD",
+    "score_threshold": 0.6,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_IBAN_CODE",
+    "score_threshold": 0.6,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_PASSPORT",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_ITIN",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_CRYPTO",
+    "score_threshold": 0.6,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_IP_ADDRESS",
+    "score_threshold": 0.6,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 1,
+    "fp_rate": 0.01,
+    "top_entities": {
+      "IP_ADDRESS": 5
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.6,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_URL",
+    "score_threshold": 0.6,
+    "entities": [
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 14,
+    "fp_rate": 0.15,
+    "top_entities": {
+      "URL": 14
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_PERSON",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 9499,
+    "fp_count": 2916,
+    "fp_rate": 30.7,
+    "top_entities": {
+      "PERSON": 9469
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_LOCATION",
+    "score_threshold": 0.6,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 1796,
+    "fp_rate": 18.91,
+    "top_entities": {
+      "LOCATION": 6030
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_DATE_TIME",
+    "score_threshold": 0.6,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 9499,
+    "fp_count": 2206,
+    "fp_rate": 23.22,
+    "top_entities": {
+      "DATE_TIME": 7082
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_NRP",
+    "score_threshold": 0.6,
+    "entities": [
+      "NRP"
+    ],
+    "total": 9499,
+    "fp_count": 760,
+    "fp_rate": 8.0,
+    "top_entities": {
+      "NRP": 1887
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=all_entities",
+    "score_threshold": 0.7,
+    "entities": null,
+    "total": 9499,
+    "fp_count": 4831,
+    "fp_rate": 50.86,
+    "top_entities": {
+      "DATE_TIME": 6875,
+      "PERSON": 9469,
+      "LOCATION": 6030,
+      "NRP": 1887,
+      "EMAIL_ADDRESS": 21,
+      "UK_NHS": 1
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=person_email",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 2921,
+    "fp_rate": 30.75,
+    "top_entities": {
+      "PERSON": 9469,
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=pii_core",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 3850,
+    "fp_rate": 40.53,
+    "top_entities": {
+      "PERSON": 9469,
+      "LOCATION": 6030,
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=pii_focused",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.7,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_SSN",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_CREDIT_CARD",
+    "score_threshold": 0.7,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_IBAN_CODE",
+    "score_threshold": 0.7,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_PASSPORT",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_ITIN",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_CRYPTO",
+    "score_threshold": 0.7,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_IP_ADDRESS",
+    "score_threshold": 0.7,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.7,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_URL",
+    "score_threshold": 0.7,
+    "entities": [
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_PERSON",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 9499,
+    "fp_count": 2916,
+    "fp_rate": 30.7,
+    "top_entities": {
+      "PERSON": 9469
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_LOCATION",
+    "score_threshold": 0.7,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 1796,
+    "fp_rate": 18.91,
+    "top_entities": {
+      "LOCATION": 6030
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_DATE_TIME",
+    "score_threshold": 0.7,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 9499,
+    "fp_count": 2202,
+    "fp_rate": 23.18,
+    "top_entities": {
+      "DATE_TIME": 6875
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_NRP",
+    "score_threshold": 0.7,
+    "entities": [
+      "NRP"
+    ],
+    "total": 9499,
+    "fp_count": 760,
+    "fp_rate": 8.0,
+    "top_entities": {
+      "NRP": 1887
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=all_entities",
+    "score_threshold": 0.8,
+    "entities": null,
+    "total": 9499,
+    "fp_count": 4831,
+    "fp_rate": 50.86,
+    "top_entities": {
+      "DATE_TIME": 6875,
+      "PERSON": 9469,
+      "LOCATION": 6030,
+      "NRP": 1887,
+      "EMAIL_ADDRESS": 21,
+      "UK_NHS": 1
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=person_email",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 2921,
+    "fp_rate": 30.75,
+    "top_entities": {
+      "PERSON": 9469,
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=pii_core",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 3850,
+    "fp_rate": 40.53,
+    "top_entities": {
+      "PERSON": 9469,
+      "LOCATION": 6030,
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=pii_focused",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.8,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_SSN",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_CREDIT_CARD",
+    "score_threshold": 0.8,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_IBAN_CODE",
+    "score_threshold": 0.8,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_PASSPORT",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_ITIN",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_CRYPTO",
+    "score_threshold": 0.8,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_IP_ADDRESS",
+    "score_threshold": 0.8,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.8,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_URL",
+    "score_threshold": 0.8,
+    "entities": [
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_PERSON",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 9499,
+    "fp_count": 2916,
+    "fp_rate": 30.7,
+    "top_entities": {
+      "PERSON": 9469
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_LOCATION",
+    "score_threshold": 0.8,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 1796,
+    "fp_rate": 18.91,
+    "top_entities": {
+      "LOCATION": 6030
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_DATE_TIME",
+    "score_threshold": 0.8,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 9499,
+    "fp_count": 2202,
+    "fp_rate": 23.18,
+    "top_entities": {
+      "DATE_TIME": 6875
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_NRP",
+    "score_threshold": 0.8,
+    "entities": [
+      "NRP"
+    ],
+    "total": 9499,
+    "fp_count": 760,
+    "fp_rate": 8.0,
+    "top_entities": {
+      "NRP": 1887
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=all_entities",
+    "score_threshold": 0.9,
+    "entities": null,
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21,
+      "UK_NHS": 1
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=person_email",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=pii_core",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=pii_focused",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 9,
+    "fp_rate": 0.09,
+    "top_entities": {
+      "EMAIL_ADDRESS": 21
+    }
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.9,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_SSN",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_CREDIT_CARD",
+    "score_threshold": 0.9,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_IBAN_CODE",
+    "score_threshold": 0.9,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_PASSPORT",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_ITIN",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_CRYPTO",
+    "score_threshold": 0.9,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_IP_ADDRESS",
+    "score_threshold": 0.9,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.9,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_URL",
+    "score_threshold": 0.9,
+    "entities": [
+      "URL"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_PERSON",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_LOCATION",
+    "score_threshold": 0.9,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_DATE_TIME",
+    "score_threshold": 0.9,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "no_robots",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_NRP",
+    "score_threshold": 0.9,
+    "entities": [
+      "NRP"
+    ],
+    "total": 9499,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=all_entities",
+    "score_threshold": 0.5,
+    "entities": null,
+    "total": 5000,
+    "fp_count": 1447,
+    "fp_rate": 28.94,
+    "top_entities": {
+      "NRP": 278,
+      "PERSON": 920,
+      "DATE_TIME": 665,
+      "LOCATION": 602,
+      "URL": 136,
+      "IP_ADDRESS": 14,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=person_email",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 551,
+    "fp_rate": 11.02,
+    "top_entities": {
+      "PERSON": 920,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=pii_core",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 924,
+    "fp_rate": 18.48,
+    "top_entities": {
+      "PERSON": 920,
+      "LOCATION": 602,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=pii_focused",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 68,
+    "fp_rate": 1.36,
+    "top_entities": {
+      "URL": 136,
+      "IP_ADDRESS": 14,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.5,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_SSN",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_CREDIT_CARD",
+    "score_threshold": 0.5,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_IBAN_CODE",
+    "score_threshold": 0.5,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_PASSPORT",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_US_ITIN",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_CRYPTO",
+    "score_threshold": 0.5,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_IP_ADDRESS",
+    "score_threshold": 0.5,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 5,
+    "fp_rate": 0.1,
+    "top_entities": {
+      "IP_ADDRESS": 14
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.5,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_URL",
+    "score_threshold": 0.5,
+    "entities": [
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 65,
+    "fp_rate": 1.3,
+    "top_entities": {
+      "URL": 136
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_PERSON",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 5000,
+    "fp_count": 551,
+    "fp_rate": 11.02,
+    "top_entities": {
+      "PERSON": 920
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_LOCATION",
+    "score_threshold": 0.5,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 425,
+    "fp_rate": 8.5,
+    "top_entities": {
+      "LOCATION": 602
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_DATE_TIME",
+    "score_threshold": 0.5,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 5000,
+    "fp_count": 460,
+    "fp_rate": 9.2,
+    "top_entities": {
+      "DATE_TIME": 665
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.5_entities=e_NRP",
+    "score_threshold": 0.5,
+    "entities": [
+      "NRP"
+    ],
+    "total": 5000,
+    "fp_count": 219,
+    "fp_rate": 4.38,
+    "top_entities": {
+      "NRP": 278
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=all_entities",
+    "score_threshold": 0.6,
+    "entities": null,
+    "total": 5000,
+    "fp_count": 1419,
+    "fp_rate": 28.38,
+    "top_entities": {
+      "NRP": 278,
+      "PERSON": 920,
+      "DATE_TIME": 665,
+      "LOCATION": 602,
+      "IP_ADDRESS": 14,
+      "URL": 15,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=person_email",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 551,
+    "fp_rate": 11.02,
+    "top_entities": {
+      "PERSON": 920,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=pii_core",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 924,
+    "fp_rate": 18.48,
+    "top_entities": {
+      "PERSON": 920,
+      "LOCATION": 602,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=pii_focused",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 21,
+    "fp_rate": 0.42,
+    "top_entities": {
+      "IP_ADDRESS": 14,
+      "URL": 15,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.6,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_SSN",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_CREDIT_CARD",
+    "score_threshold": 0.6,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_IBAN_CODE",
+    "score_threshold": 0.6,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_PASSPORT",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_US_ITIN",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_CRYPTO",
+    "score_threshold": 0.6,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_IP_ADDRESS",
+    "score_threshold": 0.6,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 5,
+    "fp_rate": 0.1,
+    "top_entities": {
+      "IP_ADDRESS": 14
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.6,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_URL",
+    "score_threshold": 0.6,
+    "entities": [
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 14,
+    "fp_rate": 0.28,
+    "top_entities": {
+      "URL": 15
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_PERSON",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 5000,
+    "fp_count": 551,
+    "fp_rate": 11.02,
+    "top_entities": {
+      "PERSON": 920
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_LOCATION",
+    "score_threshold": 0.6,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 425,
+    "fp_rate": 8.5,
+    "top_entities": {
+      "LOCATION": 602
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_DATE_TIME",
+    "score_threshold": 0.6,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 5000,
+    "fp_count": 460,
+    "fp_rate": 9.2,
+    "top_entities": {
+      "DATE_TIME": 665
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.6_entities=e_NRP",
+    "score_threshold": 0.6,
+    "entities": [
+      "NRP"
+    ],
+    "total": 5000,
+    "fp_count": 219,
+    "fp_rate": 4.38,
+    "top_entities": {
+      "NRP": 278
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=all_entities",
+    "score_threshold": 0.7,
+    "entities": null,
+    "total": 5000,
+    "fp_count": 1409,
+    "fp_rate": 28.18,
+    "top_entities": {
+      "NRP": 278,
+      "PERSON": 920,
+      "DATE_TIME": 654,
+      "LOCATION": 602,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=person_email",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 551,
+    "fp_rate": 11.02,
+    "top_entities": {
+      "PERSON": 920,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=pii_core",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 924,
+    "fp_rate": 18.48,
+    "top_entities": {
+      "PERSON": 920,
+      "LOCATION": 602,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=pii_focused",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.7,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_SSN",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_CREDIT_CARD",
+    "score_threshold": 0.7,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_IBAN_CODE",
+    "score_threshold": 0.7,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_PASSPORT",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_US_ITIN",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_CRYPTO",
+    "score_threshold": 0.7,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_IP_ADDRESS",
+    "score_threshold": 0.7,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.7,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_URL",
+    "score_threshold": 0.7,
+    "entities": [
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_PERSON",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 5000,
+    "fp_count": 551,
+    "fp_rate": 11.02,
+    "top_entities": {
+      "PERSON": 920
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_LOCATION",
+    "score_threshold": 0.7,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 425,
+    "fp_rate": 8.5,
+    "top_entities": {
+      "LOCATION": 602
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_DATE_TIME",
+    "score_threshold": 0.7,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 5000,
+    "fp_count": 460,
+    "fp_rate": 9.2,
+    "top_entities": {
+      "DATE_TIME": 654
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.7_entities=e_NRP",
+    "score_threshold": 0.7,
+    "entities": [
+      "NRP"
+    ],
+    "total": 5000,
+    "fp_count": 219,
+    "fp_rate": 4.38,
+    "top_entities": {
+      "NRP": 278
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=all_entities",
+    "score_threshold": 0.8,
+    "entities": null,
+    "total": 5000,
+    "fp_count": 1409,
+    "fp_rate": 28.18,
+    "top_entities": {
+      "NRP": 278,
+      "PERSON": 920,
+      "DATE_TIME": 654,
+      "LOCATION": 602,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=person_email",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 551,
+    "fp_rate": 11.02,
+    "top_entities": {
+      "PERSON": 920,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=pii_core",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 924,
+    "fp_rate": 18.48,
+    "top_entities": {
+      "PERSON": 920,
+      "LOCATION": 602,
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=pii_focused",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.8,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_SSN",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_CREDIT_CARD",
+    "score_threshold": 0.8,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_IBAN_CODE",
+    "score_threshold": 0.8,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_PASSPORT",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_US_ITIN",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_CRYPTO",
+    "score_threshold": 0.8,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_IP_ADDRESS",
+    "score_threshold": 0.8,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.8,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_URL",
+    "score_threshold": 0.8,
+    "entities": [
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_PERSON",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 5000,
+    "fp_count": 551,
+    "fp_rate": 11.02,
+    "top_entities": {
+      "PERSON": 920
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_LOCATION",
+    "score_threshold": 0.8,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 425,
+    "fp_rate": 8.5,
+    "top_entities": {
+      "LOCATION": 602
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_DATE_TIME",
+    "score_threshold": 0.8,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 5000,
+    "fp_count": 460,
+    "fp_rate": 9.2,
+    "top_entities": {
+      "DATE_TIME": 654
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.8_entities=e_NRP",
+    "score_threshold": 0.8,
+    "entities": [
+      "NRP"
+    ],
+    "total": 5000,
+    "fp_count": 219,
+    "fp_rate": 4.38,
+    "top_entities": {
+      "NRP": 278
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=all_entities",
+    "score_threshold": 0.9,
+    "entities": null,
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=person_email",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=pii_core",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=pii_focused",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_EMAIL_ADDRESS",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 2,
+    "fp_rate": 0.04,
+    "top_entities": {
+      "EMAIL_ADDRESS": 3
+    }
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_PHONE_NUMBER",
+    "score_threshold": 0.9,
+    "entities": [
+      "PHONE_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_SSN",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_SSN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_CREDIT_CARD",
+    "score_threshold": 0.9,
+    "entities": [
+      "CREDIT_CARD"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_BANK_NUMBER",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_BANK_NUMBER"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_IBAN_CODE",
+    "score_threshold": 0.9,
+    "entities": [
+      "IBAN_CODE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_PASSPORT",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_PASSPORT"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_DRIVER_LICENSE",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_US_ITIN",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_ITIN"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_CRYPTO",
+    "score_threshold": 0.9,
+    "entities": [
+      "CRYPTO"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_IP_ADDRESS",
+    "score_threshold": 0.9,
+    "entities": [
+      "IP_ADDRESS"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_MEDICAL_LICENSE",
+    "score_threshold": 0.9,
+    "entities": [
+      "MEDICAL_LICENSE"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_URL",
+    "score_threshold": 0.9,
+    "entities": [
+      "URL"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_PERSON",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_LOCATION",
+    "score_threshold": 0.9,
+    "entities": [
+      "LOCATION"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_DATE_TIME",
+    "score_threshold": 0.9,
+    "entities": [
+      "DATE_TIME"
+    ],
+    "total": 5000,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "oasst2",
+    "detector": "presidio",
+    "config_id": "threshold=0.9_entities=e_NRP",
+    "score_threshold": 0.9,
+    "entities": [
+      "NRP"
+    ],
+    "total": 5000,
     "fp_count": 0,
     "fp_rate": 0.0,
     "top_entities": {}
@@ -4531,12 +9231,17 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 200,
-    "fp_count": 20,
-    "fp_rate": 10.0,
+    "fp_count": 47,
+    "fp_rate": 23.5,
     "top_entities": {
+      "IP_ADDRESS": 28,
+      "URL": 19,
       "EMAIL_ADDRESS": 15,
       "CREDIT_CARD": 5
     }
@@ -4847,12 +9552,16 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 200,
-    "fp_count": 20,
-    "fp_rate": 10.0,
+    "fp_count": 45,
+    "fp_rate": 22.5,
     "top_entities": {
+      "IP_ADDRESS": 28,
       "EMAIL_ADDRESS": 15,
       "CREDIT_CARD": 5
     }
@@ -5160,7 +9869,10 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 200,
     "fp_count": 20,
@@ -5471,7 +10183,10 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 200,
     "fp_count": 20,
@@ -5776,7 +10491,10 @@
       "US_PASSPORT",
       "US_DRIVER_LICENSE",
       "US_ITIN",
-      "CRYPTO"
+      "CRYPTO",
+      "IP_ADDRESS",
+      "MEDICAL_LICENSE",
+      "URL"
     ],
     "total": 200,
     "fp_count": 20,
