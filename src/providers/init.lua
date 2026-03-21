@@ -47,6 +47,11 @@ function M.known(name)
     return REGISTRY[name] ~= nil
 end
 
+-- Returns the raw registry entry table (with requires_key etc.) or nil.
+function M.registry_entry(name)
+    return REGISTRY[name]
+end
+
 -- Returns list of { name, requires_key } for all registered providers, sorted by name.
 function M.list()
     local result = {}
