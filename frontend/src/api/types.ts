@@ -6,6 +6,77 @@ export interface Tenant {
   created_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// Detector types
+// ---------------------------------------------------------------------------
+
+export type DetectorAction = "block" | "scrub" | "flag";
+export type DetectorTarget = "request" | "response" | "both";
+
+/** Named individual patterns */
+export type PatternName =
+  | "email" | "phone" | "ssn" | "dob" | "ip_address"
+  | "cc" | "cvv" | "card_expiry" | "iban" | "routing_number"
+  | "mrn" | "npi" | "national_id" | "passport_number"
+  | "api_key" | "jwt";
+
+/** Named pattern sets */
+export type PatternSetName =
+  | "pci_pan" | "hipaa_structured" | "gdpr_structured"
+  | "credentials" | "pii_basic";
+
+export interface RegexDetector {
+  type: "regex";
+  name: string;
+  action: DetectorAction;
+  target?: DetectorTarget;
+  patterns?: Array<PatternName | PatternSetName>;
+  custom_patterns?: string[];
+  scrub_placeholder?: string;
+}
+
+export interface KeywordDetector {
+  type: "keyword";
+  name: string;
+  action: DetectorAction;
+  target?: DetectorTarget;
+  keywords: string[];
+  case_sensitive?: boolean;
+}
+
+export interface PresidioDetector {
+  type: "presidio";
+  name: string;
+  action: DetectorAction;
+  target?: DetectorTarget;
+  url?: string;
+  language?: string;
+  entities?: string[];
+  score_threshold?: number;
+  fail_open?: boolean;
+}
+
+export interface LlmGuardDetector {
+  type: "llm_guard";
+  name: string;
+  action: DetectorAction;
+  target?: DetectorTarget;
+  url?: string;
+  timeout_ms?: number;
+  categories?: string[];
+  fail_open?: boolean;
+}
+
+export type DetectorConfig =
+  | RegexDetector
+  | KeywordDetector
+  | PresidioDetector
+  | LlmGuardDetector;
+
+// ---------------------------------------------------------------------------
+// Gateway config
+// ---------------------------------------------------------------------------
+
 export interface GatewayConfig {
   auth_required?: boolean;
   budget_usd?: number;
@@ -15,6 +86,7 @@ export interface GatewayConfig {
   log_payloads?: boolean;
   rate_limit?: { requests: number; window_sec: number };
   guardrails?: { enabled: boolean; llama_guard_url?: string; timeout_ms?: number; fail_open?: boolean };
+  detectors?: DetectorConfig[];
 }
 
 export interface Gateway {
@@ -128,4 +200,29 @@ export interface ModelPrice {
   cache_write_per_1k: number | null;
   cache_read_per_1k: number | null;
   updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Playground
+// ---------------------------------------------------------------------------
+
+export interface PlaygroundToken {
+  token: string;
+  expires_at: string;
+  tenant_slug: string;
+  gateway_slug: string;
+}
+
+export interface PlaygroundMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface PlaygroundPanelResult {
+  content: string;
+  latency_ms: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_usd: number | null;
+  error: string | null;
 }
