@@ -226,3 +226,8 @@ export interface PlaygroundPanelResult {
   cost_usd: number | null;
   error: string | null;
 }
+
+export interface ProviderMeta {
+  name: string;
+  requires_key: boolean;
+}

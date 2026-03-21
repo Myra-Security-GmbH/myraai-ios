@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
-import { Gateway, Tenant, ProviderConfig, RoutingRule, DetectorConfig } from "src/api/types";
+import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig } from "src/api/types";
 import { DetectorBuilder } from "src/modules/detectors/DetectorBuilder";
 import s from "src/common/components/layout/Layout.module.scss";
 
@@ -224,12 +224,20 @@ function AddKeyModal({ gatewayId, onClose, onAdded }: { gatewayId: string; onClo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [providerList, setProviderList] = useState<ProviderMeta[]>([]);
+
+  useEffect(() => {
+    api.get<ProviderMeta[]>("/providers").then(setProviderList).catch(() => {});
+  }, []);
+
+  const selectedMeta = providerList.find((p) => p.name === provider);
+  const needsKey = selectedMeta?.requires_key ?? true;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
-      await api.post(`/gateways/${gatewayId}/keys`, { provider, key: apiKey, alias });
+      await api.post(`/gateways/${gatewayId}/keys`, { provider, key: needsKey ? apiKey : "", alias });
       setSuccess(true);
       onAdded();
     } catch (err: any) { setError(err.message); }
@@ -254,7 +262,7 @@ function AddKeyModal({ gatewayId, onClose, onAdded }: { gatewayId: string; onClo
               <div className={s["form-group"]}>
                 <label htmlFor="provider" className={s["form-label"]}>Provider</label>
                 <select id="provider" className={s["form-select"]} value={provider} onChange={(e) => setProvider(e.target.value)}>
-                  {["anthropic", "openai", "gemini", "mistral", "groq", "deepseek", "xai"].map((p) => (
+                  {(providerList.length > 0 ? providerList.map((p) => p.name) : ["anthropic"]).map((p) => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
@@ -265,13 +273,19 @@ function AddKeyModal({ gatewayId, onClose, onAdded }: { gatewayId: string; onClo
               </div>
             </div>
             <div className={s["form-group"]}>
-              <label htmlFor="apikey" className={s["form-label"]}>API Key *</label>
-              <input id="apikey" className={s["form-input"]} type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-ant-…" required />
-              <p className={s["form-hint"]}>Stored encrypted. Replaces existing key for this provider/alias.</p>
+              <label htmlFor="apikey" className={s["form-label"]}>API Key{needsKey ? " *" : ""}</label>
+              {needsKey ? (
+                <input id="apikey" className={s["form-input"]} type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" required />
+              ) : (
+                <p className={s["form-hint"]} style={{ marginTop: 4 }}>
+                  This provider does not require an API key.
+                </p>
+              )}
+              {needsKey && <p className={s["form-hint"]}>Stored encrypted. Replaces existing key for this provider/alias.</p>}
             </div>
             <div className={s["form-actions"]}>
               <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
-              <button type="submit" className={`${s.btn} ${s["btn--primary"]}`} disabled={loading}>
+              <button type="submit" className={`${s.btn} ${s["btn--primary"]}`} disabled={loading || (needsKey && !apiKey.trim())}>
                 {loading ? "Storing…" : "Store Key"}
               </button>
             </div>
