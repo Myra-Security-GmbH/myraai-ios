@@ -64,7 +64,7 @@ function M.build_request(ctx)
         end
     end
 
-    return json.encode(body)
+    return json.sanitize_surrogates(json.encode(body))
 end
 
 function M.parse_response(body_str)

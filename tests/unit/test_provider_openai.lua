@@ -95,4 +95,33 @@ describe("providers.openai", function()
         assert.equal("real answer", parsed.delta)
     end)
 
+    -- ── surrogate sanitization in build_request ──────────────────────────────
+    -- cjson allows lone UTF-16 surrogates; Anthropic / strict parsers reject them.
+    -- build_request must strip them before forwarding.
+
+    it("build_request strips lone surrogate raw bytes from message content", function()
+        -- Manufacture a message containing a lone surrogate UTF-8 byte sequence
+        -- (0xED 0xA0 0x80 = U+D800, invalid UTF-8).
+        local bad = string.char(0xED, 0xA0, 0x80)
+        local ctx = {
+            request_body = { messages = {{ role = "user", content = "hello " .. bad .. " world" }} },
+        }
+        local body = openai.build_request(ctx)
+        -- The surrogate bytes must not appear in the output
+        assert.is_nil(body:find(string.char(0xED, 0xA0, 0x80), 1, true),
+            "lone surrogate bytes must be removed from build_request output")
+    end)
+
+    it("sanitize_surrogates removes \\uDxxx literal JSON escape sequences", function()
+        -- This pattern applies to raw body strings (e.g. Anthropic native path).
+        -- When a client sends \uD83D as a JSON escape, sanitize_surrogates must replace it.
+        local json = require("utils.json")
+        local raw  = [[{"messages":[{"content":"hi \uD83D world"}]}]]
+        local out  = json.sanitize_surrogates(raw)
+        assert.is_nil(out:find("\\uD83D", 1, true),
+            "surrogate JSON escape must be replaced by sanitize_surrogates")
+        assert.not_nil(out:find("\\ufffd", 1, true),
+            "replacement char escape must be present after sanitization")
+    end)
+
 end)

@@ -43,8 +43,9 @@ end
 -- OpenAI chat/completions format and needs converting.
 function M.build_request(ctx)
     if not ctx.is_compat then
-        -- Native Anthropic path: forward raw body as-is
-        return ctx.raw_request_body
+        -- Native Anthropic path: forward raw body, stripping lone surrogates that
+        -- cjson allows but Anthropic's strict UTF-8 parser rejects.
+        return json.sanitize_surrogates(ctx.raw_request_body)
     end
 
     -- Compat path: convert OpenAI chat/completions → Anthropic Messages
@@ -100,7 +101,7 @@ function M.build_request(ctx)
         end
     end
 
-    return json.encode(body)
+    return json.sanitize_surrogates(json.encode(body))
 end
 
 function M.parse_response(body_str)

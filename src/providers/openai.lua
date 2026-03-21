@@ -48,8 +48,9 @@ end
 
 -- Pass the request body through unchanged (OpenAI is our canonical format).
 function M.build_request(ctx)
-    -- Body was already read and normalised by transform.lua
-    return json.encode(ctx.request_body)
+    -- Body was already read and normalised by transform.lua.
+    -- Sanitize lone surrogates: cjson preserves them but strict UTF-8 parsers reject them.
+    return json.sanitize_surrogates(json.encode(ctx.request_body))
 end
 
 function M.parse_response(body_str)

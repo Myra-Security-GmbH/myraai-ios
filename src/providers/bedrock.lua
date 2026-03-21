@@ -160,12 +160,14 @@ end
 function M.build_request(ctx)
     local src    = ctx.request_body
     local family = model_family(ctx.model)
-    if family == "anthropic" then return build_anthropic_body(src) end
-    if family == "meta"      then return build_meta_body(src)      end
-    if family == "amazon"    then return build_amazon_body(src)    end
-    if family == "mistral"   then return build_mistral_body(src)   end
-    -- Unknown family: best-effort passthrough
-    return json.encode(src)
+    local body
+    if family == "anthropic" then body = build_anthropic_body(src)
+    elseif family == "meta"  then body = build_meta_body(src)
+    elseif family == "amazon"then body = build_amazon_body(src)
+    elseif family == "mistral"then body = build_mistral_body(src)
+    else  body = json.encode(src)  -- unknown family: best-effort passthrough
+    end
+    return json.sanitize_surrogates(body)
 end
 
 function M.build_headers(ctx, api_key)

@@ -50,7 +50,7 @@ function M.build_request(ctx)
         body.stop_sequences = type(src.stop) == "table" and src.stop or { src.stop }
     end
 
-    return json.encode(body)
+    return json.sanitize_surrogates(json.encode(body))
 end
 
 function M.parse_response(body_str)
