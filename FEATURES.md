@@ -1,0 +1,807 @@
+# AI Gateway — Feature Reference
+
+**Stack:** Nginx + OpenResty (LuaJIT)
+**Pattern:** Multi-tenant reverse proxy with a middleware chain across three Nginx phases (access → content → log)
+**Storage:** SQLite (dev/single-server) or PostgreSQL (production)
+**State:** `ngx.shared.dict` (single-server) or Redis (distributed)
+
+---
+
+## Table of Contents
+
+1. [Request Pipeline](#1-request-pipeline)
+2. [Multi-Provider Support](#2-multi-provider-support)
+3. [Authentication & Authorization](#3-authentication--authorization)
+4. [Dynamic Routing & Fallback](#4-dynamic-routing--fallback)
+5. [Caching](#5-caching)
+6. [Rate Limiting](#6-rate-limiting)
+7. [Budget & Quota Enforcement](#7-budget--quota-enforcement)
+8. [Data Loss Prevention (DLP)](#8-data-loss-prevention-dlp)
+9. [Detector Pipeline](#9-detector-pipeline)
+10. [Content Moderation (Guardrails)](#10-content-moderation-guardrails)
+11. [Provider Key Management (BYOK)](#11-provider-key-management-byok)
+12. [IP Allowlist](#12-ip-allowlist)
+13. [Response Streaming](#13-response-streaming)
+14. [Cost Attribution & Pricing](#14-cost-attribution--pricing)
+15. [Observability & Logging](#15-observability--logging)
+16. [Prometheus Metrics](#16-prometheus-metrics)
+17. [Multi-Tenancy](#17-multi-tenancy)
+18. [Admin REST API](#18-admin-rest-api)
+19. [Playground UI](#19-playground-ui)
+20. [Gateway Configuration Reference](#20-gateway-configuration-reference)
+21. [Error Handling](#21-error-handling)
+
+---
+
+## 1. Request Pipeline
+
+Requests flow through a fixed middleware chain in phase order:
+
+**Access phase** (before body is read):
+1. `request_id` — Inject or forward `X-Request-Id`
+2. `tenant` — Resolve tenant/gateway/provider from URL path
+3. `auth` — Validate bearer token
+4. `rate_limit` — Sliding-window rate limit check
+5. `ip_allowlist` — CIDR allowlist enforcement
+
+**Content phase** (body available):
+1. `cache_check` — SHA-256 exact-match lookup; serve immediately on hit
+2. `dlp` — Pattern scan (block / scrub / flag)
+3. `detectors` — Tier 1 + Tier 2 prompt security classifiers (request)
+4. `guardrails_request` — Llama Guard 3 classifier
+5. `transform` — Parse and normalize request body
+6. `routing` — Rules engine (provider, model, fallback chain)
+7. `byok` — Decrypt and inject provider API key
+8. `upstream` — Call provider with retry + fallback
+9. `detectors_response` — Tier 1 response scan
+10. `guardrails_response` — Pattern-based response check
+11. `cost` — Token counting and budget increment
+12. `cache_store` — Persist non-streaming 200 responses
+13. `send_response` — Write buffered response body to client
+
+**Log phase** (best-effort, after response sent):
+1. Structured JSON request log
+2. Prometheus metrics update
+
+---
+
+## 2. Multi-Provider Support
+
+### Supported Providers
+
+| Provider | Wire Format | Auth | Notes |
+|---|---|---|---|
+| OpenAI | Native OpenAI | Bearer | Direct pass-through |
+| Azure OpenAI | OpenAI | Bearer | Requires `azure_endpoint`, `azure_deployment`, `azure_api_version` |
+| Anthropic | Messages API | x-api-key | System prompt, extended thinking, prompt caching |
+| Google Gemini | GenerateContent | Bearer | System instruction conversion, safety settings |
+| Vertex AI | GenerateContent | Bearer + OAuth2 | Google ADC / service account; `vertex_project`, `vertex_region` |
+| AWS Bedrock | Bedrock Converse | SigV4 | HMAC-SHA256 request signing; `bedrock_region` |
+| Mistral AI | OpenAI-compatible | Bearer | |
+| Groq | OpenAI-compatible | Bearer | |
+| Together AI | OpenAI-compatible | Bearer | `meta-llama/`, `Qwen/`, `microsoft/` prefixes |
+| Fireworks | OpenAI-compatible | Bearer | `accounts/fireworks/models/` prefix |
+| Cerebras | OpenAI-compatible | Bearer | Fast inference |
+| DeepSeek | OpenAI-compatible | Bearer | `deepseek-` prefix |
+| OpenRouter | OpenAI-compatible | Bearer | Aggregates 300+ models; universal compat fallback |
+| Perplexity | OpenAI-compatible | Bearer | `sonar-` prefix |
+| SambaNova | OpenAI-compatible | Bearer | |
+| xAI | OpenAI-compatible | Bearer | `grok-` prefix |
+| NVIDIA NIM | OpenAI-compatible | Bearer | `nvidia/` prefix |
+| Cloudflare AI | OpenAI-compatible | Bearer | `@cf/` prefix |
+| Cohere | Cohere Chat API | Bearer | Native request/response translation |
+| HuggingFace | OpenAI-compatible | Bearer | Org-prefix routing (`tiiuae/`, `bigcode/`, etc.) |
+| Ollama | OpenAI-compatible | None | Local inference; `OLLAMA_BASE_URL` env |
+
+### Endpoints
+
+- **Native:** `/v1/{tenant}/{gateway}/{provider}/chat/completions`
+- **Unified (OpenAI-compat):** `/v1/{tenant}/{gateway}/compat/chat/completions` — provider inferred from model name
+
+### Compat Model Resolution (3-tier)
+
+The compat endpoint resolves the provider from the `model` field in three steps:
+
+1. **Exact match** — known model IDs mapped directly (e.g. `gpt-4o` → openai, `claude-sonnet-4-6` → anthropic)
+2. **Prefix match** — model name prefix (e.g. `gpt-` → openai, `claude-` → anthropic, `@cf/` → cloudflare, `meta.` → bedrock)
+3. **OpenRouter fallback** — any unrecognized model name is routed to OpenRouter, which aggregates 300+ models
+
+This means any model available on OpenRouter is accessible via the compat endpoint with no gateway configuration changes (only a valid OpenRouter BYOK key is required).
+
+### HuggingFace Org-Prefix Routing
+
+The following HuggingFace-hosted org prefixes are recognized:
+
+`HuggingFaceH4/`, `tiiuae/`, `bigcode/`, `EleutherAI/`, `microsoft/`, `google/` (HF-hosted), `stabilityai/`, `mistralai/`
+
+### Request Translation
+
+- **Anthropic:** Converts OpenAI `chat/completions` to the Messages API; system messages extracted; extended thinking via `x-aig-provider-anthropic-beta: interleaved-thinking-2025-05-14`
+- **Gemini / Vertex:** Converts to `GenerateContent` with system instruction support; SSE chunks normalised
+- **Bedrock:** Converse API with SigV4 HMAC-SHA256 request signing; region from `bedrock_region` gateway config
+- **Cohere:** Native Chat API format; response translated back to OpenAI shape
+- **OpenRouter / Groq / Fireworks / etc.:** Forwarded as-is (OpenAI format)
+
+### Provider Header Pass-Through
+
+`x-aig-provider-*` headers are forwarded as raw provider headers.
+Example: `x-aig-provider-anthropic-beta: interleaved-thinking-2025-05-14`
+
+---
+
+## 3. Authentication & Authorization
+
+### Token Acceptance
+
+Tokens are accepted from any of these headers (in priority order):
+
+1. `x-aig-token`
+2. `Authorization: Bearer <token>`
+3. `x-api-key` (Anthropic SDK compatibility)
+
+### Token Storage
+
+SHA-256 hashes are stored — plaintext is never persisted. Per-token metadata:
+
+| Field | Description |
+|---|---|
+| `expiration` | ISO-8601 timestamp; lexicographic comparison |
+| `scopes` | JSON array (reserved for future use) |
+| `user_id` | Optional user binding |
+| `label` | Human-readable name (e.g., "dev laptop") |
+| `rate_limit` | Per-token override `{requests, window_sec}` |
+| `budget_usd` | Per-token spend cap |
+
+### User Roles
+
+| Role | Inference | Admin |
+|---|---|---|
+| `admin` | Yes | Full access |
+| `member` | Yes (assigned gateways only) | No |
+| `viewer` | No (403 Forbidden) | No |
+
+### Access Control
+
+- Gateway auth is required by default; disable with `auth_required: false`
+- Per-user gateway access matrix (`user_gateway_access` table)
+- Deleting a user immediately disables all their tokens
+
+---
+
+## 4. Dynamic Routing & Fallback
+
+### Rules Engine
+
+Routing rules are evaluated in ascending priority order; the first matching rule wins.
+
+**Rule structure:**
+```json
+{
+  "priority": 10,
+  "conditions": [{"field": "model", "op": "prefix", "value": "gpt-"}],
+  "actions": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "fallbacks": [{"provider": "anthropic", "model": "claude-sonnet-4-6"}]
+  },
+  "enabled": true
+}
+```
+
+### Condition Fields
+
+| Field | Example |
+|---|---|
+| `model` | Request model name |
+| `provider` | Current provider |
+| `tenant_id` | Tenant UUID |
+| `header:{name}` | Any HTTP header (e.g., `header:x-customer-tier`) |
+| `meta:{key}` | Custom `x-aig-meta-*` header value |
+
+### Condition Operators
+
+`eq`, `neq`, `prefix`, `contains`, `regex`
+
+### Fallback Chain
+
+- Primary provider: up to `retry_count` attempts (default: 2)
+- Each fallback: one attempt only
+- BYOK keys are automatically swapped when a fallback uses a different provider
+- If all providers fail: `502 ALL_PROVIDERS_FAILED`
+- 4xx from provider: returned to client immediately (no retry)
+- `fallback_provider` and `fallback_model` recorded in request logs
+
+---
+
+## 5. Caching
+
+### Exact-Match Cache
+
+- **Key:** SHA-256(`provider:model:canonical_json_body`)
+- Excluded from key: `stream`, `user`, `metadata` (ensures semantic correctness)
+- **Storage:** `aig_cache` shared dict or Redis
+- **TTL:** Configured per gateway via `cache_ttl` (seconds); 0 = disabled
+- **Cache hit:** Returns 200 immediately with `X-AIG-Cache: HIT`
+- **Stored format:** `{body, cost_usd}` — only for non-streaming 200 responses
+- **Savings tracking:** Logs `saved_cost_usd` and `saved_latency_ms` on cache hits (estimated from average upstream latency per provider/model)
+
+### Semantic Cache
+
+Planned (pgvector / Redis vector similarity) — not yet implemented.
+
+---
+
+## 6. Rate Limiting
+
+### Algorithm
+
+Sliding-window approximation using dual time buckets:
+
+```
+effective_count = prev_bucket * (1 - elapsed/window) + cur_bucket
+```
+
+### Configuration
+
+- Per gateway: `rate_limit: {requests: N, window_sec: S}`
+- Per token: override via `auth_token.rate_limit` JSON field
+
+### Behavior
+
+- Enforced at the access phase (before body read)
+- Returns `429` with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` headers
+- Logs `blocked_by="rate_limit"` with current/limit ratio
+
+---
+
+## 7. Budget & Quota Enforcement
+
+### Levels
+
+1. **Per-token budget:** `auth_token.budget_usd` (optional; takes precedence over gateway)
+2. **Per-gateway budget:** `gateway.budget_usd`
+
+### Cost Calculation
+
+```
+cost = (input_tokens / 1000) * price.input_per_1k
+     + (output_tokens / 1000) * price.output_per_1k
+     + (cache_write_tokens / 1000) * price.cache_write_per_1k   # Anthropic only
+     + (cache_read_tokens / 1000) * price.cache_read_per_1k     # Anthropic only
+```
+
+Costs are stored as micro-dollars (`cost * 1e6`) to avoid floating-point precision loss.
+
+### Behavior
+
+- Budget counter atomically incremented after each request
+- Returns `429 QUOTA_EXCEEDED` when `spent >= budget`
+- Budget can be reset via `DELETE /admin/v1/gateways/{id}/budget`
+- User token budgets reset via `DELETE /admin/v1/users/{id}/budget`
+
+---
+
+## 8. Data Loss Prevention (DLP)
+
+### Built-in Patterns
+
+| Name | Matches |
+|---|---|
+| `email` | Email addresses |
+| `ssn` | Social Security Numbers (XXX-XX-XXXX) |
+| `cc` | Credit card numbers (16 digits) |
+| `phone` | Phone numbers (international format) |
+| `api_key` | API key patterns (`key="..."`) |
+| `jwt` | JWT bearer tokens |
+
+### Actions
+
+| Action | Behavior |
+|---|---|
+| `block` | Reject request with `400 DLP_BLOCKED` |
+| `scrub` | Replace matches with `[REDACTED]` before forwarding |
+| `flag` | Log warning; request proceeds unmodified (default) |
+
+### Configuration
+
+```json
+"dlp": {
+  "enabled": true,
+  "action": "scrub",
+  "patterns": ["email", "ssn", "cc"]
+}
+```
+
+---
+
+## 9. Detector Pipeline
+
+A two-tier prompt security system that runs on every request (and optionally on responses) before the upstream call is made.
+
+### Tier 1 — In-Process (Fast)
+
+Runs synchronously in the Lua middleware with no external dependencies.
+
+| Detector | Method | Detects |
+|---|---|---|
+| `regex` | Pattern matching | Custom regex rules; configurable per gateway |
+| `keyword` | String search | Keyword lists; case-insensitive; configurable per gateway |
+| `pii` | Pattern matching | Email, SSN, phone, credit card, API key, JWT |
+| `prompt_injection` | Heuristic patterns | Instruction override attempts ("ignore previous instructions", "you are now...") |
+
+### Tier 2 — Sidecar HTTP (Accurate)
+
+Calls external HTTP services. Each detector has a configurable `url`, `timeout_ms`, and `fail_open` flag.
+
+| Detector | Default Port | Notes |
+|---|---|---|
+| `presidio` | 8082 | Microsoft Presidio; rich PII entity recognition |
+| `llm_guard` | 8084 | LLM Guard; comprehensive prompt security scanning |
+
+### Orchestrator
+
+`src/detectors/init.lua` runs all enabled detectors in sequence. The first detector to return `blocked=true` short-circuits the chain. Results are attached to `ctx.detector_results` for logging.
+
+### Response Scanning
+
+`src/middleware/detectors_response.lua` runs Tier 1 detectors against the provider response body before it is forwarded to the client.
+
+### Configuration
+
+```json
+"detectors": {
+  "enabled": true,
+  "tiers": ["tier1", "tier2"],
+  "tier1": ["regex", "keyword", "pii", "prompt_injection"],
+  "tier2": {
+    "presidio": {"url": "http://127.0.0.1:8082", "timeout_ms": 500, "fail_open": true},
+    "llm_guard": {"url": "http://127.0.0.1:8084", "timeout_ms": 500, "fail_open": true}
+  }
+}
+```
+
+---
+
+## 10. Content Moderation (Guardrails)
+
+### Request Guardrails (Llama Guard 3)
+
+The last user message is extracted and sent to a Llama Guard 3 HTTP service for classification.
+
+**Unsafe categories blocked:**
+
+| Code | Category |
+|---|---|
+| S1 | Violent Crimes |
+| S2 | Non-Violent Crimes |
+| S3 | Sex-Related Crimes |
+| S4 | Child Sexual Exploitation |
+| S5–S14 | Defamation, specialized advice, privacy, IP infringement, CBRN weapons, hate speech, self-harm, explicit content, election interference, code abuse |
+
+**Configuration:**
+```json
+"guardrails": {
+  "enabled": true,
+  "llama_guard_url": "http://127.0.0.1:8083",
+  "timeout_ms": 2000,
+  "fail_open": true
+}
+```
+
+- `fail_open: true` — allow request if classifier is unavailable (default)
+- `fail_open: false` — deny request if classifier is unavailable
+- Blocked responses respect the `stream` parameter (returns SSE for streaming, JSON for non-streaming)
+
+### Response Guardrails
+
+Pattern-based check on the provider response (before forwarding to client).
+
+- Categories: `self_harm`, `violence`
+- Non-blocking for streaming responses (already sent to client)
+- Sets `ctx.guardrail_response_blocked` for logging
+
+---
+
+## 11. Provider Key Management (BYOK)
+
+### Encryption
+
+- **Algorithm:** AES-256-CBC with PKCS7 padding
+- **Key derivation:** SHA-256 of `AIG_MASTER_KEY` environment variable
+- **IV:** 16 random bytes per encryption operation
+- **Storage format:** `base64(IV):base64(ciphertext)`
+
+### Key Lookup
+
+- Keyed by: `gateway_id + provider + alias` (default alias: `"default"`)
+- Override alias per-request via `x-aig-byok-alias` header
+- Decrypted keys cached in `aig_byok` shared dict for 60 seconds
+
+### Key Management
+
+```
+POST   /admin/v1/gateways/{id}/keys
+DELETE /admin/v1/gateways/{id}/keys/{provider}/{alias}
+GET    /admin/v1/gateways/{id}/keys
+```
+
+```json
+{
+  "provider": "anthropic",
+  "alias": "production",
+  "key": "sk-ant-..."
+}
+```
+
+---
+
+## 12. IP Allowlist
+
+- Configured as a list of CIDR blocks: `["10.0.0.0/8", "203.0.113.42/32"]`
+- Bare IPs treated as `/32`
+- Empty list = allow all (default)
+- Returns `403 Forbidden` with `blocked_by="ip_allowlist"` if client IP is not matched
+
+---
+
+## 13. Response Streaming
+
+- Server-Sent Events (SSE) pass-through via `text/event-stream`
+- Each chunk flushed to client immediately (`ngx.flush(true)`) — no buffering
+- Token usage accumulated from SSE chunks on the fly:
+  - OpenAI: `delta.content` chunks, usage in final chunk
+  - Anthropic: `content_block_delta`, `message_delta` (with usage), `message_stop`
+  - Gemini / Vertex: candidate chunks with `usageMetadata`
+- `time_to_first_token_ms` tracked from request start to first non-header data chunk
+- Streaming responses are not cached and not subject to response guardrails
+
+### Compat Streaming (SSE Format Normalisation)
+
+The compat endpoint converts provider-native SSE to OpenAI `chat.completion.chunk` format so any OpenAI-compatible client works. The sequence is:
+
+1. Role delta chunk (`delta: {role: "assistant", content: ""}`)
+2. Content delta chunks as they arrive
+3. Finish chunk (`finish_reason: "stop"`)
+4. **Usage chunk** — emitted before `[DONE]`, following the `stream_options.include_usage` convention:
+   ```json
+   {"id":"...","object":"chat.completion.chunk","model":"...","usage":{"prompt_tokens":N,"completion_tokens":N,"total_tokens":N}}
+   ```
+   Cache token fields (`cache_creation_tokens`, `cache_read_tokens`) are included when non-zero (Anthropic prompt caching).
+5. `data: [DONE]`
+
+---
+
+## 14. Cost Attribution & Pricing
+
+### Pricing Sources
+
+1. `model_price` table in the database (runtime-configurable via Admin API)
+2. Hardcoded fallback defaults in `src/observability/cost_table.lua`
+
+### Model Catalog
+
+- `GET /admin/v1/models` — list all models with pricing (supports `?provider=` filter)
+- `GET /admin/v1/model-prices` — same data via model-prices route
+- `PUT /admin/v1/model-prices` — upsert a single model price
+- `DELETE /admin/v1/model-prices/{provider}/{model}` — remove a price entry
+
+### Bulk Import Scripts
+
+| Script | Source | Description |
+|---|---|---|
+| `scripts/import_litellm_prices.sh` | LiteLLM price list | ~1400 models across all providers |
+| `scripts/sync_openrouter_models.sh` | OpenRouter `/v1/models` API | Live pricing + context lengths for OpenRouter-aggregated models |
+
+### Pre-loaded Models (cost_table.lua defaults)
+
+| Provider | Models |
+|---|---|
+| OpenAI | gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo |
+| Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5-20251001, claude-3-5-sonnet-20241022, claude-3-opus-20240229 |
+| Gemini | gemini-1.5-pro, gemini-1.5-flash |
+| Mistral | mistral-large-latest |
+| Groq | llama-3.3-70b-versatile |
+
+Anthropic prompt caching has separate per-1k prices for cache write (typically 1.25× input) and cache read (typically 0.1× input).
+
+---
+
+## 15. Observability & Logging
+
+### Structured Request Logs (JSON)
+
+Written after each request completes. Fields:
+
+| Group | Fields |
+|---|---|
+| Identity | `id`, `tenant_id`, `gateway_id`, `user_id`, `token_label` |
+| Routing | `provider`, `model`, `fallback_provider`, `fallback_model`, `upstream_attempts` |
+| Status | `status`, `blocked`, `blocked_by`, `block_reason` |
+| Cache | `cached`, `saved_cost_usd`, `saved_latency_ms` |
+| Tokens | `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens` |
+| Cost | `cost_usd` |
+| Timing | `latency_ms`, `upstream_latency_ms`, `time_to_first_token_ms` |
+| Payload | `prompt` (user messages), `response` (null for streaming) |
+| Detectors | `detector_results` (array of per-detector outcomes) |
+| Custom | `meta` (all `x-aig-meta-*` headers) |
+
+### Payload Logging Control
+
+- Disable globally per gateway: `log_payloads: false`
+- Disable per request: `x-aig-collect-log: false` (skip log entirely) or `x-aig-collect-log-payload: false` (log metadata only)
+
+### Client Error Reporting
+
+Frontend JavaScript errors are reported to `POST /admin/v1/client-errors` and stored in the `client_errors` table. Queryable via `GET /admin/v1/client-errors?limit=N`.
+
+---
+
+## 16. Prometheus Metrics
+
+Stored in `aig_metrics` shared dict. Exposed at `GET /metrics` (Prometheus text format 0.0.4, IP-restricted).
+
+| Metric | Type | Labels |
+|---|---|---|
+| `aig_requests_total` | Counter | `provider`, `tenant_id`, `status`, `cached` |
+| `aig_latency_ms` | Histogram | same |
+| `aig_input_tokens_total` | Counter | same |
+| `aig_output_tokens_total` | Counter | same |
+
+---
+
+## 17. Multi-Tenancy
+
+### URL Structure
+
+```
+/v1/{tenant_slug}/{gateway_slug}/{provider}/chat/completions
+/v1/{tenant_slug}/{gateway_slug}/compat/chat/completions
+```
+
+Slugs are resolved to UUIDs at the access phase and cached.
+
+### Isolation
+
+- All Redis / shared-dict keys namespaced: `{tenant_id}:{gateway_id}:...`
+- Database foreign keys enforce tenant isolation
+- Auth tokens are scoped to a single gateway → tenant
+- Budgets and rate limits tracked per gateway, not per tenant
+
+### Object Hierarchy
+
+```
+Tenant
+├── Gateway (config JSON)
+│   ├── Provider Keys (BYOK, encrypted)
+│   ├── Auth Tokens
+│   └── Routing Rules
+├── Users (admin / member / viewer)
+└── User-Gateway Access Matrix
+```
+
+---
+
+## 18. Admin REST API
+
+All endpoints are under `/admin/v1/`.
+
+### Tenants & Gateways
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/tenants` | List tenants |
+| POST | `/tenants` | Create tenant |
+| PATCH | `/tenants/{id}` | Update tenant (plan, budget) |
+| DELETE | `/tenants/{id}` | Delete tenant |
+| GET | `/tenants/{id}/gateways` | List gateways |
+| POST | `/tenants/{id}/gateways` | Create gateway |
+| GET | `/gateways/{id}` | Get gateway |
+| PATCH | `/gateways/{id}` | Update gateway config |
+| DELETE | `/gateways/{id}` | Delete gateway |
+| DELETE | `/gateways/{id}/budget` | Reset gateway budget counter |
+
+### Users & Tokens
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/tenants/{id}/users` | List users |
+| POST | `/tenants/{id}/users` | Create user |
+| PATCH | `/users/{id}` | Update user |
+| DELETE | `/users/{id}` | Delete user (disables tokens) |
+| DELETE | `/users/{id}/budget` | Reset all token budgets for a user |
+| GET | `/gateways/{id}/tokens` | List gateway tokens |
+| POST | `/gateways/{id}/tokens` | Create gateway token |
+| DELETE | `/gateways/{id}/tokens/{tid}` | Revoke token |
+| GET | `/users/{id}/tokens` | List user tokens |
+| POST | `/users/{id}/tokens` | Create user token |
+
+### Access Control & Keys
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/users/{id}/gateways` | List gateways user has access to |
+| POST | `/users/{id}/gateways/{gw_id}` | Grant user gateway access |
+| DELETE | `/users/{id}/gateways/{gw_id}` | Revoke user gateway access |
+| GET | `/gateways/{id}/keys` | List provider key configs |
+| POST | `/gateways/{id}/keys` | Store encrypted provider key |
+| DELETE | `/gateways/{id}/keys/{provider}/{alias}` | Delete provider key |
+
+### Routing Rules
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/gateways/{id}/rules` | List routing rules |
+| POST | `/gateways/{id}/rules` | Create routing rule |
+| PATCH | `/gateways/{id}/rules/{rule_id}` | Update routing rule |
+| DELETE | `/gateways/{id}/rules/{rule_id}` | Delete routing rule |
+
+### Model Catalog & Pricing
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/models` | List model catalog (supports `?provider=` filter) |
+| GET | `/model-prices` | List all model prices |
+| PUT | `/model-prices` | Upsert a model price |
+| DELETE | `/model-prices/{provider}/{model}` | Delete a model price |
+
+### Analytics
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/stats` | Aggregated usage statistics |
+| GET | `/logs` | Query request logs (filters: `tenant_id`, `gateway_id`, `provider`, `since`, `limit`, `offset`) |
+
+### Playground
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/playground/token` | Issue a short-lived (10-min) gateway token for the playground UI |
+| GET | `/playground/search?q=` | Web search proxy (Brave Search API) |
+
+### Client Error Reporting
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/client-errors` | Report a frontend JavaScript error |
+| GET | `/client-errors` | List recent client errors (supports `?limit=`) |
+
+---
+
+## 19. Playground UI
+
+A React single-page app (`frontend/`) for interactive model testing and comparison.
+
+### Multi-Model Comparison
+
+- Add up to 4 model panels side-by-side
+- All active panels receive the same prompt simultaneously
+- Each panel can select a different gateway + model independently
+
+### Request Configuration
+
+- System prompt (collapsible)
+- Temperature slider (0–2, default 1)
+- Max tokens input (default 2048)
+- Web search toggle (injects Anthropic `web_search` tool)
+
+### Streaming
+
+- Responses stream in real-time via SSE
+- Markdown rendered as formatted output (headers, code blocks, tables, lists)
+
+### Real-Time Status Bar
+
+Each panel shows a live metrics footer that updates as the response streams:
+
+| Metric | Description |
+|---|---|
+| Elapsed / Latency | Live ms counter while loading; final ms when complete |
+| Input tokens | Prompt token count (from usage SSE chunk) |
+| Output tokens | Completion token count |
+| Cache write | Anthropic prompt cache write tokens (shown when > 0) |
+| Cache read | Anthropic prompt cache read tokens (shown when > 0) |
+| Cost | Estimated cost in USD (calculated from model price catalog) |
+
+### Error Display
+
+Structured error badges with contextual hints:
+
+| Badge | HTTP | Hint |
+|---|---|---|
+| AUTH ERROR | 401 | Check token is valid and not expired |
+| FORBIDDEN | 403 | Check user role and gateway access |
+| NOT FOUND | 404 | Check tenant/gateway slugs |
+| RATE LIMITED | 429 | Request exceeds gateway rate limit or quota |
+| SERVER ERROR | 500/502/5xx | Provider or gateway internal error |
+
+Network errors (DNS, connection refused) shown as "Network error — is the gateway running?"
+
+### State Persistence
+
+Playground state is saved to `localStorage` (key: `aig_playground_v1`) across page reloads:
+
+- Selected tenant, gateway
+- Active model panels (model IDs only)
+- System prompt text
+- Temperature, max tokens
+
+Stale IDs (deleted tenant/gateway/model) are validated against loaded data and silently discarded.
+
+### Authentication
+
+The admin UI issues a short-lived (10-minute) playground token per-gateway via `POST /admin/v1/playground/token`. This token is used to authenticate SSE requests to the compat endpoint during the playground session.
+
+---
+
+## 20. Gateway Configuration Reference
+
+```json
+{
+  "cache_ttl": 0,
+  "retry_count": 2,
+  "timeout_ms": 60000,
+  "log_payloads": true,
+  "auth_required": true,
+  "budget_usd": null,
+  "rate_limit": {"requests": 100, "window_sec": 60},
+  "ip_allowlist": [],
+  "dlp": {
+    "enabled": false,
+    "action": "flag",
+    "patterns": []
+  },
+  "guardrails": {
+    "enabled": false,
+    "llama_guard_url": "http://127.0.0.1:8083",
+    "timeout_ms": 2000,
+    "fail_open": true
+  },
+  "detectors": {
+    "enabled": false,
+    "tiers": ["tier1"],
+    "tier1": ["pii", "prompt_injection"]
+  },
+  "azure_endpoint": null,
+  "azure_deployment": null,
+  "azure_api_version": "2024-02-01",
+  "bedrock_region": "us-east-1",
+  "vertex_project": null,
+  "vertex_region": "us-central1",
+  "provider_base_urls": {}
+}
+```
+
+### Per-Request Header Overrides
+
+| Header | Effect |
+|---|---|
+| `x-aig-byok-alias` | Select a named provider key |
+| `x-aig-meta-*` | Attach custom metadata (available in routing conditions and logs) |
+| `x-aig-collect-log` | `false` = skip request log entirely |
+| `x-aig-collect-log-payload` | `false` = log metadata but omit prompt/response body |
+| `x-aig-provider-*` | Forwarded as raw headers to provider |
+
+---
+
+## 21. Error Handling
+
+All errors return a JSON body:
+
+```json
+{"error": {"code": "ERROR_CODE", "message": "Human-readable detail"}}
+```
+
+| Code | HTTP | Cause |
+|---|---|---|
+| `UNAUTHORIZED` | 401 | Missing or invalid token |
+| `FORBIDDEN` | 403 | Viewer role, or IP not in allowlist |
+| `TENANT_NOT_FOUND` | 404 | Unknown tenant or gateway slug |
+| `INVALID_REQUEST` | 400 | Malformed request or missing required fields |
+| `RATE_LIMITED` | 429 | Sliding-window limit exceeded |
+| `QUOTA_EXCEEDED` | 429 | Budget cap reached |
+| `DLP_BLOCKED` | 400 | DLP pattern matched with `block` action |
+| `GUARDRAIL_BLOCKED` | 400 | Llama Guard classified content as unsafe |
+| `DETECTOR_BLOCKED` | 400 | Detector pipeline blocked the request |
+| `PROVIDER_ERROR` | 502 | Upstream provider returned 5xx |
+| `ALL_PROVIDERS_FAILED` | 502 | All retry and fallback attempts exhausted |
+| `INTERNAL` | 500 | Gateway internal error |

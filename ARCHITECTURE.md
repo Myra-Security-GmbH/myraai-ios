@@ -16,9 +16,11 @@
 8. [Provider Abstraction](#8-provider-abstraction)
 9. [Routing Engine](#9-routing-engine)
 10. [Security Subsystems](#10-security-subsystems)
-11. [Observability](#11-observability)
-12. [nginx Configuration](#12-nginx-configuration)
-13. [Deployment Topology](#13-deployment-topology)
+11. [Detector Pipeline](#11-detector-pipeline)
+12. [Observability](#12-observability)
+13. [Admin UI (Frontend)](#13-admin-ui-frontend)
+14. [nginx Configuration](#14-nginx-configuration)
+15. [Deployment Topology](#15-deployment-topology)
 
 ---
 
@@ -37,7 +39,7 @@ Consumer
 │  │  auth · rate-limit · IP allowlist  │  │
 │  ├────────────────────────────────────┤  │
 │  │     Content phase middleware       │  │
-│  │  cache · DLP · guardrails ·        │  │
+│  │  cache · detectors · guardrails ·  │  │
 │  │  routing · BYOK · upstream ·       │  │
 │  │  cost · cache-store                │  │
 │  ├────────────────────────────────────┤  │
@@ -49,10 +51,8 @@ Consumer
    ┌──────┴──────┐      ┌──────┴──────┐
    │  SQLite DB  │      │  Upstream   │
    │ config.db   │      │  Providers  │
-   │  logs.db    │      │ (OpenAI,    │
-   └─────────────┘      │  Anthropic, │
-                        │  Gemini…)   │
-                        └─────────────┘
+   │  logs.db    │      │ (21 total)  │
+   └─────────────┘      └─────────────┘
 ```
 
 **Design principles:**
@@ -71,7 +71,9 @@ Consumer
 | Request logs | SQLite `logs.db` (dev) / ClickHouse or Loki (prod) | Structured JSON per request |
 | Hot state | `ngx.shared.dict` (single-server) / Redis (distributed) | Rate limits, config cache, Prometheus counters, BYOK cache |
 | Encryption | AES-256-CBC + PKCS7 via OpenSSL | BYOK provider keys at rest (`AIG_MASTER_KEY` env var) |
+| AWS auth | SigV4 signing (`src/utils/sigv4.lua`) | Used by Bedrock provider |
 | Content moderation | Llama Guard 3 (HTTP service) | Optional; fail-open by default |
+| PII detection | Presidio (HTTP sidecar) | Optional Tier 2 detector |
 | Frontend | React 19 + TypeScript + Vite | Admin UI at `frontend/` |
 | Metrics | Prometheus exposition (`/metrics`) | Counters scraped into Grafana |
 
@@ -87,20 +89,49 @@ src/
 
   providers/
     init.lua             # Provider registry — maps provider name → module
-    openai.lua           # OpenAI + Azure OpenAI (native format)
+    compat.lua           # OpenAI-compat unified endpoint; model→provider inference
+    openai.lua           # OpenAI (native format)
     anthropic.lua        # Anthropic Messages API adapter
     gemini.lua           # Google Gemini (GenerateContent) adapter
+    azure.lua            # Azure OpenAI (API key header, deployment routing)
+    bedrock.lua          # AWS Bedrock (SigV4 auth, InvokeModel API)
+    vertex.lua           # Google Vertex AI (x-goog-api-key, project config)
     mistral.lua          # Mistral AI (OpenAI-compatible)
     groq.lua             # Groq (OpenAI-compatible)
+    together.lua         # Together AI (OpenAI-compatible)
+    fireworks.lua        # Fireworks AI (OpenAI-compatible)
+    cerebras.lua         # Cerebras (OpenAI-compatible)
+    deepseek.lua         # DeepSeek (OpenAI-compatible)
+    openrouter.lua       # OpenRouter (OpenAI-compatible; 300+ models)
+    perplexity.lua       # Perplexity (OpenAI-compatible)
+    sambanova.lua        # SambaNova (OpenAI-compatible)
+    xai.lua              # xAI / Grok (OpenAI-compatible)
+    nvidia.lua           # NVIDIA NIM (OpenAI-compatible)
+    cloudflare.lua       # Cloudflare Workers AI (@cf/ model prefix)
+    cohere.lua           # Cohere v2 Chat API (native format)
+    huggingface.lua      # HuggingFace Inference API (org/model routing)
+    ollama.lua           # Ollama local server (OpenAI-compatible)
 
   middleware/
     auth.lua             # Bearer / x-aig-token / x-api-key validation
     cache_check.lua      # SHA-256 exact-match cache lookup
     cache_store.lua      # Persist non-streaming 200 responses to cache
     cost.lua             # Token counting + budget counter increment
+    detectors.lua        # Request-phase detector pipeline entry point
+    detectors_response.lua  # Response-phase detector pipeline entry point
+    dlp.lua              # Legacy DLP pattern scan (block/scrub/flag)
     guardrails_request.lua  # Llama Guard 3 prompt classification
+    guardrails_response.lua # Response-side pattern + Llama Guard check
     quota.lua            # Budget hard-stop enforcement
     upstream.lua         # Provider HTTP call with retry + fallback chain
+
+  detectors/
+    orchestrator.lua     # Tier 1 → Tier 2 sequencing, action merging
+    regex.lua            # Tier 1: in-process regex patterns (block/scrub/flag)
+    keyword.lua          # Tier 1: exact keyword matching
+    presidio.lua         # Tier 2: Presidio sidecar (HTTP, NER-based PII detection)
+    llm_guard.lua        # Tier 2: Llama Guard 3 sidecar (prompt/response safety)
+    patterns.lua         # Shared named pattern library (email, SSN, CC, JWT, …)
 
   observability/
     logger.lua           # Structured JSON log writer
@@ -121,7 +152,7 @@ src/
     byok.lua             # Provider key encryption/decryption (AES-256-CBC)
 
   admin/
-    api.lua              # REST admin API (tenant/gateway/user/token CRUD)
+    api.lua              # REST admin API (tenant/gateway/user/token CRUD + playground)
 
   storage/
     sqlite.lua           # SQLite connection wrapper + all DB queries
@@ -131,13 +162,18 @@ src/
   state/
     init.lua             # State backend abstraction (shared_dict ↔ Redis)
 
-  utils/                 # Shared helpers (HTTP, JSON, crypto, string)
+  utils/
+    sigv4.lua            # AWS SigV4 request signing (used by Bedrock)
+    # + shared helpers: HTTP, JSON, crypto, string, uuid
 
 config/
   gateway.lua            # Runtime config: DB paths, master key, defaults
   nginx.conf             # nginx server blocks and lua_shared_dict declarations
 
 frontend/                # React + TypeScript admin UI (Vite build)
+scripts/
+  import_litellm_prices.sh   # Bulk-import model prices from LiteLLM price table
+  sync_openrouter_models.sh  # Sync OpenRouter model catalog + prices to DB
 tests/
   unit/                  # busted unit tests per module
   integration/           # End-to-end tests against running gateway
@@ -165,20 +201,23 @@ tests/
     ▼  ── ngx.content phase ────────────────────────────────────
     │
     ├─ 6.  cache_check      SHA-256(provider:model:canonical_body) → serve if HIT
-    ├─ 7.  dlp              Scan prompt; block / scrub / flag PII patterns
-    ├─ 8.  guardrails_req   Call Llama Guard 3; block if unsafe (S1–S14)
-    ├─ 9.  transform        Parse + normalize body; collect x-aig-meta-* headers
-    ├─ 10. routing          Evaluate ordered routing rules → provider, model, fallbacks
-    ├─ 11. byok             Decrypt provider API key (cache 60 s in aig_byok dict)
-    ├─ 12. upstream         HTTP call to provider; retry on 5xx; walk fallback chain
-    ├─ 13. guardrails_resp  Pattern-check response body (non-streaming only)
-    ├─ 14. cost             Count tokens; compute cost_usd; increment budget counter
-    ├─ 15. cache_store      Persist response to cache (non-streaming, status 200)
+    ├─ 7.  detectors        Tier 1 (regex, keyword) → Tier 2 (presidio, llm_guard)
+    ├─ 8.  dlp              Legacy pattern scan; block / scrub / flag PII patterns
+    ├─ 9.  guardrails_req   Call Llama Guard 3; block if unsafe (S1–S14)
+    ├─ 10. transform        Parse + normalize body; collect x-aig-meta-* headers
+    ├─ 11. routing          Evaluate ordered routing rules → provider, model, fallbacks
+    ├─ 12. byok             Decrypt provider API key (cache 60 s in aig_byok dict)
+    ├─ 13. upstream         HTTP call to provider; retry on 5xx; walk fallback chain
+    │                       [streaming: emit usage chunk + [DONE] after stream]
+    ├─ 14. guardrails_resp  Pattern-check response body (non-streaming only)
+    ├─ 15. detectors_resp   Response-phase detector pipeline
+    ├─ 16. cost             Count tokens; compute cost_usd; increment budget counter
+    ├─ 17. cache_store      Persist response to cache (non-streaming, status 200)
     │
     ▼  ── ngx.log phase (best-effort, after response sent) ─────
     │
-    ├─ 16. logger           Write structured JSON to logs.db
-    └─ 17. metrics          Increment Prometheus counters in aig_metrics shared dict
+    ├─ 18. logger           Write structured JSON to logs.db
+    └─ 19. metrics          Increment Prometheus counters in aig_metrics shared dict
 
 [Consumer Response]
 ```
@@ -192,6 +231,7 @@ ctx = {
   request_id       = "...",
   tenant_id        = "...",   gateway_id = "...",
   provider         = "openai", model = "gpt-4o",
+  is_compat        = false,   -- true when routed through /compat/ endpoint
   auth_token       = { id, label, user_id, budget_usd, rate_limit },
   gateway_config   = { cache_ttl, rate_limit, dlp, guardrails, … },
   body             = { … },   -- parsed request JSON
@@ -200,10 +240,13 @@ ctx = {
   status           = 200,
   response_body    = "…",
   input_tokens     = 512,   output_tokens = 128,
+  cache_creation_tokens = 0, cache_read_tokens = 0,
   cost_usd         = 0.004,
   latency_ms       = 340,   upstream_latency_ms = 310,
+  time_to_first_token_ms = 120,
   cached           = false,
   blocked          = false, blocked_by = nil,
+  fallback_provider = nil,  fallback_model = nil,
 }
 ```
 
@@ -215,31 +258,50 @@ ctx = {
 # Provider-native endpoint
 POST /v1/{tenant_slug}/{gateway_slug}/{provider}/chat/completions
 
-# OpenAI-compatible unified endpoint (provider inferred from model name prefix)
+# OpenAI-compatible unified endpoint (provider inferred from model name)
 POST /v1/{tenant_slug}/{gateway_slug}/compat/chat/completions
+POST /v1/{tenant_slug}/{gateway_slug}/compat/embeddings
 
 # Admin API
-GET  /admin/v1/tenants
-POST /admin/v1/tenants
-GET  /admin/v1/tenants/{id}/gateways
-POST /admin/v1/tenants/{id}/gateways
-GET  /admin/v1/gateways/{id}
+GET    /admin/v1/tenants
+POST   /admin/v1/tenants
+PATCH  /admin/v1/tenants/{id}
+DELETE /admin/v1/tenants/{id}
+GET    /admin/v1/tenants/{id}/gateways
+POST   /admin/v1/tenants/{id}/gateways
+GET    /admin/v1/gateways/{id}
 PATCH  /admin/v1/gateways/{id}
+DELETE /admin/v1/gateways/{id}
 DELETE /admin/v1/gateways/{id}/budget
-POST /admin/v1/gateways/{id}/keys          # BYOK key storage
-GET  /admin/v1/gateways/{id}/tokens
-POST /admin/v1/gateways/{id}/tokens
+POST   /admin/v1/gateways/{id}/keys
+DELETE /admin/v1/gateways/{id}/keys/{provider}/{alias}
+GET    /admin/v1/gateways/{id}/rules
+POST   /admin/v1/gateways/{id}/rules
+PATCH  /admin/v1/gateways/{id}/rules/{rule_id}
+DELETE /admin/v1/gateways/{id}/rules/{rule_id}
+GET    /admin/v1/gateways/{id}/tokens
+POST   /admin/v1/gateways/{id}/tokens
 DELETE /admin/v1/gateways/{id}/tokens/{tid}
-GET  /admin/v1/tenants/{id}/users
-POST /admin/v1/tenants/{id}/users
+GET    /admin/v1/tenants/{id}/users
+POST   /admin/v1/tenants/{id}/users
 PATCH  /admin/v1/users/{id}
 DELETE /admin/v1/users/{id}
-POST /admin/v1/users/{id}/tokens
-GET  /admin/v1/users/{id}/tokens
-POST /admin/v1/users/{id}/gateways/{gw_id}   # grant access
-DELETE /admin/v1/users/{id}/gateways/{gw_id} # revoke access
-GET  /admin/v1/stats
-GET  /admin/v1/logs
+DELETE /admin/v1/users/{id}/budget
+GET    /admin/v1/users/{id}/tokens
+POST   /admin/v1/users/{id}/tokens
+GET    /admin/v1/users/{id}/gateways
+POST   /admin/v1/users/{id}/gateways/{gw_id}
+DELETE /admin/v1/users/{id}/gateways/{gw_id}
+GET    /admin/v1/stats
+GET    /admin/v1/logs
+GET    /admin/v1/models                    # model catalog with optional ?provider= filter
+GET    /admin/v1/model-prices
+PUT    /admin/v1/model-prices
+DELETE /admin/v1/model-prices/{provider}/{model}
+POST   /admin/v1/playground/token         # issue short-lived playground token
+GET    /admin/v1/playground/search?q=...  # Brave Search proxy for web search
+POST   /admin/v1/client-errors            # frontend error reporting
+GET    /admin/v1/client-errors
 
 # Observability
 GET  /metrics     # Prometheus text format (IP-restricted to 10.0.0.0/8)
@@ -293,12 +355,13 @@ Gateway config is loaded from the DB and cached in `aig_config` shared dict for 
 | `users` | id, tenant_id, email, role |
 | `user_gateway_access` | user_id, gateway_id |
 | `model_price` | provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k |
+| `client_errors` | id, message, stack, url, user_agent, ts (frontend error reports) |
 
 ### Log database (SQLite / ClickHouse)
 
 One row per request. In development: `logs.db` via `storage/sqlite.lua`. In production: swap for UDP → Vector/Loki or HTTP → ClickHouse.
 
-**Key fields:** `request_id`, `tenant_id`, `gateway_id`, `provider`, `model`, `status`, `cached`, `input_tokens`, `output_tokens`, `cost_usd`, `latency_ms`, `upstream_latency_ms`, `time_to_first_token_ms`, `blocked`, `blocked_by`, `prompt`, `response`, `meta`
+**Key fields:** `request_id`, `tenant_id`, `gateway_id`, `provider`, `model`, `status`, `cached`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `cost_usd`, `latency_ms`, `upstream_latency_ms`, `time_to_first_token_ms`, `blocked`, `blocked_by`, `prompt`, `response`, `meta`
 
 ### Shared memory (`ngx.shared.dict`)
 
@@ -321,27 +384,50 @@ Replaces `ngx.shared.dict` for multi-server setups. Architecture is backend-agno
 Each provider module exposes a common interface:
 
 ```lua
-provider.build_request(ctx)          -- returns headers, body for upstream call
-provider.parse_response(ctx, body)   -- extracts tokens, normalizes response
-provider.parse_sse_chunk(ctx, line)  -- streaming: accumulate tokens per SSE line
+provider.base_url(ctx)               -- construct upstream URL
+provider.build_headers(ctx, api_key) -- Authorization + provider-specific headers
+provider.build_request(ctx)          -- serialize body for the provider wire format
+provider.parse_response(body)        -- extract tokens + content from buffered response
+provider.parse_sse_chunk(line)       -- streaming: parse one SSE line → {delta, tokens, done}
 ```
 
 **Provider → wire format mapping:**
 
-| Provider | Format | Notes |
-|---|---|---|
-| OpenAI | Native | Direct pass-through |
-| Azure OpenAI | OpenAI | Requires `azure_endpoint` + `azure_api_version` |
-| Anthropic | Messages API | Role/content conversion; extended thinking support |
-| Gemini | GenerateContent | System instruction conversion |
-| Mistral | OpenAI-compatible | |
-| Groq | OpenAI-compatible | |
+| Provider | Format | Auth | Notes |
+|---|---|---|---|
+| OpenAI | Native | Bearer | Direct pass-through |
+| Azure OpenAI | OpenAI | `api-key` header | Requires `azure_endpoint` + `azure_api_version`; deployment name from config |
+| Anthropic | Messages API | `x-api-key` | Role/content conversion; extended thinking; prompt caching |
+| Gemini | GenerateContent | Bearer | System instruction conversion |
+| Vertex AI | GenerateContent | `x-goog-api-key` | Requires GCP project ID + region config |
+| AWS Bedrock | InvokeModel | SigV4 | BYOK format: `ACCESS_KEY_ID:SECRET_ACCESS_KEY[:SESSION_TOKEN]` |
+| Mistral | OpenAI-compat | Bearer | |
+| Groq | OpenAI-compat | Bearer | |
+| Together AI | OpenAI-compat | Bearer | |
+| Fireworks AI | OpenAI-compat | Bearer | |
+| Cerebras | OpenAI-compat | Bearer | |
+| DeepSeek | OpenAI-compat | Bearer | |
+| OpenRouter | OpenAI-compat | Bearer | 300+ aggregated models; universal compat fallback |
+| Perplexity | OpenAI-compat | Bearer | |
+| SambaNova | OpenAI-compat | Bearer | |
+| xAI / Grok | OpenAI-compat | Bearer | |
+| NVIDIA NIM | OpenAI-compat | Bearer | |
+| Cloudflare Workers AI | OpenAI-compat | Bearer | `@cf/` model prefix |
+| Cohere | Cohere v2 Chat | Bearer | Native format, different schema |
+| HuggingFace | Inference API | Bearer | org/model routing (HuggingFaceH4/, tiiuae/, etc.) |
+| Ollama | OpenAI-compat | None | Local server; base URL from `provider_base_urls.ollama` |
 
-The **compat endpoint** (`/compat/chat/completions`) accepts OpenAI-format requests and infers the provider from the model name prefix (e.g., `claude-` → Anthropic, `gemini-` → Gemini), then delegates to the appropriate provider module.
+### Compat endpoint model resolution
+
+`/compat/chat/completions` infers the provider from the model name in three tiers:
+
+1. **Exact match** — hardcoded map (e.g., `gpt-4o` → openai, `claude-sonnet-4-6` → anthropic)
+2. **Prefix match** — sorted longest-first (e.g., `claude-` → anthropic, `gemini-` → gemini, `@cf/` → cloudflare)
+3. **Fallback** — `openrouter` (catches any unknown model; routes to OpenRouter's aggregated catalog)
 
 ### Streaming
 
-SSE responses are passed through chunk-by-chunk with `ngx.flush(true)` after each write. Token counts are accumulated by `parse_sse_chunk()` as chunks arrive, so cost attribution works without buffering the full response.
+For compat requests, `handle_compat_streaming` re-encodes provider-native SSE (Anthropic format, Gemini format, etc.) into OpenAI `chat.completion.chunk` format. A usage chunk containing token counts and cache stats is emitted just before `[DONE]`, enabling clients to display real-time metrics.
 
 ---
 
@@ -410,7 +496,7 @@ effective_count = prev_bucket * weight + cur_bucket
 
 Costs stored as micro-dollars (`cost * 1e6`) in the state backend. Checked pre-request against both per-token and per-gateway caps. Incremented atomically after the upstream response.
 
-### DLP
+### DLP (legacy)
 
 Lua pattern scan on the serialized request body. Configurable per gateway:
 - `block` — reject with 400
@@ -429,7 +515,27 @@ CIDR-based allow list per gateway. Matching uses 32-bit integer masking via LuaJ
 
 ---
 
-## 11. Observability
+## 11. Detector Pipeline
+
+A more flexible, tiered replacement for the legacy DLP + Guardrails middleware. Runs at both request and response phase.
+
+```
+Tier 1 (in-process, ~microseconds):
+  regex    — named patterns + custom regex (block / scrub / flag)
+  keyword  — exact string match (block / flag)
+
+Tier 2 (HTTP sidecar, ~milliseconds):
+  presidio  — Presidio Analyzer + Anonymizer for NER-based PII detection
+  llm_guard — Llama Guard 3 for prompt/response safety classification
+```
+
+The orchestrator runs all Tier 1 detectors first; Tier 2 detectors only run if Tier 1 passes. Within each tier, detectors run in configuration order. The most restrictive action (`block` > `scrub` > `flag`) wins when multiple detectors fire on the same request.
+
+Synthetic blocked responses match the request wire format (OpenAI streaming, OpenAI non-streaming, or Anthropic) so clients receive a valid-shaped response rather than a hard error.
+
+---
+
+## 12. Observability
 
 ### Structured request log
 
@@ -462,11 +568,45 @@ Exposed at `GET /metrics`. Four metrics, all with labels `{provider, tenant_id, 
 
 ### Cost attribution
 
-`src/observability/cost_table.lua` maps `(provider, model)` → `{input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k}`. The DB `model_price` table overrides the hardcoded defaults. Anthropic prompt-caching token types are tracked separately.
+`src/observability/cost_table.lua` maps `(provider, model)` → `{input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k}`. The DB `model_price` table overrides the hardcoded defaults. The `scripts/import_litellm_prices.sh` and `scripts/sync_openrouter_models.sh` scripts populate the table in bulk.
 
 ---
 
-## 12. nginx Configuration
+## 13. Admin UI (Frontend)
+
+React 19 + TypeScript SPA built with Vite. Proxied through Vite dev server (`/admin` and `/v1` → `localhost:8081`).
+
+**Modules:**
+
+| Module | Description |
+|---|---|
+| Dashboard | Usage stats, request volume, cost summary |
+| Tenants | Tenant CRUD |
+| Gateways | Gateway config, routing rules, BYOK keys |
+| Users | User management, role assignment, gateway access |
+| Logs | Request log viewer with provider/tenant/gateway filters |
+| Prices | Model price table management |
+| Detectors | Detector configuration builder (DetectorBuilder UI) |
+| Monitor | Real-time monitoring |
+| Settings | Gateway-level settings |
+| Playground | Interactive model comparison UI (see below) |
+
+### Playground
+
+Multi-panel AI chat interface for testing models against a live gateway:
+
+- **Multi-model comparison** — up to 4 panels side-by-side, each targeting a different model
+- **Streaming** — real-time SSE streaming with progressive text display and blinking cursor
+- **Real-time metrics** — live elapsed-ms counter; token counts (input, output, cache write, cache read) and cost estimate displayed as soon as the usage chunk arrives (before `[DONE]`)
+- **Markdown rendering** — `react-markdown` + `remark-gfm`; Raw/Rendered toggle per panel
+- **Web search** — optional toggle sends web search tool call to the model (Brave Search API proxied via `/admin/v1/playground/search`)
+- **Persisted state** — tenant, gateway, model selection, system prompt, temperature, max tokens saved to `localStorage` (`aig_playground_v1`) and restored on reload
+- **Error handling** — structured error badges (AUTH ERROR, RATE LIMITED, NOT FOUND, SERVER ERROR) with contextual hints; network errors detected separately
+- **Playground tokens** — short-lived gateway auth tokens (10 min TTL, `playground` scope); at most one token per gateway (old tokens purged on new issue)
+
+---
+
+## 14. nginx Configuration
 
 ```nginx
 lua_package_path '/opt/ai-gateway/src/?.lua;;';
@@ -502,11 +642,9 @@ server {
 }
 ```
 
-Temporary directories created by nginx (`client_body_temp/`, `fastcgi_temp/`, `proxy_temp/`, `scgi_temp/`, `uwsgi_temp/`) are excluded from version control via `.gitignore`.
-
 ---
 
-## 13. Deployment Topology
+## 15. Deployment Topology
 
 ### Single-server (current default)
 
