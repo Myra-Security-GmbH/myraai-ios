@@ -3,26 +3,9 @@ import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { UsageStats, LogEntry } from "src/api/types";
 import { fmtDateTime, fmtTime } from "src/common/utils/date";
+import { GuardrailEventsTable } from "src/common/components/GuardrailEventsTable";
 import s from "src/common/components/layout/Layout.module.scss";
 import ms from "./Monitor.module.scss";
-
-const LLAMA_GUARD_LABELS: Record<string, string> = {
-  S1: "Violent Crimes", S2: "Non-Violent Crimes", S3: "Sex Crimes",
-  S4: "Child Exploitation", S5: "Defamation", S6: "Specialized Advice",
-  S7: "Privacy", S8: "IP Infringement", S9: "WMD/CBRN", S10: "Hate Speech",
-  S11: "Self-Harm", S12: "Explicit Sexual", S13: "Elections", S14: "Code Abuse",
-};
-
-function decodeBlockReason(reason: string | null): string {
-  if (!reason) return "—";
-  if (/^S\d/.test(reason)) {
-    return reason.split(/,\s*/).map((code) => {
-      const key = code.trim();
-      return LLAMA_GUARD_LABELS[key] ? `${key}: ${LLAMA_GUARD_LABELS[key]}` : key;
-    }).join(", ");
-  }
-  return reason;
-}
 
 function fmt(n: number | null | undefined, dec = 0) {
   if (n == null) return "—";
@@ -276,43 +259,7 @@ export default function Monitor() {
               <div className={s["card-header"]}>
                 <h2 className={s["card-title"]}>Recent Guardrail Events</h2>
               </div>
-              <div className={s["table-wrapper"]}>
-                <table className={s.table}>
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Tenant</th>
-                      <th>Outcome</th>
-                      <th>Detectors</th>
-                      <th>Reason</th>
-                      <th>Latency</th>
-                      <th>Guardrail</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stats.recent_blocked.map((row: any, i: number) => {
-                      const outcome = row.blocked ? "blocked" : row.scrub_applied ? "scrubbed" : "flagged";
-                      const outcomeVariant = outcome === "blocked" ? s["badge--error"] : outcome === "scrubbed" ? s["badge--warning"] : s["badge--neutral"];
-                      const rowClass = outcome === "blocked" ? s.blocked : "";
-                      return (
-                        <tr key={i} className={rowClass}>
-                          <td className={s.mono} style={{ fontSize: 11 }}>{fmtDateTime(row.ts)}</td>
-                          <td><span className={s.code}>{row.tenant ?? row.tenant_id?.slice(0, 8)}</span></td>
-                          <td><span className={`${s.badge} ${outcomeVariant}`}>{outcome}</span></td>
-                          <td style={{ fontSize: 11 }}>
-                            {(row.detectors_fired?.length ?? 0) > 0
-                              ? row.detectors_fired.join(", ")
-                              : (row.blocked_by ?? "—")}
-                          </td>
-                          <td style={{ maxWidth: 240, fontSize: 12 }}>{decodeBlockReason(row.block_reason)}</td>
-                          <td>{fmt(row.latency_ms)} ms</td>
-                          <td>{row.guardrail_latency_ms != null ? `${fmt(row.guardrail_latency_ms)} ms` : "—"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <GuardrailEventsTable rows={stats.recent_blocked} showGuardrailLatency />
             </div>
           )}
         </>

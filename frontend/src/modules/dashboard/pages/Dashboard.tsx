@@ -3,6 +3,7 @@ import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { UsageStats, PeriodStats, TimeseriesPoint } from "src/api/types";
 import { fmtDateTime } from "src/common/utils/date";
+import { GuardrailEventsTable } from "src/common/components/GuardrailEventsTable";
 import s from "src/common/components/layout/Layout.module.scss";
 
 function fmt(n: number | undefined | null, decimals = 0) {
@@ -18,6 +19,7 @@ function fmtCost(n: number | undefined | null) {
 function StatusBadge({ value, variant }: { value: string | number; variant: "success" | "error" | "warning" | "neutral" }) {
   return <span className={`${s.badge} ${s[`badge--${variant}`]}`}>{value}</span>;
 }
+
 
 type Timeframe = "today" | "yesterday" | "last_7d" | "hour" | "last_min";
 
@@ -336,40 +338,7 @@ export default function Dashboard() {
           <div className={s["card-header"]}>
             <h2 className={s["card-title"]}>Recent Guardrail Events</h2>
           </div>
-          <div className={s["table-wrapper"]}>
-            <table className={s.table}>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Tenant</th>
-                  <th>Outcome</th>
-                  <th>Detector</th>
-                  <th>Reason</th>
-                  <th>Latency</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats?.recent_blocked.map((row: any, i) => {
-                  const outcome = row.blocked ? "blocked" : row.scrub_applied ? "scrubbed" : "flagged";
-                  const variant = outcome === "blocked" ? "error" : outcome === "scrubbed" ? "warning" : "neutral";
-                  return (
-                    <tr key={i} className={outcome === "blocked" ? s.blocked : ""}>
-                      <td className={s.mono}>{fmtDateTime(row.ts)}</td>
-                      <td><span className={s.code}>{row.tenant}</span></td>
-                      <td><StatusBadge value={outcome} variant={variant} /></td>
-                      <td style={{ fontSize: 12 }}>
-                        {(row.detectors_fired?.length ?? 0) > 0
-                          ? row.detectors_fired.join(", ")
-                          : (row.blocked_by ?? "—")}
-                      </td>
-                      <td style={{ fontSize: 12 }}>{row.block_reason ?? "—"}</td>
-                      <td>{fmt(row.latency_ms)} ms</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <GuardrailEventsTable rows={stats!.recent_blocked} />
         </div>
       )}
     </main>
