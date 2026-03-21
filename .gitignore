@@ -2,6 +2,9 @@
 data/
 *.db
 
+# Downloaded test corpus files
+tests/false_positives/corpus/
+
 # Logs
 logs/
 
