@@ -4,6 +4,9 @@
 --
 -- Condition fields: "model", "tenant_id", "header:{name}", "meta:{key}"
 -- Operators: "eq", "neq", "prefix", "contains", "regex"
+--
+-- actions may also contain a "load_balance" block (see routing/load_balance.lua).
+-- When present, a target is selected and the remaining active targets become fallbacks.
 
 local storage = require("storage")
 local state   = require("state")
@@ -71,7 +74,28 @@ function M.evaluate(ctx)
             local actions = type(rule.actions) == "table"
                 and rule.actions
                 or json.decode(rule.actions or "{}") or {}
-            return actions
+
+            -- Load-balance action: select one target; remaining become fallbacks
+            if actions.load_balance then
+                local lb     = require("routing.load_balance")
+                local chosen = lb.select(ctx, actions.load_balance, rule.id)
+                if chosen then
+                    local fallbacks = {}
+                    for _, t in ipairs(actions.load_balance.targets or {}) do
+                        if t ~= chosen and (t.weight or 1) > 0 then
+                            fallbacks[#fallbacks + 1] = t
+                        end
+                    end
+                    return {
+                        provider  = chosen.provider,
+                        model     = chosen.model,
+                        fallbacks = fallbacks,
+                    }
+                end
+                -- No active targets (all weight=0): fall through to next rule
+            else
+                return actions
+            end
         end
     end
 
