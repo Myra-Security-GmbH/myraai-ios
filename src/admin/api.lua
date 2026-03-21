@@ -23,6 +23,10 @@
 --   DELETE /admin/v1/users/:id/budget
 --   GET    /admin/v1/stats
 --   GET    /admin/v1/logs
+--   GET    /admin/v1/models
+--   POST   /admin/v1/playground/token
+--   POST   /admin/v1/client-errors
+--   GET    /admin/v1/client-errors
 
 local json    = require("utils.json")
 local storage = require("storage")
@@ -30,6 +34,11 @@ local byok    = require("auth.byok")
 local crypto  = require("utils.crypto")
 
 local M = {}
+
+-- Convert JSON null (cjson.null userdata) to Lua nil so SQLite bindings work.
+local function nullable(v)
+    return (v == json.null) and nil or v
+end
 
 local function send(status, body)
     ngx.status = status
@@ -226,6 +235,53 @@ route("DELETE", "^/admin/v1/model%-prices/([^/]+)/(.+)$", function(provider, mod
     send(200, { ok = true })
 end)
 
+-- Model catalog — read-only, supports ?provider= filter
+-- GET /admin/v1/models
+-- GET /admin/v1/models?provider=openrouter
+route("GET", "^/admin/v1/models$", function()
+    local args     = ngx.req.get_uri_args()
+    local provider = args.provider
+    if provider == "" then provider = nil end
+    send(200, storage.list_models(provider))
+end)
+
+-- ---------------------------------------------------------------------------
+-- Playground
+-- ---------------------------------------------------------------------------
+
+-- POST /admin/v1/playground/token
+-- Creates a short-lived gateway auth token for use by the playground UI.
+-- Returns the raw token, expiry, and slugs needed to construct the compat URL.
+route("POST", "^/admin/v1/playground/token$", function()
+    local b = read_body()
+    if not b or not b.gateway_id then
+        return send(400, { error = "gateway_id required" })
+    end
+
+    local gw = storage.get_gateway_with_tenant_slug(b.gateway_id)
+    if not gw then return send(404, { error = "gateway not found" }) end
+
+    -- Remove any previous playground tokens for this gateway before issuing a new one.
+    storage.delete_playground_tokens(b.gateway_id)
+
+    local raw_token = crypto.random_hex(32)
+    local hash      = crypto.sha256_hex(raw_token)
+    -- 10-minute TTL — enough for a playground session
+    local expires_at = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() + 600)
+
+    local _, err = storage.insert_auth_token(
+        b.gateway_id, hash, {"playground"}, expires_at,
+        nil, "playground", nil, nil)
+    if err then return send(500, { error = err }) end
+
+    send(201, {
+        token        = raw_token,
+        expires_at   = expires_at,
+        tenant_slug  = gw.tenant_slug,
+        gateway_slug = gw.gateway_slug,
+    })
+end)
+
 -- ---------------------------------------------------------------------------
 -- Token routes
 -- ---------------------------------------------------------------------------
@@ -237,10 +293,10 @@ route("POST", "^/admin/v1/gateways/([^/]+)/tokens$", function(gateway_id)
     local b = read_body()
     local raw_token = crypto.random_hex(32)
     local hash      = crypto.sha256_hex(raw_token)
-    local rate_limit_json = b and b.rate_limit and json.encode(b.rate_limit) or nil
+    local rate_limit_json = b and b.rate_limit and b.rate_limit ~= json.null and json.encode(b.rate_limit) or nil
     local id, err = storage.insert_auth_token(gateway_id, hash,
-        b and b.scopes or {}, b and b.expires_at,
-        nil, b and b.label, rate_limit_json, b and b.budget_usd)
+        b and b.scopes or {}, b and nullable(b.expires_at),
+        nil, b and nullable(b.label), rate_limit_json, b and nullable(b.budget_usd))
     if err then return send(500, { error = err }) end
     send(201, { id = id, token = raw_token, gateway_id = gateway_id })
 end)
@@ -260,7 +316,7 @@ end)
 route("POST", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
     local b = read_body()
     if not b or not b.email then return send(400, { error = "email required" }) end
-    local id, err = storage.insert_user(tenant_id, b.email, b.name, b.role)
+    local id, err = storage.insert_user(tenant_id, b.email, nullable(b.name), b.role)
     if err then return send(500, { error = err }) end
     send(201, { id = id, email = b.email })
 end)
@@ -268,7 +324,7 @@ end)
 route("PATCH", "^/admin/v1/users/([^/]+)$", function(user_id)
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
-    local err = storage.update_user(user_id, b.email, b.name, b.role)
+    local err = storage.update_user(user_id, nullable(b.email), nullable(b.name), b.role)
     if err then return send(500, { error = err }) end
     send(200, { ok = true })
 end)
@@ -288,10 +344,10 @@ route("POST", "^/admin/v1/users/([^/]+)/tokens$", function(user_id)
     if not b or not b.gateway_id then return send(400, { error = "gateway_id required" }) end
     local raw_token = crypto.random_hex(32)
     local hash      = crypto.sha256_hex(raw_token)
-    local rate_limit_json = b.rate_limit and json.encode(b.rate_limit) or nil
+    local rate_limit_json = b.rate_limit and b.rate_limit ~= json.null and json.encode(b.rate_limit) or nil
     local id, err = storage.insert_auth_token(b.gateway_id, hash,
-        b.scopes or {}, b.expires_at,
-        user_id, b.label, rate_limit_json, b.budget_usd)
+        b.scopes or {}, nullable(b.expires_at),
+        user_id, nullable(b.label), rate_limit_json, nullable(b.budget_usd))
     if err then return send(500, { error = err }) end
     send(201, { id = id, token = raw_token, gateway_id = b.gateway_id })
 end)
@@ -321,6 +377,31 @@ route("DELETE", "^/admin/v1/users/([^/]+)/budget$", function(user_id)
         if cur > 0 then state.counter_incr("budget:token:" .. t.id, -cur) end
     end
     send(200, { ok = true })
+end)
+
+-- ---------------------------------------------------------------------------
+-- Client error reporting
+-- ---------------------------------------------------------------------------
+route("POST", "^/admin/v1/client%-errors$", function()
+    local b = read_body()
+    if not b or not b.message then return send(400, { error = "message required" }) end
+    local id = b.id or require("utils.uuid").v4()
+    local ts = b.ts or os.date("!%Y-%m-%dT%H:%M:%SZ")
+    local err = storage.insert_client_error(
+        id,
+        tostring(b.message):sub(1, 2000),
+        b.stack and tostring(b.stack):sub(1, 8000) or nil,
+        b.url and tostring(b.url):sub(1, 500) or nil,
+        b.user_agent and tostring(b.user_agent):sub(1, 500) or nil,
+        ts
+    )
+    if err then return send(500, { error = err }) end
+    send(201, { ok = true })
+end)
+
+route("GET", "^/admin/v1/client%-errors$", function()
+    local args = ngx.req.get_uri_args()
+    send(200, storage.list_client_errors(tonumber(args.limit)))
 end)
 
 -- ---------------------------------------------------------------------------
