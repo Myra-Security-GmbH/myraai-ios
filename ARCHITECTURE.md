@@ -1,46 +1,79 @@
-# AI Gateway — Architecture & Implementation Strategy
+# AI Gateway — Architecture
 
-> Nginx + OpenResty (LuaJIT) multi-tenant AI gateway inspired by Cloudflare AI Gateway.
+> Nginx + OpenResty (LuaJIT) multi-tenant AI gateway.
 
 ---
 
-## 1. Feature Parity Target
+## Table of Contents
 
-| Feature | Cloudflare | Our Implementation |
-|---|---|---|
-| Multi-provider routing | ✓ 20+ providers | OpenAI, Anthropic, Gemini, Azure, Bedrock, Mistral, Groq, Cohere, DeepSeek, xAI |
-| OpenAI-compatible unified API | ✓ | ✓ `/v1/{tenant}/{gateway}/compat/chat/completions` |
-| Exact-match caching | ✓ | Redis SHA-256 keyed cache |
-| Semantic caching | roadmap | pgvector / Redis vector similarity |
-| Rate limiting | ✓ sliding/fixed window | Redis EVALSHA sliding window |
-| Dynamic routing / fallback | ✓ | Rule-engine in Lua + Redis config |
-| Model fallbacks & retries | ✓ up to 5 | Configurable retry chain |
-| Authenticated gateway | ✓ Bearer token | `x-aig-token` per tenant/gateway |
-| BYOK key management | ✓ encrypted | AES-256-GCM in Postgres, per-tenant |
-| Observability / logs | ✓ | Structured JSON → ClickHouse / Loki |
-| Analytics | ✓ GraphQL | REST + WebSocket metrics endpoint |
-| Cost tracking | ✓ per-token pricing | Token counting + price table per model |
-| Guardrails / content mod | ✓ | Regex + optional LLM-based classifier |
-| DLP / PII scrubbing | ✓ | lua-regex pattern library |
-| Streaming (SSE) | ✓ | `ngx.flush` chunked SSE passthrough |
-| Custom metadata tagging | ✓ | `x-aig-meta-*` headers stored in log |
-| Budget / quota enforcement | ✓ | Redis counters per tenant/model |
+1. [Overview](#1-overview)
+2. [Technology Stack](#2-technology-stack)
+3. [Directory Layout](#3-directory-layout)
+4. [Request Lifecycle](#4-request-lifecycle)
+5. [URL Schema](#5-url-schema)
+6. [Multi-Tenancy Model](#6-multi-tenancy-model)
+7. [Storage & State](#7-storage--state)
+8. [Provider Abstraction](#8-provider-abstraction)
+9. [Routing Engine](#9-routing-engine)
+10. [Security Subsystems](#10-security-subsystems)
+11. [Observability](#11-observability)
+12. [nginx Configuration](#12-nginx-configuration)
+13. [Deployment Topology](#13-deployment-topology)
+
+---
+
+## 1. Overview
+
+The gateway sits between API consumers and upstream AI providers. Every request passes through an ordered middleware chain that handles authentication, policy enforcement, caching, routing, and observability — all in-process within nginx, with no external sidecar.
+
+```
+Consumer
+   │  POST /v1/{tenant}/{gateway}/{provider}/chat/completions
+   ▼
+┌──────────────────────────────────────────┐
+│              nginx / OpenResty           │
+│  ┌────────────────────────────────────┐  │
+│  │     Access phase middleware        │  │
+│  │  auth · rate-limit · IP allowlist  │  │
+│  ├────────────────────────────────────┤  │
+│  │     Content phase middleware       │  │
+│  │  cache · DLP · guardrails ·        │  │
+│  │  routing · BYOK · upstream ·       │  │
+│  │  cost · cache-store                │  │
+│  ├────────────────────────────────────┤  │
+│  │     Log phase (best-effort)        │  │
+│  │  structured log · Prometheus       │  │
+│  └────────────────────────────────────┘  │
+└──────────────────────────────────────────┘
+          │                    │
+   ┌──────┴──────┐      ┌──────┴──────┐
+   │  SQLite DB  │      │  Upstream   │
+   │ config.db   │      │  Providers  │
+   │  logs.db    │      │ (OpenAI,    │
+   └─────────────┘      │  Anthropic, │
+                        │  Gemini…)   │
+                        └─────────────┘
+```
+
+**Design principles:**
+- All policy logic runs in LuaJIT inside the nginx worker — zero extra network hops for auth, rate limiting, or caching on a single-server deployment.
+- `ngx.shared.dict` provides shared memory across workers for rate-limit state, config cache, and Prometheus counters.
+- The middleware chain is linear and ordered; each step either short-circuits (cache hit, block) or enriches a per-request context object passed to the next step.
 
 ---
 
 ## 2. Technology Stack
 
-| Layer | Technology | Rationale |
+| Layer | Technology | Notes |
 |---|---|---|
-| HTTP server | nginx + OpenResty | Already our CDN layer; LuaJIT JIT performance |
-| Lua runtime | LuaJIT 2.1 | Fast FFI, co-routines for streaming |
-| Hot config / state | Redis 7 (Cluster) | Sub-ms read for rate limits, cache, config |
-| Persistent store | PostgreSQL 16 | Tenants, keys, routing rules, budgets |
-| Analytics OLAP | ClickHouse | Columnar, handles 10M+ log rows/day |
-| Secret encryption | libsodium (via lua-resty-sodium) | AES-256-GCM for BYOK keys at rest |
-| Embeddings (semantic cache) | pgvector or Redis vector | Cosine similarity on prompt embeddings |
-| Metrics export | Prometheus exposition (`/metrics`) | Scrape into Grafana |
-| Tracing | OpenTelemetry OTLP (HTTP) | Trace per request across providers |
+| HTTP server | nginx + OpenResty (LuaJIT 2.1) | JIT-compiled Lua, co-routines for streaming |
+| Config & persistent state | SQLite (dev) / PostgreSQL (prod) | Gateway config, tokens, routing rules, pricing |
+| Request logs | SQLite `logs.db` (dev) / ClickHouse or Loki (prod) | Structured JSON per request |
+| Hot state | `ngx.shared.dict` (single-server) / Redis (distributed) | Rate limits, config cache, Prometheus counters, BYOK cache |
+| Encryption | AES-256-CBC + PKCS7 via OpenSSL | BYOK provider keys at rest (`AIG_MASTER_KEY` env var) |
+| Content moderation | Llama Guard 3 (HTTP service) | Optional; fail-open by default |
+| Frontend | React 19 + TypeScript + Vite | Admin UI at `frontend/` |
+| Metrics | Prometheus exposition (`/metrics`) | Counters scraped into Grafana |
 
 ---
 
@@ -49,127 +82,129 @@
 ```
 src/
   core/
-    gateway.lua          -- Main request lifecycle orchestrator
-    pipeline.lua         -- Ordered middleware chain execution
-    config.lua           -- Per-gateway runtime config loader (Redis + Postgres)
-    context.lua          -- Per-request context object (tenant, gateway, provider)
-    errors.lua           -- Typed error codes & HTTP responses
+    gateway.lua          # Nginx phase hooks: access(), content(), log()
+    context.lua          # Per-request context object (tenant, gateway, provider, tokens…)
 
   providers/
-    init.lua             -- Provider registry
-    openai.lua           -- OpenAI + Azure OpenAI adapter
-    anthropic.lua        -- Anthropic adapter
-    gemini.lua           -- Google Gemini / Vertex AI adapter
-    bedrock.lua          -- AWS Bedrock (SigV4 signing)
-    mistral.lua          -- Mistral AI adapter
-    groq.lua             -- Groq adapter
-    cohere.lua           -- Cohere adapter
-    deepseek.lua         -- DeepSeek adapter
-    xai.lua              -- xAI Grok adapter
-    compat.lua           -- OpenAI-compatible unified normalizer
+    init.lua             # Provider registry — maps provider name → module
+    openai.lua           # OpenAI + Azure OpenAI (native format)
+    anthropic.lua        # Anthropic Messages API adapter
+    gemini.lua           # Google Gemini (GenerateContent) adapter
+    mistral.lua          # Mistral AI (OpenAI-compatible)
+    groq.lua             # Groq (OpenAI-compatible)
 
   middleware/
-    init.lua             -- Middleware registry & ordering
-    request_id.lua       -- Inject x-request-id
-    auth.lua             -- Gateway token validation
-    tenant.lua           -- Tenant resolution from path/header
-    rate_limit.lua       -- Sliding-window rate limiter
-    quota.lua            -- Budget / token quota enforcement
-    cache_check.lua      -- Cache lookup (exact + semantic)
-    dlp.lua              -- DLP / PII detection & scrubbing
-    guardrails.lua       -- Content moderation (prompt + response)
-    transform.lua        -- Request normalisation to provider format
-    retry.lua            -- Retry + fallback orchestration
-    cache_store.lua      -- Store response in cache after upstream
-    cost.lua             -- Token counting + cost attribution
-    log.lua              -- Structured request log emission
-
-  auth/
-    tokens.lua           -- Gateway token CRUD (hash + store in Postgres)
-    byok.lua             -- BYOK key vault (AES-256-GCM, per-tenant)
-    signing.lua          -- AWS SigV4, GCP service account JWT
-
-  cache/
-    exact.lua            -- SHA-256 keyed Redis cache
-    semantic.lua         -- Vector embedding similarity cache
-    key.lua              -- Cache key construction (model + messages + params)
+    auth.lua             # Bearer / x-aig-token / x-api-key validation
+    cache_check.lua      # SHA-256 exact-match cache lookup
+    cache_store.lua      # Persist non-streaming 200 responses to cache
+    cost.lua             # Token counting + budget counter increment
+    guardrails_request.lua  # Llama Guard 3 prompt classification
+    quota.lua            # Budget hard-stop enforcement
+    upstream.lua         # Provider HTTP call with retry + fallback chain
 
   observability/
-    logger.lua           -- Structured JSON log emitter (UDP → Loki/Vector)
-    metrics.lua          -- Prometheus counters/histograms (shared dict)
-    tracer.lua           -- OTLP HTTP span emitter
-    cost_table.lua       -- Model → price per 1K tokens lookup table
+    logger.lua           # Structured JSON log writer
+    cost_table.lua       # Model → price per 1K tokens lookup table
 
   routing/
-    engine.lua           -- Rule evaluator (condition → action)
-    rules.lua            -- Rule DSL parser (JSON config from Postgres)
-    balancer.lua         -- Weighted round-robin across provider keys
+    engine.lua           # Rule evaluator (condition → action)
 
   security/
-    guardrails.lua       -- Regex + classifier-based content safety
-    dlp.lua              -- PII / secrets pattern library
-    ip_allowlist.lua     -- Per-tenant IP allowlist check
+    dlp.lua              # PII / secrets pattern library (block/scrub/flag)
+    guardrails.lua       # Response-side pattern check + Llama Guard wrapper
+    ip_allowlist.lua     # Per-gateway CIDR allowlist check
 
   billing/
-    tracker.lua          -- Increment Redis cost counters
-    budget.lua           -- Hard-stop when budget exceeded
-    invoice.lua          -- Aggregate daily spend from ClickHouse
+    tracker.lua          # Budget counter logic
+
+  auth/
+    byok.lua             # Provider key encryption/decryption (AES-256-CBC)
 
   admin/
-    api.lua              -- REST admin API (tenant/gateway/key CRUD)
-    dashboard.lua        -- Metrics aggregation for UI
+    api.lua              # REST admin API (tenant/gateway/user/token CRUD)
 
-  utils/
-    http.lua             -- lua-resty-http wrapper
-    json.lua             -- cjson wrapper with error handling
-    crypto.lua           -- AES-GCM encrypt/decrypt via libsodium
-    redis.lua            -- lua-resty-redis connection pool
-    postgres.lua         -- pgmoon connection pool
-    string.lua           -- Shared string utilities
+  storage/
+    sqlite.lua           # SQLite connection wrapper + all DB queries
+    schema_config.sql    # Config DB schema (tenants, gateways, tokens, rules…)
+    schema_logs.sql      # Logs DB schema (request_logs)
 
+  state/
+    init.lua             # State backend abstraction (shared_dict ↔ Redis)
+
+  utils/                 # Shared helpers (HTTP, JSON, crypto, string)
+
+config/
+  gateway.lua            # Runtime config: DB paths, master key, defaults
+  nginx.conf             # nginx server blocks and lua_shared_dict declarations
+
+frontend/                # React + TypeScript admin UI (Vite build)
 tests/
-  unit/
-  integration/
-  fixtures/
-    requests/            -- Sample provider request/response JSON
-    tenants/             -- Test tenant configs
+  unit/                  # busted unit tests per module
+  integration/           # End-to-end tests against running gateway
+  fixtures/              # Sample provider request/response JSON
 ```
 
 ---
 
-## 4. Request Lifecycle (nginx phases)
+## 4. Request Lifecycle
+
+### Phase diagram
 
 ```
-[Client]
+[Consumer]
     │
-    ▼  ngx.access phase
-┌─────────────────────────────────────────────────────────────┐
-│  1. request_id     inject x-request-id (UUID v7)            │
-│  2. tenant         resolve tenant+gateway from URL path      │
-│  3. auth           validate x-aig-token Bearer              │
-│  4. rate_limit     sliding-window check (Redis EVALSHA)      │
-│  5. quota          budget hard-stop check                    │
-│  6. ip_allowlist   per-tenant CIDR check                     │
-└─────────────────────────────────────────────────────────────┘
+    ▼  ── ngx.access phase ─────────────────────────────────────
     │
-    ▼  ngx.content phase
-┌─────────────────────────────────────────────────────────────┐
-│  7. cache_check    exact SHA-256 lookup → return if HIT      │
-│  8. dlp            scrub PII from prompt before forwarding   │
-│  9. guardrails     block unsafe prompts                      │
-│ 10. transform      normalise to provider wire format         │
-│ 11. routing        select provider+model (rule engine)       │
-│ 12. byok           inject provider API key (decrypted)       │
-│ 13. upstream call  lua-resty-http to provider (with retry)   │
-│ 14. guardrails     check response safety                     │
-│ 15. cache_store    persist to Redis if cacheable             │
-│ 16. cost           count tokens, update Redis budget counter │
-│ 17. log            emit structured log to ClickHouse/Loki    │
-│ 18. metrics        increment Prometheus counters             │
-└─────────────────────────────────────────────────────────────┘
+    ├─ 1. request_id     Generate or forward X-Request-Id (UUID)
+    ├─ 2. tenant         Resolve {tenant_slug}/{gateway_slug} → UUIDs; load gateway config
+    ├─ 3. auth           Validate token (x-aig-token / Bearer / x-api-key)
+    │                    Enforce role (viewer → 403); load per-token rate/budget overrides
+    ├─ 4. rate_limit     Sliding-window check (dual-bucket approx in shared_dict)
+    ├─ 5. ip_allowlist   CIDR match against gateway config allowlist
     │
-    ▼
-[Client Response]
+    ▼  ── ngx.content phase ────────────────────────────────────
+    │
+    ├─ 6.  cache_check      SHA-256(provider:model:canonical_body) → serve if HIT
+    ├─ 7.  dlp              Scan prompt; block / scrub / flag PII patterns
+    ├─ 8.  guardrails_req   Call Llama Guard 3; block if unsafe (S1–S14)
+    ├─ 9.  transform        Parse + normalize body; collect x-aig-meta-* headers
+    ├─ 10. routing          Evaluate ordered routing rules → provider, model, fallbacks
+    ├─ 11. byok             Decrypt provider API key (cache 60 s in aig_byok dict)
+    ├─ 12. upstream         HTTP call to provider; retry on 5xx; walk fallback chain
+    ├─ 13. guardrails_resp  Pattern-check response body (non-streaming only)
+    ├─ 14. cost             Count tokens; compute cost_usd; increment budget counter
+    ├─ 15. cache_store      Persist response to cache (non-streaming, status 200)
+    │
+    ▼  ── ngx.log phase (best-effort, after response sent) ─────
+    │
+    ├─ 16. logger           Write structured JSON to logs.db
+    └─ 17. metrics          Increment Prometheus counters in aig_metrics shared dict
+
+[Consumer Response]
+```
+
+### Context object
+
+Each request carries a `ctx` table populated incrementally by middleware:
+
+```lua
+ctx = {
+  request_id       = "...",
+  tenant_id        = "...",   gateway_id = "...",
+  provider         = "openai", model = "gpt-4o",
+  auth_token       = { id, label, user_id, budget_usd, rate_limit },
+  gateway_config   = { cache_ttl, rate_limit, dlp, guardrails, … },
+  body             = { … },   -- parsed request JSON
+  meta             = { … },   -- x-aig-meta-* headers
+  -- populated after upstream:
+  status           = 200,
+  response_body    = "…",
+  input_tokens     = 512,   output_tokens = 128,
+  cost_usd         = 0.004,
+  latency_ms       = 340,   upstream_latency_ms = 310,
+  cached           = false,
+  blocked          = false, blocked_by = nil,
+}
 ```
 
 ---
@@ -177,23 +212,37 @@ tests/
 ## 5. URL Schema
 
 ```
-# Provider-native (pass-through with gateway features)
-POST /v1/{tenant_id}/{gateway_id}/{provider}/{...provider_path}
+# Provider-native endpoint
+POST /v1/{tenant_slug}/{gateway_slug}/{provider}/chat/completions
 
-# OpenAI-compatible unified endpoint
-POST /v1/{tenant_id}/{gateway_id}/compat/chat/completions
-POST /v1/{tenant_id}/{gateway_id}/compat/completions
-POST /v1/{tenant_id}/{gateway_id}/compat/embeddings
+# OpenAI-compatible unified endpoint (provider inferred from model name prefix)
+POST /v1/{tenant_slug}/{gateway_slug}/compat/chat/completions
 
-# Admin API (separate vhost / mTLS)
+# Admin API
 GET  /admin/v1/tenants
 POST /admin/v1/tenants
-GET  /admin/v1/tenants/{tenant_id}/gateways
-POST /admin/v1/tenants/{tenant_id}/gateways
-GET  /admin/v1/tenants/{tenant_id}/gateways/{gateway_id}/logs
-GET  /admin/v1/tenants/{tenant_id}/gateways/{gateway_id}/analytics
-POST /admin/v1/tenants/{tenant_id}/keys          -- BYOK
-GET  /metrics                                     -- Prometheus scrape
+GET  /admin/v1/tenants/{id}/gateways
+POST /admin/v1/tenants/{id}/gateways
+GET  /admin/v1/gateways/{id}
+PATCH  /admin/v1/gateways/{id}
+DELETE /admin/v1/gateways/{id}/budget
+POST /admin/v1/gateways/{id}/keys          # BYOK key storage
+GET  /admin/v1/gateways/{id}/tokens
+POST /admin/v1/gateways/{id}/tokens
+DELETE /admin/v1/gateways/{id}/tokens/{tid}
+GET  /admin/v1/tenants/{id}/users
+POST /admin/v1/tenants/{id}/users
+PATCH  /admin/v1/users/{id}
+DELETE /admin/v1/users/{id}
+POST /admin/v1/users/{id}/tokens
+GET  /admin/v1/users/{id}/tokens
+POST /admin/v1/users/{id}/gateways/{gw_id}   # grant access
+DELETE /admin/v1/users/{id}/gateways/{gw_id} # revoke access
+GET  /admin/v1/stats
+GET  /admin/v1/logs
+
+# Observability
+GET  /metrics     # Prometheus text format (IP-restricted to 10.0.0.0/8)
 ```
 
 ---
@@ -201,292 +250,309 @@ GET  /metrics                                     -- Prometheus scrape
 ## 6. Multi-Tenancy Model
 
 ```
-Account
-  └── Tenant (account_id, plan, budget_limit)
-        └── Gateway (gateway_id, config: cache_ttl, rate_limits, routing_rules)
-              ├── ProviderConfig (provider, byok_key_alias, model_overrides)
-              ├── AuthTokens  (hashed, expiry, scopes)
-              └── RoutingRules (priority-ordered conditions → actions)
+Tenant  (id, slug, plan, budget_limit, deleted_at)
+  │
+  ├── Gateway  (id, slug, config JSONB)
+  │     ├── ProviderConfig  (provider, alias, encrypted_key)   ← BYOK
+  │     ├── AuthToken       (token_hash, expiry, label, rate_limit, budget_usd, user_id)
+  │     └── RoutingRule     (priority, conditions JSONB, actions JSONB, enabled)
+  │
+  └── User  (id, email, role: admin|member|viewer)
+        └── UserGatewayAccess  (user_id, gateway_id)
 ```
 
-Isolation is enforced by:
-- URL-path tenant/gateway prefix (resolved before any upstream call)
-- Redis keyspacing: `{tenant}:{gateway}:rl:...`, `{tenant}:{gateway}:cache:...`
-- ClickHouse partition key = `tenant_id`
-- BYOK keys encrypted per-tenant master key (derived from tenant secret)
+**Isolation mechanisms:**
+
+| Boundary | Mechanism |
+|---|---|
+| URL routing | `{tenant_slug}/{gateway_slug}` prefix resolved at access phase |
+| shared_dict keys | Namespaced: `{tenant_id}:{gateway_id}:rl:…`, `…:cache:…` |
+| Database | `tenant_id` foreign keys on all tables; queries always filter by tenant |
+| BYOK keys | Encrypted with a key derived from `AIG_MASTER_KEY` (global; per-tenant derivation is a planned upgrade) |
+| Auth tokens | Scoped to a single gateway; cross-gateway use is rejected |
 
 ---
 
-## 7. Data Schemas
+## 7. Storage & State
 
-### PostgreSQL
+### Config database (SQLite / PostgreSQL)
 
-```sql
--- tenants
-CREATE TABLE tenants (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    slug        TEXT UNIQUE NOT NULL,
-    plan        TEXT NOT NULL DEFAULT 'free',
-    budget_usd  NUMERIC(12,6),
-    created_at  TIMESTAMPTZ DEFAULT now()
-);
+Stores durable configuration that changes infrequently: tenants, gateways, tokens, routing rules, provider keys, pricing.
 
--- gateways
-CREATE TABLE gateways (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id    UUID REFERENCES tenants(id) ON DELETE CASCADE,
-    slug         TEXT NOT NULL,
-    config       JSONB NOT NULL DEFAULT '{}',
-    created_at   TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(tenant_id, slug)
-);
+Gateway config is loaded from the DB and cached in `aig_config` shared dict for `config_cache_ttl` seconds (default: 30 s) to avoid per-request DB reads.
 
--- provider_configs (BYOK)
-CREATE TABLE provider_configs (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    gateway_id   UUID REFERENCES gateways(id) ON DELETE CASCADE,
-    provider     TEXT NOT NULL,
-    alias        TEXT NOT NULL DEFAULT 'default',
-    encrypted_key BYTEA NOT NULL,       -- AES-256-GCM ciphertext
-    nonce        BYTEA NOT NULL,
-    created_at   TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(gateway_id, provider, alias)
-);
+**Key tables:**
 
--- auth_tokens
-CREATE TABLE auth_tokens (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    gateway_id   UUID REFERENCES gateways(id) ON DELETE CASCADE,
-    token_hash   TEXT NOT NULL,        -- SHA-256 of bearer token
-    scopes       TEXT[] DEFAULT '{}',
-    expires_at   TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ DEFAULT now()
-);
+| Table | Contents |
+|---|---|
+| `tenants` | id, slug, plan, budget_limit |
+| `gateways` | id, tenant_id, slug, config (JSON) |
+| `gateway_provider_configs` | gateway_id, provider, alias, encrypted_key |
+| `auth_tokens` | gateway_id, token_hash, label, expiry, rate_limit, budget_usd, user_id |
+| `routing_rules` | gateway_id, priority, conditions (JSON), actions (JSON), enabled |
+| `users` | id, tenant_id, email, role |
+| `user_gateway_access` | user_id, gateway_id |
+| `model_price` | provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k |
 
--- routing_rules
-CREATE TABLE routing_rules (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    gateway_id   UUID REFERENCES gateways(id) ON DELETE CASCADE,
-    priority     INT NOT NULL DEFAULT 0,
-    conditions   JSONB NOT NULL,       -- [{field, op, value}]
-    actions      JSONB NOT NULL,       -- {provider, model, fallbacks: [...]}
-    enabled      BOOLEAN DEFAULT true
-);
+### Log database (SQLite / ClickHouse)
 
--- model_pricing
-CREATE TABLE model_pricing (
-    provider     TEXT NOT NULL,
-    model        TEXT NOT NULL,
-    input_per_1k NUMERIC(10,8) NOT NULL,
-    output_per_1k NUMERIC(10,8) NOT NULL,
-    updated_at   TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY(provider, model)
-);
-```
+One row per request. In development: `logs.db` via `storage/sqlite.lua`. In production: swap for UDP → Vector/Loki or HTTP → ClickHouse.
 
-### ClickHouse (logs)
+**Key fields:** `request_id`, `tenant_id`, `gateway_id`, `provider`, `model`, `status`, `cached`, `input_tokens`, `output_tokens`, `cost_usd`, `latency_ms`, `upstream_latency_ms`, `time_to_first_token_ms`, `blocked`, `blocked_by`, `prompt`, `response`, `meta`
 
-```sql
-CREATE TABLE gateway_logs (
-    request_id      UUID,
-    tenant_id       UUID,
-    gateway_id      UUID,
-    provider        LowCardinality(String),
-    model           String,
-    status          UInt16,
-    cached          Bool,
-    input_tokens    UInt32,
-    output_tokens   UInt32,
-    cost_usd        Float64,
-    latency_ms      UInt32,
-    ts              DateTime64(3, 'UTC'),
-    meta            Map(String, String)
-) ENGINE = MergeTree()
-PARTITION BY toYYYYMM(ts)
-ORDER BY (tenant_id, gateway_id, ts);
-```
+### Shared memory (`ngx.shared.dict`)
+
+| Dict | Size | Contents |
+|---|---|---|
+| `aig_cache` | 10 MB | Exact-match response cache |
+| `aig_ratelimit` | 50 MB | Sliding-window rate-limit buckets |
+| `aig_config` | 20 MB | Gateway config + routing rules |
+| `aig_byok` | 10 MB | Decrypted provider keys (TTL 60 s) |
+| `aig_metrics` | 5 MB | Prometheus counters |
+
+### Redis (distributed deployments)
+
+Replaces `ngx.shared.dict` for multi-server setups. Architecture is backend-agnostic via `state/init.lua`. Rate limiting uses an atomic EVALSHA sliding-window script in the Redis path.
 
 ---
 
-## 8. Key Implementation Details
+## 8. Provider Abstraction
 
-### Rate Limiting (Redis sliding window EVALSHA)
+Each provider module exposes a common interface:
+
 ```lua
--- Atomic sliding window: remove old entries, count, add new, expire
-local SCRIPT = [[
-  local key = KEYS[1]
-  local now = tonumber(ARGV[1])
-  local window = tonumber(ARGV[2])
-  local limit = tonumber(ARGV[3])
-  redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
-  local count = redis.call('ZCARD', key)
-  if count >= limit then return 0 end
-  redis.call('ZADD', key, now, now .. math.random())
-  redis.call('EXPIRE', key, window)
-  return 1
-]]
+provider.build_request(ctx)          -- returns headers, body for upstream call
+provider.parse_response(ctx, body)   -- extracts tokens, normalizes response
+provider.parse_sse_chunk(ctx, line)  -- streaming: accumulate tokens per SSE line
 ```
 
-### Streaming (SSE passthrough)
-```lua
--- In content handler, after upstream connect:
-ngx.header['Content-Type'] = 'text/event-stream'
-ngx.header['Cache-Control'] = 'no-cache'
-local res, err = httpc:request({...})
--- Chunked read loop:
-while true do
-  local chunk, err = res.body_reader(8192)
-  if not chunk then break end
-  ngx.print(chunk)
-  ngx.flush(true)
-  -- Intercept token counts from SSE data: lines
-end
-```
+**Provider → wire format mapping:**
 
-### BYOK Encryption (libsodium AES-256-GCM)
-```lua
--- Encrypt on store:
-local nonce = sodium.randombytes(24)
-local ct = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
-    plaintext, nil, nonce, tenant_master_key)
+| Provider | Format | Notes |
+|---|---|---|
+| OpenAI | Native | Direct pass-through |
+| Azure OpenAI | OpenAI | Requires `azure_endpoint` + `azure_api_version` |
+| Anthropic | Messages API | Role/content conversion; extended thinking support |
+| Gemini | GenerateContent | System instruction conversion |
+| Mistral | OpenAI-compatible | |
+| Groq | OpenAI-compatible | |
 
--- Decrypt on use (in hot path, cache decrypted key in shared dict TTL=60s):
-local cached = ngx.shared.byok_cache:get(key_id)
-if not cached then
-    cached = decrypt(row.encrypted_key, row.nonce, master_key)
-    ngx.shared.byok_cache:set(key_id, cached, 60)
-end
-```
+The **compat endpoint** (`/compat/chat/completions`) accepts OpenAI-format requests and infers the provider from the model name prefix (e.g., `claude-` → Anthropic, `gemini-` → Gemini), then delegates to the appropriate provider module.
 
-### Cost Attribution
-```lua
--- Token counting from provider response (or streaming accumulation):
-local input_tokens  = res.usage.prompt_tokens     or 0
-local output_tokens = res.usage.completion_tokens or 0
-local pricing = cost_table.get(provider, model)
-local cost = (input_tokens / 1000 * pricing.input_per_1k)
-           + (output_tokens / 1000 * pricing.output_per_1k)
--- Atomic increment budget counter:
-redis.incrbyfloat("budget:" .. tenant_id, cost)
-```
+### Streaming
+
+SSE responses are passed through chunk-by-chunk with `ngx.flush(true)` after each write. Token counts are accumulated by `parse_sse_chunk()` as chunks arrive, so cost attribution works without buffering the full response.
 
 ---
 
-## 9. nginx Config Skeleton
+## 9. Routing Engine
+
+Rules are loaded from the DB, cached for 30 s, and evaluated in ascending `priority` order. The first matching rule wins.
+
+```
+Rule
+ ├── conditions: [{field, op, value}, …]   -- ALL must match (AND)
+ └── actions:
+       provider:   "anthropic"
+       model:      "claude-sonnet-4-6"
+       fallbacks:  [{provider, model}, …]
+```
+
+**Condition fields:** `model`, `provider`, `tenant_id`, `header:{name}`, `meta:{key}`
+
+**Operators:** `eq`, `neq`, `prefix`, `contains`, `regex`
+
+### Fallback chain
+
+```
+upstream.lua attempts:
+  1. Primary provider — up to retry_count attempts (default 2) on 5xx
+  2. fallbacks[1]     — 1 attempt
+  3. fallbacks[2]     — 1 attempt
+  …
+  → 502 ALL_PROVIDERS_FAILED if all exhausted
+
+4xx from any provider → return immediately to client (no retry)
+```
+
+BYOK keys are re-fetched and decrypted each time the active provider changes during the fallback walk. `fallback_provider` and `fallback_model` are recorded in the request log.
+
+---
+
+## 10. Security Subsystems
+
+### Authentication
+
+Token accepted from (in priority order): `x-aig-token` → `Authorization: Bearer` → `x-api-key`.
+
+SHA-256 hash stored in DB; plaintext never persisted. Token carries optional per-token `rate_limit` and `budget_usd` overrides that take precedence over gateway-level config.
+
+### BYOK key vault
+
+```
+Store:   AES-256-CBC encrypt(api_key, IV=random_16B, key=SHA256(AIG_MASTER_KEY))
+         → store as base64(IV):base64(ciphertext) in provider_configs table
+
+Retrieve: decrypt on first use → cache plaintext in aig_byok shared dict for 60 s
+          → inject as Authorization header on upstream call
+```
+
+### Rate limiting
+
+Dual-bucket sliding window in `aig_ratelimit` shared dict:
+
+```
+weight = 1 - (time_into_current_window / window_sec)
+effective_count = prev_bucket * weight + cur_bucket
+```
+
+### Budget enforcement
+
+Costs stored as micro-dollars (`cost * 1e6`) in the state backend. Checked pre-request against both per-token and per-gateway caps. Incremented atomically after the upstream response.
+
+### DLP
+
+Lua pattern scan on the serialized request body. Configurable per gateway:
+- `block` — reject with 400
+- `scrub` — replace match with `[REDACTED]`, forward sanitized body
+- `flag` — log only, forward unchanged
+
+### Guardrails
+
+**Request:** Last user message sent to Llama Guard 3 HTTP service. Blocked categories S1–S14 returned as a synthetic 200 in the correct wire format (JSON or SSE depending on `stream`).
+
+**Response:** Regex patterns for `self_harm` and `violence` checked on the buffered response body (non-streaming only).
+
+### IP allowlist
+
+CIDR-based allow list per gateway. Matching uses 32-bit integer masking via LuaJIT `bit` library. Empty list = allow all.
+
+---
+
+## 11. Observability
+
+### Structured request log
+
+Written at the log phase after every request. Schema lives in `storage/schema_logs.sql`. Fields:
+
+```
+request_id, tenant_id, gateway_id, user_id, token_label,
+provider, model, fallback_provider, fallback_model, upstream_attempts,
+status, blocked, blocked_by, block_reason,
+cached, saved_cost_usd, saved_latency_ms,
+input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+cost_usd,
+latency_ms, upstream_latency_ms, time_to_first_token_ms,
+prompt, response,
+meta (JSON map of x-aig-meta-* headers)
+```
+
+Payload logging can be disabled globally (`log_payloads: false` in gateway config) or per-request (`x-aig-collect-log-payload: false` header).
+
+### Prometheus metrics
+
+Exposed at `GET /metrics`. Four metrics, all with labels `{provider, tenant_id, status, cached}`:
+
+| Metric | Type |
+|---|---|
+| `aig_requests_total` | Counter |
+| `aig_latency_ms` (count + sum) | Histogram approximation |
+| `aig_input_tokens_total` | Counter |
+| `aig_output_tokens_total` | Counter |
+
+### Cost attribution
+
+`src/observability/cost_table.lua` maps `(provider, model)` → `{input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k}`. The DB `model_price` table overrides the hardcoded defaults. Anthropic prompt-caching token types are tracked separately.
+
+---
+
+## 12. nginx Configuration
 
 ```nginx
-# /etc/nginx/conf.d/ai-gateway.conf
 lua_package_path '/opt/ai-gateway/src/?.lua;;';
-lua_shared_dict  byok_cache    10m;
-lua_shared_dict  config_cache  20m;
-lua_shared_dict  metrics       5m;
-lua_shared_dict  rate_limit    50m;
+
+lua_shared_dict  aig_cache      10m;
+lua_shared_dict  aig_ratelimit  50m;
+lua_shared_dict  aig_config     20m;
+lua_shared_dict  aig_byok       10m;
+lua_shared_dict  aig_metrics    5m;
 
 init_by_lua_block {
-    require("core.config").init()
-    require("observability.metrics").init()
-}
-
-init_worker_by_lua_block {
-    require("core.config").start_refresh_timer()
+    require("core.gateway").init()
 }
 
 server {
     listen 443 ssl http2;
-    server_name gateway.example.com;
 
     location ~ ^/v1/([^/]+)/([^/]+)/(.+)$ {
-        set $tenant_id  $1;
-        set $gateway_id $2;
-        set $remainder  $3;
-
         access_by_lua_block  { require("core.gateway").access()  }
         content_by_lua_block { require("core.gateway").content() }
         log_by_lua_block     { require("core.gateway").log()     }
     }
 
+    location /admin/ {
+        content_by_lua_block { require("admin.api").handle() }
+    }
+
     location /metrics {
         allow 10.0.0.0/8;
         deny  all;
-        content_by_lua_block { require("admin.dashboard").metrics() }
+        content_by_lua_block { require("observability.metrics").exposition() }
     }
 }
 ```
 
----
-
-## 10. Implementation Phases
-
-### Phase 1 — Core Plumbing (MVP)
-- [ ] `core/context.lua` — request context object
-- [ ] `core/pipeline.lua` — middleware chain
-- [ ] `core/gateway.lua` — access/content/log hooks
-- [ ] `providers/openai.lua` + `providers/compat.lua`
-- [ ] `middleware/tenant.lua` + `middleware/auth.lua`
-- [ ] `utils/redis.lua` + `utils/postgres.lua` + `utils/http.lua`
-- [ ] nginx config skeleton
-- [ ] Integration test: proxied OpenAI call end-to-end
-
-### Phase 2 — Performance Layer
-- [ ] `cache/exact.lua` — Redis SHA-256 cache
-- [ ] `middleware/rate_limit.lua` — sliding window
-- [ ] `middleware/quota.lua` — budget hard-stop
-- [ ] `middleware/retry.lua` — retry + provider fallback
-- [ ] `observability/metrics.lua` — Prometheus shared dict
-
-### Phase 3 — Observability
-- [ ] `observability/logger.lua` — ClickHouse/Loki emit
-- [ ] `observability/tracer.lua` — OTLP spans
-- [ ] `observability/cost_table.lua` — pricing table
-- [ ] `billing/tracker.lua` + `billing/budget.lua`
-- [ ] `middleware/cost.lua` — token counting
-
-### Phase 4 — Security Layer
-- [ ] `auth/byok.lua` — AES-256-GCM key vault
-- [ ] `auth/tokens.lua` — bearer token CRUD
-- [ ] `security/dlp.lua` — PII pattern library
-- [ ] `security/guardrails.lua` — content safety
-- [ ] `middleware/dlp.lua` + `middleware/guardrails.lua`
-
-### Phase 5 — Routing & Multi-Provider
-- [ ] Remaining provider adapters (Anthropic, Gemini, Bedrock, etc.)
-- [ ] `routing/engine.lua` — rule evaluator
-- [ ] `routing/rules.lua` — DSL parser
-- [ ] `routing/balancer.lua` — weighted round-robin
-- [ ] `providers/bedrock.lua` — AWS SigV4 signing
-
-### Phase 6 — Admin API & Semantic Cache
-- [ ] `admin/api.lua` — REST CRUD
-- [ ] `cache/semantic.lua` — vector similarity
-- [ ] `billing/invoice.lua` — spend aggregation
-- [ ] Dashboard endpoint + WebSocket metrics stream
+Temporary directories created by nginx (`client_body_temp/`, `fastcgi_temp/`, `proxy_temp/`, `scgi_temp/`, `uwsgi_temp/`) are excluded from version control via `.gitignore`.
 
 ---
 
-## 11. Testing Strategy
+## 13. Deployment Topology
 
-- **Unit tests**: `busted` framework, each module tested in isolation with mocked Redis/Postgres
-- **Integration tests**: Docker Compose (nginx+OpenResty, Redis, Postgres, ClickHouse, mock provider)
-- **Load tests**: k6 with 1k concurrent connections, assert p99 < 10ms overhead vs direct provider
-- **Security tests**: OWASP ZAP scan on admin API; fuzz DLP patterns; test token isolation across tenants
+### Single-server (current default)
 
 ```
-tests/
-  unit/
-    test_cache_key.lua
-    test_rate_limit.lua
-    test_cost.lua
-    test_dlp.lua
-    test_routing_engine.lua
-    test_provider_compat.lua
-  integration/
-    test_openai_proxy.lua
-    test_caching.lua
-    test_auth.lua
-    test_streaming.lua
-    test_fallback.lua
-  fixtures/
-    requests/openai_chat.json
-    requests/anthropic_messages.json
-    tenants/test_tenant.json
+┌──────────────────────────────────┐
+│  nginx/OpenResty process         │
+│  ┌──────────┐  ┌──────────────┐  │
+│  │ worker 1 │  │   worker 2   │  │
+│  └────┬─────┘  └──────┬───────┘  │
+│       └────────┬───────┘         │
+│           ngx.shared.dict        │
+│       (rate-limit, cache, …)     │
+└──────────────┬───────────────────┘
+               │
+     ┌─────────┴─────────┐
+     │     SQLite         │
+     │  config.db         │
+     │  logs.db           │
+     └────────────────────┘
 ```
+
+State is shared across workers via `ngx.shared.dict`. No external processes required for a functional single-server deployment.
+
+### Distributed (production path)
+
+```
+                    ┌─────────────┐
+                    │  Load       │
+                    │  Balancer   │
+                    └──────┬──────┘
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+         [GW node 1]  [GW node 2]  [GW node 3]
+              │            │            │
+         ┌────┴────────────┴────────────┴────┐
+         │               Redis               │
+         │  (rate-limit, cache, BYOK cache)   │
+         └───────────────────────────────────┘
+              │
+         ┌────┴──────────┐
+         │  PostgreSQL   │  ← config DB
+         └───────────────┘
+              │
+         ┌────┴──────────┐
+         │  ClickHouse   │  ← request logs
+         └───────────────┘
+```
+
+The state backend abstraction in `state/init.lua` switches from `ngx.shared.dict` to Redis by changing a single config flag. All rate-limit keys and cache entries are already namespaced for multi-node use.
