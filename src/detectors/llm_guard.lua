@@ -1,5 +1,5 @@
 -- detectors/llm_guard.lua — Tier 2 Llama Guard sidecar detector
--- Extracted and extended from middleware/guardrails_request.lua.
+-- Implements Llama Guard 3 sidecar classification for request and response phases.
 -- Supports request and response phases, category filtering, and flag action.
 
 local json      = require("utils.json")

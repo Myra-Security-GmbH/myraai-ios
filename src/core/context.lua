@@ -23,11 +23,8 @@ function M.init()
     -- Set by middleware/request_id.lua
     ctx.request_id = nil
 
-    -- Set by middleware/dlp.lua
-    ctx.dlp_flagged = nil
-
     -- Set by middleware/transform.lua
-    ctx.raw_request_body  = nil   -- raw JSON string (may be scrubbed by DLP)
+    ctx.raw_request_body  = nil   -- raw JSON string (may be scrubbed by detectors)
     ctx.request_body      = nil   -- parsed Lua table
     ctx.model             = nil   -- normalised model name
     ctx.skip_log          = false -- set by x-aig-collect-log: false
@@ -56,7 +53,7 @@ function M.init()
     ctx.fallback_model             = nil
     ctx.provider_request_id        = nil  -- x-request-id from provider response
 
-    -- Set by middleware/guardrails_response.lua
+    -- Set by middleware/detectors_response.lua
     ctx.guardrail_response_blocked = nil
 
     -- Set by middleware/cost.lua

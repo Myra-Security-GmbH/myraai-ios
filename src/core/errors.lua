@@ -12,7 +12,6 @@ M.codes = {
     PROVIDER_ERROR      = { status = 502, code = "provider_error",        msg = "Upstream provider returned an error" },
     ALL_PROVIDERS_FAILED= { status = 502, code = "all_providers_failed",  msg = "All configured providers failed" },
     GUARDRAIL_BLOCKED   = { status = 400, code = "guardrail_blocked",     msg = "Request blocked by content policy" },
-    DLP_BLOCKED         = { status = 400, code = "dlp_blocked",           msg = "Request blocked by DLP policy" },
     INVALID_REQUEST     = { status = 400, code = "invalid_request",       msg = "Malformed request" },
     INTERNAL            = { status = 500, code = "internal_error",        msg = "Internal gateway error" },
 }

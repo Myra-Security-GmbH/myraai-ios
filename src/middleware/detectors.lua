@@ -1,7 +1,6 @@
 -- middleware/detectors.lua — Request-phase detector middleware entry point.
--- Runs request-phase detectors. Intended to complement (not replace) middleware.dlp
--- and middleware.guardrails_request for backward compatibility.
--- On block: sends a synthetic blocked response in the same format as guardrails_request.lua.
+-- Runs request-phase detectors (regex, keyword, presidio, llm_guard, pii_protector).
+-- On block: sends a synthetic blocked response (same format for all detector types).
 
 local json = require("utils.json")
 

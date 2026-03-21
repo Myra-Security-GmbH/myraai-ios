@@ -1,5 +1,5 @@
 -- middleware/send_response.lua — send the buffered non-streaming response
--- Runs after guardrails_response so a blocked response is never sent.
+-- Runs after detectors_response so a blocked response is never sent.
 -- Streaming responses are already sent by upstream.lua; this is a no-op for them.
 
 local errors = require("core.errors")

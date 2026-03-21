@@ -74,7 +74,7 @@ function M.emit(ctx)
         fields[k] = v
     end
 
-    -- Derive blocked flag from blocked_by (set by guardrails/dlp/rate_limit/etc.)
+    -- Derive blocked flag from blocked_by (set by guardrails/detector/rate_limit/etc.)
     fields.blocked = fields.blocked_by ~= nil
 
     local err = storage.insert_log(fields)

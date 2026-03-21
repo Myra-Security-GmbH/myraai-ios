@@ -18,14 +18,14 @@ CREATE TABLE IF NOT EXISTS request_log (
     cost_usd       REAL NOT NULL DEFAULT 0,
     latency_ms     INTEGER NOT NULL DEFAULT 0,
     ts             INTEGER NOT NULL,         -- Unix milliseconds
-    -- Optional payload (NULL when log_payloads=false or DLP scrubbed)
+    -- Optional payload (NULL when log_payloads=false or scrubbed by detectors)
     prompt         TEXT,
     response       TEXT,
     -- Custom metadata key=value pairs as JSON object
     meta           TEXT NOT NULL DEFAULT '{}',
     -- Block tracking (NULL blocked_by = request was not blocked)
     blocked        INTEGER NOT NULL DEFAULT 0,
-    blocked_by     TEXT,    -- "guardrail" | "dlp" | "rate_limit" | "quota" | "ip_allowlist"
+    blocked_by     TEXT,    -- "guardrail" | "detector" | "rate_limit" | "quota" | "ip_allowlist"
     block_reason   TEXT,    -- category codes (e.g. "S2,S9") or pattern name
     -- Guardrail classification details (NULL when guardrails disabled or skipped)
     guardrail_latency_ms  INTEGER,

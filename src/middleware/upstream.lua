@@ -14,6 +14,8 @@ local http_util  = require("utils.http")
 local errors     = require("core.errors")
 local json       = require("utils.json")
 local state      = require("state")
+local thinking   = require("utils.thinking")
+local trace      = require("utils.trace")
 
 local M = {}
 
@@ -71,12 +73,17 @@ end
 -- Converts provider-native SSE (Anthropic, Gemini, etc.) to OpenAI
 -- chat.completion.chunk format so any OpenAI-compatible client works.
 local function handle_compat_streaming(ctx, res)
-    ngx.status = 200
-    ngx.header["Content-Type"]      = "text/event-stream"
-    ngx.header["Cache-Control"]     = "no-cache"
-    ngx.header["X-Accel-Buffering"] = "no"
-    ngx.header["X-AIG-Provider"]    = res.provider_name
-    ngx.header["X-AIG-Cache"]       = "MISS"
+    -- web_search middleware may have already flushed headers (aig_status event).
+    -- OpenResty silently ignores ngx.header/ngx.status assignments once headers
+    -- are sent, so guard them explicitly to avoid confusion.
+    if not ngx.headers_sent then
+        ngx.status = 200
+        ngx.header["Content-Type"]      = "text/event-stream"
+        ngx.header["Cache-Control"]     = "no-cache"
+        ngx.header["X-Accel-Buffering"] = "no"
+        ngx.header["X-AIG-Provider"]    = res.provider_name
+        ngx.header["X-AIG-Cache"]       = "MISS"
+    end
 
     local reader       = res.body
     local provider_mod = res.provider_mod
@@ -86,17 +93,23 @@ local function handle_compat_streaming(ctx, res)
     local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = 0, 0, 0, 0
     local first_chunk_seen = false
     local done_sent        = false
+    local in_think         = false  -- stateful <think> block tracker
+    local accumulated_content = ""
 
-    -- Initial role delta (mirrors OpenAI behaviour)
-    local role_line = "data: " .. json.encode({
-        id      = chat_id,
-        object  = "chat.completion.chunk",
-        model   = model,
-        choices = {{ index = 0, delta = { role = "assistant", content = "" },
-                     finish_reason = json.null }},
-    }) .. "\n\n"
-    ngx.print(role_line)
-    ngx.flush(true)
+    -- Initial role delta (mirrors OpenAI behaviour).
+    -- Skipped when web_search already flushed an aig_status chunk — the client
+    -- handles the stream without it; the role chunk is cosmetic only.
+    if not ngx.headers_sent then
+        local role_line = "data: " .. json.encode({
+            id      = chat_id,
+            object  = "chat.completion.chunk",
+            model   = model,
+            choices = {{ index = 0, delta = { role = "assistant", content = "" },
+                         finish_reason = json.null }},
+        }) .. "\n\n"
+        ngx.print(role_line)
+        ngx.flush(true)
+    end
 
     while true do
         local chunk, err = reader(8192)
@@ -135,15 +148,22 @@ local function handle_compat_streaming(ctx, res)
                     ngx.flush(true)
                     done_sent = true
                 elseif parsed.delta and parsed.delta ~= "" then
+                    local visible
+                    visible, in_think = thinking.strip(parsed.delta, in_think)
+                    if not visible or visible == "" then
+                        -- Entire delta was reasoning — skip this chunk
+                    else
                     local delta_line = "data: " .. json.encode({
                         id      = chat_id,
                         object  = "chat.completion.chunk",
                         model   = model,
-                        choices = {{ index = 0, delta = { content = parsed.delta },
+                        choices = {{ index = 0, delta = { content = visible },
                                      finish_reason = json.null }},
                     }) .. "\n\n"
                     ngx.print(delta_line)
                     ngx.flush(true)
+                    accumulated_content = accumulated_content .. visible
+                    end  -- visible ~= ""
                 end
             end
         end
@@ -169,8 +189,18 @@ local function handle_compat_streaming(ctx, res)
         ngx.flush(true)
     end
 
+    trace.step(ctx, "leg2_response", {
+        content_len   = #accumulated_content,
+        content       = accumulated_content,
+        input_tokens  = input_tokens,
+        output_tokens = output_tokens,
+        done_sent     = done_sent,
+    })
+
     ngx.print("data: [DONE]\n\n")
     ngx.flush(true)
+
+    trace.done(ctx, "done")
 
     if res.httpc then res.httpc:set_keepalive() end
 
@@ -184,12 +214,14 @@ end
 
 -- Stream SSE from provider to client, accumulating token usage.
 local function handle_streaming(ctx, res)
-    ngx.status = 200
-    ngx.header["Content-Type"]       = "text/event-stream"
-    ngx.header["Cache-Control"]      = "no-cache"
-    ngx.header["X-Accel-Buffering"]  = "no"
-    ngx.header["X-AIG-Provider"]     = res.provider_name
-    ngx.header["X-AIG-Cache"]        = "MISS"
+    if not ngx.headers_sent then
+        ngx.status = 200
+        ngx.header["Content-Type"]      = "text/event-stream"
+        ngx.header["Cache-Control"]     = "no-cache"
+        ngx.header["X-Accel-Buffering"] = "no"
+        ngx.header["X-AIG-Provider"]    = res.provider_name
+        ngx.header["X-AIG-Cache"]       = "MISS"
+    end
 
     local reader      = res.body
     local provider_mod = res.provider_mod
@@ -457,8 +489,10 @@ function M.run(ctx)
             -- Update ctx with the actual provider/model used
             ctx.provider = provider_name
             ctx.model    = model
-            ngx.header["X-AIG-Provider"] = provider_name
-            ngx.header["X-AIG-Model"]    = model
+            if not ngx.headers_sent then
+                ngx.header["X-AIG-Provider"] = provider_name
+                ngx.header["X-AIG-Model"]    = model
+            end
 
             if is_streaming then
                 if ctx.is_compat then
@@ -476,7 +510,7 @@ function M.run(ctx)
                 end
 
                 -- Do NOT ngx.print here; send_response.lua runs after
-                -- guardrails_response so it can still block the response.
+                -- detectors_response so it can still block the response.
                 ngx.status = res.status
                 ngx.header["Content-Type"] = "application/json"
                 ngx.header["X-AIG-Cache"]  = "MISS"
@@ -491,6 +525,7 @@ function M.run(ctx)
 
     -- All attempts exhausted
     ngx.log(ngx.ERR, "upstream: all providers failed. last_err=", last_err)
+    trace.done(ctx, "error", last_err)
     errors.send("ALL_PROVIDERS_FAILED", last_err)
 end
 
