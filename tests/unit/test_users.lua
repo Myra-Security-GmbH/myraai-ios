@@ -3,6 +3,7 @@
 
 _G.ngx = {
     now    = function() return 1700000000.0 end,
+    time   = function() return 1700000000 end,
     log    = function() end,
     exit   = function(s) error(s) end,
     print  = function() end,
@@ -300,7 +301,7 @@ describe("middleware.auth user enforcement", function()
     it("expired token is rejected with UNAUTHORIZED", function()
         local auth = setup_auth(
             { id = "tok-exp", scopes = "[]",
-              expires_at = "2000-01-01T00:00:00Z",   -- in the past
+              expires_at = 946684800,   -- 2000-01-01 Unix seconds, in the past
               user_id = nil, label = nil, budget_usd = nil, rate_limit = nil },
             nil
         )

@@ -195,9 +195,10 @@ describe("get_usage_stats integration: results differ per time window", function
     local storage
     local insert_db  -- second connection used only for inserting rows
 
-    -- SQL to insert a minimal valid request_log row at `offset` seconds from now.
+    -- Insert a minimal valid request_log row whose ts is offset_sec seconds
+    -- from the mocked ngx.now().  ts is stored as Unix milliseconds (INTEGER).
     local function insert_req(id, offset_sec)
-        local modifier = string.format("%.0f seconds", offset_sec)
+        local ts_ms = (math.floor(ngx.now()) + offset_sec) * 1000
         local sql = string.format([[
             INSERT INTO request_log
                 (id, tenant_id, gateway_id, provider, model, status,
@@ -208,9 +209,9 @@ describe("get_usage_stats integration: results differ per time window", function
             VALUES ('%s','t1','g1','anthropic','claude-3',200,
                     0,10,20,0,0,
                     0.001,100,
-                    strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ','now','%s'),
+                    %d,
                     '{}',0,1,512,0)
-        ]], id, modifier)
+        ]], id, ts_ms)
         insert_db:exec(sql)
     end
 
