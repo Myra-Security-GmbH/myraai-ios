@@ -100,17 +100,10 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.header-title {
-  font-family: $primary-font-family;
-  font-size: tools.pixelToRem(16);
-  font-weight: 700;
-  color: #ffffff;
-  white-space: nowrap;
-  letter-spacing: -0.01em;
-}
-
-.header-title span {
-  color: #3edcfe;
+.header-logo {
+  height: tools.pixelToRem(32);
+  width: auto;
+  object-fit: contain;
 }
 
 .header-icon {
