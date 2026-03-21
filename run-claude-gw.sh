@@ -8,4 +8,4 @@ mkdir -p $HOME/work
 
 export ANTHROPIC_API_KEY ANTHROPIC_BASE_URL
 
-cd $HOME/work && claude
+cd $HOME/work && claude --dangerously-skip-permissions
