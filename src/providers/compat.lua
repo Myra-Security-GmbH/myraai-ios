@@ -121,6 +121,8 @@ local MODEL_PREFIX_MAP = {
     ["accounts/fireworks/"]  = "fireworks",
     ["meta/"]                = "nvidia",
     ["nvidia/"]              = "nvidia",
+    -- Ollama local models use ollama/ prefix
+    ["ollama/"]              = "ollama",
     -- Cloudflare models use @cf/ prefix
     ["@cf/"]                 = "cloudflare",
     -- HuggingFace hosted inference — org/model format.

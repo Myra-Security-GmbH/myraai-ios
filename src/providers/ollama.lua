@@ -3,10 +3,11 @@
 -- Auth is optional: Ollama does not require a key by default.
 
 local openai = require("providers.openai")
+local json   = require("utils.json")
 
 local M = {}
 
-local DEFAULT_BASE = "http://localhost:11434"
+local DEFAULT_BASE = "http://10.232.10.252:11439"
 
 function M.base_url(ctx)
     local base = (ctx.gateway_config
@@ -27,7 +28,24 @@ function M.build_headers(ctx, api_key)
     return headers
 end
 
-M.build_request   = openai.build_request
+-- Strip "ollama/" namespace prefix before sending to the Ollama API.
+-- Models are stored in the catalog as "ollama/<name>" but Ollama itself
+-- only recognises the bare name (e.g. "llama3.1", not "ollama/llama3.1").
+function M.build_request(ctx)
+    local patched = ctx
+    if ctx.request_body and ctx.request_body.model then
+        local bare = ctx.request_body.model:match("^ollama/(.+)$")
+        if bare then
+            patched = {}
+            for k, v in pairs(ctx) do patched[k] = v end
+            patched.request_body = {}
+            for k, v in pairs(ctx.request_body) do patched.request_body[k] = v end
+            patched.request_body.model = bare
+        end
+    end
+    return openai.build_request(patched)
+end
+
 M.parse_response  = openai.parse_response
 M.parse_sse_chunk = openai.parse_sse_chunk
 
