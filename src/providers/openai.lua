@@ -85,16 +85,15 @@ function M.parse_sse_chunk(line)
     local chunk = json.decode(data)
     if not chunk then return nil end
 
-    local delta = ""
+    local delta  = ""
     local choice = chunk.choices and chunk.choices[1]
     if choice and choice.delta then
+        -- Use only delta.content for the visible answer.
+        -- delta.reasoning is the model's internal chain-of-thought and must
+        -- never be forwarded to the client regardless of whether it contains
+        -- <think> tags or plain prose.  The actual answer always arrives in
+        -- delta.content once the reasoning phase is complete.
         delta = choice.delta.content or ""
-        -- Reasoning models (e.g. DeepSeek-R1, gpt-oss) sometimes emit content via
-        -- delta.reasoning instead of delta.content.  Fall back so they always stream.
-        if (delta == "" or delta == nil) and choice.delta.reasoning then
-            delta = choice.delta.reasoning
-        end
-        delta = delta or ""
     end
 
     -- OpenAI sends usage in the final chunk when stream_options.include_usage=true

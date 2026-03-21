@@ -189,7 +189,9 @@ end)
 -- ── Ollama ─────────────────────────────────────────────────────────────────
 
 describe("providers.ollama", function()
-    clear({"providers.ollama","providers.openai","utils.json"})
+    clear({"providers.ollama","providers.openai","utils.json","core.app_config"})
+    -- mock app_config with no system-level ollama override so DEFAULT_BASE is used
+    package.preload["core.app_config"] = function() return {} end
     local ollama = require("providers.ollama")
 
     it("base_url defaults to localhost:11434", function()

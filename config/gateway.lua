@@ -66,6 +66,22 @@ return {
     },
 
     -- -------------------------------------------------------------------------
+    -- Provider base URL overrides (optional; use when providers aren't on
+    -- their default ports or are hosted on remote machines)
+    -- -------------------------------------------------------------------------
+    provider_base_urls = {
+        ollama = os.getenv("OLLAMA_BASE_URL") or "http://10.232.10.252:11439",
+    },
+
+    -- Ollama provider options
+    ollama = {
+        -- Disable the reasoning/analysis channel so models like gpt-oss route
+        -- their answer to delta.content instead of delta.reasoning.
+        -- Override per-gateway via gateway_config.ollama.think = true.
+        think = false,
+    },
+
+    -- -------------------------------------------------------------------------
     -- Encryption key for BYOK secrets at rest (AES-256-GCM via OpenSSL)
     -- In production: load from environment variable or KMS, never hardcode.
     -- -------------------------------------------------------------------------

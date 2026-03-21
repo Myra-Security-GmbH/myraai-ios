@@ -73,4 +73,26 @@ describe("providers.openai", function()
         assert.is_true(parsed.done)
     end)
 
+    -- ── reasoning models (gpt-oss, DeepSeek-R1, etc.) ───────────────────────
+    -- delta.reasoning is pure chain-of-thought and must NEVER appear in delta.
+    -- The answer always arrives in delta.content once reasoning is done.
+
+    it("parse_sse_chunk: delta.reasoning chunk yields empty delta (reasoning ignored)", function()
+        local line = [[data: {"choices":[{"delta":{"content":"","reasoning":"We need to think..."},"finish_reason":null}]}]]
+        local parsed = openai.parse_sse_chunk(line)
+        assert.equal("", parsed.delta)
+    end)
+
+    it("parse_sse_chunk: answer in delta.content is forwarded normally", function()
+        local line = [[data: {"choices":[{"delta":{"content":"4","reasoning":null},"finish_reason":null}]}]]
+        local parsed = openai.parse_sse_chunk(line)
+        assert.equal("4", parsed.delta)
+    end)
+
+    it("parse_sse_chunk: delta.content takes priority, reasoning is irrelevant", function()
+        local line = [[data: {"choices":[{"delta":{"content":"real answer","reasoning":"thinking"},"finish_reason":null}]}]]
+        local parsed = openai.parse_sse_chunk(line)
+        assert.equal("real answer", parsed.delta)
+    end)
+
 end)
