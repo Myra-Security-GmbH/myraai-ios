@@ -8,7 +8,7 @@ Browse all documentation topics by category.
 
     ---
 
-    - [What is AI Gateway?](../getting-started/what-is-ai-gateway.md)
+    - [What is AI Gateway by Myra Security?](../getting-started/what-is-ai-gateway.md)
     - [Quick Start](../getting-started/quick-start.md)
     - [Getting Access](../getting-started/installation.md)
 
@@ -35,9 +35,19 @@ Browse all documentation topics by category.
     ---
 
     - [Authentication & Tokens](../security/authentication.md)
-    - [Guardrail Pipeline](../security/guardrails.md)
     - [Provider Key Management (BYOK)](../security/byok.md)
     - [IP Allowlist](../security/ip-allowlist.md)
+
+-   **Guardrails**
+
+    ---
+
+    - [Guardrail Pipeline Overview](../security/guardrails.md)
+    - [Regex Guardrail](../security/guardrails/regex.md)
+    - [Keyword Guardrail](../security/guardrails/keyword.md)
+    - [Presidio Guardrail](../security/guardrails/presidio.md)
+    - [Prompt Guard](../security/guardrails/prompt-guard.md)
+    - [PII Protector](../security/guardrails/pii-protector.md)
 
 -   **Routing**
 
@@ -57,7 +67,7 @@ Browse all documentation topics by category.
     - [Google Gemini](../providers/gemini.md)
     - [Azure OpenAI](../providers/azure.md)
     - [AWS Bedrock](../providers/bedrock.md)
-    - [Ollama](../providers/ollama.md)
+    - [Ollama (Local Inference)](../providers/ollama.md)
     - [OpenAI-Compatible Providers](../providers/openai-compatible.md)
 
 -   **Observability**
@@ -67,25 +77,29 @@ Browse all documentation topics by category.
     - [Request Logging](../observability/logging.md)
     - [Prometheus Metrics](../observability/prometheus.md)
     - [Admin Dashboard](../observability/dashboard.md)
-
--   **Admin UI**
-
-    ---
-
-    - [Admin UI Overview](../admin-ui/overview.md)
     - [Playground](../admin-ui/playground.md)
+    - [Web Search](../features/web-search.md)
 
 -   **API Reference**
 
     ---
 
-    - [Authentication](../api-reference/authentication.md)
-    - [Tenants & Gateways](../api-reference/tenants-gateways.md)
-    - [Users & Tokens](../api-reference/users-tokens.md)
-    - [Routing Rules](../api-reference/routing-rules.md)
-    - [Stats](../api-reference/stats.md)
-    - [Logs](../api-reference/logs.md)
-    - [Models & Pricing](../api-reference/models.md)
+    - [Admin API Authentication](../api-reference/authentication.md)
+    - [Tenants & Gateways API](../api-reference/tenants-gateways.md)
+    - [Users & Tokens API](../api-reference/users-tokens.md)
+    - [Routing Rules API](../api-reference/routing-rules.md)
+    - [Stats API](../api-reference/stats.md)
+    - [Logs API](../api-reference/logs.md)
+    - [Models & Pricing API](../api-reference/models.md)
     - [Error Codes](../api-reference/error-codes.md)
+
+-   **Reference**
+
+    ---
+
+    - [Gateway Configuration Reference](../reference/config-reference.md)
+    - [Changelog](../reference/changelog.md)
+    - [Glossary](../reference/glossary.md)
+    - [Topic Map](../reference/topic-map.md)
 
 </div>

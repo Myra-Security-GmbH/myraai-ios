@@ -64,21 +64,19 @@ nav:
     - configuration/budgets.md
   - Security:
     - security/authentication.md
-    - Guardrails:
-      - security/guardrails.md
-      - security/guardrails/regex.md
-      - security/guardrails/keyword.md
-      - security/guardrails/presidio.md
-      - security/guardrails/prompt-guard.md
-      - security/guardrails/pii-protector.md
     - security/byok.md
     - security/ip-allowlist.md
+  - Guardrails:
+    - security/guardrails.md
+    - security/guardrails/regex.md
+    - security/guardrails/keyword.md
+    - security/guardrails/presidio.md
+    - security/guardrails/prompt-guard.md
+    - security/guardrails/pii-protector.md
   - Routing:
     - routing/routing-rules.md
     - routing/compat-endpoint.md
     - routing/fallback.md
-  - Features:
-    - features/web-search.md
   - Providers:
     - providers/overview.md
     - providers/openai.md
@@ -90,11 +88,9 @@ nav:
     - providers/openai-compatible.md
   - Observability:
     - observability/logging.md
-    - observability/prometheus.md
     - observability/dashboard.md
-  - Admin UI:
-    - admin-ui/overview.md
     - admin-ui/playground.md
+    - features/web-search.md
   - API Reference:
     - api-reference/authentication.md
     - api-reference/tenants-gateways.md
