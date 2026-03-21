@@ -103,6 +103,12 @@ route("GET", "^/admin/v1/logs$", function()
     }))
 end)
 
+route("GET", "^/admin/v1/logs/([^/]+)$", function(id)
+    local entry = storage.get_log(id)
+    if not entry then return send(404, { error = "not found" }) end
+    send(200, entry)
+end)
+
 -- ---------------------------------------------------------------------------
 -- Tenant routes
 -- ---------------------------------------------------------------------------
@@ -228,6 +234,34 @@ end)
 route("DELETE", "^/admin/v1/gateways/([^/]+)/rules/([^/]+)$", function(_, rule_id)
     storage.delete_routing_rule(rule_id)
     send(200, { ok = true })
+end)
+
+route("GET", "^/admin/v1/gateways/([^/]+)/circuit%-breaker$", function(gateway_id)
+    local cfg_mod  = require("core.app_config")
+    local cb       = require("core.circuit_breaker")
+    local rl_dict  = ngx.shared[cfg_mod.shared_dict.rate_limit]
+    local cfg_dict = ngx.shared[cfg_mod.shared_dict.config]
+
+    -- Collect all providers that have CB keys in the shared dicts
+    local providers_seen = {}
+    local prefix = "cb:state:" .. gateway_id .. ":"
+    -- Walk the config dict for state keys belonging to this gateway
+    local keys_list = cfg_dict:get_keys(0)  -- 0 = no limit
+    for _, k in ipairs(keys_list or {}) do
+        local prov = k:match("^cb:state:" .. gateway_id .. ":(.+)$")
+        if prov then providers_seen[prov] = true end
+    end
+
+    local result = {}
+    for prov in pairs(providers_seen) do
+        local state_val  = cfg_dict:get("cb:state:"   .. gateway_id .. ":" .. prov) or "closed"
+        local opened_at  = tonumber(cfg_dict:get("cb:opened:" .. gateway_id .. ":" .. prov))
+        local fail_count = rl_dict:get("cb:fail:"    .. gateway_id .. ":" .. prov) or 0
+        local entry = { state = state_val, failures = fail_count }
+        if opened_at then entry.opened_at = opened_at end
+        result[prov] = entry
+    end
+    send(200, result)
 end)
 
 route("GET", "^/admin/v1/gateways/([^/]+)/guardrail%-stats$", function(gateway_id)

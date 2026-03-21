@@ -1,6 +1,6 @@
 # AI Gateway — Feature Reference
 
-**Stack:** Nginx + OpenResty (LuaJIT)
+**Stack:** OpenResty (LuaJIT)
 **Pattern:** Multi-tenant reverse proxy with a middleware chain across three Nginx phases (access → content → log)
 **Storage:** SQLite (dev/single-server) or PostgreSQL (production)
 **State:** `ngx.shared.dict` (single-server) or Redis (distributed)
@@ -16,19 +16,21 @@
 5. [Caching](#5-caching)
 6. [Rate Limiting](#6-rate-limiting)
 7. [Budget & Quota Enforcement](#7-budget--quota-enforcement)
-8. [Detector Pipeline](#8-detector-pipeline)
-9. [Provider Key Management (BYOK)](#9-provider-key-management-byok)
-10. [IP Allowlist](#10-ip-allowlist)
-11. [Response Streaming](#11-response-streaming)
-12. [Cost Attribution & Pricing](#12-cost-attribution--pricing)
-13. [Observability & Logging](#13-observability--logging)
-14. [Prometheus Metrics](#14-prometheus-metrics)
-15. [Multi-Tenancy](#15-multi-tenancy)
-16. [Admin REST API](#16-admin-rest-api)
-17. [Dashboard UI](#17-dashboard-ui)
-18. [Playground UI](#18-playground-ui)
-19. [Gateway Configuration Reference](#19-gateway-configuration-reference)
-20. [Error Handling](#20-error-handling)
+8. [Guardrail Pipeline](#8-guardrail-pipeline)
+9. [Web Search](#9-web-search)
+10. [Reasoning Model Support](#10-reasoning-model-support)
+11. [Provider Key Management (BYOK)](#11-provider-key-management-byok)
+12. [IP Allowlist](#12-ip-allowlist)
+13. [Response Streaming](#13-response-streaming)
+14. [Cost Attribution & Pricing](#14-cost-attribution--pricing)
+15. [Observability & Logging](#15-observability--logging)
+16. [Prometheus Metrics](#16-prometheus-metrics)
+17. [Multi-Tenancy](#17-multi-tenancy)
+18. [Admin REST API](#18-admin-rest-api)
+19. [Dashboard UI](#19-dashboard-ui)
+20. [Playground UI](#20-playground-ui)
+21. [Gateway Configuration Reference](#21-gateway-configuration-reference)
+22. [Error Handling](#22-error-handling)
 
 ---
 
@@ -45,15 +47,16 @@ Requests flow through a fixed middleware chain in phase order:
 
 **Content phase** (body available):
 1. `cache_check` — SHA-256 exact-match lookup; serve immediately on hit
-2. `detectors` — Tier 1 + Tier 2 prompt security classifiers (request)
+2. `guardrails` — Guardrail pipeline: Tier 1 (regex, keyword) then Tier 2 (presidio, prompt_guard, pii_protector) on request
 3. `transform` — Parse and normalize request body
 4. `routing` — Rules engine (provider, model, fallback chain)
 5. `byok` — Decrypt and inject provider API key
-6. `upstream` — Call provider with retry + fallback
-7. `detectors_response` — Tier 1 + Tier 2 response scan
-8. `cost` — Token counting and budget increment
-9. `cache_store` — Persist non-streaming 200 responses
-10. `send_response` — Write buffered response body to client
+6. `web_search` — Optional: two-leg agentic search loop (Brave API)
+7. `upstream` — Call provider with retry + fallback
+8. `guardrails_response` — Guardrail pipeline scan on response
+9. `cost` — Token counting and budget increment
+10. `cache_store` — Persist non-streaming 200 responses
+11. `send_response` — Write buffered response body to client
 
 **Log phase** (best-effort, after response sent):
 1. Structured JSON request log
@@ -87,7 +90,7 @@ Requests flow through a fixed middleware chain in phase order:
 | Cloudflare AI | OpenAI-compatible | Bearer | `@cf/` prefix |
 | Cohere | Cohere Chat API | Bearer | Native request/response translation |
 | HuggingFace | OpenAI-compatible | Bearer | Org-prefix routing (`tiiuae/`, `bigcode/`, etc.) |
-| Ollama | OpenAI-compatible | None | Local inference; `OLLAMA_BASE_URL` env |
+| Ollama | OpenAI-compatible | None | Local inference; `OLLAMA_BASE_URL` env; `think` flag support |
 
 ### Endpoints
 
@@ -113,7 +116,7 @@ The following HuggingFace-hosted org prefixes are recognized:
 ### Request Translation
 
 - **Anthropic:** Converts OpenAI `chat/completions` to the Messages API; system messages extracted; extended thinking via `x-aig-provider-anthropic-beta: interleaved-thinking-2025-05-14`
-- **Gemini / Vertex:** Converts to `GenerateContent` with system instruction support; SSE chunks normalised
+- **Gemini / Vertex:** Converts to `GenerateContent` with system instruction support; SSE chunks normalised; native `googleSearch` grounding used when web search is enabled
 - **Bedrock:** Converse API with SigV4 HMAC-SHA256 request signing; region from `bedrock_region` gateway config
 - **Cohere:** Native Chat API format; response translated back to OpenAI shape
 - **OpenRouter / Groq / Fireworks / etc.:** Forwarded as-is (OpenAI format)
@@ -207,6 +210,52 @@ Routing rules are evaluated in ascending priority order; the first matching rule
 - 4xx from provider: returned to client immediately (no retry)
 - `fallback_provider` and `fallback_model` recorded in request logs
 
+### Load Balancing
+
+A routing rule can use a `load_balance` action instead of `provider`/`model` to distribute traffic across multiple targets:
+
+```json
+{
+  "actions": {
+    "load_balance": {
+      "strategy": "weighted_random",
+      "targets": [
+        { "provider": "openai",    "model": "gpt-4o",            "weight": 7 },
+        { "provider": "anthropic", "model": "claude-sonnet-4-6", "weight": 3 }
+      ]
+    }
+  }
+}
+```
+
+| Strategy | Behaviour |
+|---|---|
+| `weighted_random` | Probabilistic selection proportional to weight (default) |
+| `round_robin` | Sequential rotation via atomic shared-dict counter |
+
+- `weight: 0` disables a target without removing it from config
+- Non-selected active targets are automatically tried as fallbacks on failure
+- **Sticky sessions** — `sticky.field` (supports `meta.<key>` notation) pins a user/session to one target for `sticky.ttl` seconds
+
+### Circuit Breaker
+
+Automatically opens when a provider accumulates failures, then probes after a cooldown. State machine: **CLOSED → OPEN → HALF_OPEN → CLOSED**.
+
+```json
+"circuit_breaker": {
+  "enabled": true,
+  "failure_threshold": 5,
+  "window_sec": 60,
+  "cooldown_ms": 30000,
+  "failure_status_codes": [500, 502, 503, 504]
+}
+```
+
+- Connection/timeout errors always count as failures regardless of `failure_status_codes`
+- State stored in `ngx.shared` dicts (or Redis in distributed mode) — no database writes
+- Breaker state checked **before** each upstream attempt; open breakers skip the provider and advance to the next fallback
+- Status visible via `GET /admin/v1/gateways/{id}/circuit-breaker`
+
 ---
 
 ## 5. Caching
@@ -219,7 +268,7 @@ Routing rules are evaluated in ascending priority order; the first matching rule
 - **TTL:** Configured per gateway via `cache_ttl` (seconds); 0 = disabled
 - **Cache hit:** Returns 200 immediately with `X-AIG-Cache: HIT`
 - **Stored format:** `{body, cost_usd}` — only for non-streaming 200 responses
-- **Savings tracking:** Logs `saved_cost_usd` and `saved_latency_ms` on cache hits (estimated from average upstream latency per provider/model)
+- **Savings tracking:** Logs `saved_cost_usd` and `saved_latency_ms` on cache hits
 
 ### Semantic Cache
 
@@ -277,64 +326,158 @@ Costs are stored as micro-dollars (`cost * 1e6`) to avoid floating-point precisi
 
 ---
 
-## 8. Detector Pipeline
+## 8. Guardrail Pipeline
 
-A two-tier prompt security system that runs on every request (and optionally on responses) before the upstream call is made.
+A two-tier content safety system that runs on every request and (for applicable detectors) on responses before they are forwarded to the client.
+
+### Architecture
+
+Guardrails are configured as an ordered array on each gateway. The orchestrator (`src/guardrails/orchestrator.lua`) assigns each detector to a tier, stable-sorts by tier (preserving original order within a tier), and short-circuits the chain on the first block.
+
+```json
+"guardrails": [
+  {"type": "keyword", "name": "jailbreak", "action": "block", "target": "request", "keywords": ["ignore previous instructions"]},
+  {"type": "prompt_guard", "name": "safety", "action": "block", "target": "request", "categories": ["S1","S3","S4","S9","S11","S12","S14"]}
+]
+```
 
 ### Tier 1 — In-Process (Fast)
 
 Runs synchronously in the Lua middleware with no external dependencies.
 
-| Detector | Method | Detects |
+| Detector | Method | Key config fields |
 |---|---|---|
-| `regex` | Pattern matching | Custom regex rules; configurable per gateway |
-| `keyword` | String search | Keyword lists; case-insensitive; configurable per gateway |
-| `pii` | Pattern matching | Email, SSN, phone, credit card, API key, JWT |
-| `prompt_injection` | Heuristic patterns | Instruction override attempts ("ignore previous instructions", "you are now...") |
+| `regex` | Named pattern sets + custom regex | `patterns` (built-in sets), `custom_patterns` (regex strings) |
+| `keyword` | String search with optional whole-word matching | `keywords`, `case_sensitive`, `whole_word` |
 
 ### Tier 2 — Sidecar HTTP (Accurate)
 
 Calls external HTTP services. Each detector has a configurable `url`, `timeout_ms`, and `fail_open` flag.
 
-| Detector | Default Port | Notes |
+| Detector | Default port | Description |
 |---|---|---|
-| `presidio` | 8082 | Microsoft Presidio; rich PII entity recognition |
-| `llm_guard` | 8084 | LLM Guard; comprehensive prompt security scanning |
+| `presidio` | 5002 | Microsoft Presidio NLP; detects PII entities by type with configurable score threshold |
+| `prompt_guard` | 8083 | Llama Guard 3; classifies against 14 safety categories (S1–S14) |
+| `pii_protector` | 5002 | Presidio-backed redaction; replaces PII with opaque tokens and restores them in the response |
 
-### Orchestrator
+### Actions
 
-`src/detectors/init.lua` runs all enabled detectors in sequence. The first detector to return `blocked=true` short-circuits the chain. Results are attached to `ctx.detector_results` for logging.
+| Action | Behavior |
+|---|---|
+| `block` | Request or response denied; synthetic error returned to client |
+| `flag` | Violation recorded in log; request continues |
+| `scrub` | PII tokens replaced in-flight; original values restored in response (pii_protector only) |
 
-### Response Scanning
+### Detector Config Fields (common)
 
-`src/middleware/detectors_response.lua` runs Tier 1 detectors against the provider response body before it is forwarded to the client.
+| Field | Description |
+|---|---|
+| `type` | Detector type: `regex`, `keyword`, `presidio`, `prompt_guard`, `pii_protector` |
+| `name` | Human-readable label (appears in block messages and logs) |
+| `action` | `block`, `flag`, or `scrub` |
+| `target` | `request`, `response`, or `both` |
+| `fail_open` | If `true` (default), sidecar errors allow the request to pass |
+
+### Prompt Guard Categories
+
+Llama Guard 3 classifies against 14 safety categories. False-positive rates benchmarked on OR-Bench-hard:
+
+| Code | Category | FP risk |
+|---|---|---|
+| S1 | Violent Crimes | Low |
+| S2 | Non-Violent Crimes | **High** — 14.5% FP on security/education content (7.2% with `context_prompt`) |
+| S3 | Sex-Related Crimes | Low |
+| S4 | Child Sexual Exploitation | Low |
+| S5 | Defamation | Medium |
+| S6 | Specialized Advice | **High** |
+| S7 | Privacy | Medium |
+| S8 | Intellectual Property | Medium |
+| S9 | CBRN Weapons | Low |
+| S10 | Hate | Medium |
+| S11 | Suicide / Self-Harm | Low |
+| S12 | Sexual Content | Low |
+| S13 | Elections | Medium |
+| S14 | Code Interpreter Abuse | Low |
+
+Recommended block set (all low-FP): `S1, S3, S4, S9, S11, S12, S14` — ~1.7% FP; drops to ~1.1% with `context_prompt`.
+
+The `context_prompt` field prepends deployment context to each user message before classification, reducing false positives on professional platforms.
+
+### Presidio Entity Config
+
+The `presidio` and `pii_protector` detectors accept an `entities` array and a `score_threshold` (default 0.7). The built-in `pii_focused` preset covers 13 low-FP entities (EMAIL_ADDRESS, PHONE_NUMBER, US_SSN, CREDIT_CARD, US_BANK_NUMBER, IBAN_CODE, US_PASSPORT, US_DRIVER_LICENSE, US_ITIN, CRYPTO, IP_ADDRESS, MEDICAL_LICENSE, URL) and achieves 0% FP on OR-Bench-hard, XSTest-safe, and Dolly-15k.
+
+High-FP entities (PERSON, LOCATION, DATE_TIME, NRP) have their threshold auto-raised to 0.9 by the gateway.
+
+---
+
+## 9. Web Search
+
+Server-side agentic web search loop using the Brave Search API.
 
 ### Configuration
 
 ```json
-"detectors": {
+"web_search": {
   "enabled": true,
-  "tiers": ["tier1", "tier2"],
-  "tier1": ["regex", "keyword", "pii", "prompt_injection"],
-  "tier2": {
-    "presidio": {"url": "http://127.0.0.1:8082", "timeout_ms": 500, "fail_open": true},
-    "llm_guard": {"url": "http://127.0.0.1:8084", "timeout_ms": 500, "fail_open": true}
-  }
+  "api_key": "BSA...",
+  "max_results": 5,
+  "mode": "opt-in"
 }
 ```
 
----
+- `mode: "opt-in"` (default) — client must send `X-Web-Search: 1` to activate
+- `mode: "always"` — applied to every request on this gateway
+
+### Flow
+
+1. **Leg 1** — Non-streaming buffered call with `web_search` tool injected into the request
+2. **Search** — Parallel Brave API calls (non-blocking `ngx.thread.spawn`)
+3. **Fetch** — Parallel HTTP fetches for top-2 result URLs; emits `data: {"aig_status":"fetching","count":N}` SSE event
+4. **Leg 2** — Request updated with enriched search context; provider called again, response streamed to client
+
+### Provider Support
+
+Two-leg tool-use loop: Anthropic (native), OpenAI, Groq, Mistral, DeepSeek, Cerebras, Together, Fireworks, OpenRouter, xAI, Ollama.
+
+Gemini / Vertex: native `googleSearch` grounding (single leg, no tool loop).
+
+### Client-Side Integration
+
+The playground UI shows a live status badge cycling through `searching → fetching N URLs → searched` and persists the final query in the panel footer.
+
+The `X-Web-Search-Query` response header carries the query string that was searched; logged as `web_search_query`.
 
 ---
 
-## 9. Provider Key Management (BYOK)
+## 10. Reasoning Model Support
+
+### Anthropic Extended Thinking
+
+Pass `x-aig-provider-anthropic-beta: interleaved-thinking-2025-05-14` to enable extended thinking. The gateway forwards the header and normalises the SSE stream.
+
+### OpenAI / Compat Reasoning (o-series, DeepSeek-R1)
+
+`delta.reasoning` content is stripped from the compat stream — only `delta.content` (the final answer) is forwarded to the client.
+
+### Ollama Think Mode
+
+The `ollama.think` config field controls whether the `think` parameter is injected into Ollama requests.
+
+- `false` (default) — injects `think: false`; routes the model's answer to `delta.content` rather than the reasoning channel
+- `true` — enables chain-of-thought; `<think>` tag content is stripped from the visible stream
+- Per-gateway override via `gateway_config.ollama.think`
+
+---
+
+## 11. Provider Key Management (BYOK)
 
 ### Encryption
 
-- **Algorithm:** AES-256-CBC with PKCS7 padding
+- **Algorithm:** AES-256-GCM
 - **Key derivation:** SHA-256 of `AIG_MASTER_KEY` environment variable
-- **IV:** 16 random bytes per encryption operation
-- **Storage format:** `base64(IV):base64(ciphertext)`
+- **Nonce:** 96-bit random per encryption operation
+- **Storage format:** `base64(ciphertext)` + `base64(nonce)` stored separately
 
 ### Key Lookup
 
@@ -360,7 +503,7 @@ GET    /admin/v1/gateways/{id}/keys
 
 ---
 
-## 10. IP Allowlist
+## 12. IP Allowlist
 
 - Configured as a list of CIDR blocks: `["10.0.0.0/8", "203.0.113.42/32"]`
 - Bare IPs treated as `/32`
@@ -369,7 +512,7 @@ GET    /admin/v1/gateways/{id}/keys
 
 ---
 
-## 11. Response Streaming
+## 13. Response Streaming
 
 - Server-Sent Events (SSE) pass-through via `text/event-stream`
 - Each chunk flushed to client immediately (`ngx.flush(true)`) — no buffering
@@ -396,7 +539,7 @@ The compat endpoint converts provider-native SSE to OpenAI `chat.completion.chun
 
 ---
 
-## 12. Cost Attribution & Pricing
+## 14. Cost Attribution & Pricing
 
 ### Pricing Sources
 
@@ -431,7 +574,7 @@ Anthropic prompt caching has separate per-1k prices for cache write (typically 1
 
 ---
 
-## 13. Observability & Logging
+## 15. Observability & Logging
 
 ### Structured Request Logs (JSON)
 
@@ -446,8 +589,8 @@ Written after each request completes. Fields:
 | Tokens | `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens` |
 | Cost | `cost_usd` |
 | Timing | `latency_ms`, `upstream_latency_ms`, `time_to_first_token_ms` |
-| Payload | `prompt` (user messages), `response` (null for streaming) |
-| Detectors | `detector_results` (array of per-detector outcomes) |
+| Request | `request_size_bytes`, `prompt` (user messages), `response` (null for streaming) |
+| Guardrails | `detectors_fired` (array of names), `scrub_applied` (bool) |
 | Custom | `meta` (all `x-aig-meta-*` headers) |
 
 ### Payload Logging Control
@@ -461,7 +604,7 @@ Frontend JavaScript errors are reported to `POST /admin/v1/client-errors` and st
 
 ---
 
-## 14. Prometheus Metrics
+## 16. Prometheus Metrics
 
 Stored in `aig_metrics` shared dict. Exposed at `GET /metrics` (Prometheus text format 0.0.4, IP-restricted).
 
@@ -474,7 +617,7 @@ Stored in `aig_metrics` shared dict. Exposed at `GET /metrics` (Prometheus text 
 
 ---
 
-## 15. Multi-Tenancy
+## 17. Multi-Tenancy
 
 ### URL Structure
 
@@ -506,7 +649,7 @@ Tenant
 
 ---
 
-## 16. Admin REST API
+## 18. Admin REST API
 
 All endpoints are under `/admin/v1/`.
 
@@ -593,7 +736,7 @@ All endpoints are under `/admin/v1/`.
 
 ---
 
-## 17. Dashboard UI
+## 19. Dashboard UI
 
 The Dashboard page displays real-time and historical gateway metrics as hero cards with sparklines.
 
@@ -627,7 +770,7 @@ All API calls use `Promise.allSettled` — the dashboard always renders with wha
 
 ---
 
-## 18. Playground UI
+## 20. Playground UI
 
 A React single-page app (`frontend/`) for interactive model testing and comparison.
 
@@ -642,7 +785,7 @@ A React single-page app (`frontend/`) for interactive model testing and comparis
 - System prompt (collapsible)
 - Temperature slider (0–2, default 1)
 - Max tokens input (default 2048)
-- Web search toggle (injects Anthropic `web_search` tool)
+- Web search toggle — injects `X-Web-Search: 1`; only shown when the active gateway has `web_search.enabled: true`
 
 ### Streaming
 
@@ -661,6 +804,11 @@ Each panel shows a live metrics footer that updates as the response streams:
 | Cache write | Anthropic prompt cache write tokens (shown when > 0) |
 | Cache read | Anthropic prompt cache read tokens (shown when > 0) |
 | Cost | Estimated cost in USD (calculated from model price catalog) |
+| Web search badge | Shows `searching → fetching N URLs → searched` status during search; final query persists in footer |
+
+### Debug Log
+
+A collapsible append-only debug trace panel records every input, computed value, and SSE event for the active session. Entries include wall-clock timestamps and a dot-namespaced event identifier (e.g. `run.start`, `panel.sse_chunk`). Maximum 5,000 entries retained.
 
 ### Error Display
 
@@ -693,7 +841,7 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
 
 ---
 
-## 19. Gateway Configuration Reference
+## 21. Gateway Configuration Reference
 
 ```json
 {
@@ -704,12 +852,22 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
   "auth_required": true,
   "budget_usd": null,
   "rate_limit": {"requests": 100, "window_sec": 60},
-  "ip_allowlist": [],
-  "detectors": {
+  "circuit_breaker": {
     "enabled": false,
-    "tiers": ["tier1"],
-    "tier1": ["pii", "prompt_injection"]
+    "failure_threshold": 5,
+    "window_sec": 60,
+    "cooldown_ms": 30000,
+    "failure_status_codes": [500, 502, 503, 504]
   },
+  "ip_allowlist": [],
+  "guardrails": [],
+  "web_search": {
+    "enabled": false,
+    "api_key": null,
+    "max_results": 5,
+    "mode": "opt-in"
+  },
+  "ollama": {"think": false},
   "azure_endpoint": null,
   "azure_deployment": null,
   "azure_api_version": "2024-02-01",
@@ -729,10 +887,11 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
 | `x-aig-collect-log` | `false` = skip request log entirely |
 | `x-aig-collect-log-payload` | `false` = log metadata but omit prompt/response body |
 | `x-aig-provider-*` | Forwarded as raw headers to provider |
+| `X-Web-Search` | `1` = activate web search for this request (when `mode: "opt-in"`) |
 
 ---
 
-## 20. Error Handling
+## 22. Error Handling
 
 All errors return a JSON body:
 
@@ -748,8 +907,7 @@ All errors return a JSON body:
 | `INVALID_REQUEST` | 400 | Malformed request or missing required fields |
 | `RATE_LIMITED` | 429 | Sliding-window limit exceeded |
 | `QUOTA_EXCEEDED` | 429 | Budget cap reached |
-| `GUARDRAIL_BLOCKED` | 400 | Llama Guard classified content as unsafe |
-| `DETECTOR_BLOCKED` | 400 | Detector pipeline blocked the request |
+| `GUARDRAIL_BLOCKED` | 400 | Guardrail pipeline blocked the request |
 | `PROVIDER_ERROR` | 502 | Upstream provider returned 5xx |
 | `ALL_PROVIDERS_FAILED` | 502 | All retry and fallback attempts exhausted |
 | `INTERNAL` | 500 | Gateway internal error |

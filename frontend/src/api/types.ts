@@ -92,6 +92,20 @@ export type DetectorConfig =
 // Gateway config
 // ---------------------------------------------------------------------------
 
+export interface LoadBalanceConfig {
+  strategy?: "weighted_random" | "round_robin";
+  sticky?: { field: string; ttl?: number };
+  targets: Array<{ provider: string; model: string; weight: number }>;
+}
+
+export interface CircuitBreakerConfig {
+  enabled: boolean;
+  failure_threshold?: number;    // default 5
+  window_sec?: number;           // default 60
+  cooldown_ms?: number;          // default 30000
+  failure_status_codes?: number[]; // default [500,502,503,504]
+}
+
 export interface GatewayConfig {
   auth_required?: boolean;
   budget_usd?: number;
@@ -100,6 +114,7 @@ export interface GatewayConfig {
   timeout_ms?: number;
   log_payloads?: boolean;
   rate_limit?: { requests: number; window_sec: number };
+  circuit_breaker?: CircuitBreakerConfig;
   guardrails?: DetectorConfig[];
   /** @deprecated Use `guardrails`. Accepted for backwards compatibility with configs saved before the rename. */
   detectors?: DetectorConfig[];
@@ -164,6 +179,9 @@ export interface LogEntry {
   request_size_bytes: number;
   detectors_fired: string[];
   scrub_applied: number;
+  response_raw?: string | null;
+  prompt?: string | null;
+  response?: string | null;
 }
 
 export interface PeriodStats {
@@ -179,6 +197,15 @@ export interface PeriodStats {
   avg_latency_ms: number;
   avg_upstream_latency_ms: number;
 }
+
+export interface CircuitBreakerProviderStatus {
+  state: "closed" | "open" | "half_open";
+  failures: number;
+  opened_at?: number;   // unix seconds; present when state is open or half_open
+  cooldown_ms?: number;
+}
+
+export type CircuitBreakerStatus = Record<string, CircuitBreakerProviderStatus>;
 
 export interface GatewayGuardrailStats {
   blocked: number;
@@ -241,7 +268,12 @@ export interface RoutingRule {
   id: string;
   priority: number;
   conditions: Array<{ field: string; op: string; value: string }>;
-  actions: { provider?: string; model?: string; fallbacks?: Array<{ provider: string; model: string }> };
+  actions: {
+    provider?: string;
+    model?: string;
+    fallbacks?: Array<{ provider: string; model: string }>;
+    load_balance?: LoadBalanceConfig;
+  };
   enabled: number;
 }
 
