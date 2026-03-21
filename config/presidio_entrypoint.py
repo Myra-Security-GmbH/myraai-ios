@@ -8,43 +8,59 @@
 #   GET  /recognizers      → list of available recognizer names
 #   GET  /supportedentities → list of supported entity types
 
+import gc, os
+
+# Cap the CuPy memory pool before spaCy loads its models onto the GPU.
+# Without a limit the pool grows unboundedly across requests, eventually
+# consuming all VRAM and raising cupy.cuda.memory.OutOfMemoryError.
+# 8 GB is well above what en_core_web_lg + de_core_news_lg need (~2 GB peak).
+try:
+    import cupy
+    cupy.get_default_memory_pool().set_limit(size=8 * 1024**3)  # 8 GB
+except Exception:
+    pass
+
 import spacy
 spacy.prefer_gpu()
 
 from flask import Flask, request, jsonify
 from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer.context_aware_enhancers import ContextAwareEnhancer
 
 app = Flask(__name__)
-# Disable LemmaContextAwareEnhancer — it has O(n²) behavior in Presidio 2.2.x
-# (iterates doc tokens for each recognizer result, causing 60M+ calls on first use).
-# Context enhancement provides minor accuracy gains but causes multi-second latency.
-from presidio_analyzer import AnalyzerEngine
-from presidio_analyzer.nlp_engine import NlpEngineProvider
-engine = AnalyzerEngine(context_aware_enhancer=None)
 
-# Warm up: trigger model loading so the first real request is fast
-import os, gc
+# Passing None to context_aware_enhancer is falsy, so Presidio creates a
+# LemmaContextAwareEnhancer anyway (if not context_aware_enhancer: ...).
+# We need a real object that is a no-op to actually skip the O(n²) enhancer.
+class _NoOpEnhancer(ContextAwareEnhancer):
+    def __init__(self):
+        pass  # skip super().__init__() which requires 4 positional args
+    def enhance_using_context(self, text, raw_results, nlp_artifacts, recognizers, context):
+        return raw_results
+
+engine = AnalyzerEngine(context_aware_enhancer=_NoOpEnhancer())
+
+# Warm up: trigger model loading so the first real request is fast.
 for lang in os.environ.get("PRESIDIO_SUPPORTED_LANGUAGES", "en").split(","):
     try:
         engine.analyze(text="warmup", language=lang.strip())
     except Exception:
         pass  # language may not have recognizers configured — skip silently
 
-# Flush any deferred CUDA deallocations so they don't stall the first real request.
+# Synchronize CUDA and free any cached-but-idle blocks accumulated during warmup.
 try:
     import cupy
     cupy.cuda.Stream.null.synchronize()
     cupy.get_default_memory_pool().free_all_blocks()
-    # Run one more analyze to re-warm after the pool free
     engine.analyze(text="warmup2", language="en")
     cupy.cuda.Stream.null.synchronize()
 except Exception:
     pass
 
-# Freeze all currently tracked objects so Python's cyclic GC never collects
-# the loaded spaCy/cupy model tensors, preventing per-request re-allocation.
+# Freeze model objects into the permanent GC generation so they are never
+# collected. New per-request objects (spaCy Docs, result lists) are created
+# after this point and remain in generation 0, collected explicitly per request.
 gc.freeze()
-gc.disable()  # disable GC entirely — objects are short-lived per-request anyway
 
 
 @app.get("/health")
@@ -61,7 +77,16 @@ def analyze():
     score_threshold = body.get("score_threshold", 0.35)
     results = engine.analyze(text=text, language=language,
                              entities=entities, score_threshold=score_threshold)
-    return jsonify([r.to_dict() for r in results])
+    response = jsonify([r.to_dict() for r in results])
+    # Break reference cycles in spaCy Doc objects created during this request
+    # so CuPy can reclaim their GPU tensors back into the pool's free list.
+    # (gc.freeze() above protects model objects; only gen-0 request objects are collected.)
+    gc.collect(0)
+    try:
+        cupy.get_default_memory_pool().free_all_blocks()
+    except Exception:
+        pass
+    return response
 
 
 @app.get("/recognizers")
