@@ -100,6 +100,66 @@
   margin-top: tools.pixelToRem(4);
 }
 
+// Period stats grid (Dashboard + Monitor)
+.periods-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: tools.pixelToRem(16);
+  margin-bottom: tools.pixelToRem(24);
+
+  @media (max-width: 800px) { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 520px) { grid-template-columns: 1fr; }
+}
+
+.period-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: tools.pixelToRem(8);
+  overflow: hidden;
+}
+
+.period-card-header {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(13);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-primary);
+  background: var(--section-bg);
+  border-bottom: 1px solid var(--card-border);
+  padding: tools.pixelToRem(10) tools.pixelToRem(16);
+}
+
+.period-card-rows {
+  padding: tools.pixelToRem(8) 0;
+}
+
+.period-card-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: tools.pixelToRem(12);
+  padding: tools.pixelToRem(5) tools.pixelToRem(16);
+
+  &:nth-child(odd) { background: var(--table-row-alt, transparent); }
+}
+
+.period-card-key {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(12);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.period-card-val {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(13);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  text-align: right;
+}
+
 // Table
 .table-wrapper {
   overflow-x: auto;

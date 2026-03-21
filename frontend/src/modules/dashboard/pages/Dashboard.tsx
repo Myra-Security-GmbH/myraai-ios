@@ -51,43 +51,34 @@ export default function Dashboard() {
       </div>
 
       {/* Period stats */}
-      {periods.map(({ label, data }) => (
-        <div key={label} className={s.card}>
-          <div className={s["card-header"]}>
-            <h2 className={s["card-title"]}>{label}</h2>
-          </div>
-          <div className={s["stats-grid"]}>
-            <div className={s["stat-card"]}>
-              <div className={s["stat-label"]}>Requests</div>
-              <div className={s["stat-value"]}>{fmt(data?.requests)}</div>
+      <div className={s["periods-grid"]}>
+        {periods.map(({ label, data }) => {
+          const rows: [string, string][] = [
+            ["Requests",      fmt(data?.requests)],
+            ["Cached",        fmt(data?.cached)],
+            ["Blocked",       fmt(data?.blocked)],
+            ["Cost",          fmtCost(data?.cost_usd)],
+            ["Saved",         data?.saved_cost_usd ? fmtCost(data.saved_cost_usd) : "—"],
+            ["Avg latency",   data?.avg_latency_ms != null ? `${fmt(data.avg_latency_ms)} ms` : "—"],
+            ["Provider ms",   data?.avg_upstream_latency_ms ? `${fmt(data.avg_upstream_latency_ms)} ms` : "—"],
+            ["Input tokens",  fmt(data?.input_tokens)],
+            ["Output tokens", fmt(data?.output_tokens)],
+          ];
+          return (
+            <div key={label} className={s["period-card"]}>
+              <div className={s["period-card-header"]}>{label}</div>
+              <div className={s["period-card-rows"]}>
+                {rows.map(([key, val]) => (
+                  <div key={key} className={s["period-card-row"]}>
+                    <span className={s["period-card-key"]}>{key}</span>
+                    <span className={s["period-card-val"]}>{val}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className={s["stat-card"]}>
-              <div className={s["stat-label"]}>Cached</div>
-              <div className={s["stat-value"]}>{fmt(data?.cached)}</div>
-            </div>
-            <div className={s["stat-card"]}>
-              <div className={s["stat-label"]}>Blocked</div>
-              <div className={s["stat-value"]}>{fmt(data?.blocked)}</div>
-            </div>
-            <div className={s["stat-card"]}>
-              <div className={s["stat-label"]}>Cost</div>
-              <div className={s["stat-value"]}>{fmtCost(data?.cost_usd)}</div>
-            </div>
-            <div className={s["stat-card"]}>
-              <div className={s["stat-label"]}>Avg Latency</div>
-              <div className={s["stat-value"]}>{fmt(data?.avg_latency_ms)}<span style={{ fontSize: 14, fontWeight: 400 }}> ms</span></div>
-            </div>
-            <div className={s["stat-card"]}>
-              <div className={s["stat-label"]}>Input Tokens</div>
-              <div className={s["stat-value"]}>{fmt(data?.input_tokens)}</div>
-            </div>
-            <div className={s["stat-card"]}>
-              <div className={s["stat-label"]}>Output Tokens</div>
-              <div className={s["stat-value"]}>{fmt(data?.output_tokens)}</div>
-            </div>
-          </div>
-        </div>
-      ))}
+          );
+        })}
+      </div>
 
       {/* By tenant */}
       {(stats.by_tenant?.length ?? 0) > 0 && (

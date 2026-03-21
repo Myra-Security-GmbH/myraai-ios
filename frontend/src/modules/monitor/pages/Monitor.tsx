@@ -33,47 +33,28 @@ function fmtCost(n: number | null | undefined) {
   return `$${n.toFixed(5)}`;
 }
 
-function PeriodRow({ label, data }: { label: string; data: any }) {
+function PeriodCard({ label, data }: { label: string; data: any }) {
+  const rows: [string, string][] = [
+    ["Requests",      fmt(data?.requests)],
+    ["Cached",        fmt(data?.cached)],
+    ["Blocked",       fmt(data?.blocked)],
+    ["Cost",          fmtCost(data?.cost_usd)],
+    ["Saved",         fmtCost(data?.saved_cost_usd)],
+    ["Avg latency",   data?.avg_latency_ms != null ? `${fmt(data.avg_latency_ms)} ms` : "—"],
+    ["Provider ms",   data?.avg_upstream_latency_ms ? `${fmt(data.avg_upstream_latency_ms)} ms` : "—"],
+    ["Input tokens",  fmt(data?.input_tokens)],
+    ["Output tokens", fmt(data?.output_tokens)],
+  ];
   return (
-    <div className={ms["period-row"]}>
-      <span className={ms["period-label"]}>{label}</span>
-      <div className={ms["period-stats"]}>
-        <div className={ms["period-stat"]}>
-          <span className={ms["period-stat-val"]}>{fmt(data?.requests)}</span>
-          <span className={ms["period-stat-key"]}>req</span>
-        </div>
-        <div className={ms["period-stat"]}>
-          <span className={ms["period-stat-val"]}>{fmt(data?.cached)}</span>
-          <span className={ms["period-stat-key"]}>cached</span>
-        </div>
-        <div className={ms["period-stat"]}>
-          <span className={ms["period-stat-val"]}>{fmt(data?.blocked)}</span>
-          <span className={ms["period-stat-key"]}>blocked</span>
-        </div>
-        <div className={ms["period-stat"]}>
-          <span className={ms["period-stat-val"]}>{fmtCost(data?.cost_usd)}</span>
-          <span className={ms["period-stat-key"]}>cost</span>
-        </div>
-        <div className={ms["period-stat"]}>
-          <span className={ms["period-stat-val"]}>{fmtCost(data?.saved_cost_usd)}</span>
-          <span className={ms["period-stat-key"]}>saved</span>
-        </div>
-        <div className={ms["period-stat"]}>
-          <span className={ms["period-stat-val"]}>{fmt(data?.avg_latency_ms)} ms</span>
-          <span className={ms["period-stat-key"]}>avg</span>
-        </div>
-        <div className={ms["period-stat"]}>
-          <span className={ms["period-stat-val"]}>{data?.avg_upstream_latency_ms ? `${fmt(data.avg_upstream_latency_ms)} ms` : "—"}</span>
-          <span className={ms["period-stat-key"]}>prov ms</span>
-        </div>
-        <div className={ms["period-stat"]}>
-          <span className={ms["period-stat-val"]}>{fmt(data?.input_tokens)}</span>
-          <span className={ms["period-stat-key"]}>in tok</span>
-        </div>
-        <div className={ms["period-stat"]}>
-          <span className={ms["period-stat-val"]}>{fmt(data?.output_tokens)}</span>
-          <span className={ms["period-stat-key"]}>out tok</span>
-        </div>
+    <div className={s["period-card"]}>
+      <div className={s["period-card-header"]}>{label}</div>
+      <div className={s["period-card-rows"]}>
+        {rows.map(([key, val]) => (
+          <div key={key} className={s["period-card-row"]}>
+            <span className={s["period-card-key"]}>{key}</span>
+            <span className={s["period-card-val"]}>{val}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -186,10 +167,10 @@ export default function Monitor() {
           )}
 
           {/* Period summaries */}
-          <div className={`${s.card} ${ms["periods-card"]}`}>
-            <PeriodRow label="Last minute" data={stats.last_min} />
-            <PeriodRow label="Last hour" data={stats.hour} />
-            <PeriodRow label="Today UTC" data={stats.today} />
+          <div className={s["periods-grid"]}>
+            <PeriodCard label="Last minute" data={stats.last_min} />
+            <PeriodCard label="Last hour"   data={stats.hour} />
+            <PeriodCard label="Today"       data={stats.today} />
           </div>
 
           {/* Per-tenant today */}
