@@ -1,23 +1,33 @@
 # config/Dockerfile.presidio
 # Presidio Analyzer with English and German spaCy models baked in.
-# No internet access required at runtime.
+# Runs on GPU via cupy-cuda13x (requires CUDA 13.x driver on host).
 #
 # Build:  docker build -f config/Dockerfile.presidio -t aig-presidio-analyzer .
-# Run:    see presidio_run.sh
+# Run:    see run-presidio.sh
 
-FROM mcr.microsoft.com/presidio-analyzer:latest
+FROM nvidia/cuda:13.1.1-runtime-ubuntu22.04
 
-# Install spaCy models for English and German.
-# lg variants give good NER recall on CPU without needing a GPU.
-# Models are baked into the image so no download happens at runtime.
-RUN python -m spacy download en_core_web_lg && \
-    python -m spacy download de_core_news_lg
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Tell Presidio which languages are available.
+RUN apt-get update && apt-get install -y python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# presidio + flask server + cupy for CUDA 13.x (bundles cublas/cufft/etc.)
+RUN pip3 install --no-cache-dir \
+    presidio-analyzer \
+    "spacy>=3.8" \
+    cupy-cuda13x \
+    flask
+
+# Bake in spaCy models — no download at runtime
+RUN python3 -m spacy download en_core_web_lg && \
+    python3 -m spacy download de_core_news_lg
+
+# Tell Presidio which languages are available
 ENV PRESIDIO_SUPPORTED_LANGUAGES=en,de
-
-# Default model per language (Presidio picks these up automatically).
 ENV DEFAULT_MODEL_FOR_LANG_en=en_core_web_lg
 ENV DEFAULT_MODEL_FOR_LANG_de=de_core_news_lg
 
+COPY config/presidio_entrypoint.py /entrypoint.py
 EXPOSE 3000
+CMD ["python3", "/entrypoint.py"]

@@ -67,14 +67,30 @@ start_analyzer() {
         build_analyzer
     fi
 
-    log "Starting analyzer on 127.0.0.1:$ANALYZER_PORT..."
+    log "Starting analyzer on 127.0.0.1:$ANALYZER_PORT (GPU 0)..."
     docker run -d \
         --name "$ANALYZER_CONTAINER" \
         --restart unless-stopped \
+        --gpus device=0 \
         -p "127.0.0.1:${ANALYZER_PORT}:3000" \
         "$ANALYZER_IMAGE"
     log "Analyzer started."
     wait_ready "$ANALYZER_CONTAINER" "$ANALYZER_PORT"
+    # HTTP-path warmup: keep calling until we see two consecutive fast responses
+    # (< 1s each), absorbing any one-shot JIT/CUDA/GC overhead.
+    log "Warming up analyzer..."
+    for _pass in 1 2 3 4 5; do
+        _t=$(curl -sf --max-time 60 -o /dev/null -w "%{time_total}" \
+            -X POST "http://127.0.0.1:${ANALYZER_PORT}/analyze" \
+            -H "Content-Type: application/json" \
+            -d '{"text":"My name is John, email john@example.com","language":"en"}' 2>/dev/null || echo "60")
+        log "  warmup pass ${_pass}: ${_t}s"
+        # Stop once we get a sub-second response (model is warm)
+        if awk "BEGIN{exit !($_t < 1.0)}"; then
+            break
+        fi
+    done
+    log "Analyzer warm."
 }
 
 start_anonymizer() {
@@ -125,6 +141,24 @@ case "$CMD" in
         log "Both services up."
         log "  Analyzer:  http://127.0.0.1:${ANALYZER_PORT}"
         log "  Anonymizer: http://127.0.0.1:${ANONYMIZER_PORT}"
+        # Final warmup: keep calling until we see two consecutive sub-second
+        # responses, ensuring the one-shot startup overhead is fully absorbed.
+        log "Final warmup pass..."
+        _fast_streak=0
+        for _pass in $(seq 1 10); do
+            _t=$(curl -sf --max-time 90 -o /dev/null -w "%{time_total}" \
+                -X POST "http://127.0.0.1:${ANALYZER_PORT}/analyze" \
+                -H "Content-Type: application/json" \
+                -d '{"text":"My name is John, email john@example.com, SSN 123-45-6789","language":"en"}' 2>/dev/null || echo "90")
+            log "  pass ${_pass}: ${_t}s"
+            if awk "BEGIN{exit !($_t < 1.0)}"; then
+                _fast_streak=$((_fast_streak + 1))
+                if [ "$_fast_streak" -ge 2 ]; then break; fi
+            else
+                _fast_streak=0
+            fi
+        done
+        log "Analyzer ready."
         ;;
 
     stop)
