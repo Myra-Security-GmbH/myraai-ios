@@ -1005,6 +1005,7 @@ export default function Playground() {
               temperature,
               stream: true,
               tools: [WEB_SEARCH_TOOL],
+              tool_choice: { type: "none" },
               messages: nextMessages,
               ...(system ? { system } : {}),
             }),
