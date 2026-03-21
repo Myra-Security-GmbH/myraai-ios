@@ -13,6 +13,22 @@ local DEFAULT_ANONYMIZER_URL = "http://127.0.0.1:5001"
 local DEFAULT_SCORE_THRESHOLD = 0.7
 local DEFAULT_LANGUAGE        = "en"
 
+-- Entity types known to produce high false positive rates on legitimate text.
+-- Benchmarked on OR-Bench 500, XSTest 250, and Dolly 500 prompts:
+--   PERSON   → 52 FPs in XSTest (historical figures, celebrities in educational queries)
+--   LOCATION → 253 detections in Dolly (geographic questions: "What is the capital of X?")
+--   DATE_TIME→ 28-44 FPs in handcrafted (any date/time mention)
+--   NRP      → unmeasured but structurally similar to PERSON
+-- When entity_score_thresholds is not explicitly configured, these entities
+-- require 0.9 confidence before they trigger.  Users can lower the bar via
+--   entity_score_thresholds: { PERSON: 0.7 }
+local HIGH_FP_ENTITY_THRESHOLDS = {
+    PERSON    = 0.9,
+    LOCATION  = 0.9,
+    DATE_TIME = 0.9,
+    NRP       = 0.9,
+}
+
 -- Determine which body text to scan based on phase.
 local function get_body(ctx, phase)
     if phase == "response" then
@@ -45,18 +61,16 @@ local function effective_global_threshold(detector)
     return min
 end
 
--- Post-filter analyzer results through entity_score_thresholds.
--- Removes any entity whose score is below its per-entity threshold (if set)
--- or below the global threshold.
+-- Post-filter analyzer results through per-entity score thresholds.
+-- Priority: explicit entity_score_thresholds config > HIGH_FP defaults > global threshold.
 local function apply_entity_thresholds(entities, detector)
     local global = detector.score_threshold or DEFAULT_SCORE_THRESHOLD
-    local per    = detector.entity_score_thresholds
-    if not per then return entities end
+    local per    = detector.entity_score_thresholds or {}
 
     local filtered = {}
     for _, e in ipairs(entities) do
         local et        = e.entity_type or e.type
-        local threshold = per[et] or global
+        local threshold = per[et] or HIGH_FP_ENTITY_THRESHOLDS[et] or global
         if (e.score or 0) >= threshold then
             filtered[#filtered + 1] = e
         end

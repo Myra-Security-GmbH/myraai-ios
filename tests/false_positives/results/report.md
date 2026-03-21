@@ -1,6 +1,6 @@
 ## False Positive Rate Report
 
-_Generated: 2026-03-21 17:44 UTC_
+_Generated: 2026-03-21 18:02 UTC_
 
 | Detector | Config | Corpus | Total | FP count | FP rate | Top trigger |
 |---|---|---|---|---|---|---|
@@ -88,6 +88,86 @@ _Generated: 2026-03-21 17:44 UTC_
 | keyword | self_harm_flag | xstest_safe | 250 | 1 | 0.4% | suicide (1) |
 | keyword | self_harm_flag | dolly_sample | 2000 | 0 | 0.0% | — |
 | keyword | self_harm_flag | handcrafted | 200 | 0 | 0.0% | — |
+| presidio | threshold=0.5_entities=all_entities | or_bench_hard | 500 | 6 | 1.2% | PERSON (2) |
+| presidio | threshold=0.5_entities=person_email | or_bench_hard | 500 | 2 | 0.4% | PERSON (2) |
+| presidio | threshold=0.5_entities=pii_core | or_bench_hard | 500 | 2 | 0.4% | PERSON (2) |
+| presidio | threshold=0.5_entities=pii_focused | or_bench_hard | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.6_entities=all_entities | or_bench_hard | 500 | 6 | 1.2% | PERSON (2) |
+| presidio | threshold=0.6_entities=person_email | or_bench_hard | 500 | 2 | 0.4% | PERSON (2) |
+| presidio | threshold=0.6_entities=pii_core | or_bench_hard | 500 | 2 | 0.4% | PERSON (2) |
+| presidio | threshold=0.6_entities=pii_focused | or_bench_hard | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.7_entities=all_entities | or_bench_hard | 500 | 6 | 1.2% | PERSON (2) |
+| presidio | threshold=0.7_entities=person_email | or_bench_hard | 500 | 2 | 0.4% | PERSON (2) |
+| presidio | threshold=0.7_entities=pii_core | or_bench_hard | 500 | 2 | 0.4% | PERSON (2) |
+| presidio | threshold=0.7_entities=pii_focused | or_bench_hard | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.8_entities=all_entities | or_bench_hard | 500 | 6 | 1.2% | PERSON (2) |
+| presidio | threshold=0.8_entities=person_email | or_bench_hard | 500 | 2 | 0.4% | PERSON (2) |
+| presidio | threshold=0.8_entities=pii_core | or_bench_hard | 500 | 2 | 0.4% | PERSON (2) |
+| presidio | threshold=0.8_entities=pii_focused | or_bench_hard | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=all_entities | or_bench_hard | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=person_email | or_bench_hard | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=pii_core | or_bench_hard | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=pii_focused | or_bench_hard | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.5_entities=all_entities | xstest_safe | 250 | 76 | 30.4% | PERSON (52) |
+| presidio | threshold=0.5_entities=person_email | xstest_safe | 250 | 49 | 19.6% | PERSON (52) |
+| presidio | threshold=0.5_entities=pii_core | xstest_safe | 250 | 62 | 24.8% | PERSON (52) |
+| presidio | threshold=0.5_entities=pii_focused | xstest_safe | 250 | 0 | 0.0% | — |
+| presidio | threshold=0.6_entities=all_entities | xstest_safe | 250 | 76 | 30.4% | PERSON (52) |
+| presidio | threshold=0.6_entities=person_email | xstest_safe | 250 | 49 | 19.6% | PERSON (52) |
+| presidio | threshold=0.6_entities=pii_core | xstest_safe | 250 | 62 | 24.8% | PERSON (52) |
+| presidio | threshold=0.6_entities=pii_focused | xstest_safe | 250 | 0 | 0.0% | — |
+| presidio | threshold=0.7_entities=all_entities | xstest_safe | 250 | 76 | 30.4% | PERSON (52) |
+| presidio | threshold=0.7_entities=person_email | xstest_safe | 250 | 49 | 19.6% | PERSON (52) |
+| presidio | threshold=0.7_entities=pii_core | xstest_safe | 250 | 62 | 24.8% | PERSON (52) |
+| presidio | threshold=0.7_entities=pii_focused | xstest_safe | 250 | 0 | 0.0% | — |
+| presidio | threshold=0.8_entities=all_entities | xstest_safe | 250 | 76 | 30.4% | PERSON (52) |
+| presidio | threshold=0.8_entities=person_email | xstest_safe | 250 | 49 | 19.6% | PERSON (52) |
+| presidio | threshold=0.8_entities=pii_core | xstest_safe | 250 | 62 | 24.8% | PERSON (52) |
+| presidio | threshold=0.8_entities=pii_focused | xstest_safe | 250 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=all_entities | xstest_safe | 250 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=person_email | xstest_safe | 250 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=pii_core | xstest_safe | 250 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=pii_focused | xstest_safe | 250 | 0 | 0.0% | — |
+| presidio | threshold=0.5_entities=all_entities | dolly_sample | 500 | 200 | 40.0% | LOCATION (253) |
+| presidio | threshold=0.5_entities=person_email | dolly_sample | 500 | 88 | 17.6% | PERSON (130) |
+| presidio | threshold=0.5_entities=pii_core | dolly_sample | 500 | 164 | 32.8% | LOCATION (253) |
+| presidio | threshold=0.5_entities=pii_focused | dolly_sample | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.6_entities=all_entities | dolly_sample | 500 | 200 | 40.0% | LOCATION (253) |
+| presidio | threshold=0.6_entities=person_email | dolly_sample | 500 | 88 | 17.6% | PERSON (130) |
+| presidio | threshold=0.6_entities=pii_core | dolly_sample | 500 | 164 | 32.8% | LOCATION (253) |
+| presidio | threshold=0.6_entities=pii_focused | dolly_sample | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.7_entities=all_entities | dolly_sample | 500 | 200 | 40.0% | LOCATION (253) |
+| presidio | threshold=0.7_entities=person_email | dolly_sample | 500 | 88 | 17.6% | PERSON (130) |
+| presidio | threshold=0.7_entities=pii_core | dolly_sample | 500 | 164 | 32.8% | LOCATION (253) |
+| presidio | threshold=0.7_entities=pii_focused | dolly_sample | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.8_entities=all_entities | dolly_sample | 500 | 200 | 40.0% | LOCATION (253) |
+| presidio | threshold=0.8_entities=person_email | dolly_sample | 500 | 88 | 17.6% | PERSON (130) |
+| presidio | threshold=0.8_entities=pii_core | dolly_sample | 500 | 164 | 32.8% | LOCATION (253) |
+| presidio | threshold=0.8_entities=pii_focused | dolly_sample | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=all_entities | dolly_sample | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=person_email | dolly_sample | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=pii_core | dolly_sample | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.9_entities=pii_focused | dolly_sample | 500 | 0 | 0.0% | — |
+| presidio | threshold=0.5_entities=all_entities | handcrafted | 200 | 104 | 52.0% | DATE_TIME (44) |
+| presidio | threshold=0.5_entities=person_email | handcrafted | 200 | 23 | 11.5% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.5_entities=pii_core | handcrafted | 200 | 39 | 19.5% | LOCATION (18) |
+| presidio | threshold=0.5_entities=pii_focused | handcrafted | 200 | 20 | 10.0% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.6_entities=all_entities | handcrafted | 200 | 102 | 51.0% | DATE_TIME (44) |
+| presidio | threshold=0.6_entities=person_email | handcrafted | 200 | 23 | 11.5% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.6_entities=pii_core | handcrafted | 200 | 39 | 19.5% | LOCATION (18) |
+| presidio | threshold=0.6_entities=pii_focused | handcrafted | 200 | 20 | 10.0% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.7_entities=all_entities | handcrafted | 200 | 71 | 35.5% | DATE_TIME (28) |
+| presidio | threshold=0.7_entities=person_email | handcrafted | 200 | 23 | 11.5% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.7_entities=pii_core | handcrafted | 200 | 39 | 19.5% | LOCATION (18) |
+| presidio | threshold=0.7_entities=pii_focused | handcrafted | 200 | 20 | 10.0% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.8_entities=all_entities | handcrafted | 200 | 71 | 35.5% | DATE_TIME (28) |
+| presidio | threshold=0.8_entities=person_email | handcrafted | 200 | 23 | 11.5% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.8_entities=pii_core | handcrafted | 200 | 39 | 19.5% | LOCATION (18) |
+| presidio | threshold=0.8_entities=pii_focused | handcrafted | 200 | 20 | 10.0% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.9_entities=all_entities | handcrafted | 200 | 22 | 11.0% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.9_entities=person_email | handcrafted | 200 | 15 | 7.5% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.9_entities=pii_core | handcrafted | 200 | 15 | 7.5% | EMAIL_ADDRESS (15) |
+| presidio | threshold=0.9_entities=pii_focused | handcrafted | 200 | 20 | 10.0% | EMAIL_ADDRESS (15) |
 | llm_guard | all_categories | or_bench_hard | 200 | 24 | 12.0% | S2 (13) |
 | llm_guard | crime_nvc | or_bench_hard | 200 | 13 | 6.5% | S2 (13) |
 | llm_guard | hate_only | or_bench_hard | 200 | 5 | 2.5% | S10 (5) |

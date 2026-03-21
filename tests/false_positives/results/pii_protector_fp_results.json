@@ -1,0 +1,2019 @@
+[
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=all_entities",
+    "score_threshold": 0.5,
+    "entities": null,
+    "total": 500,
+    "fp_count": 6,
+    "fp_rate": 1.2,
+    "top_entities": {
+      "PERSON": 2,
+      "NRP": 2,
+      "DATE_TIME": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=pii_core",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 2,
+    "fp_rate": 0.4,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=financial",
+    "score_threshold": 0.5,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=identity_docs",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=person_email_only",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 2,
+    "fp_rate": 0.4,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=pii_focused",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=all_entities",
+    "score_threshold": 0.6,
+    "entities": null,
+    "total": 500,
+    "fp_count": 6,
+    "fp_rate": 1.2,
+    "top_entities": {
+      "PERSON": 2,
+      "NRP": 2,
+      "DATE_TIME": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=pii_core",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 2,
+    "fp_rate": 0.4,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=financial",
+    "score_threshold": 0.6,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=identity_docs",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=person_email_only",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 2,
+    "fp_rate": 0.4,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=pii_focused",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=all_entities",
+    "score_threshold": 0.7,
+    "entities": null,
+    "total": 500,
+    "fp_count": 6,
+    "fp_rate": 1.2,
+    "top_entities": {
+      "PERSON": 2,
+      "NRP": 2,
+      "DATE_TIME": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=pii_core",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 2,
+    "fp_rate": 0.4,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=financial",
+    "score_threshold": 0.7,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=identity_docs",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=person_email_only",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 2,
+    "fp_rate": 0.4,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=pii_focused",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=all_entities",
+    "score_threshold": 0.8,
+    "entities": null,
+    "total": 500,
+    "fp_count": 6,
+    "fp_rate": 1.2,
+    "top_entities": {
+      "PERSON": 2,
+      "NRP": 2,
+      "DATE_TIME": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=pii_core",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 2,
+    "fp_rate": 0.4,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=financial",
+    "score_threshold": 0.8,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=identity_docs",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=person_email_only",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 2,
+    "fp_rate": 0.4,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=pii_focused",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=all_entities",
+    "score_threshold": 0.9,
+    "entities": null,
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=pii_core",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=financial",
+    "score_threshold": 0.9,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=identity_docs",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=person_email_only",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=pii_focused",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=all_entities",
+    "score_threshold": 0.5,
+    "entities": null,
+    "total": 250,
+    "fp_count": 76,
+    "fp_rate": 30.4,
+    "top_entities": {
+      "DATE_TIME": 4,
+      "LOCATION": 16,
+      "PERSON": 52,
+      "NRP": 13
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=pii_core",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 250,
+    "fp_count": 62,
+    "fp_rate": 24.8,
+    "top_entities": {
+      "LOCATION": 16,
+      "PERSON": 52
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=financial",
+    "score_threshold": 0.5,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=identity_docs",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=person_email_only",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 250,
+    "fp_count": 49,
+    "fp_rate": 19.6,
+    "top_entities": {
+      "PERSON": 52
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=pii_focused",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=all_entities",
+    "score_threshold": 0.6,
+    "entities": null,
+    "total": 250,
+    "fp_count": 76,
+    "fp_rate": 30.4,
+    "top_entities": {
+      "DATE_TIME": 4,
+      "LOCATION": 16,
+      "PERSON": 52,
+      "NRP": 13
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=pii_core",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 250,
+    "fp_count": 62,
+    "fp_rate": 24.8,
+    "top_entities": {
+      "LOCATION": 16,
+      "PERSON": 52
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=financial",
+    "score_threshold": 0.6,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=identity_docs",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=person_email_only",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 250,
+    "fp_count": 49,
+    "fp_rate": 19.6,
+    "top_entities": {
+      "PERSON": 52
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=pii_focused",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=all_entities",
+    "score_threshold": 0.7,
+    "entities": null,
+    "total": 250,
+    "fp_count": 76,
+    "fp_rate": 30.4,
+    "top_entities": {
+      "DATE_TIME": 4,
+      "LOCATION": 16,
+      "PERSON": 52,
+      "NRP": 13
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=pii_core",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 250,
+    "fp_count": 62,
+    "fp_rate": 24.8,
+    "top_entities": {
+      "LOCATION": 16,
+      "PERSON": 52
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=financial",
+    "score_threshold": 0.7,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=identity_docs",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=person_email_only",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 250,
+    "fp_count": 49,
+    "fp_rate": 19.6,
+    "top_entities": {
+      "PERSON": 52
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=pii_focused",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=all_entities",
+    "score_threshold": 0.8,
+    "entities": null,
+    "total": 250,
+    "fp_count": 76,
+    "fp_rate": 30.4,
+    "top_entities": {
+      "DATE_TIME": 4,
+      "LOCATION": 16,
+      "PERSON": 52,
+      "NRP": 13
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=pii_core",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 250,
+    "fp_count": 62,
+    "fp_rate": 24.8,
+    "top_entities": {
+      "LOCATION": 16,
+      "PERSON": 52
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=financial",
+    "score_threshold": 0.8,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=identity_docs",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=person_email_only",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 250,
+    "fp_count": 49,
+    "fp_rate": 19.6,
+    "top_entities": {
+      "PERSON": 52
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=pii_focused",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=all_entities",
+    "score_threshold": 0.9,
+    "entities": null,
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=pii_core",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=financial",
+    "score_threshold": 0.9,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=identity_docs",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=person_email_only",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=pii_focused",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 250,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=all_entities",
+    "score_threshold": 0.5,
+    "entities": null,
+    "total": 500,
+    "fp_count": 200,
+    "fp_rate": 40.0,
+    "top_entities": {
+      "LOCATION": 253,
+      "NRP": 34,
+      "DATE_TIME": 85,
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=pii_core",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 164,
+    "fp_rate": 32.8,
+    "top_entities": {
+      "LOCATION": 253,
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=financial",
+    "score_threshold": 0.5,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=identity_docs",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=person_email_only",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 88,
+    "fp_rate": 17.6,
+    "top_entities": {
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=pii_focused",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=all_entities",
+    "score_threshold": 0.6,
+    "entities": null,
+    "total": 500,
+    "fp_count": 200,
+    "fp_rate": 40.0,
+    "top_entities": {
+      "LOCATION": 253,
+      "NRP": 34,
+      "DATE_TIME": 85,
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=pii_core",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 164,
+    "fp_rate": 32.8,
+    "top_entities": {
+      "LOCATION": 253,
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=financial",
+    "score_threshold": 0.6,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=identity_docs",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=person_email_only",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 88,
+    "fp_rate": 17.6,
+    "top_entities": {
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=pii_focused",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=all_entities",
+    "score_threshold": 0.7,
+    "entities": null,
+    "total": 500,
+    "fp_count": 200,
+    "fp_rate": 40.0,
+    "top_entities": {
+      "LOCATION": 253,
+      "NRP": 34,
+      "DATE_TIME": 85,
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=pii_core",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 164,
+    "fp_rate": 32.8,
+    "top_entities": {
+      "LOCATION": 253,
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=financial",
+    "score_threshold": 0.7,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=identity_docs",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=person_email_only",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 88,
+    "fp_rate": 17.6,
+    "top_entities": {
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=pii_focused",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=all_entities",
+    "score_threshold": 0.8,
+    "entities": null,
+    "total": 500,
+    "fp_count": 200,
+    "fp_rate": 40.0,
+    "top_entities": {
+      "LOCATION": 253,
+      "NRP": 34,
+      "DATE_TIME": 85,
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=pii_core",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 164,
+    "fp_rate": 32.8,
+    "top_entities": {
+      "LOCATION": 253,
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=financial",
+    "score_threshold": 0.8,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=identity_docs",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=person_email_only",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 88,
+    "fp_rate": 17.6,
+    "top_entities": {
+      "PERSON": 130
+    }
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=pii_focused",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=all_entities",
+    "score_threshold": 0.9,
+    "entities": null,
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=pii_core",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=financial",
+    "score_threshold": 0.9,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=identity_docs",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=person_email_only",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=pii_focused",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 500,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=all_entities",
+    "score_threshold": 0.5,
+    "entities": null,
+    "total": 200,
+    "fp_count": 45,
+    "fp_rate": 22.5,
+    "top_entities": {
+      "IP_ADDRESS": 28,
+      "PERSON": 2,
+      "DATE_TIME": 11,
+      "URL": 1,
+      "LOCATION": 12,
+      "UK_NHS": 2
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=pii_core",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 200,
+    "fp_count": 12,
+    "fp_rate": 6.0,
+    "top_entities": {
+      "PERSON": 2,
+      "LOCATION": 12
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=financial",
+    "score_threshold": 0.5,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=identity_docs",
+    "score_threshold": 0.5,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=person_email_only",
+    "score_threshold": 0.5,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.5_entities=pii_focused",
+    "score_threshold": 0.5,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=all_entities",
+    "score_threshold": 0.6,
+    "entities": null,
+    "total": 200,
+    "fp_count": 45,
+    "fp_rate": 22.5,
+    "top_entities": {
+      "IP_ADDRESS": 28,
+      "PERSON": 2,
+      "DATE_TIME": 11,
+      "LOCATION": 12,
+      "UK_NHS": 2
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=pii_core",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 200,
+    "fp_count": 12,
+    "fp_rate": 6.0,
+    "top_entities": {
+      "PERSON": 2,
+      "LOCATION": 12
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=financial",
+    "score_threshold": 0.6,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=identity_docs",
+    "score_threshold": 0.6,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=person_email_only",
+    "score_threshold": 0.6,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.6_entities=pii_focused",
+    "score_threshold": 0.6,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=all_entities",
+    "score_threshold": 0.7,
+    "entities": null,
+    "total": 200,
+    "fp_count": 24,
+    "fp_rate": 12.0,
+    "top_entities": {
+      "PERSON": 2,
+      "DATE_TIME": 11,
+      "LOCATION": 12,
+      "UK_NHS": 2
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=pii_core",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 200,
+    "fp_count": 12,
+    "fp_rate": 6.0,
+    "top_entities": {
+      "PERSON": 2,
+      "LOCATION": 12
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=financial",
+    "score_threshold": 0.7,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=identity_docs",
+    "score_threshold": 0.7,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=person_email_only",
+    "score_threshold": 0.7,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.7_entities=pii_focused",
+    "score_threshold": 0.7,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=all_entities",
+    "score_threshold": 0.8,
+    "entities": null,
+    "total": 200,
+    "fp_count": 24,
+    "fp_rate": 12.0,
+    "top_entities": {
+      "PERSON": 2,
+      "DATE_TIME": 11,
+      "LOCATION": 12,
+      "UK_NHS": 2
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=pii_core",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 200,
+    "fp_count": 12,
+    "fp_rate": 6.0,
+    "top_entities": {
+      "PERSON": 2,
+      "LOCATION": 12
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=financial",
+    "score_threshold": 0.8,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=identity_docs",
+    "score_threshold": 0.8,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=person_email_only",
+    "score_threshold": 0.8,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_entities": {
+      "PERSON": 2
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.8_entities=pii_focused",
+    "score_threshold": 0.8,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=all_entities",
+    "score_threshold": 0.9,
+    "entities": null,
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_entities": {
+      "UK_NHS": 2
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=pii_core",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "LOCATION"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=financial",
+    "score_threshold": 0.9,
+    "entities": [
+      "CREDIT_CARD",
+      "IBAN_CODE",
+      "US_BANK_NUMBER"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=identity_docs",
+    "score_threshold": 0.9,
+    "entities": [
+      "US_SSN",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=person_email_only",
+    "score_threshold": 0.9,
+    "entities": [
+      "PERSON",
+      "EMAIL_ADDRESS"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "pii_protector",
+    "config_id": "threshold=0.9_entities=pii_focused",
+    "score_threshold": 0.9,
+    "entities": [
+      "EMAIL_ADDRESS",
+      "PHONE_NUMBER",
+      "US_SSN",
+      "CREDIT_CARD",
+      "US_BANK_NUMBER",
+      "IBAN_CODE",
+      "US_PASSPORT",
+      "US_DRIVER_LICENSE",
+      "US_ITIN",
+      "CRYPTO"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_entities": {}
+  }
+]

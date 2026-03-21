@@ -26,6 +26,12 @@ ENTITY_COMBOS = [
     ("all_entities",  None),
     ("person_email",  ["PERSON", "EMAIL_ADDRESS"]),
     ("pii_core",      ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "LOCATION"]),
+    # pii_focused: excludes high-FP entities (PERSON, LOCATION, DATE_TIME, NRP).
+    # This mirrors the effect of HIGH_FP_ENTITY_THRESHOLDS=0.9 in presidio.lua.
+    # Targets only genuinely sensitive data that rarely appears in benign text.
+    ("pii_focused",   ["EMAIL_ADDRESS", "PHONE_NUMBER", "US_SSN", "CREDIT_CARD",
+                       "US_BANK_NUMBER", "IBAN_CODE", "US_PASSPORT",
+                       "US_DRIVER_LICENSE", "US_ITIN", "CRYPTO"]),
 ]
 
 

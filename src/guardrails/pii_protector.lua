@@ -33,6 +33,33 @@ local DEFAULT_ANALYZER_URL    = "http://127.0.0.1:5002"
 local DEFAULT_SCORE_THRESHOLD = 0.7
 local DEFAULT_LANGUAGE        = "en"
 
+-- Entity types known to produce high false positive rates on legitimate text.
+-- Applied as defaults when entity_score_thresholds is not explicitly configured.
+-- See benchmarks in tests/false_positives/ for measured FP rates.
+local HIGH_FP_ENTITY_THRESHOLDS = {
+    PERSON    = 0.9,
+    LOCATION  = 0.9,
+    DATE_TIME = 0.9,
+    NRP       = 0.9,
+}
+
+-- Post-filter Presidio results through per-entity score thresholds.
+-- Priority: explicit entity_score_thresholds config > HIGH_FP defaults > global threshold.
+local function apply_entity_thresholds(entities, detector)
+    local global = detector.score_threshold or DEFAULT_SCORE_THRESHOLD
+    local per    = detector.entity_score_thresholds or {}
+
+    local filtered = {}
+    for _, e in ipairs(entities) do
+        local et        = e.entity_type or e.type
+        local threshold = per[et] or HIGH_FP_ENTITY_THRESHOLDS[et] or global
+        if (e.score or 0) >= threshold then
+            filtered[#filtered + 1] = e
+        end
+    end
+    return filtered
+end
+
 -- ---------------------------------------------------------------------------
 -- call_analyzer: POST to Presidio /analyze.
 -- Returns array of {entity_type, start, end, score} (0-based char offsets), or nil, err.
@@ -261,6 +288,14 @@ function M.run(ctx, detector, phase)
         end
         return { verdict = "block", pattern = "pii_protector_error" }
     end
+
+    if #entities == 0 then
+        return { verdict = "pass" }
+    end
+
+    -- Apply per-entity score floors (drops high-FP entities like PERSON/LOCATION
+    -- unless they exceed the higher threshold or the user explicitly configures them).
+    entities = apply_entity_thresholds(entities, detector)
 
     if #entities == 0 then
         return { verdict = "pass" }

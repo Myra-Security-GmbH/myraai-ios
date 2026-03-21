@@ -35,6 +35,11 @@ ENTITY_COMBOS = [
     ("financial",           ["CREDIT_CARD", "IBAN_CODE", "US_BANK_NUMBER"]),
     ("identity_docs",       ["US_SSN", "US_PASSPORT", "US_DRIVER_LICENSE"]),
     ("person_email_only",   ["PERSON", "EMAIL_ADDRESS"]),
+    # pii_focused: excludes high-FP entities (PERSON, LOCATION, DATE_TIME, NRP).
+    # Mirrors the HIGH_FP_ENTITY_THRESHOLDS=0.9 default added to pii_protector.lua.
+    ("pii_focused",         ["EMAIL_ADDRESS", "PHONE_NUMBER", "US_SSN", "CREDIT_CARD",
+                             "US_BANK_NUMBER", "IBAN_CODE", "US_PASSPORT",
+                             "US_DRIVER_LICENSE", "US_ITIN", "CRYPTO"]),
 ]
 
 
