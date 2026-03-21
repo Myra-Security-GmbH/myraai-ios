@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import Playground from "./Playground";
-import type { Gateway, ModelPrice, PlaygroundToken, Tenant } from "src/api/types";
+import type { Gateway, ModelPrice, PlaygroundToken, ProviderConfig, ProviderMeta, Tenant } from "src/api/types";
 
 // ---------------------------------------------------------------------------
 // API mock
@@ -40,9 +40,25 @@ const PLAY_TOKEN: PlaygroundToken = {
 };
 
 const MODELS: ModelPrice[] = [
-  { provider: "openai", model: "gpt-4o", input_per_1k: 0.005, output_per_1k: 0.015, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z" },
-  { provider: "anthropic", model: "claude-sonnet-4-6", input_per_1k: 0.003, output_per_1k: 0.015, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z" },
-  { provider: "gemini", model: "gemini-2.0-flash", input_per_1k: 0.00015, output_per_1k: 0.0006, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z" },
+  { provider: "openai",      model: "gpt-4o",              input_per_1k: 0.005,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z" },
+  { provider: "anthropic",   model: "claude-sonnet-4-6",   input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z" },
+  { provider: "gemini",      model: "gemini-2.0-flash",    input_per_1k: 0.00015, output_per_1k: 0.0006, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z" },
+  { provider: "perplexity",  model: "sonar-pro",           input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z" },
+];
+
+const PROVIDER_META: ProviderMeta[] = [
+  { name: "openai",     requires_key: true  },
+  { name: "anthropic",  requires_key: true  },
+  { name: "gemini",     requires_key: true  },
+  { name: "perplexity", requires_key: true  },
+  { name: "ollama",     requires_key: false },
+];
+
+const GW_KEYS: ProviderConfig[] = [
+  { id: "k1", provider: "anthropic", alias: "default", created_at: "2024-01-01T00:00:00Z" },
+  { id: "k2", provider: "openai",    alias: "default", created_at: "2024-01-01T00:00:00Z" },
+  { id: "k3", provider: "gemini",    alias: "default", created_at: "2024-01-01T00:00:00Z" },
+  { id: "k4", provider: "perplexity",alias: "default", created_at: "2024-01-01T00:00:00Z" },
 ];
 
 // ---------------------------------------------------------------------------
