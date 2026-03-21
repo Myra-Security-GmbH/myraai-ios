@@ -48,8 +48,7 @@ function M.emit(ctx)
         latency_ms    = ctx.start_ms
                         and math.floor(ngx.now() * 1000 - ctx.start_ms)
                         or  0,
-        ts            = os.date("!%Y-%m-%dT%H:%M:%S") ..
-                        string.format(".%03dZ", (ngx.now() * 1000) % 1000),
+        ts            = math.floor(ngx.now() * 1000),
         prompt        = prompt,
         response      = response,
         meta          = ctx.meta or {},

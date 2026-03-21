@@ -276,16 +276,17 @@ route("POST", "^/admin/v1/playground/token$", function()
     local raw_token = crypto.random_hex(32)
     local hash      = crypto.sha256_hex(raw_token)
     -- 10-minute TTL — enough for a playground session
-    local expires_at = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() + 600)
+    local expires_ts = os.time() + 600
+    local expires_iso = os.date("!%Y-%m-%dT%H:%M:%SZ", expires_ts)
 
     local _, err = storage.insert_auth_token(
-        b.gateway_id, hash, {"playground"}, expires_at,
+        b.gateway_id, hash, {"playground"}, expires_ts,
         nil, "playground", nil, nil)
     if err then return send(500, { error = err }) end
 
     send(201, {
         token        = raw_token,
-        expires_at   = expires_at,
+        expires_at   = expires_iso,
         tenant_slug  = gw.tenant_slug,
         gateway_slug = gw.gateway_slug,
     })
@@ -428,7 +429,7 @@ route("POST", "^/admin/v1/client%-errors$", function()
     local b = read_body()
     if not b or not b.message then return send(400, { error = "message required" }) end
     local id = b.id or require("utils.uuid").v4()
-    local ts = b.ts or os.date("!%Y-%m-%dT%H:%M:%SZ")
+    local ts = b.ts or math.floor(ngx.now() * 1000)
     local err = storage.insert_client_error(
         id,
         tostring(b.message):sub(1, 2000),

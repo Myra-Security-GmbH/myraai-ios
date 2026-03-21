@@ -49,11 +49,9 @@ function M.run(ctx)
         errors.send("UNAUTHORIZED")
     end
 
-    -- Check expiry
-    if row.expires_at and row.expires_at ~= "" then
-        -- expires_at is ISO8601; compare lexicographically (works for UTC)
-        local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
-        if now > row.expires_at then
+    -- Check expiry (expires_at is Unix seconds INTEGER or NULL)
+    if row.expires_at then
+        if ngx.time() > row.expires_at then
             errors.send("UNAUTHORIZED", "Token expired")
         end
     end
