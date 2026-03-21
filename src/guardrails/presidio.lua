@@ -1,4 +1,4 @@
--- detectors/presidio.lua — Tier 2 local Presidio sidecar detector
+-- guardrails/presidio.lua — Tier 2 local Presidio sidecar guardrail
 -- Analyzer: POST /analyze  to presidio-analyzer (default :5002)
 -- Anonymizer: POST /anonymize to presidio-anonymizer (default :5001) for scrub action.
 -- fail_open defaults to true: on sidecar error, pass the request through.

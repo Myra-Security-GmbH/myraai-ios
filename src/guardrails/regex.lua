@@ -1,8 +1,8 @@
--- detectors/regex.lua — Tier 1 in-process regex detector
+-- guardrails/regex.lua — Tier 1 in-process regex guardrail
 -- Scans request or response body text against a set of named/custom patterns.
 -- Supports block, scrub, and flag actions.
 
-local patterns_lib = require("detectors.patterns")
+local patterns_lib = require("guardrails.patterns")
 
 local M = {}
 

@@ -24,16 +24,16 @@ local function clear(names)
 end
 
 clear({
-    "detectors.patterns",
-    "detectors.regex",
-    "detectors.keyword",
-    "detectors.orchestrator",
+    "guardrails.patterns",
+    "guardrails.regex",
+    "guardrails.keyword",
+    "guardrails.orchestrator",
 })
 
-local pat_lib     = require("detectors.patterns")
-local regex_det   = require("detectors.regex")
-local keyword_det = require("detectors.keyword")
-local orch        = require("detectors.orchestrator")
+local pat_lib     = require("guardrails.patterns")
+local regex_det   = require("guardrails.regex")
+local keyword_det = require("guardrails.keyword")
+local orch        = require("guardrails.orchestrator")
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -42,7 +42,7 @@ local function make_req_ctx(body, detectors_cfg)
     return {
         raw_request_body = body or "",
         response_body    = nil,
-        gateway_config   = { detectors = detectors_cfg or {} },
+        gateway_config   = { guardrails = detectors_cfg or {} },
         log_fields       = {},
     }
 end
@@ -51,13 +51,13 @@ local function make_resp_ctx(body, detectors_cfg)
     return {
         raw_request_body = nil,
         response_body    = body or "",
-        gateway_config   = { detectors = detectors_cfg or {} },
+        gateway_config   = { guardrails = detectors_cfg or {} },
         log_fields       = {},
     }
 end
 
 -- =========================================================================
--- 1. detectors.patterns
+-- 1. guardrails.patterns
 -- =========================================================================
 describe("patterns", function()
 
@@ -165,7 +165,7 @@ describe("patterns", function()
 end)
 
 -- =========================================================================
--- 2. detectors.regex
+-- 2. guardrails.regex
 -- =========================================================================
 describe("regex detector", function()
 
@@ -323,7 +323,7 @@ describe("regex detector", function()
 end)
 
 -- =========================================================================
--- 3. detectors.keyword
+-- 3. guardrails.keyword
 -- =========================================================================
 describe("keyword detector", function()
 
@@ -475,7 +475,7 @@ describe("keyword detector", function()
 end)
 
 -- =========================================================================
--- 4. detectors.orchestrator
+-- 4. guardrails.orchestrator
 -- =========================================================================
 describe("orchestrator", function()
 
@@ -486,8 +486,8 @@ describe("orchestrator", function()
         assert.equal("pass", result)
     end)
 
-    -- nil detectors config → pass
-    it("returns 'pass' when gateway_config.detectors is nil", function()
+    -- nil guardrails config → pass
+    it("returns 'pass' when gateway_config.guardrails is nil", function()
         local ctx = {
             raw_request_body = "any body text",
             gateway_config   = {},

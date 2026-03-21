@@ -1,4 +1,4 @@
--- detectors/patterns.lua
+-- guardrails/patterns.lua
 local M = {}
 
 M.PATTERNS = {
@@ -12,7 +12,10 @@ M.PATTERNS = {
     ip_address     = "%f[%d]%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?",
     cc             = "%d%d%d%d[%s%-]?%d%d%d%d[%s%-]?%d%d%d%d[%s%-]?%d%d%d%d",
     cvv            = "[Cc][Vv][Vv2]?%s*:?%s*%d%d%d%d?",
-    card_expiry    = "%d%d[%/%-]%d%d%d?%d?",
+    -- 2-digit year only (MM/YY). Restricting to 2-digit year avoids matching
+    -- year ranges like "1986-1990" which previously triggered as false positives.
+    -- Use a custom_pattern if you need to catch MM/YYYY format.
+    card_expiry    = "%d%d[%/%-]%d%d%f[%D]",
     iban           = "[A-Z][A-Z]%d%d%s?[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]%s?[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]%s?[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]%s?[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]%s?[A-Z0-9][A-Z0-9][A-Z0-9]?[A-Z0-9]?",
     -- routing_number uses ABA checksum gating in regex.lua (see aba_check below).
     routing_number = "%f[%d]%d%d%d%d%d%d%d%d%d%f[%D]",

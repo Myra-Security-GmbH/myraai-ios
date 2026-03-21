@@ -1,4 +1,4 @@
--- detectors/keyword.lua — Tier 1 in-process keyword detector
+-- guardrails/keyword.lua — Tier 1 in-process keyword guardrail
 -- Scans request or response body for exact keyword matches using plain string.find.
 -- Does not support "scrub" action; treats it as "flagged".
 -- Supports whole_word:true to avoid substring false positives (e.g. "kill" in "skill").

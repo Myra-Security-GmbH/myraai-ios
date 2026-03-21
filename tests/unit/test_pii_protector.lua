@@ -31,7 +31,7 @@ local function clear(names)
     end
 end
 
-clear({ "detectors.pii_protector", "utils.json", "utils.http" })
+clear({ "guardrails.pii_protector", "utils.json", "utils.http" })
 
 -- Load real utils.json (uses cjson.safe which is available under resty).
 local json_real = require("utils.json")
@@ -55,8 +55,8 @@ local function install_http_mock(response_table, force_err)
 end
 
 local function reload()
-    package.loaded["detectors.pii_protector"] = nil
-    return require("detectors.pii_protector")
+    package.loaded["guardrails.pii_protector"] = nil
+    return require("guardrails.pii_protector")
 end
 
 -- ---------------------------------------------------------------------------
@@ -454,8 +454,8 @@ describe("orchestrator recognises pii_protector type", function()
         reload()
 
         -- Clear and reload orchestrator so it picks up the updated MODULES table.
-        package.loaded["detectors.orchestrator"] = nil
-        local orch = require("detectors.orchestrator")
+        package.loaded["guardrails.orchestrator"] = nil
+        local orch = require("guardrails.orchestrator")
 
         local ctx = {
             raw_request_body = "hello world",
@@ -464,7 +464,7 @@ describe("orchestrator recognises pii_protector type", function()
             request_id       = "test-id",
             log_fields       = {},
             gateway_config   = {
-                detectors = { { type = "pii_protector", name = "test", target = "request" } }
+                guardrails = { { type = "pii_protector", name = "test", target = "request" } }
             },
         }
         orch.run_phase(ctx, "request")
