@@ -31,6 +31,39 @@ local function set_body(ctx, phase, text)
     end
 end
 
+-- Compute the effective score threshold to pass to the analyzer.
+-- When entity_score_thresholds is set, use the minimum of all per-entity
+-- thresholds (so the analyzer returns candidates we then post-filter).
+local function effective_global_threshold(detector)
+    local global = detector.score_threshold or DEFAULT_SCORE_THRESHOLD
+    local per    = detector.entity_score_thresholds
+    if not per then return global end
+    local min = global
+    for _, v in pairs(per) do
+        if v < min then min = v end
+    end
+    return min
+end
+
+-- Post-filter analyzer results through entity_score_thresholds.
+-- Removes any entity whose score is below its per-entity threshold (if set)
+-- or below the global threshold.
+local function apply_entity_thresholds(entities, detector)
+    local global = detector.score_threshold or DEFAULT_SCORE_THRESHOLD
+    local per    = detector.entity_score_thresholds
+    if not per then return entities end
+
+    local filtered = {}
+    for _, e in ipairs(entities) do
+        local et        = e.entity_type or e.type
+        local threshold = per[et] or global
+        if (e.score or 0) >= threshold then
+            filtered[#filtered + 1] = e
+        end
+    end
+    return filtered
+end
+
 -- Call presidio-analyzer. Returns list of entity results or nil, err.
 local function call_analyzer(text, detector)
     local url     = (detector.url or DEFAULT_ANALYZER_URL) .. "/analyze"
@@ -40,7 +73,7 @@ local function call_analyzer(text, detector)
         text            = text,
         language        = detector.language or DEFAULT_LANGUAGE,
         entities        = detector.entities,      -- nil → all entities
-        score_threshold = detector.score_threshold or DEFAULT_SCORE_THRESHOLD,
+        score_threshold = effective_global_threshold(detector),
     })
 
     local status, _, body, err = http_util.request({
@@ -153,6 +186,9 @@ function M.run(ctx, detector, phase)
             return { verdict = "block", pattern = "presidio_error" }
         end
     end
+
+    -- Apply per-entity score floors (entity_score_thresholds config).
+    entities = apply_entity_thresholds(entities, detector)
 
     -- No entities found → pass
     if #entities == 0 then

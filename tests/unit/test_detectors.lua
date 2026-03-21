@@ -82,6 +82,28 @@ describe("patterns", function()
         assert.is_true(pat_lib.luhn_check("4111-1111-1111-1111"))
     end)
 
+    -- aba_check: valid ABA routing number (JPMorgan Chase)
+    it("aba_check returns true for valid ABA routing number 021000021", function()
+        assert.is_true(pat_lib.aba_check("021000021"))
+    end)
+
+    -- aba_check: valid ABA routing number (Bank of America)
+    it("aba_check returns true for valid ABA routing number 026009593", function()
+        assert.is_true(pat_lib.aba_check("026009593"))
+    end)
+
+    -- aba_check: invalid check digit
+    it("aba_check returns false for number with wrong check digit", function()
+        -- 021000021 → last digit changed to 2
+        assert.is_false(pat_lib.aba_check("021000022"))
+    end)
+
+    -- aba_check: wrong length
+    it("aba_check returns false for non-9-digit string", function()
+        assert.is_false(pat_lib.aba_check("12345678"))
+        assert.is_false(pat_lib.aba_check("1234567890"))
+    end)
+
     -- resolve: individual name "email" → exactly one entry
     it("resolve returns one entry for named pattern 'email'", function()
         local result = pat_lib.resolve({ "email" })
@@ -196,6 +218,43 @@ describe("regex detector", function()
         local det = { action = "block", patterns = { "cc" } }
         local r = regex_det.run(ctx, det, "request")
         assert.equal("pass", r.verdict)
+    end)
+
+    -- routing_number with valid ABA checksum → block
+    it("blocks a routing number that passes ABA checksum", function()
+        local ctx = make_req_ctx("routing number 021000021 for Chase")
+        local det = { action = "block", patterns = { "routing_number" } }
+        local r = regex_det.run(ctx, det, "request")
+        assert.equal("block",          r.verdict)
+        assert.equal("routing_number", r.pattern)
+    end)
+
+    -- routing_number with invalid ABA checksum → pass (no false positive)
+    it("does not block a 9-digit number that fails ABA checksum", function()
+        -- 123456789: 3*(1+4+7)+7*(2+5+8)+(3+6+9) = 36+105+18 = 159, not divisible by 10
+        local ctx = make_req_ctx("product serial 123456789 is valid")
+        local det = { action = "block", patterns = { "routing_number" } }
+        local r = regex_det.run(ctx, det, "request")
+        assert.equal("pass", r.verdict)
+    end)
+
+    -- routing_number scrub: valid ABA → scrubbed
+    it("scrubs a routing number that passes ABA checksum", function()
+        local ctx = make_req_ctx("aba: 021000021 end")
+        local det = { action = "scrub", patterns = { "routing_number" } }
+        local r = regex_det.run(ctx, det, "request")
+        assert.equal("scrubbed", r.verdict)
+        assert.not_nil(ctx.raw_request_body:find("[REDACTED]", 1, true))
+    end)
+
+    -- routing_number scrub: invalid ABA checksum → pass (no scrub)
+    it("does not scrub a 9-digit sequence that fails ABA checksum", function()
+        local ctx = make_req_ctx("order 123456789 placed")
+        local det = { action = "scrub", patterns = { "routing_number" } }
+        local r = regex_det.run(ctx, det, "request")
+        assert.equal("pass", r.verdict)
+        assert.not_nil(ctx.raw_request_body:find("123456789", 1, true),
+            "body should be unchanged when ABA check fails")
     end)
 
     -- custom_patterns: custom regex match → block
@@ -361,6 +420,56 @@ describe("keyword detector", function()
         local r = keyword_det.run(ctx, det, "response")
         assert.equal("block",    r.verdict)
         assert.equal("internal", r.pattern)
+    end)
+
+    -- whole_word=true: does NOT match when keyword is a substring of a larger word
+    it("whole_word=true does not fire on substring match", function()
+        -- "kill" must not match "skill" or "toolkit"
+        local ctx = make_req_ctx("this requires skill and a toolkit")
+        local det = { action = "block", whole_word = true, keywords = { "kill" } }
+        local r = keyword_det.run(ctx, det, "request")
+        assert.equal("pass", r.verdict)
+    end)
+
+    -- whole_word=true: DOES match when keyword stands alone
+    it("whole_word=true matches keyword that stands as a whole word", function()
+        local ctx = make_req_ctx("we need to kill the process")
+        local det = { action = "block", whole_word = true, keywords = { "kill" } }
+        local r = keyword_det.run(ctx, det, "request")
+        assert.equal("block", r.verdict)
+        assert.equal("kill",  r.pattern)
+    end)
+
+    -- whole_word=true: matches at start of string
+    it("whole_word=true matches at the beginning of the body", function()
+        local ctx = make_req_ctx("hack the system")
+        local det = { action = "flag", whole_word = true, keywords = { "hack" } }
+        local r = keyword_det.run(ctx, det, "request")
+        assert.equal("flagged", r.verdict)
+    end)
+
+    -- whole_word=true: matches at end of string
+    it("whole_word=true matches at the end of the body", function()
+        local ctx = make_req_ctx("the real hack")
+        local det = { action = "flag", whole_word = true, keywords = { "hack" } }
+        local r = keyword_det.run(ctx, det, "request")
+        assert.equal("flagged", r.verdict)
+    end)
+
+    -- whole_word=true: does not match "hack" inside "thicket" (different word)
+    it("whole_word=true does not fire on 'hacker' when keyword is 'hack'", function()
+        local ctx = make_req_ctx("the hacker was caught")
+        local det = { action = "block", whole_word = true, keywords = { "hack" } }
+        local r = keyword_det.run(ctx, det, "request")
+        assert.equal("pass", r.verdict)
+    end)
+
+    -- whole_word=false (default): still fires on substring
+    it("whole_word=false (default) still fires on substring match", function()
+        local ctx = make_req_ctx("requires skill and toolkit")
+        local det = { action = "block", keywords = { "kill" } }
+        local r = keyword_det.run(ctx, det, "request")
+        assert.equal("block", r.verdict)
     end)
 
 end)

@@ -3,14 +3,18 @@ local M = {}
 
 M.PATTERNS = {
     email          = "[a-zA-Z0-9%._%+%-]+@[a-zA-Z0-9%-%.]+%.[a-zA-Z][a-zA-Z]+",
-    phone          = "%+?%d[%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-]",
-    ssn            = "%d%d%d%-?%d%d%-?%d%d%d%d",
-    dob            = "%d%d[%/-]%d%d[%/-]%d%d%d%d",
-    ip_address     = "%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?",
+    -- Word-boundary anchor (%f[%d]) prevents matching digits embedded in longer
+    -- numeric strings (e.g. serial numbers, version strings).
+    phone          = "%f[%d]%+?%d[%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-][%d%s%(%)%-]",
+    ssn            = "%f[%d]%d%d%d%-?%d%d%-?%d%d%d%d%f[%D]",
+    -- Year restricted to 1xxx or 2xxx to avoid matching arbitrary dates.
+    dob            = "%d%d[%/-]%d%d[%/-][12]%d%d%d",
+    ip_address     = "%f[%d]%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?",
     cc             = "%d%d%d%d[%s%-]?%d%d%d%d[%s%-]?%d%d%d%d[%s%-]?%d%d%d%d",
     cvv            = "[Cc][Vv][Vv2]?%s*:?%s*%d%d%d%d?",
     card_expiry    = "%d%d[%/%-]%d%d%d?%d?",
     iban           = "[A-Z][A-Z]%d%d%s?[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]%s?[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]%s?[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]%s?[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]%s?[A-Z0-9][A-Z0-9][A-Z0-9]?[A-Z0-9]?",
+    -- routing_number uses ABA checksum gating in regex.lua (see aba_check below).
     routing_number = "%f[%d]%d%d%d%d%d%d%d%d%d%f[%D]",
     mrn            = "[Mm][Rr][Nn]%s*:?%s*%d%d%d%d%d%d?%d?%d?",
     npi            = "%f[%d]%d%d%d%d%d%d%d%d%d%d%f[%D]",
@@ -27,6 +31,18 @@ M.SETS = {
     credentials      = { "api_key", "jwt" },
     pii_basic        = { "email", "phone", "ssn" },
 }
+
+-- ABA routing number checksum (Federal Reserve algorithm).
+-- 3*(d1+d4+d7) + 7*(d2+d5+d8) + (d3+d6+d9) must be divisible by 10.
+-- Strips non-digit characters before checking.
+function M.aba_check(s)
+    s = s:gsub("%D", "")
+    if #s ~= 9 then return false end
+    local d = {}
+    for i = 1, 9 do d[i] = tonumber(s:sub(i, i)) end
+    local sum = 3*(d[1]+d[4]+d[7]) + 7*(d[2]+d[5]+d[8]) + (d[3]+d[6]+d[9])
+    return sum % 10 == 0
+end
 
 function M.luhn_check(s)
     s = s:gsub("[%s%-]", "")

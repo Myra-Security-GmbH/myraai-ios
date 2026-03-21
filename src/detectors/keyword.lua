@@ -1,8 +1,14 @@
 -- detectors/keyword.lua — Tier 1 in-process keyword detector
 -- Scans request or response body for exact keyword matches using plain string.find.
 -- Does not support "scrub" action; treats it as "flagged".
+-- Supports whole_word:true to avoid substring false positives (e.g. "kill" in "skill").
 
 local M = {}
+
+-- Escape Lua pattern magic characters so a keyword can be embedded in a pattern.
+local function escape_pattern(s)
+    return (s:gsub("([%(%)%.%%%+%-%*%?%[%^%$])", "%%%1"))
+end
 
 -- Determine which body text to scan based on phase.
 local function get_body(ctx, phase)
@@ -21,6 +27,7 @@ function M.run(ctx, detector, phase)
 
     local action         = detector.action or "flag"
     local case_sensitive = detector.case_sensitive  -- nil → false
+    local whole_word     = detector.whole_word       -- nil → false
     local keywords       = detector.keywords or {}
 
     if #keywords == 0 then
@@ -31,9 +38,21 @@ function M.run(ctx, detector, phase)
     local haystack = case_sensitive and text or text:lower()
 
     for _, kw in ipairs(keywords) do
-        local needle = case_sensitive and kw or kw:lower()
-        -- plain=true disables pattern magic in string.find
-        if haystack:find(needle, 1, true) then
+        local needle  = case_sensitive and kw or kw:lower()
+        local matched
+
+        if whole_word then
+            -- Use frontier patterns to require word boundaries so that e.g.
+            -- "kill" does not fire on "skill" or "toolkit".
+            -- %f[%w] = transition into a word char; %f[%W] = transition out.
+            local pat = "%f[%w]" .. escape_pattern(needle) .. "%f[%W]"
+            matched = haystack:find(pat) ~= nil
+        else
+            -- plain=true disables pattern magic in string.find
+            matched = haystack:find(needle, 1, true) ~= nil
+        end
+
+        if matched then
             if action == "block" then
                 return { verdict = "block", pattern = kw }
             else

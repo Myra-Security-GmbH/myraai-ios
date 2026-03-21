@@ -49,6 +49,13 @@ function M.run(ctx, detector, phase)
         return { verdict = "pass" }
     end
 
+    -- Returns true if the match should be accepted after any checksum validation.
+    local function checksum_ok(name, match)
+        if name == "cc"             then return patterns_lib.luhn_check(match) end
+        if name == "routing_number" then return patterns_lib.aba_check(match)  end
+        return true
+    end
+
     if action == "scrub" then
         -- Scan all patterns and scrub all matches; report first match found.
         local first_match
@@ -59,10 +66,9 @@ function M.run(ctx, detector, phase)
             local pat  = p.pattern
             local name = p.name
 
-            -- For cc patterns apply Luhn check to avoid false positives
-            if name == "cc" then
+            if name == "cc" or name == "routing_number" then
                 local new_text = scrubbed:gsub(pat, function(match)
-                    if patterns_lib.luhn_check(match) then
+                    if checksum_ok(name, match) then
                         if not first_match then first_match = name end
                         any_scrubbed = true
                         return placeholder
@@ -91,10 +97,9 @@ function M.run(ctx, detector, phase)
             local pat  = p.pattern
             local name = p.name
 
-            if name == "cc" then
-                -- Need to find a match and do Luhn check
+            if name == "cc" or name == "routing_number" then
                 local found = text:match(pat)
-                if found and patterns_lib.luhn_check(found) then
+                if found and checksum_ok(name, found) then
                     if action == "block" then
                         return { verdict = "block", pattern = name }
                     else
