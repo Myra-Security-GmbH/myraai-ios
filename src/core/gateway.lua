@@ -23,6 +23,7 @@ local CONTENT_PIPELINE = {
     "middleware.transform",
     "middleware.routing",
     "middleware.byok",
+    "middleware.web_search",
     "middleware.upstream",
     "middleware.detectors_response", -- detector pipeline (response phase)
     "middleware.send_response",

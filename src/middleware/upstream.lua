@@ -289,7 +289,59 @@ local function handle_buffered(ctx, res)
     return true
 end
 
+-- Single non-streaming provider call for use by the web_search middleware (Leg 1).
+-- Runs the same retry + fallback logic as M.run().
+-- Returns (body_str, http_status, err).  Does NOT modify ctx.response_body.
+function M.call_one(ctx)
+    local retry_count = ctx.gateway_config.retry_count or 2
+    local cb          = require("core.circuit_breaker")
+    local cb_cfg      = ctx.gateway_config.circuit_breaker
+
+    local attempts = {{ provider = ctx.provider, model = ctx.model }}
+    for _, fb in ipairs(ctx.fallback_chain or {}) do
+        attempts[#attempts + 1] = fb
+    end
+
+    local last_err
+    for attempt_idx, attempt in ipairs(attempts) do
+        local provider_name = attempt.provider or ctx.provider
+        local model         = attempt.model    or ctx.model
+
+        if cb.check(ctx.gateway_id, provider_name, cb_cfg) == "deny" then
+            last_err = "circuit_open:" .. provider_name
+            goto co_continue
+        end
+        if provider_name ~= ctx.provider then
+            local byok_vault = require("auth.byok")
+            local key = byok_vault.get_key(ctx.gateway_id, provider_name)
+            if not key then goto co_continue end
+            ctx.provider_api_key = key
+        end
+
+        for _ = 0, (attempt_idx == 1 and retry_count or 0) do
+            local res, err = call_provider(ctx, provider_name, model, false)
+            if not res then
+                last_err = err
+                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, nil)
+            elseif res.status >= 500 then
+                last_err = "provider HTTP " .. res.status
+                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status)
+            else
+                cb.record_success(ctx.gateway_id, provider_name, cb_cfg)
+                ctx.provider = provider_name
+                ctx.model    = model
+                return res.body, res.status, nil
+            end
+        end
+        ::co_continue::
+    end
+    return nil, nil, last_err or "all_providers_failed"
+end
+
 function M.run(ctx)
+    -- web_search middleware sets this when it already handled the full response
+    if ctx.web_search_done then return end
+
     local is_streaming = ctx.request_body and ctx.request_body.stream == true
     local retry_count  = ctx.gateway_config.retry_count or 2
     local cb           = require("core.circuit_breaker")
