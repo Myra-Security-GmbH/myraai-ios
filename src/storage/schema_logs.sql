@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS request_log (
     cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
     cost_usd       REAL NOT NULL DEFAULT 0,
     latency_ms     INTEGER NOT NULL DEFAULT 0,
-    ts             TEXT NOT NULL,           -- ISO8601 with ms
+    ts             INTEGER NOT NULL,         -- Unix milliseconds
     -- Optional payload (NULL when log_payloads=false or DLP scrubbed)
     prompt         TEXT,
     response       TEXT,
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS client_error_log (
     stack       TEXT,
     url         TEXT,
     user_agent  TEXT,
-    ts          TEXT NOT NULL
+    ts          INTEGER NOT NULL             -- Unix milliseconds
 );
 
 CREATE INDEX IF NOT EXISTS idx_client_error_ts ON client_error_log(ts);

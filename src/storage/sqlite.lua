@@ -26,10 +26,13 @@ local function schema_path(name)
     return src:match("^(.*/)") .. "schema_" .. name .. ".sql"
 end
 
-local function open_db(path)
+local function open_db(path, busy_ms)
     local db, err = sqlite3.open(path)
     if not db then
         error("sqlite open " .. path .. ": " .. tostring(err))
+    end
+    if busy_ms then
+        db:exec("PRAGMA busy_timeout = " .. busy_ms)
     end
     return db
 end
@@ -71,12 +74,272 @@ local function migrate_columns(cfg)
     ldb:close()
 end
 
+-- Detect whether a column is stored as TEXT (old schema) and rebuild the table
+-- to use INTEGER timestamps. Safe to call multiple times — no-ops when already INTEGER.
+local function migrate_timestamps(cfg)
+    -- ---- logs.db ---------------------------------------------------------
+    -- Use a generous busy_timeout so concurrent worker connections (during
+    -- graceful reload) don't cause the migration to fail silently.
+    local ldb = open_db(cfg.sqlite.logs_db, 10000)
+
+    local ts_type = ""
+    for row in ldb:nrows("PRAGMA table_info(request_log)") do
+        if row.name == "ts" then ts_type = row.type; break end
+    end
+
+    if ts_type:upper() ~= "INTEGER" then
+        -- Rebuild request_log: convert ISO ts → Unix milliseconds
+        local rc = ldb:exec([[
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS request_log_new (
+                id             TEXT PRIMARY KEY,
+                tenant_id      TEXT NOT NULL,
+                gateway_id     TEXT NOT NULL,
+                provider       TEXT NOT NULL,
+                model          TEXT NOT NULL,
+                status         INTEGER NOT NULL,
+                cached         INTEGER NOT NULL DEFAULT 0,
+                input_tokens          INTEGER NOT NULL DEFAULT 0,
+                output_tokens         INTEGER NOT NULL DEFAULT 0,
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+                cost_usd       REAL NOT NULL DEFAULT 0,
+                latency_ms     INTEGER NOT NULL DEFAULT 0,
+                ts             INTEGER NOT NULL,
+                prompt         TEXT,
+                response       TEXT,
+                meta           TEXT NOT NULL DEFAULT '{}',
+                blocked        INTEGER NOT NULL DEFAULT 0,
+                blocked_by     TEXT,
+                block_reason   TEXT,
+                guardrail_latency_ms  INTEGER,
+                guardrail_verdict     TEXT,
+                saved_cost_usd        REAL,
+                saved_latency_ms      INTEGER,
+                upstream_latency_ms   INTEGER,
+                time_to_first_token_ms INTEGER,
+                upstream_attempts     INTEGER NOT NULL DEFAULT 0,
+                fallback_provider     TEXT,
+                fallback_model        TEXT,
+                provider_request_id   TEXT,
+                request_size_bytes    INTEGER NOT NULL DEFAULT 0,
+                quota_remaining       REAL,
+                user_id               TEXT,
+                token_label           TEXT,
+                detectors_fired       TEXT,
+                scrub_applied         INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO request_log_new
+                SELECT id, tenant_id, gateway_id, provider, model, status, cached,
+                       input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+                       cost_usd, latency_ms,
+                       CAST(strftime('%s', ts) AS INTEGER) * 1000,
+                       prompt, response, meta, blocked, blocked_by, block_reason,
+                       guardrail_latency_ms, guardrail_verdict,
+                       saved_cost_usd, saved_latency_ms,
+                       upstream_latency_ms, time_to_first_token_ms, upstream_attempts,
+                       fallback_provider, fallback_model, provider_request_id,
+                       request_size_bytes, quota_remaining, user_id, token_label,
+                       detectors_fired, COALESCE(scrub_applied, 0)
+                FROM request_log;
+            DROP TABLE request_log;
+            ALTER TABLE request_log_new RENAME TO request_log;
+            CREATE INDEX IF NOT EXISTS idx_log_tenant_ts  ON request_log(tenant_id, ts);
+            CREATE INDEX IF NOT EXISTS idx_log_gateway_ts ON request_log(gateway_id, ts);
+            CREATE INDEX IF NOT EXISTS idx_log_ts         ON request_log(ts);
+            COMMIT;
+        ]])
+        if rc ~= sqlite3.OK then
+            ldb:close()
+            error("migrate_timestamps request_log: " .. tostring(rc))
+        end
+
+        -- Rebuild client_error_log: convert ISO ts → Unix milliseconds
+        ldb:exec([[
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS client_error_log_new (
+                id         TEXT PRIMARY KEY,
+                message    TEXT NOT NULL,
+                stack      TEXT,
+                url        TEXT,
+                user_agent TEXT,
+                ts         INTEGER NOT NULL
+            );
+            INSERT INTO client_error_log_new
+                SELECT id, message, stack, url, user_agent,
+                       CAST(strftime('%s', ts) AS INTEGER) * 1000
+                FROM client_error_log;
+            DROP TABLE client_error_log;
+            ALTER TABLE client_error_log_new RENAME TO client_error_log;
+            CREATE INDEX IF NOT EXISTS idx_client_error_ts ON client_error_log(ts);
+            COMMIT;
+        ]])
+    end
+    ldb:close()
+
+    -- ---- config.db -------------------------------------------------------
+    local cdb = open_db(cfg.sqlite.config_db, 10000)
+
+    local ca_type = ""
+    for row in cdb:nrows("PRAGMA table_info(tenant)") do
+        if row.name == "created_at" then ca_type = row.type; break end
+    end
+
+    if ca_type:upper() ~= "INTEGER" then
+        -- tenant
+        cdb:exec([[
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS tenant_new (
+                id         TEXT PRIMARY KEY,
+                slug       TEXT UNIQUE NOT NULL,
+                plan       TEXT NOT NULL DEFAULT 'free',
+                budget_usd REAL,
+                deleted_at INTEGER,
+                created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+            );
+            INSERT INTO tenant_new
+                SELECT id, slug, plan, budget_usd,
+                       CASE WHEN deleted_at IS NOT NULL THEN CAST(strftime('%s', deleted_at) AS INTEGER) END,
+                       CAST(strftime('%s', created_at) AS INTEGER)
+                FROM tenant;
+            DROP TABLE tenant;
+            ALTER TABLE tenant_new RENAME TO tenant;
+            COMMIT;
+        ]])
+        -- gateway
+        cdb:exec([[
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS gateway_new (
+                id         TEXT PRIMARY KEY,
+                tenant_id  TEXT NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+                slug       TEXT NOT NULL,
+                config     TEXT NOT NULL DEFAULT '{}',
+                created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+                UNIQUE(tenant_id, slug)
+            );
+            INSERT INTO gateway_new
+                SELECT id, tenant_id, slug, config,
+                       CAST(strftime('%s', created_at) AS INTEGER)
+                FROM gateway;
+            DROP TABLE gateway;
+            ALTER TABLE gateway_new RENAME TO gateway;
+            COMMIT;
+        ]])
+        -- provider_config
+        cdb:exec([[
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS provider_config_new (
+                id            TEXT PRIMARY KEY,
+                gateway_id    TEXT NOT NULL REFERENCES gateway(id) ON DELETE CASCADE,
+                provider      TEXT NOT NULL,
+                alias         TEXT NOT NULL DEFAULT 'default',
+                encrypted_key TEXT NOT NULL,
+                nonce         TEXT NOT NULL,
+                created_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+                UNIQUE(gateway_id, provider, alias)
+            );
+            INSERT INTO provider_config_new
+                SELECT id, gateway_id, provider, alias, encrypted_key, nonce,
+                       CAST(strftime('%s', created_at) AS INTEGER)
+                FROM provider_config;
+            DROP TABLE provider_config;
+            ALTER TABLE provider_config_new RENAME TO provider_config;
+            COMMIT;
+        ]])
+        -- user
+        cdb:exec([[
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS user_new (
+                id         TEXT PRIMARY KEY,
+                tenant_id  TEXT NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+                email      TEXT NOT NULL,
+                name       TEXT,
+                role       TEXT NOT NULL DEFAULT 'member',
+                deleted_at INTEGER,
+                created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+                UNIQUE(tenant_id, email)
+            );
+            INSERT INTO user_new
+                SELECT id, tenant_id, email, name, role,
+                       CASE WHEN deleted_at IS NOT NULL THEN CAST(strftime('%s', deleted_at) AS INTEGER) END,
+                       CAST(strftime('%s', created_at) AS INTEGER)
+                FROM user;
+            DROP TABLE user;
+            ALTER TABLE user_new RENAME TO user;
+            COMMIT;
+        ]])
+        -- user_gateway_access (no timestamps, but recreate after user drop)
+        cdb:exec([[
+            CREATE TABLE IF NOT EXISTS user_gateway_access (
+                user_id    TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+                gateway_id TEXT NOT NULL REFERENCES gateway(id) ON DELETE CASCADE,
+                PRIMARY KEY (user_id, gateway_id)
+            );
+        ]])
+        -- auth_token
+        cdb:exec([[
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS auth_token_new (
+                id          TEXT PRIMARY KEY,
+                gateway_id  TEXT NOT NULL REFERENCES gateway(id) ON DELETE CASCADE,
+                token_hash  TEXT NOT NULL UNIQUE,
+                scopes      TEXT NOT NULL DEFAULT '[]',
+                expires_at  INTEGER,
+                created_at  INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+                user_id     TEXT REFERENCES user(id) ON DELETE CASCADE,
+                label       TEXT,
+                rate_limit  TEXT,
+                budget_usd  REAL
+            );
+            INSERT INTO auth_token_new
+                SELECT id, gateway_id, token_hash, scopes,
+                       CASE WHEN expires_at IS NOT NULL AND expires_at != ''
+                            THEN CAST(strftime('%s', expires_at) AS INTEGER) END,
+                       CAST(strftime('%s', created_at) AS INTEGER),
+                       user_id, label, rate_limit, budget_usd
+                FROM auth_token;
+            DROP TABLE auth_token;
+            ALTER TABLE auth_token_new RENAME TO auth_token;
+            COMMIT;
+        ]])
+        -- routing_rule (no timestamps to convert)
+        -- model_price
+        cdb:exec([[
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS model_price_new (
+                provider            TEXT NOT NULL,
+                model               TEXT NOT NULL,
+                input_per_1k        REAL NOT NULL,
+                output_per_1k       REAL NOT NULL,
+                cache_write_per_1k  REAL,
+                cache_read_per_1k   REAL,
+                updated_at          INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+                PRIMARY KEY(provider, model)
+            );
+            INSERT INTO model_price_new
+                SELECT provider, model, input_per_1k, output_per_1k,
+                       cache_write_per_1k, cache_read_per_1k,
+                       COALESCE(
+                           CAST(strftime('%s', updated_at) AS INTEGER),
+                           CAST(updated_at AS INTEGER),
+                           CAST(strftime('%s','now') AS INTEGER)
+                       )
+                FROM model_price;
+            DROP TABLE model_price;
+            ALTER TABLE model_price_new RENAME TO model_price;
+            COMMIT;
+        ]])
+    end
+    cdb:close()
+end
+
 -- Migrate: apply schema DDL once from init_by_lua_block (master process).
 -- Safe to call multiple times — all statements are CREATE IF NOT EXISTS.
 function M.migrate(cfg)
     apply_schema(cfg.sqlite.config_db, "config")
     apply_schema(cfg.sqlite.logs_db,   "logs")
     migrate_columns(cfg)
+    migrate_timestamps(cfg)
 end
 
 -- Open DB handles per worker (called from init_worker_by_lua_block).
@@ -278,7 +541,7 @@ end
 
 function M.delete_tenant(id)
     return exec_one(cfg_db(), [[
-        UPDATE tenant SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?
+        UPDATE tenant SET deleted_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ?
     ]], id)
 end
 
@@ -343,7 +606,7 @@ end
 
 function M.delete_user(id)
     return exec_one(cfg_db(), [[
-        UPDATE user SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?
+        UPDATE user SET deleted_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ?
     ]], id)
 end
 
@@ -365,21 +628,24 @@ end
 
 function M.list_tenants()
     return query_all(cfg_db(), [[
-        SELECT id, slug, plan, budget_usd, created_at FROM tenant
-        WHERE deleted_at IS NULL ORDER BY created_at DESC
+        SELECT id, slug, plan, budget_usd,
+               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
+        FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
     ]]) or {}
 end
 
 function M.list_gateways(tenant_id)
     return query_all(cfg_db(), [[
-        SELECT g.id, g.slug, g.tenant_id, g.config, g.created_at
+        SELECT g.id, g.slug, g.tenant_id, g.config,
+               strftime('%Y-%m-%dT%H:%M:%SZ', g.created_at, 'unixepoch') AS created_at
         FROM gateway g WHERE g.tenant_id = ? ORDER BY g.created_at DESC
     ]], tenant_id) or {}
 end
 
 function M.get_gateway_by_id(gateway_id)
     return query_one(cfg_db(), [[
-        SELECT g.id, g.slug, g.config, g.created_at, g.tenant_id
+        SELECT g.id, g.slug, g.config, g.tenant_id,
+               strftime('%Y-%m-%dT%H:%M:%SZ', g.created_at, 'unixepoch') AS created_at
         FROM gateway g WHERE g.id = ?
     ]], gateway_id)
 end
@@ -396,7 +662,10 @@ end
 
 function M.list_auth_tokens(gateway_id)
     return query_all(cfg_db(), [[
-        SELECT id, token_hash, scopes, expires_at, created_at, user_id, label, rate_limit, budget_usd
+        SELECT id, token_hash, scopes, user_id, label, rate_limit, budget_usd,
+               CASE WHEN expires_at IS NOT NULL
+                    THEN strftime('%Y-%m-%dT%H:%M:%SZ', expires_at, 'unixepoch') END AS expires_at,
+               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
         FROM auth_token WHERE gateway_id = ? ORDER BY created_at DESC
     ]], gateway_id) or {}
 end
@@ -413,8 +682,9 @@ end
 
 function M.list_provider_configs(gateway_id)
     return query_all(cfg_db(), [[
-        SELECT id, provider, alias, created_at FROM provider_config
-        WHERE gateway_id = ? ORDER BY provider, alias
+        SELECT id, provider, alias,
+               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
+        FROM provider_config WHERE gateway_id = ? ORDER BY provider, alias
     ]], gateway_id) or {}
 end
 
@@ -456,7 +726,10 @@ end
 
 function M.get_user(id)
     return query_one(cfg_db(), [[
-        SELECT id, tenant_id, email, name, role, deleted_at, created_at
+        SELECT id, tenant_id, email, name, role,
+               CASE WHEN deleted_at IS NOT NULL
+                    THEN strftime('%Y-%m-%dT%H:%M:%SZ', deleted_at, 'unixepoch') END AS deleted_at,
+               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
         FROM user WHERE id = ?
     ]], id)
 end
@@ -464,7 +737,8 @@ end
 function M.list_users(tenant_id)
     if tenant_id then
         return query_all(cfg_db(), [[
-            SELECT u.id, u.tenant_id, u.email, u.name, u.role, u.created_at,
+            SELECT u.id, u.tenant_id, u.email, u.name, u.role,
+                   strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at,
                    t.slug AS tenant_slug
             FROM user u JOIN tenant t ON t.id = u.tenant_id
             WHERE u.tenant_id = ? AND u.deleted_at IS NULL
@@ -472,7 +746,8 @@ function M.list_users(tenant_id)
         ]], tenant_id) or {}
     end
     return query_all(cfg_db(), [[
-        SELECT u.id, u.tenant_id, u.email, u.name, u.role, u.created_at,
+        SELECT u.id, u.tenant_id, u.email, u.name, u.role,
+               strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at,
                t.slug AS tenant_slug
         FROM user u JOIN tenant t ON t.id = u.tenant_id
         WHERE u.deleted_at IS NULL
@@ -499,7 +774,10 @@ end
 
 function M.list_user_tokens(user_id)
     return query_all(cfg_db(), [[
-        SELECT id, gateway_id, token_hash, scopes, expires_at, created_at, label, rate_limit, budget_usd
+        SELECT id, gateway_id, token_hash, scopes, label, rate_limit, budget_usd,
+               CASE WHEN expires_at IS NOT NULL
+                    THEN strftime('%Y-%m-%dT%H:%M:%SZ', expires_at, 'unixepoch') END AS expires_at,
+               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
         FROM auth_token WHERE user_id = ? ORDER BY created_at DESC
     ]], user_id) or {}
 end
@@ -507,7 +785,8 @@ end
 function M.list_model_prices()
     return query_all(cfg_db(), [[
         SELECT provider, model, input_per_1k, output_per_1k,
-               cache_write_per_1k, cache_read_per_1k, updated_at
+               cache_write_per_1k, cache_read_per_1k,
+               strftime('%Y-%m-%dT%H:%M:%SZ', updated_at, 'unixepoch') AS updated_at
         FROM model_price ORDER BY provider, model
     ]]) or {}
 end
@@ -517,7 +796,8 @@ function M.list_models(provider)
     if provider and provider ~= "" then
         return query_all(cfg_db(), [[
             SELECT provider, model, input_per_1k, output_per_1k,
-                   cache_write_per_1k, cache_read_per_1k, updated_at
+                   cache_write_per_1k, cache_read_per_1k,
+                   strftime('%Y-%m-%dT%H:%M:%SZ', updated_at, 'unixepoch') AS updated_at
             FROM   model_price
             WHERE  provider = ?
             ORDER  BY model
@@ -530,7 +810,7 @@ function M.upsert_model_price(provider, model, input_per_1k, output_per_1k, cach
     return exec_one(cfg_db(), [[
         INSERT INTO model_price (provider, model, input_per_1k, output_per_1k,
                                  cache_write_per_1k, cache_read_per_1k, updated_at)
-        VALUES (?,?,?,?,?,?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        VALUES (?,?,?,?,?,?, CAST(strftime('%s','now') AS INTEGER))
         ON CONFLICT(provider, model) DO UPDATE SET
             input_per_1k       = excluded.input_per_1k,
             output_per_1k      = excluded.output_per_1k,
@@ -561,13 +841,16 @@ function M.list_logs(filters)
         params[#params+1] = filters.provider
     end
     if filters.since then
-        where[#where+1] = "ts >= ?"
+        -- since is an ISO date string (YYYY-MM-DD or full ISO); convert to ms
+        where[#where+1] = "ts >= CAST(strftime('%s', ?) AS INTEGER) * 1000"
         params[#params+1] = filters.since
     end
     local limit  = math.min(filters.limit or 50, 200)
     local offset = filters.offset or 0
     local sql = string.format([[
-        SELECT id, substr(ts,1,19) AS ts, tenant_id, gateway_id,
+        SELECT id,
+               strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ', ts/1000, 'unixepoch') AS ts,
+               tenant_id, gateway_id,
                provider, model, status, cached, blocked,
                blocked_by, block_reason, guardrail_verdict,
                input_tokens, output_tokens, cost_usd, latency_ms,
@@ -591,7 +874,13 @@ function M.get_usage_stats()
     local slug_rows = query_all(cdb, "SELECT id, slug FROM tenant") or {}
     for _, r in ipairs(slug_rows) do slugs[r.id] = r.slug end
 
-    local function period(where)
+    -- Pre-compute period thresholds as INTEGER milliseconds (avoids SQL strftime)
+    local now         = math.floor(ngx.now())
+    local today_ms    = (now - (now % 86400)) * 1000
+    local hour_ms     = (now - 3600) * 1000
+    local last_min_ms = (now - 60) * 1000
+
+    local function period(since_ms)
         return query_one(ldb, [[
             SELECT COUNT(*) AS requests,
                    SUM(CASE WHEN cached=1  THEN 1 ELSE 0 END) AS cached,
@@ -602,7 +891,7 @@ function M.get_usage_stats()
                    ROUND(COALESCE(SUM(saved_cost_usd),0),6)   AS saved_cost_usd,
                    ROUND(COALESCE(AVG(latency_ms),0))         AS avg_latency_ms,
                    ROUND(COALESCE(AVG(upstream_latency_ms),0)) AS avg_upstream_latency_ms
-            FROM request_log WHERE ]] .. where) or {}
+            FROM request_log WHERE ts >= ?]], since_ms) or {}
     end
 
     local by_tenant = query_all(ldb, [[
@@ -612,16 +901,17 @@ function M.get_usage_stats()
                COALESCE(SUM(output_tokens),0) AS output_tokens,
                ROUND(COALESCE(SUM(cost_usd),0),4) AS cost_usd
         FROM request_log
-        WHERE ts >= strftime('%Y-%m-%dT00:00:00Z','now')
+        WHERE ts >= ?
         GROUP BY tenant_id ORDER BY cost_usd DESC
-    ]]) or {}
+    ]], today_ms) or {}
 
     for _, row in ipairs(by_tenant) do
         row.tenant = slugs[row.tenant_id] or row.tenant_id
     end
 
     local recent = query_all(ldb, [[
-        SELECT substr(ts,1,19) AS ts, tenant_id, provider, model,
+        SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
+               tenant_id, provider, model,
                status, input_tokens, output_tokens,
                ROUND(cost_usd,5) AS cost_usd, latency_ms, cached,
                blocked, blocked_by, block_reason,
@@ -637,7 +927,8 @@ function M.get_usage_stats()
     end
 
     local recent_blocked = query_all(ldb, [[
-        SELECT substr(ts,1,19) AS ts, tenant_id, blocked_by, block_reason, latency_ms
+        SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
+               tenant_id, blocked_by, block_reason, latency_ms
         FROM request_log WHERE blocked = 1
         ORDER BY ts DESC LIMIT 20
     ]]) or {}
@@ -647,9 +938,9 @@ function M.get_usage_stats()
     end
 
     return {
-        today          = period("ts >= strftime('%Y-%m-%dT00:00:00Z','now')"),
-        hour           = period("ts >= strftime('%Y-%m-%dT%H:%M:%SZ','now','-1 hour')"),
-        last_min       = period("ts >= strftime('%Y-%m-%dT%H:%M:%SZ','now','-1 minute')"),
+        today          = period(today_ms),
+        hour           = period(hour_ms),
+        last_min       = period(last_min_ms),
         by_tenant      = by_tenant,
         recent         = recent,
         recent_blocked = recent_blocked,
@@ -669,7 +960,8 @@ end
 
 function M.list_client_errors(limit)
     return query_all(log_db(), [[
-        SELECT id, message, stack, url, user_agent, ts
+        SELECT id, message, stack, url, user_agent,
+               strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts
         FROM   client_error_log
         ORDER  BY ts DESC
         LIMIT  ?
