@@ -4,6 +4,7 @@ import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig } from "src/api/types";
 import { DetectorBuilder } from "src/modules/detectors/DetectorBuilder";
+import { fmtDate, fmtDateTime } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -128,6 +129,9 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
   const [logPayloads, setLogPayloads] = useState(cfg.log_payloads !== false);
   const [rateRequests, setRateRequests] = useState(String(cfg.rate_limit?.requests ?? 500));
   const [rateWindow, setRateWindow] = useState(String(cfg.rate_limit?.window_sec ?? 60));
+  const [baseUrls, setBaseUrls] = useState<Array<{ provider: string; url: string }>>(
+    Object.entries(cfg.provider_base_urls ?? {}).map(([provider, url]) => ({ provider, url }))
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,6 +149,10 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
       };
       if (budgetUsd !== "") newConfig.budget_usd = parseFloat(budgetUsd);
       else newConfig.budget_usd = null;
+      const validBaseUrls = baseUrls.filter((e) => e.provider.trim() && e.url.trim());
+      if (validBaseUrls.length > 0) {
+        newConfig.provider_base_urls = Object.fromEntries(validBaseUrls.map((e) => [e.provider.trim(), e.url.trim()]));
+      }
       await api.patch(`/gateways/${gw.id}`, { config: newConfig });
       onSaved({ ...gw, config: { ...cfg, ...newConfig } });
       onClose();
@@ -204,6 +212,40 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
               <input type="checkbox" checked={logPayloads} onChange={(e) => setLogPayloads(e.target.checked)} />
               <span className={s["form-label"]} style={{ margin: 0 }}>Log request/response payloads</span>
             </label>
+          </div>
+          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          <div className={s["form-group"]}>
+            <label className={s["form-label"]}>Provider Base URLs</label>
+            <p className={s["form-hint"]} style={{ marginBottom: 8 }}>Override the upstream URL for a provider (e.g. Ollama on a custom host/port).</p>
+            {baseUrls.map((entry, i) => (
+              <div key={i} className={s["form-row"]} style={{ marginBottom: 6 }}>
+                <input
+                  className={s["form-input"]}
+                  placeholder="provider (e.g. ollama)"
+                  value={entry.provider}
+                  onChange={(e) => setBaseUrls((prev) => prev.map((r, j) => j === i ? { ...r, provider: e.target.value } : r))}
+                  style={{ flex: "0 0 140px" }}
+                />
+                <input
+                  className={s["form-input"]}
+                  placeholder="http://host:port"
+                  value={entry.url}
+                  onChange={(e) => setBaseUrls((prev) => prev.map((r, j) => j === i ? { ...r, url: e.target.value } : r))}
+                />
+                <button
+                  type="button"
+                  className={`${s.btn} ${s["btn--secondary"]}`}
+                  style={{ flex: "none", padding: "0 10px" }}
+                  onClick={() => setBaseUrls((prev) => prev.filter((_, j) => j !== i))}
+                >✕</button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className={`${s.btn} ${s["btn--secondary"]}`}
+              style={{ marginTop: 4, fontSize: 12 }}
+              onClick={() => setBaseUrls((prev) => [...prev, { provider: "", url: "" }])}
+            >+ Add URL override</button>
           </div>
           <div className={s["form-actions"]}>
             <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
@@ -677,7 +719,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
                   <tr key={k.id}>
                     <td><span className={s.code}>{k.provider}</span></td>
                     <td>{k.alias}</td>
-                    <td className={s.mono}>{k.created_at.slice(0, 10)}</td>
+                    <td className={s.mono}>{fmtDate(k.created_at)}</td>
                     <td>
                       <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={() => deleteKey(k.provider, k.alias)}>Delete</button>
                     </td>
@@ -710,8 +752,8 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
                   <tr key={t.id}>
                     <td className={s.mono} style={{ fontSize: 11 }}>{t.id.slice(0, 8)}…</td>
                     <td className={s.mono} style={{ fontSize: 11 }}>{t.token_hash.slice(0, 16)}…</td>
-                    <td>{t.expires_at ?? <span style={{ color: "var(--text-secondary)" }}>never</span>}</td>
-                    <td className={s.mono}>{t.created_at.slice(0, 10)}</td>
+                    <td>{t.expires_at ? fmtDateTime(t.expires_at) : <span style={{ color: "var(--text-secondary)" }}>never</span>}</td>
+                    <td className={s.mono}>{fmtDate(t.created_at)}</td>
                     <td><button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={() => deleteToken(t.id)}>Revoke</button></td>
                   </tr>
                 ))}
@@ -944,7 +986,7 @@ export default function Gateways() {
                         <span className={`${s.badge} ${s["badge--neutral"]}`}>—</span>
                       )}
                     </td>
-                    <td className={s.mono}>{g.created_at.slice(0, 10)}</td>
+                    <td className={s.mono}>{fmtDate(g.created_at)}</td>
                     <td style={{ display: "flex", gap: 6 }}>
                       <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/tenants/${tenantId}/gateways/${g.id}`); }}>Open →</button>
                       <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); deleteGateway(g); }}>Delete</button>

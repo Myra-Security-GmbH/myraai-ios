@@ -87,6 +87,7 @@ export interface GatewayConfig {
   rate_limit?: { requests: number; window_sec: number };
   guardrails?: { enabled: boolean; llama_guard_url?: string; timeout_ms?: number; fail_open?: boolean };
   detectors?: DetectorConfig[];
+  provider_base_urls?: Record<string, string>;
 }
 
 export interface Gateway {
