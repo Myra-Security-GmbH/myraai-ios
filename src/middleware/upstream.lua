@@ -69,6 +69,30 @@ local function call_provider(ctx, provider_name, model, is_streaming)
     }
 end
 
+-- #5: Shared SSE line extractor used by both streaming handlers.
+-- Appends chunk to buf, extracts all complete \n-terminated lines, calls
+-- on_parsed(result) for each non-nil parse_sse_chunk result.
+-- #2: parse_sse_chunk is called inside pcall so a malformed chunk cannot
+-- panic the worker and leave the client connection in an unknown state.
+-- Returns the updated buf (incomplete last fragment, kept for next call).
+local function drain_sse_buf(buf, chunk, provider_mod, on_parsed)
+    buf = buf .. chunk
+    local pos = 1
+    while true do
+        local nl = buf:find("\n", pos, true)
+        if not nl then return buf:sub(pos) end
+        local line = buf:sub(pos, nl - 1):gsub("\r$", "")
+        pos = nl + 1
+        local ok, result = pcall(provider_mod.parse_sse_chunk, line)
+        if ok and result then
+            on_parsed(result)
+        elseif not ok then
+            ngx.log(ngx.WARN, "[upstream] parse_sse_chunk panic on line=",
+                    line:sub(1, 80), " err=", tostring(result))
+        end
+    end
+end
+
 -- Stream SSE from provider → client for compat requests.
 -- Converts provider-native SSE (Anthropic, Gemini, etc.) to OpenAI
 -- chat.completion.chunk format so any OpenAI-compatible client works.
@@ -93,8 +117,10 @@ local function handle_compat_streaming(ctx, res)
     local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = 0, 0, 0, 0
     local first_chunk_seen = false
     local done_sent        = false
+    local stream_errored   = false  -- #8: track mid-stream read failures
     local in_think         = false  -- stateful <think> block tracker
-    local accumulated_content = ""
+    -- #1: table accumulator avoids O(n²) string copies for large responses
+    local acc_parts        = {}
 
     -- Initial role delta (mirrors OpenAI behaviour).
     -- Skipped when web_search already flushed an aig_status chunk — the client
@@ -111,9 +137,48 @@ local function handle_compat_streaming(ctx, res)
         ngx.flush(true)
     end
 
+    -- #5: named closure captures all locals; defined once, not per-chunk
+    local function on_compat_chunk(parsed)
+        if parsed.input_tokens          then input_tokens          = parsed.input_tokens          end
+        if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
+        if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
+        if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
+
+        if parsed.done and not done_sent then
+            local finish_line = "data: " .. json.encode({
+                id      = chat_id,
+                object  = "chat.completion.chunk",
+                model   = model,
+                choices = {{ index = 0, delta = {}, finish_reason = "stop" }},
+            }) .. "\n\n"
+            ngx.print(finish_line)
+            ngx.flush(true)
+            done_sent = true
+        elseif parsed.delta and parsed.delta ~= "" then
+            local visible
+            visible, in_think = thinking.strip(parsed.delta, in_think)
+            if visible and visible ~= "" then
+                local delta_line = "data: " .. json.encode({
+                    id      = chat_id,
+                    object  = "chat.completion.chunk",
+                    model   = model,
+                    choices = {{ index = 0, delta = { content = visible },
+                                 finish_reason = json.null }},
+                }) .. "\n\n"
+                ngx.print(delta_line)
+                ngx.flush(true)
+                acc_parts[#acc_parts + 1] = visible  -- #1
+            end
+        end
+    end
+
     while true do
         local chunk, err = reader(8192)
-        if err then ngx.log(ngx.ERR, "compat streaming read error: ", err); break end
+        if err then
+            ngx.log(ngx.ERR, "compat streaming read error: ", err)
+            stream_errored = true  -- #8
+            break
+        end
         if not chunk then break end
 
         if not first_chunk_seen and chunk ~= "" then
@@ -121,52 +186,22 @@ local function handle_compat_streaming(ctx, res)
             ctx.time_to_first_token_ms = math.floor(ngx.now() * 1000 - ctx.start_ms)
         end
 
-        buf = buf .. chunk
+        -- #5: shared line parser with #2 pcall protection inside
+        buf = drain_sse_buf(buf, chunk, provider_mod, on_compat_chunk)
+    end
 
-        local pos = 1
-        while true do
-            local nl = buf:find("\n", pos, true)
-            if not nl then buf = buf:sub(pos); break end
-            local line = buf:sub(pos, nl - 1):gsub("\r$", "")
-            pos = nl + 1
+    local accumulated_content = table.concat(acc_parts)  -- #1
 
-            local parsed = provider_mod.parse_sse_chunk(line)
-            if parsed then
-                if parsed.input_tokens          then input_tokens          = parsed.input_tokens          end
-                if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
-                if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
-                if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
-
-                if parsed.done and not done_sent then
-                    local finish_line = "data: " .. json.encode({
-                        id      = chat_id,
-                        object  = "chat.completion.chunk",
-                        model   = model,
-                        choices = {{ index = 0, delta = {}, finish_reason = "stop" }},
-                    }) .. "\n\n"
-                    ngx.print(finish_line)
-                    ngx.flush(true)
-                    done_sent = true
-                elseif parsed.delta and parsed.delta ~= "" then
-                    local visible
-                    visible, in_think = thinking.strip(parsed.delta, in_think)
-                    if not visible or visible == "" then
-                        -- Entire delta was reasoning — skip this chunk
-                    else
-                    local delta_line = "data: " .. json.encode({
-                        id      = chat_id,
-                        object  = "chat.completion.chunk",
-                        model   = model,
-                        choices = {{ index = 0, delta = { content = visible },
-                                     finish_reason = json.null }},
-                    }) .. "\n\n"
-                    ngx.print(delta_line)
-                    ngx.flush(true)
-                    accumulated_content = accumulated_content .. visible
-                    end  -- visible ~= ""
-                end
-            end
-        end
+    -- #8: on read error emit an error-finish chunk so clients don't hang
+    if stream_errored then
+        ngx.print("data: " .. json.encode({
+            id      = chat_id,
+            object  = "chat.completion.chunk",
+            model   = model,
+            choices = {{ index = 0, delta = { content = "" },
+                         finish_reason = "error" }},
+        }) .. "\n\n")
+        ngx.flush(true)
     end
 
     -- Send usage chunk so clients can display token counts in real-time
@@ -197,12 +232,20 @@ local function handle_compat_streaming(ctx, res)
         done_sent     = done_sent,
     })
 
-    ngx.print("data: [DONE]\n\n")
-    ngx.flush(true)
+    -- #8: only emit [DONE] when the stream completed without a read error
+    if not stream_errored then
+        ngx.print("data: [DONE]\n\n")
+        ngx.flush(true)
+    end
 
     trace.done(ctx, "done")
 
     if res.httpc then res.httpc:set_keepalive() end
+
+    -- #7: update upstream_latency_ms to total stream duration, not just TTFB
+    if ctx.upstream_t_start then
+        ctx.upstream_latency_ms = math.floor((ngx.now() - ctx.upstream_t_start) * 1000)
+    end
 
     ctx.input_tokens          = input_tokens
     ctx.output_tokens         = output_tokens
@@ -210,6 +253,13 @@ local function handle_compat_streaming(ctx, res)
     ctx.cache_read_tokens     = cache_read_tokens
     ctx.is_streaming          = true
     ctx.provider_status       = 200
+
+    -- pii_protector: log raw streamed content for audit.
+    if ctx.pii_token_map and accumulated_content ~= ""
+       and ctx.gateway_config and ctx.gateway_config.log_payloads then
+        ctx.log_fields = ctx.log_fields or {}
+        ctx.log_fields.response_raw = accumulated_content
+    end
 end
 
 -- Stream SSE from provider to client, accumulating token usage.
@@ -223,11 +273,24 @@ local function handle_streaming(ctx, res)
         ngx.header["X-AIG-Cache"]       = "MISS"
     end
 
-    local reader      = res.body
+    local reader       = res.body
     local provider_mod = res.provider_mod
-    local buf         = ""
+    local buf          = ""
     local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = 0, 0, 0, 0
     local first_chunk_seen = false
+    -- #1: table accumulator; only allocated when pii_protector is active
+    local acc_parts = ctx.pii_token_map and {} or nil
+
+    -- #5: named closure; defined once outside the read loop
+    local function on_stream_chunk(parsed)
+        if parsed.input_tokens          then input_tokens          = parsed.input_tokens          end
+        if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
+        if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
+        if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
+        if acc_parts and parsed.delta and parsed.delta ~= "" then
+            acc_parts[#acc_parts + 1] = parsed.delta  -- #1
+        end
+    end
 
     while true do
         local chunk, err = reader(8192)
@@ -246,39 +309,32 @@ local function handle_streaming(ctx, res)
         ngx.print(chunk)
         ngx.flush(true)
 
-        -- Accumulate for token counting
-        buf = buf .. chunk
-
-        -- Parse SSE lines from the accumulated buffer
-        local pos = 1
-        while true do
-            local nl = buf:find("\n", pos, true)
-            if not nl then
-                buf = buf:sub(pos)  -- keep remainder
-                break
-            end
-            local line = buf:sub(pos, nl - 1):gsub("\r$", "")
-            pos = nl + 1
-
-            local parsed = provider_mod.parse_sse_chunk(line)
-            if parsed then
-                if parsed.input_tokens          then input_tokens          = parsed.input_tokens          end
-                if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
-                if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
-                if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
-            end
-        end
+        -- #5: shared line parser with #2 pcall protection inside
+        buf = drain_sse_buf(buf, chunk, provider_mod, on_stream_chunk)
     end
 
     -- Return connection to pool
     if res.httpc then res.httpc:set_keepalive() end
+
+    -- #7: update upstream_latency_ms to total stream duration, not just TTFB
+    if ctx.upstream_t_start then
+        ctx.upstream_latency_ms = math.floor((ngx.now() - ctx.upstream_t_start) * 1000)
+    end
 
     ctx.input_tokens          = input_tokens
     ctx.output_tokens         = output_tokens
     ctx.cache_creation_tokens = cache_creation_tokens
     ctx.cache_read_tokens     = cache_read_tokens
     ctx.is_streaming          = true
-    ctx.provider_status = 200
+    ctx.provider_status       = 200
+
+    -- pii_protector: log raw streamed content for audit (response phase is skipped
+    -- for streaming, so we capture here instead).
+    if ctx.pii_token_map and acc_parts
+       and ctx.gateway_config and ctx.gateway_config.log_payloads then
+        ctx.log_fields = ctx.log_fields or {}
+        ctx.log_fields.response_raw = table.concat(acc_parts)  -- #1
+    end
 end
 
 -- Non-streaming response: buffer full body and parse.
@@ -351,7 +407,9 @@ function M.call_one(ctx)
         end
 
         for _ = 0, (attempt_idx == 1 and retry_count or 0) do
+            local t_call = ngx.now()  -- #4: track latency in call_one
             local res, err = call_provider(ctx, provider_name, model, false)
+            local call_ms = math.floor((ngx.now() - t_call) * 1000)
             if not res then
                 last_err = err
                 cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, nil)
@@ -360,8 +418,10 @@ function M.call_one(ctx)
                 cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status)
             else
                 cb.record_success(ctx.gateway_id, provider_name, cb_cfg)
+                -- #4: keep ctx consistent with the provider actually used
                 ctx.provider = provider_name
                 ctx.model    = model
+                ctx.upstream_latency_ms = call_ms
                 return res.body, res.status, nil
             end
         end
@@ -374,7 +434,10 @@ function M.run(ctx)
     -- web_search middleware sets this when it already handled the full response
     if ctx.web_search_done then return end
 
+    -- pii_protector forces buffered mode for compat streaming requests so that
+    -- the response phase can restore tokens before the client sees them.
     local is_streaming = ctx.request_body and ctx.request_body.stream == true
+                         and not ctx.pii_force_buffered
     local retry_count  = ctx.gateway_config.retry_count or 2
     local cb           = require("core.circuit_breaker")
     local cb_cfg       = ctx.gateway_config.circuit_breaker
@@ -474,7 +537,11 @@ function M.run(ctx)
 
             -- Success path
             cb.record_success(ctx.gateway_id, provider_name, cb_cfg)
+            -- #7: for streaming, call_ms is TTFB; streaming handlers will overwrite
+            -- upstream_latency_ms with total duration using upstream_t_start.
             ctx.upstream_latency_ms = call_ms
+            ctx.upstream_ttfb_ms    = call_ms   -- #7: TTFB preserved separately
+            ctx.upstream_t_start    = t_call    -- #7: used by streaming handlers
             ctx.upstream_attempts   = total_attempts
             ctx.provider_request_id = res.headers and
                 (res.headers["x-request-id"] or res.headers["request-id"])
