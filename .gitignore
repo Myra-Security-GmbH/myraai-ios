@@ -1,0 +1,40 @@
+# Generated databases
+data/
+
+# Logs
+logs/
+
+# Nginx temporary directories
+client_body_temp/
+fastcgi_temp/
+proxy_temp/
+scgi_temp/
+uwsgi_temp/
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+frontend/.yarn/cache/
+frontend/.npm/
+
+# Frontend test output
+frontend/playwright-report/
+frontend/test-results/
+
+# Test environment
+testhome/
+
+# Local settings
+.claude/settings.local.json
+
+# Process files
+*.pid
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editor temp files
+*.swp
+*.swo
+*~

@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# presidio_run.sh — build and start Presidio analyzer + anonymizer as local sidecars.
+#
+# Analyzer  listens on 127.0.0.1:5002  (entity detection, uses spaCy)
+# Anonymizer listens on 127.0.0.1:5001  (entity redaction, no ML)
+#
+# Usage:
+#   ./presidio_run.sh            # build (if needed) and start both services
+#   ./presidio_run.sh stop       # stop and remove containers
+#   ./presidio_run.sh rebuild    # force rebuild of analyzer image, then start
+#   ./presidio_run.sh logs       # tail logs from both containers
+#   ./presidio_run.sh status     # show running status
+
+set -euo pipefail
+
+ANALYZER_IMAGE="aig-presidio-analyzer"
+ANALYZER_CONTAINER="aig-presidio-analyzer"
+ANONYMIZER_IMAGE="mcr.microsoft.com/presidio-anonymizer:latest"
+ANONYMIZER_CONTAINER="aig-presidio-anonymizer"
+
+ANALYZER_PORT="5002"
+ANONYMIZER_PORT="5001"
+
+DOCKERFILE="config/Dockerfile.presidio"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+log() { echo "[presidio] $*"; }
+
+container_running() {
+    docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -q "true"
+}
+
+container_exists() {
+    docker inspect "$1" &>/dev/null
+}
+
+stop_container() {
+    local name="$1"
+    if container_exists "$name"; then
+        log "Stopping $name..."
+        docker stop "$name" 2>/dev/null || true
+        docker rm   "$name" 2>/dev/null || true
+    fi
+}
+
+build_analyzer() {
+    log "Building analyzer image ($ANALYZER_IMAGE) — this downloads spaCy models once..."
+    docker build \
+        -f "$DOCKERFILE" \
+        -t "$ANALYZER_IMAGE" \
+        .
+    log "Analyzer image built."
+}
+
+start_analyzer() {
+    if container_running "$ANALYZER_CONTAINER"; then
+        log "Analyzer already running on :$ANALYZER_PORT"
+        return
+    fi
+    stop_container "$ANALYZER_CONTAINER"
+
+    # Build image if it does not exist yet
+    if ! docker image inspect "$ANALYZER_IMAGE" &>/dev/null; then
+        build_analyzer
+    fi
+
+    log "Starting analyzer on 127.0.0.1:$ANALYZER_PORT..."
+    docker run -d \
+        --name "$ANALYZER_CONTAINER" \
+        --restart unless-stopped \
+        -p "127.0.0.1:${ANALYZER_PORT}:3000" \
+        "$ANALYZER_IMAGE"
+    log "Analyzer started."
+}
+
+start_anonymizer() {
+    if container_running "$ANONYMIZER_CONTAINER"; then
+        log "Anonymizer already running on :$ANONYMIZER_PORT"
+        return
+    fi
+    stop_container "$ANONYMIZER_CONTAINER"
+
+    log "Starting anonymizer on 127.0.0.1:$ANONYMIZER_PORT..."
+    docker run -d \
+        --name "$ANONYMIZER_CONTAINER" \
+        --restart unless-stopped \
+        -p "127.0.0.1:${ANONYMIZER_PORT}:3000" \
+        "$ANONYMIZER_IMAGE"
+    log "Anonymizer started."
+}
+
+wait_ready() {
+    local name="$1"
+    local port="$2"
+    local max=30
+    local i=0
+    log "Waiting for $name to be ready..."
+    while ! curl -sf "http://127.0.0.1:${port}/health" &>/dev/null; do
+        sleep 1
+        i=$((i + 1))
+        if [ "$i" -ge "$max" ]; then
+            log "ERROR: $name did not become ready within ${max}s"
+            docker logs "$name" | tail -20
+            exit 1
+        fi
+    done
+    log "$name is ready."
+}
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+CMD="${1:-start}"
+
+case "$CMD" in
+    start)
+        start_analyzer
+        start_anonymizer
+        wait_ready "$ANALYZER_CONTAINER"  "$ANALYZER_PORT"
+        wait_ready "$ANONYMIZER_CONTAINER" "$ANONYMIZER_PORT"
+        log "Both services up."
+        log "  Analyzer:  http://127.0.0.1:${ANALYZER_PORT}"
+        log "  Anonymizer: http://127.0.0.1:${ANONYMIZER_PORT}"
+        ;;
+
+    stop)
+        stop_container "$ANALYZER_CONTAINER"
+        stop_container "$ANONYMIZER_CONTAINER"
+        log "Both services stopped."
+        ;;
+
+    rebuild)
+        stop_container "$ANALYZER_CONTAINER"
+        build_analyzer
+        start_analyzer
+        start_anonymizer
+        wait_ready "$ANALYZER_CONTAINER"  "$ANALYZER_PORT"
+        wait_ready "$ANONYMIZER_CONTAINER" "$ANONYMIZER_PORT"
+        log "Rebuild complete. Both services up."
+        ;;
+
+    logs)
+        docker logs -f "$ANALYZER_CONTAINER" &
+        docker logs -f "$ANONYMIZER_CONTAINER" &
+        wait
+        ;;
+
+    status)
+        for name in "$ANALYZER_CONTAINER" "$ANONYMIZER_CONTAINER"; do
+            if container_running "$name"; then
+                echo "$name: running"
+            elif container_exists "$name"; then
+                echo "$name: stopped"
+            else
+                echo "$name: not created"
+            fi
+        done
+        ;;
+
+    *)
+        echo "Usage: $0 [start|stop|rebuild|logs|status]"
+        exit 1
+        ;;
+esac

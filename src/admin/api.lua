@@ -1,13 +1,28 @@
 -- admin/api.lua — REST admin API handler
 -- Routes:
---   GET  /admin/v1/tenants
---   POST /admin/v1/tenants
---   GET  /admin/v1/tenants/:id/gateways
---   POST /admin/v1/tenants/:id/gateways
---   POST /admin/v1/tenants/:id/gateways/:gw/keys
---   GET  /admin/v1/tenants/:id/gateways/:gw/logs
---   GET  /admin/v1/tenants/:id/gateways/:gw/analytics
---   POST /admin/v1/gateways/:id/tokens
+--   GET    /admin/v1/tenants
+--   POST   /admin/v1/tenants
+--   GET    /admin/v1/tenants/:id/gateways
+--   POST   /admin/v1/tenants/:id/gateways
+--   GET    /admin/v1/tenants/:id/users
+--   POST   /admin/v1/tenants/:id/users
+--   GET    /admin/v1/gateways/:id
+--   PATCH  /admin/v1/gateways/:id
+--   GET    /admin/v1/gateways/:id/tokens
+--   POST   /admin/v1/gateways/:id/tokens
+--   DELETE /admin/v1/gateways/:id/tokens/:tid
+--   POST   /admin/v1/gateways/:id/keys
+--   DELETE /admin/v1/gateways/:id/budget
+--   PATCH  /admin/v1/users/:id
+--   DELETE /admin/v1/users/:id
+--   GET    /admin/v1/users/:id/tokens
+--   POST   /admin/v1/users/:id/tokens
+--   GET    /admin/v1/users/:id/gateways
+--   POST   /admin/v1/users/:id/gateways/:gw_id
+--   DELETE /admin/v1/users/:id/gateways/:gw_id
+--   DELETE /admin/v1/users/:id/budget
+--   GET    /admin/v1/stats
+--   GET    /admin/v1/logs
 
 local json    = require("utils.json")
 local storage = require("storage")
@@ -19,6 +34,8 @@ local M = {}
 local function send(status, body)
     ngx.status = status
     ngx.header["Content-Type"] = "application/json"
+    ngx.header["Access-Control-Allow-Origin"] = "*"
+    ngx.header["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     ngx.print(json.encode(body))
 end
 
@@ -35,40 +52,107 @@ local function read_body()
     return json.decode(raw or "{}")
 end
 
--- Simple path router
 local ROUTES = {}
-
 local function route(method, pattern, handler)
     ROUTES[#ROUTES + 1] = { method = method, pattern = pattern, handler = handler }
 end
 
 -- ---------------------------------------------------------------------------
+-- Stats & logs
+-- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/stats$", function()
+    send(200, storage.get_usage_stats())
+end)
+
+route("GET", "^/admin/v1/logs$", function()
+    local args = ngx.req.get_uri_args()
+    send(200, storage.list_logs({
+        tenant_id  = args.tenant_id,
+        gateway_id = args.gateway_id,
+        provider   = args.provider,
+        since      = args.since,
+        limit      = tonumber(args.limit),
+        offset     = tonumber(args.offset),
+    }))
+end)
+
+-- ---------------------------------------------------------------------------
 -- Tenant routes
 -- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/tenants$", function()
+    send(200, storage.list_tenants())
+end)
+
 route("POST", "^/admin/v1/tenants$", function()
     local b = read_body()
-    if not b or not b.slug then
-        return send(400, { error = "slug required" })
-    end
+    if not b or not b.slug then return send(400, { error = "slug required" }) end
     local id = storage.upsert_tenant(b.slug, b.plan, b.budget_usd)
     send(201, { id = id, slug = b.slug })
+end)
+
+route("PATCH", "^/admin/v1/tenants/([^/]+)$", function(tenant_id)
+    local b = read_body()
+    if not b then return send(400, { error = "invalid body" }) end
+    local err = storage.update_tenant(tenant_id, b.plan, b.budget_usd)
+    if err then return send(500, { error = err }) end
+    send(200, { ok = true })
+end)
+
+route("DELETE", "^/admin/v1/tenants/([^/]+)$", function(tenant_id)
+    local err = storage.delete_tenant(tenant_id)
+    if err then return send(500, { error = err }) end
+    send(200, { ok = true })
 end)
 
 -- ---------------------------------------------------------------------------
 -- Gateway routes
 -- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/tenants/([^/]+)/gateways$", function(tenant_id)
+    local rows = storage.list_gateways(tenant_id)
+    for _, r in ipairs(rows) do r.config = json.decode(r.config or "{}") or {} end
+    send(200, rows)
+end)
+
 route("POST", "^/admin/v1/tenants/([^/]+)/gateways$", function(tenant_id)
     local b = read_body()
-    if not b or not b.slug then
-        return send(400, { error = "slug required" })
-    end
+    if not b or not b.slug then return send(400, { error = "slug required" }) end
     local id = storage.upsert_gateway(tenant_id, b.slug, b.config or {})
     send(201, { id = id, slug = b.slug })
+end)
+
+route("GET", "^/admin/v1/gateways/([^/]+)$", function(gateway_id)
+    local row = storage.get_gateway_by_id(gateway_id)
+    if not row then return send(404, { error = "not found" }) end
+    row.config = json.decode(row.config or "{}") or {}
+    send(200, row)
+end)
+
+route("PATCH", "^/admin/v1/gateways/([^/]+)$", function(gateway_id)
+    local b = read_body()
+    if not b then return send(400, { error = "invalid body" }) end
+    local row = storage.get_gateway_by_id(gateway_id)
+    if not row then return send(404, { error = "not found" }) end
+    local existing = json.decode(row.config or "{}") or {}
+    if b.config then
+        for k, v in pairs(b.config) do existing[k] = v end
+    end
+    storage.upsert_gateway(row.tenant_id, row.slug, existing)
+    send(200, { ok = true })
+end)
+
+route("DELETE", "^/admin/v1/gateways/([^/]+)$", function(gateway_id)
+    local err = storage.delete_gateway(gateway_id)
+    if err then return send(500, { error = err }) end
+    send(200, { ok = true })
 end)
 
 -- ---------------------------------------------------------------------------
 -- BYOK key routes
 -- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/gateways/([^/]+)/keys$", function(gateway_id)
+    send(200, storage.list_provider_configs(gateway_id))
+end)
+
 route("POST", "^/admin/v1/gateways/([^/]+)/keys$", function(gateway_id)
     local b = read_body()
     if not b or not b.provider or not b.key then
@@ -79,18 +163,164 @@ route("POST", "^/admin/v1/gateways/([^/]+)/keys$", function(gateway_id)
     send(201, { ok = true, provider = b.provider, alias = b.alias or "default" })
 end)
 
+route("DELETE", "^/admin/v1/gateways/([^/]+)/keys/([^/]+)/([^/]+)$", function(gateway_id, provider, alias)
+    local err = storage.delete_provider_config(gateway_id, provider, alias)
+    if err then return send(500, { error = err }) end
+    send(200, { ok = true })
+end)
+
+-- ---------------------------------------------------------------------------
+-- Routing rule routes
+-- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/gateways/([^/]+)/rules$", function(gateway_id)
+    local rows = storage.list_routing_rules(gateway_id)
+    for _, r in ipairs(rows) do
+        r.conditions = json.decode(r.conditions or "[]") or {}
+        r.actions    = json.decode(r.actions    or "{}") or {}
+    end
+    send(200, rows)
+end)
+
+route("POST", "^/admin/v1/gateways/([^/]+)/rules$", function(gateway_id)
+    local b = read_body()
+    if not b then return send(400, { error = "invalid body" }) end
+    local new_id = storage.upsert_routing_rule(gateway_id, nil,
+        b.priority, b.conditions, b.actions, b.enabled)
+    send(201, { id = new_id })
+end)
+
+route("PATCH", "^/admin/v1/gateways/([^/]+)/rules/([^/]+)$", function(gateway_id, rule_id)
+    local b = read_body()
+    if not b then return send(400, { error = "invalid body" }) end
+    local err = storage.upsert_routing_rule(gateway_id, rule_id,
+        b.priority, b.conditions, b.actions, b.enabled)
+    if err then return send(500, { error = tostring(err) }) end
+    send(200, { ok = true })
+end)
+
+route("DELETE", "^/admin/v1/gateways/([^/]+)/rules/([^/]+)$", function(_, rule_id)
+    storage.delete_routing_rule(rule_id)
+    send(200, { ok = true })
+end)
+
+-- ---------------------------------------------------------------------------
+-- Model price routes
+-- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/model%-prices$", function()
+    send(200, storage.list_model_prices())
+end)
+
+route("PUT", "^/admin/v1/model%-prices$", function()
+    local b = read_body()
+    if not b or not b.provider or not b.model then
+        return send(400, { error = "provider and model required" })
+    end
+    local err = storage.upsert_model_price(b.provider, b.model,
+        b.input_per_1k, b.output_per_1k, b.cache_write_per_1k, b.cache_read_per_1k)
+    if err then return send(500, { error = err }) end
+    send(200, { ok = true })
+end)
+
+route("DELETE", "^/admin/v1/model%-prices/([^/]+)/(.+)$", function(provider, model)
+    storage.delete_model_price(provider, model)
+    send(200, { ok = true })
+end)
+
 -- ---------------------------------------------------------------------------
 -- Token routes
 -- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/gateways/([^/]+)/tokens$", function(gateway_id)
+    send(200, storage.list_auth_tokens(gateway_id))
+end)
+
 route("POST", "^/admin/v1/gateways/([^/]+)/tokens$", function(gateway_id)
     local b = read_body()
     local raw_token = crypto.random_hex(32)
     local hash      = crypto.sha256_hex(raw_token)
-    local err = storage.insert_auth_token(gateway_id, hash,
-                                          b and b.scopes or {}, b and b.expires_at)
+    local rate_limit_json = b and b.rate_limit and json.encode(b.rate_limit) or nil
+    local id, err = storage.insert_auth_token(gateway_id, hash,
+        b and b.scopes or {}, b and b.expires_at,
+        nil, b and b.label, rate_limit_json, b and b.budget_usd)
     if err then return send(500, { error = err }) end
-    -- Return raw token once — not stored in plaintext
-    send(201, { token = raw_token, gateway_id = gateway_id })
+    send(201, { id = id, token = raw_token, gateway_id = gateway_id })
+end)
+
+route("DELETE", "^/admin/v1/gateways/([^/]+)/tokens/([^/]+)$", function(_, token_id)
+    storage.delete_auth_token(token_id)
+    send(200, { ok = true })
+end)
+
+-- ---------------------------------------------------------------------------
+-- User routes
+-- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
+    send(200, storage.list_users(tenant_id))
+end)
+
+route("POST", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
+    local b = read_body()
+    if not b or not b.email then return send(400, { error = "email required" }) end
+    local id, err = storage.insert_user(tenant_id, b.email, b.name, b.role)
+    if err then return send(500, { error = err }) end
+    send(201, { id = id, email = b.email })
+end)
+
+route("PATCH", "^/admin/v1/users/([^/]+)$", function(user_id)
+    local b = read_body()
+    if not b then return send(400, { error = "invalid body" }) end
+    local err = storage.update_user(user_id, b.email, b.name, b.role)
+    if err then return send(500, { error = err }) end
+    send(200, { ok = true })
+end)
+
+route("DELETE", "^/admin/v1/users/([^/]+)$", function(user_id)
+    local err = storage.delete_user(user_id)
+    if err then return send(500, { error = err }) end
+    send(200, { ok = true })
+end)
+
+route("GET", "^/admin/v1/users/([^/]+)/tokens$", function(user_id)
+    send(200, storage.list_user_tokens(user_id))
+end)
+
+route("POST", "^/admin/v1/users/([^/]+)/tokens$", function(user_id)
+    local b = read_body()
+    if not b or not b.gateway_id then return send(400, { error = "gateway_id required" }) end
+    local raw_token = crypto.random_hex(32)
+    local hash      = crypto.sha256_hex(raw_token)
+    local rate_limit_json = b.rate_limit and json.encode(b.rate_limit) or nil
+    local id, err = storage.insert_auth_token(b.gateway_id, hash,
+        b.scopes or {}, b.expires_at,
+        user_id, b.label, rate_limit_json, b.budget_usd)
+    if err then return send(500, { error = err }) end
+    send(201, { id = id, token = raw_token, gateway_id = b.gateway_id })
+end)
+
+route("GET", "^/admin/v1/users/([^/]+)/gateways$", function(user_id)
+    send(200, storage.list_user_gateways(user_id))
+end)
+
+route("POST", "^/admin/v1/users/([^/]+)/gateways/([^/]+)$", function(user_id, gateway_id)
+    local err = storage.set_user_gateway_access(user_id, gateway_id)
+    if err then return send(500, { error = err }) end
+    send(201, { ok = true })
+end)
+
+route("DELETE", "^/admin/v1/users/([^/]+)/gateways/([^/]+)$", function(user_id, gateway_id)
+    local err = storage.delete_user_gateway_access(user_id, gateway_id)
+    if err then return send(500, { error = err }) end
+    send(200, { ok = true })
+end)
+
+route("DELETE", "^/admin/v1/users/([^/]+)/budget$", function(user_id)
+    local state = require("state")
+    -- Reset all token budget counters for this user
+    local tokens = storage.list_user_tokens(user_id)
+    for _, t in ipairs(tokens) do
+        local cur = state.counter_get("budget:token:" .. t.id) or 0
+        if cur > 0 then state.counter_incr("budget:token:" .. t.id, -cur) end
+    end
+    send(200, { ok = true })
 end)
 
 -- ---------------------------------------------------------------------------
@@ -98,8 +328,8 @@ end)
 -- ---------------------------------------------------------------------------
 route("DELETE", "^/admin/v1/gateways/([^/]+)/budget$", function(gateway_id)
     local state = require("state")
-    state.counter_incr("budget:" .. gateway_id,
-        -(state.counter_get("budget:" .. gateway_id)))
+    local cur = state.counter_get("budget:" .. gateway_id) or 0
+    if cur > 0 then state.counter_incr("budget:" .. gateway_id, -cur) end
     send(200, { ok = true })
 end)
 
@@ -110,6 +340,16 @@ function M.handle()
     local method = ngx.req.get_method()
     local path   = ngx.var.uri
 
+    -- CORS preflight
+    if method == "OPTIONS" then
+        ngx.header["Access-Control-Allow-Origin"]  = "*"
+        ngx.header["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        ngx.header["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        ngx.status = 204
+        ngx.exit(204)
+        return
+    end
+
     for _, r in ipairs(ROUTES) do
         if r.method == method then
             local captures = { path:match(r.pattern) }
@@ -117,6 +357,14 @@ function M.handle()
                 r.handler(table.unpack(captures))
                 return
             end
+        end
+    end
+
+    -- Handle routes with no captures (exact matches)
+    for _, r in ipairs(ROUTES) do
+        if r.method == method and path:match(r.pattern) then
+            r.handler()
+            return
         end
     end
 

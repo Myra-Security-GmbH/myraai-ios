@@ -40,9 +40,11 @@ function M.emit(ctx)
         model         = ctx.model      or "",
         status        = ctx.provider_status or ngx.status,
         cached        = ctx.cache_hit  or false,
-        input_tokens  = ctx.input_tokens  or 0,
-        output_tokens = ctx.output_tokens or 0,
-        cost_usd      = ctx.cost_usd      or 0,
+        input_tokens          = ctx.input_tokens          or 0,
+        output_tokens         = ctx.output_tokens         or 0,
+        cache_creation_tokens = ctx.cache_creation_tokens or 0,
+        cache_read_tokens     = ctx.cache_read_tokens     or 0,
+        cost_usd              = ctx.cost_usd              or 0,
         latency_ms    = ctx.start_ms
                         and math.floor(ngx.now() * 1000 - ctx.start_ms)
                         or  0,
@@ -51,6 +53,18 @@ function M.emit(ctx)
         prompt        = prompt,
         response      = response,
         meta          = ctx.meta or {},
+        -- Upstream provider metrics
+        upstream_latency_ms    = ctx.upstream_latency_ms,
+        time_to_first_token_ms = ctx.time_to_first_token_ms,
+        upstream_attempts      = ctx.upstream_attempts,
+        fallback_provider      = ctx.fallback_provider,
+        fallback_model         = ctx.fallback_model,
+        provider_request_id    = ctx.provider_request_id,
+        -- Request metadata
+        request_size_bytes     = ctx.raw_request_body and #ctx.raw_request_body or 0,
+        -- User attribution
+        user_id                = ctx.user_id,
+        token_label            = ctx.token_label,
     }
 
     -- Merge any extra log fields added by other middleware (e.g. blocked_by, block_reason)

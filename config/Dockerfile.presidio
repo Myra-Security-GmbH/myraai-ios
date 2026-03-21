@@ -1,0 +1,23 @@
+# config/Dockerfile.presidio
+# Presidio Analyzer with English and German spaCy models baked in.
+# No internet access required at runtime.
+#
+# Build:  docker build -f config/Dockerfile.presidio -t aig-presidio-analyzer .
+# Run:    see presidio_run.sh
+
+FROM mcr.microsoft.com/presidio-analyzer:latest
+
+# Install spaCy models for English and German.
+# lg variants give good NER recall on CPU without needing a GPU.
+# Models are baked into the image so no download happens at runtime.
+RUN python -m spacy download en_core_web_lg && \
+    python -m spacy download de_core_news_lg
+
+# Tell Presidio which languages are available.
+ENV PRESIDIO_SUPPORTED_LANGUAGES=en,de
+
+# Default model per language (Presidio picks these up automatically).
+ENV DEFAULT_MODEL_FOR_LANG_en=en_core_web_lg
+ENV DEFAULT_MODEL_FOR_LANG_de=de_core_news_lg
+
+EXPOSE 3000

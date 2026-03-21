@@ -49,6 +49,12 @@ function M.init()
     ctx.output_tokens              = 0
     ctx.provider_status            = nil
     ctx.is_streaming               = false
+    ctx.upstream_latency_ms        = nil  -- TTFB from provider
+    ctx.time_to_first_token_ms     = nil  -- streaming only
+    ctx.upstream_attempts          = nil  -- total call attempts (1 = first try succeeded)
+    ctx.fallback_provider          = nil  -- set when a fallback provider was used
+    ctx.fallback_model             = nil
+    ctx.provider_request_id        = nil  -- x-request-id from provider response
 
     -- Set by middleware/guardrails_response.lua
     ctx.guardrail_response_blocked = nil

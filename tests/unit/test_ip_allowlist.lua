@@ -14,6 +14,11 @@ _G.ngx = {
 
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
+-- Clear stale mocks left by earlier test files in the same runner process
+for _, n in ipairs({"middleware.ip_allowlist","core.errors","utils.json"}) do
+    package.loaded[n] = nil; package.preload[n] = nil
+end
+
 local mw = require("middleware.ip_allowlist")
 
 local function ctx(remote_addr, allowlist)

@@ -218,16 +218,18 @@ function M.run(ctx)
     local messages = extract_messages(ctx.request_body)
     if not messages then return end  -- nothing to classify
 
+    local t0 = ngx.now()
     local result, classify_err = classify(messages, gr)
+    ctx.log_fields.guardrail_latency_ms = math.floor((ngx.now() - t0) * 1000)
 
     if not result then
         ngx.log(ngx.WARN, "guardrails: llama guard unavailable: ", classify_err,
                 " tenant=", ctx.tenant_id)
+        ctx.log_fields.guardrail_verdict = "error"
         if gr.fail_open ~= false then
             return  -- fail open: allow request through
         end
         -- fail closed
-        ctx.log_fields = ctx.log_fields or {}
         ctx.log_fields.blocked_by   = "guardrail_error"
         ctx.log_fields.block_reason = classify_err
         send_synthetic(ctx, "I'm not able to process this request because the content " ..
@@ -235,12 +237,15 @@ function M.run(ctx)
         return
     end
 
-    if result.verdict ~= "unsafe" then return end
+    if result.verdict ~= "unsafe" then
+        ctx.log_fields.guardrail_verdict = "safe"
+        return
+    end
 
+    ctx.log_fields.guardrail_verdict = "unsafe"
     local cats = result.categories or "unknown"
     ngx.log(ngx.WARN, "guardrails: blocked tenant=", ctx.tenant_id,
             " categories=", cats)
-    ctx.log_fields = ctx.log_fields or {}
     ctx.log_fields.blocked_by   = "guardrail"
     ctx.log_fields.block_reason = cats
     send_synthetic(ctx, blocked_text(cats))

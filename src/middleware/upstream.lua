@@ -13,6 +13,7 @@ local providers  = require("providers")
 local http_util  = require("utils.http")
 local errors     = require("core.errors")
 local json       = require("utils.json")
+local state      = require("state")
 
 local M = {}
 
@@ -79,6 +80,7 @@ local function handle_streaming(ctx, res)
     local provider_mod = res.provider_mod
     local buf         = ""
     local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = 0, 0, 0, 0
+    local first_chunk_seen = false
 
     while true do
         local chunk, err = reader(8192)
@@ -87,6 +89,11 @@ local function handle_streaming(ctx, res)
             break
         end
         if not chunk then break end
+
+        if not first_chunk_seen and chunk ~= "" then
+            first_chunk_seen = true
+            ctx.time_to_first_token_ms = math.floor(ngx.now() * 1000 - ctx.start_ms)
+        end
 
         -- Forward to client immediately
         ngx.print(chunk)
@@ -158,6 +165,7 @@ function M.run(ctx)
     end
 
     local last_err
+    local total_attempts = 0
 
     for attempt_idx, attempt in ipairs(attempts) do
         local provider_name = attempt.provider or ctx.provider
@@ -183,7 +191,10 @@ function M.run(ctx)
                         " provider=", provider_name)
             end
 
+            total_attempts = total_attempts + 1
+            local t_call = ngx.now()
             local res, err = call_provider(ctx, provider_name, model, is_streaming)
+            local call_ms = math.floor((ngx.now() - t_call) * 1000)
 
             if not res then
                 last_err = err
@@ -214,6 +225,10 @@ function M.run(ctx)
                     body_str = table.concat(parts)
                 end
                 if res.httpc then res.httpc:set_keepalive() end
+                ctx.upstream_latency_ms = call_ms
+                ctx.upstream_attempts   = total_attempts
+                ctx.provider_request_id = res.headers and
+                    (res.headers["x-request-id"] or res.headers["request-id"])
                 ctx.provider        = provider_name
                 ctx.model           = model
                 ctx.response_body   = body_str
@@ -228,6 +243,18 @@ function M.run(ctx)
             end
 
             -- Success path
+            ctx.upstream_latency_ms = call_ms
+            ctx.upstream_attempts   = total_attempts
+            ctx.provider_request_id = res.headers and
+                (res.headers["x-request-id"] or res.headers["request-id"])
+            if attempt_idx > 1 then
+                ctx.fallback_provider = provider_name
+                ctx.fallback_model    = model
+            end
+            -- Store rolling avg for cache savings estimates
+            state.config_set("avg_upstream_ms:" .. provider_name .. ":" .. model,
+                tostring(call_ms), 86400)
+
             -- Update ctx with the actual provider/model used
             ctx.provider = provider_name
             ctx.model    = model

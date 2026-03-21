@@ -58,7 +58,35 @@ function M.run(ctx)
         end
     end
 
-    ctx.token_id = row.id
+    ctx.token_id         = row.id
+    ctx.token_label      = row.label
+    ctx.token_budget_usd = row.budget_usd
+    ctx.token_rate_limit = row.rate_limit  -- raw JSON string, parsed by rate_limit middleware
+
+    -- User-bound token checks
+    if row.user_id then
+        local user, uerr = storage.get_user(row.user_id)
+        if uerr then
+            ngx.log(ngx.ERR, "auth user lookup error: ", uerr)
+            errors.send("INTERNAL")
+        end
+        if not user or user.deleted_at then
+            errors.send("UNAUTHORIZED", "User account disabled")
+        end
+        -- viewer role cannot make inference calls
+        if user.role == "viewer" then
+            errors.send("FORBIDDEN", "Viewer role cannot make inference requests")
+        end
+        -- member role: check per-gateway access
+        if user.role == "member" then
+            local has_access = storage.check_user_gateway_access(user.id, ctx.gateway_id)
+            if not has_access then
+                errors.send("FORBIDDEN", "Gateway not accessible to this user")
+            end
+        end
+        ctx.user_id   = user.id
+        ctx.user_role = user.role
+    end
 end
 
 return M

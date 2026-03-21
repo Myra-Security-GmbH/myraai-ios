@@ -46,11 +46,13 @@ fi
 UPDATED=$(sqlite3 "$LOGS_DB" "
 ATTACH DATABASE '$CFG_DB' AS cfg;
 
-UPDATE request_logs AS l
+UPDATE request_log AS l
 SET cost_usd = (
     SELECT
-        (CAST(l.input_tokens  AS REAL) / 1000.0 * p.input_per_1k)
-      + (CAST(l.output_tokens AS REAL) / 1000.0 * p.output_per_1k)
+        (CAST(l.input_tokens          AS REAL) / 1000.0 * p.input_per_1k)
+      + (CAST(l.output_tokens         AS REAL) / 1000.0 * p.output_per_1k)
+      + (CAST(COALESCE(l.cache_creation_tokens, 0) AS REAL) / 1000.0 * COALESCE(p.cache_write_per_1k, p.input_per_1k))
+      + (CAST(COALESCE(l.cache_read_tokens,     0) AS REAL) / 1000.0 * COALESCE(p.cache_read_per_1k,  0))
     FROM cfg.model_pricing p
     WHERE p.provider = l.provider
       AND p.model    = l.model

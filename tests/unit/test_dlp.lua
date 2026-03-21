@@ -17,6 +17,11 @@ _G.ngx = {
 
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
+-- Clear stale mocks left by earlier test files in the same runner process
+for _, n in ipairs({"middleware.dlp","core.errors","utils.json","utils.request"}) do
+    package.loaded[n] = nil; package.preload[n] = nil
+end
+
 local dlp = require("middleware.dlp")
 
 local function make_ctx(action, patterns, body_str)

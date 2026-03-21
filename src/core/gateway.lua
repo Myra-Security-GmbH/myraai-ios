@@ -11,7 +11,7 @@ local ACCESS_PIPELINE = {
     "middleware.tenant",
     "middleware.auth",
     "middleware.rate_limit",
-    "middleware.quota",
+    -- "middleware.quota",  -- disabled
     "middleware.ip_allowlist",
 }
 
@@ -26,8 +26,8 @@ local CONTENT_PIPELINE = {
     "middleware.upstream",
     "middleware.guardrails_response",
     "middleware.send_response",   -- prints buffered body after guardrails pass
+    "middleware.cost",            -- compute cost before caching so entry includes cost_usd
     "middleware.cache_store",
-    "middleware.cost",
 }
 
 -- Called from init_worker_by_lua_block — opens DB handles per worker.

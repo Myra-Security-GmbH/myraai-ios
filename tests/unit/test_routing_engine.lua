@@ -12,6 +12,11 @@ _G.ngx = {
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 -- Mock storage and state
+-- Clear any stale cached modules from earlier test files in the same runner process
+for _, n in ipairs({"routing.engine","storage","state","utils.json"}) do
+    package.loaded[n] = nil; package.preload[n] = nil
+end
+
 package.preload["storage"] = function()
     return {
         init = function() end,

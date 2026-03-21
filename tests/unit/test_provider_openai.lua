@@ -11,6 +11,11 @@ _G.ngx = {
 
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
+-- Clear stale mocks left by earlier test files in the same runner process
+for _, n in ipairs({"providers.openai","utils.json"}) do
+    package.loaded[n] = nil; package.preload[n] = nil
+end
+
 local openai = require("providers.openai")
 
 describe("providers.openai", function()

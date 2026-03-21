@@ -38,6 +38,14 @@ function M.run(ctx)
     local entry = json.decode(cached)
     if not entry then return end  -- corrupted entry; fall through to upstream
 
+    -- Record what the upstream call would have cost/taken
+    ctx.log_fields.saved_cost_usd = entry.cost_usd or 0
+    local avg_ms = tonumber(state.config_get(
+        "avg_upstream_ms:" .. (ctx.provider or "") .. ":" .. (ctx.model or "")))
+    if avg_ms then
+        ctx.log_fields.saved_latency_ms = avg_ms
+    end
+
     ngx.status = 200
     ngx.header["Content-Type"]    = "application/json"
     ngx.header["X-AIG-Cache"]     = "HIT"

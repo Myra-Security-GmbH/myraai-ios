@@ -1,0 +1,103 @@
+@use "@myraui/styles/scss/mixins/tools";
+@use "@myraui/styles/scss/variables/typography" as *;
+
+.monitor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: tools.pixelToRem(16);
+  margin-bottom: tools.pixelToRem(24);
+  flex-wrap: wrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: tools.pixelToRem(10);
+  flex-wrap: wrap;
+}
+
+.sparkline-card {
+  display: flex;
+  align-items: center;
+  gap: tools.pixelToRem(16);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: tools.pixelToRem(8);
+  padding: tools.pixelToRem(14) tools.pixelToRem(20);
+  margin-bottom: tools.pixelToRem(20);
+}
+
+.sparkline-label {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(12);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  min-width: tools.pixelToRem(180);
+}
+
+.sparkline-current {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(13);
+  font-weight: 600;
+  color: #3edcfe;
+  white-space: nowrap;
+}
+
+.periods-card {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.period-row {
+  display: flex;
+  align-items: center;
+  gap: tools.pixelToRem(20);
+  padding: tools.pixelToRem(14) tools.pixelToRem(20);
+  border-bottom: 1px solid var(--card-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.period-label {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(12);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  min-width: tools.pixelToRem(90);
+  white-space: nowrap;
+}
+
+.period-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: tools.pixelToRem(20);
+  flex: 1;
+}
+
+.period-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: tools.pixelToRem(1);
+}
+
+.period-stat-val {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(15);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.period-stat-key {
+  font-family: $primary-font-family;
+  font-size: tools.pixelToRem(10);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

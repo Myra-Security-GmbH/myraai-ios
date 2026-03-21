@@ -17,7 +17,7 @@ function M.run(ctx)
 
     if (ctx.provider_status or 0) ~= 200 then return end
 
-    local entry = json.encode({ body = ctx.response_body })
+    local entry = json.encode({ body = ctx.response_body, cost_usd = ctx.cost_usd or 0 })
     if entry then
         state.cache_set(ctx.cache_key, entry, ttl)
     end

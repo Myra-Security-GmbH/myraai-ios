@@ -163,7 +163,7 @@ end)
 -- drops any SSE data that arrives in a later read.
 -- =========================================================================
 describe("middleware.upstream Bug 3: streaming breaks prematurely on empty-string chunk", function()
-    clear({"middleware.upstream","providers","utils.http","core.errors","utils.json","auth.byok"})
+    clear({"middleware.upstream","providers","utils.http","core.errors","utils.json","auth.byok","state"})
 
     local printed = {}
     _G.ngx.print  = function(s) printed[#printed + 1] = s end
@@ -212,6 +212,14 @@ describe("middleware.upstream Bug 3: streaming breaks prematurely on empty-strin
                  decode = function() return {} end }
     end
 
+    package.preload["state"] = function()
+        local store = {}
+        return {
+            config_get = function(k) return store[k] end,
+            config_set = function(k, v) store[k] = v end,
+        }
+    end
+
     local upstream = require("middleware.upstream")
 
     it("forwards SSE chunks that arrive after an empty-string read", function()
@@ -223,6 +231,8 @@ describe("middleware.upstream Bug 3: streaming breaks prematurely on empty-strin
             request_body     = { stream = true },
             provider_api_key = "test-key",
             fallback_chain   = {},
+            start_ms         = ngx.now() * 1000,
+            log_fields       = {},
         }
 
         printed = {}
