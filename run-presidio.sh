@@ -74,6 +74,7 @@ start_analyzer() {
         -p "127.0.0.1:${ANALYZER_PORT}:3000" \
         "$ANALYZER_IMAGE"
     log "Analyzer started."
+    wait_ready "$ANALYZER_CONTAINER" "$ANALYZER_PORT"
 }
 
 start_anonymizer() {
@@ -90,6 +91,7 @@ start_anonymizer() {
         -p "127.0.0.1:${ANONYMIZER_PORT}:3000" \
         "$ANONYMIZER_IMAGE"
     log "Anonymizer started."
+    wait_ready "$ANONYMIZER_CONTAINER" "$ANONYMIZER_PORT"
 }
 
 wait_ready() {
@@ -98,7 +100,7 @@ wait_ready() {
     local max=30
     local i=0
     log "Waiting for $name to be ready..."
-    while ! curl -sf "http://127.0.0.1:${port}/health" &>/dev/null; do
+    while ! curl -sf --max-time 3 "http://127.0.0.1:${port}/health" &>/dev/null; do
         sleep 1
         i=$((i + 1))
         if [ "$i" -ge "$max" ]; then
@@ -120,8 +122,6 @@ case "$CMD" in
     start)
         start_analyzer
         start_anonymizer
-        wait_ready "$ANALYZER_CONTAINER"  "$ANALYZER_PORT"
-        wait_ready "$ANONYMIZER_CONTAINER" "$ANONYMIZER_PORT"
         log "Both services up."
         log "  Analyzer:  http://127.0.0.1:${ANALYZER_PORT}"
         log "  Anonymizer: http://127.0.0.1:${ANONYMIZER_PORT}"
@@ -138,8 +138,6 @@ case "$CMD" in
         build_analyzer
         start_analyzer
         start_anonymizer
-        wait_ready "$ANALYZER_CONTAINER"  "$ANALYZER_PORT"
-        wait_ready "$ANONYMIZER_CONTAINER" "$ANONYMIZER_PORT"
         log "Rebuild complete. Both services up."
         ;;
 

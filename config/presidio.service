@@ -1,0 +1,25 @@
+[Unit]
+Description=Presidio DLP Sidecar (analyzer :5002 + anonymizer :5001)
+Documentation=https://microsoft.github.io/presidio/
+After=docker.service network.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=sas
+WorkingDirectory=/home/sas/work/ai-gateway
+
+ExecStart=/home/sas/work/ai-gateway/run-presidio.sh start
+ExecStop=/home/sas/work/ai-gateway/run-presidio.sh stop
+
+# Docker start+health-check can take a while on first run
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=presidio
+
+[Install]
+WantedBy=multi-user.target
