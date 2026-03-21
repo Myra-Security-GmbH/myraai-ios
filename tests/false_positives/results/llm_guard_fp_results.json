@@ -1,0 +1,640 @@
+[
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "all_categories",
+    "categories": null,
+    "total": 200,
+    "fp_count": 24,
+    "fp_rate": 12.0,
+    "top_categories": {
+      "S2": 13,
+      "S10": 5,
+      "S13": 1,
+      "S5": 2,
+      "S6": 1,
+      "S9": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "crime_nvc",
+    "categories": [
+      "S2"
+    ],
+    "total": 200,
+    "fp_count": 13,
+    "fp_rate": 6.5,
+    "top_categories": {
+      "S2": 13
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "hate_only",
+    "categories": [
+      "S10"
+    ],
+    "total": 200,
+    "fp_count": 5,
+    "fp_rate": 2.5,
+    "top_categories": {
+      "S10": 5
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "violent_crimes",
+    "categories": [
+      "S1"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "cbrn_weapons",
+    "categories": [
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_categories": {
+      "S9": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "csam",
+    "categories": [
+      "S4"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "suicide_self_harm",
+    "categories": [
+      "S11"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "recommended_block",
+    "categories": [
+      "S1",
+      "S11",
+      "S4",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_categories": {
+      "S9": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "violence_hate",
+    "categories": [
+      "S1",
+      "S3"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "weapons_csam",
+    "categories": [
+      "S2",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 15,
+    "fp_rate": 7.5,
+    "top_categories": {
+      "S2": 13,
+      "S9": 2
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "crime_privacy",
+    "categories": [
+      "S4",
+      "S5",
+      "S6"
+    ],
+    "total": 200,
+    "fp_count": 3,
+    "fp_rate": 1.5,
+    "top_categories": {
+      "S5": 2,
+      "S6": 1
+    }
+  },
+  {
+    "corpus": "or_bench_hard",
+    "detector": "llm_guard",
+    "config_id": "narrow_block",
+    "categories": [
+      "S11",
+      "S2",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 15,
+    "fp_rate": 7.5,
+    "top_categories": {
+      "S2": 13,
+      "S9": 2
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "all_categories",
+    "categories": null,
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_categories": {
+      "S1": 2
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "crime_nvc",
+    "categories": [
+      "S2"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "hate_only",
+    "categories": [
+      "S10"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "violent_crimes",
+    "categories": [
+      "S1"
+    ],
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_categories": {
+      "S1": 2
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "cbrn_weapons",
+    "categories": [
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "csam",
+    "categories": [
+      "S4"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "suicide_self_harm",
+    "categories": [
+      "S11"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "recommended_block",
+    "categories": [
+      "S1",
+      "S11",
+      "S4",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_categories": {
+      "S1": 2
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "violence_hate",
+    "categories": [
+      "S1",
+      "S3"
+    ],
+    "total": 200,
+    "fp_count": 2,
+    "fp_rate": 1.0,
+    "top_categories": {
+      "S1": 2
+    }
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "weapons_csam",
+    "categories": [
+      "S2",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "crime_privacy",
+    "categories": [
+      "S4",
+      "S5",
+      "S6"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "xstest_safe",
+    "detector": "llm_guard",
+    "config_id": "narrow_block",
+    "categories": [
+      "S11",
+      "S2",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "all_categories",
+    "categories": null,
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "crime_nvc",
+    "categories": [
+      "S2"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "hate_only",
+    "categories": [
+      "S10"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "violent_crimes",
+    "categories": [
+      "S1"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "cbrn_weapons",
+    "categories": [
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "csam",
+    "categories": [
+      "S4"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "suicide_self_harm",
+    "categories": [
+      "S11"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "recommended_block",
+    "categories": [
+      "S1",
+      "S11",
+      "S4",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "violence_hate",
+    "categories": [
+      "S1",
+      "S3"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "weapons_csam",
+    "categories": [
+      "S2",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "crime_privacy",
+    "categories": [
+      "S4",
+      "S5",
+      "S6"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "dolly_sample",
+    "detector": "llm_guard",
+    "config_id": "narrow_block",
+    "categories": [
+      "S11",
+      "S2",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "all_categories",
+    "categories": null,
+    "total": 200,
+    "fp_count": 3,
+    "fp_rate": 1.5,
+    "top_categories": {
+      "S7": 3
+    }
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "crime_nvc",
+    "categories": [
+      "S2"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "hate_only",
+    "categories": [
+      "S10"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "violent_crimes",
+    "categories": [
+      "S1"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "cbrn_weapons",
+    "categories": [
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "csam",
+    "categories": [
+      "S4"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "suicide_self_harm",
+    "categories": [
+      "S11"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "recommended_block",
+    "categories": [
+      "S1",
+      "S11",
+      "S4",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "violence_hate",
+    "categories": [
+      "S1",
+      "S3"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "weapons_csam",
+    "categories": [
+      "S2",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "crime_privacy",
+    "categories": [
+      "S4",
+      "S5",
+      "S6"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  },
+  {
+    "corpus": "handcrafted",
+    "detector": "llm_guard",
+    "config_id": "narrow_block",
+    "categories": [
+      "S11",
+      "S2",
+      "S9"
+    ],
+    "total": 200,
+    "fp_count": 0,
+    "fp_rate": 0.0,
+    "top_categories": {}
+  }
+]

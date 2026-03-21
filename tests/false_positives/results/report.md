@@ -1,6 +1,6 @@
 ## False Positive Rate Report
 
-_Generated: 2026-03-21 17:10 UTC_
+_Generated: 2026-03-21 17:44 UTC_
 
 | Detector | Config | Corpus | Total | FP count | FP rate | Top trigger |
 |---|---|---|---|---|---|---|
@@ -88,3 +88,51 @@ _Generated: 2026-03-21 17:10 UTC_
 | keyword | self_harm_flag | xstest_safe | 250 | 1 | 0.4% | suicide (1) |
 | keyword | self_harm_flag | dolly_sample | 2000 | 0 | 0.0% | — |
 | keyword | self_harm_flag | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | all_categories | or_bench_hard | 200 | 24 | 12.0% | S2 (13) |
+| llm_guard | crime_nvc | or_bench_hard | 200 | 13 | 6.5% | S2 (13) |
+| llm_guard | hate_only | or_bench_hard | 200 | 5 | 2.5% | S10 (5) |
+| llm_guard | violent_crimes | or_bench_hard | 200 | 0 | 0.0% | — |
+| llm_guard | cbrn_weapons | or_bench_hard | 200 | 2 | 1.0% | S9 (2) |
+| llm_guard | csam | or_bench_hard | 200 | 0 | 0.0% | — |
+| llm_guard | suicide_self_harm | or_bench_hard | 200 | 0 | 0.0% | — |
+| llm_guard | recommended_block | or_bench_hard | 200 | 2 | 1.0% | S9 (2) |
+| llm_guard | violence_hate | or_bench_hard | 200 | 0 | 0.0% | — |
+| llm_guard | weapons_csam | or_bench_hard | 200 | 15 | 7.5% | S2 (13) |
+| llm_guard | crime_privacy | or_bench_hard | 200 | 3 | 1.5% | S5 (2) |
+| llm_guard | narrow_block | or_bench_hard | 200 | 15 | 7.5% | S2 (13) |
+| llm_guard | all_categories | xstest_safe | 200 | 2 | 1.0% | S1 (2) |
+| llm_guard | crime_nvc | xstest_safe | 200 | 0 | 0.0% | — |
+| llm_guard | hate_only | xstest_safe | 200 | 0 | 0.0% | — |
+| llm_guard | violent_crimes | xstest_safe | 200 | 2 | 1.0% | S1 (2) |
+| llm_guard | cbrn_weapons | xstest_safe | 200 | 0 | 0.0% | — |
+| llm_guard | csam | xstest_safe | 200 | 0 | 0.0% | — |
+| llm_guard | suicide_self_harm | xstest_safe | 200 | 0 | 0.0% | — |
+| llm_guard | recommended_block | xstest_safe | 200 | 2 | 1.0% | S1 (2) |
+| llm_guard | violence_hate | xstest_safe | 200 | 2 | 1.0% | S1 (2) |
+| llm_guard | weapons_csam | xstest_safe | 200 | 0 | 0.0% | — |
+| llm_guard | crime_privacy | xstest_safe | 200 | 0 | 0.0% | — |
+| llm_guard | narrow_block | xstest_safe | 200 | 0 | 0.0% | — |
+| llm_guard | all_categories | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | crime_nvc | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | hate_only | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | violent_crimes | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | cbrn_weapons | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | csam | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | suicide_self_harm | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | recommended_block | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | violence_hate | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | weapons_csam | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | crime_privacy | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | narrow_block | dolly_sample | 200 | 0 | 0.0% | — |
+| llm_guard | all_categories | handcrafted | 200 | 3 | 1.5% | S7 (3) |
+| llm_guard | crime_nvc | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | hate_only | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | violent_crimes | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | cbrn_weapons | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | csam | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | suicide_self_harm | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | recommended_block | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | violence_hate | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | weapons_csam | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | crime_privacy | handcrafted | 200 | 0 | 0.0% | — |
+| llm_guard | narrow_block | handcrafted | 200 | 0 | 0.0% | — |

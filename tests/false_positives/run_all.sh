@@ -52,24 +52,28 @@ echo ""
 echo "── Step 3: Keyword detector FP sweep ────────────────────────────────"
 resty tests/false_positives/test_keyword_fp.lua
 
-# ── Step 4 & 5: Tier 2 — Presidio + llm_guard (optional) ───────────────────
+# ── Steps 4-6: Tier 2 — Presidio, pii_protector, llm_guard (optional) ───────
 if [[ $TIER2 -eq 1 ]]; then
   echo ""
   echo "── Step 4: Presidio FP sweep ─────────────────────────────────────────"
   python3 tests/false_positives/test_presidio_fp.py
 
   echo ""
-  echo "── Step 5: llm_guard FP sweep ────────────────────────────────────────"
+  echo "── Step 5: pii_protector FP sweep ───────────────────────────────────"
+  python3 tests/false_positives/test_pii_protector_fp.py
+
+  echo ""
+  echo "── Step 6: llm_guard / prompt_guard FP sweep ────────────────────────"
   python3 tests/false_positives/test_llm_guard_fp.py
 else
   echo ""
-  echo "── Steps 4+5: Skipping Tier 2 tests (pass --tier2 to include) ────────"
-  echo "   Requires Presidio at :5002 and llm_guard sidecar at :8083"
+  echo "── Steps 4-6: Skipping Tier 2 tests (pass --tier2 to include) ───────"
+  echo "   Requires Presidio at :5002 and llm_guard / prompt_guard at :8083"
 fi
 
-# ── Step 6: Generate report ──────────────────────────────────────────────────
+# ── Step 7: Generate report ──────────────────────────────────────────────────
 echo ""
-echo "── Step 6: Generating report ─────────────────────────────────────────"
+echo "── Step 7: Generating report ─────────────────────────────────────────"
 BREACH_FLAG=""
 if [[ $FAIL_ON_BREACH -eq 1 ]]; then
   BREACH_FLAG="--fail-on-breach"
@@ -82,4 +86,6 @@ python3 tests/false_positives/scripts/report.py \
 echo ""
 echo "════════════════════════════════════════════════════════════════════════"
 echo " Done. Full report: tests/false_positives/results/report.md"
+echo " Tier 2 note: Presidio (GPU OOM risk if prompt_guard is loaded)."
+echo "              Stop the prompt_guard container before running --tier2."
 echo "════════════════════════════════════════════════════════════════════════"
