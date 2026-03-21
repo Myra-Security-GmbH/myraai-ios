@@ -24,14 +24,17 @@
 --   GET    /admin/v1/stats
 --   GET    /admin/v1/logs
 --   GET    /admin/v1/models
+--   GET    /admin/v1/providers
 --   POST   /admin/v1/playground/token
+--   GET    /admin/v1/playground/search
 --   POST   /admin/v1/client-errors
 --   GET    /admin/v1/client-errors
 
-local json    = require("utils.json")
-local storage = require("storage")
-local byok    = require("auth.byok")
-local crypto  = require("utils.crypto")
+local json         = require("utils.json")
+local storage      = require("storage")
+local byok         = require("auth.byok")
+local crypto       = require("utils.crypto")
+local providers_mod = require("providers")
 
 local M = {}
 
@@ -245,6 +248,12 @@ route("GET", "^/admin/v1/models$", function()
     send(200, storage.list_models(provider))
 end)
 
+-- GET /admin/v1/providers
+-- Returns provider metadata: name + whether an API key is required.
+route("GET", "^/admin/v1/providers$", function()
+    send(200, providers_mod.list())
+end)
+
 -- ---------------------------------------------------------------------------
 -- Playground
 -- ---------------------------------------------------------------------------
@@ -280,6 +289,39 @@ route("POST", "^/admin/v1/playground/token$", function()
         tenant_slug  = gw.tenant_slug,
         gateway_slug = gw.gateway_slug,
     })
+end)
+
+-- GET /admin/v1/playground/search?q=...
+-- Proxies a web search to Brave Search API and returns top organic results.
+route("GET", "^/admin/v1/playground/search$", function()
+    local args = ngx.req.get_uri_args()
+    local q = args.q
+    if not q or q == "" then return send(400, { error = "q required" }) end
+
+    local http = require("utils.http")
+    local status, _, body, err = http.request({
+        method  = "GET",
+        url     = "https://api.search.brave.com/res/v1/web/search?q="
+                  .. ngx.escape_uri(q) .. "&count=5",
+        headers = {
+            ["Accept"]               = "application/json",
+            ["X-Subscription-Token"] = "BSAaVsak7B8d0-0I_stOlzBal6EEncV",
+        },
+        timeout_ms = 8000,
+    })
+    if err then return send(502, { error = "search failed: " .. err }) end
+    if status ~= 200 then return send(502, { error = "search API returned " .. tostring(status) }) end
+
+    local data = json.decode(body) or {}
+    local results = {}
+    for _, r in ipairs((data.web or {}).results or {}) do
+        results[#results + 1] = {
+            title   = r.title,
+            url     = r.url,
+            snippet = r.description,
+        }
+    end
+    send(200, { results = results, query = q })
 end)
 
 -- ---------------------------------------------------------------------------
