@@ -19,14 +19,14 @@ local ACCESS_PIPELINE = {
 local CONTENT_PIPELINE = {
     "middleware.cache_check",
     "middleware.dlp",
-    "middleware.guardrails_request",
+    "middleware.detectors",          -- detector pipeline (request phase)
     "middleware.transform",
     "middleware.routing",
     "middleware.byok",
     "middleware.upstream",
-    "middleware.guardrails_response",
-    "middleware.send_response",   -- prints buffered body after guardrails pass
-    "middleware.cost",            -- compute cost before caching so entry includes cost_usd
+    "middleware.detectors_response", -- detector pipeline (response phase)
+    "middleware.send_response",
+    "middleware.cost",
     "middleware.cache_store",
 }
 

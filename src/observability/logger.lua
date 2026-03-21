@@ -65,6 +65,9 @@ function M.emit(ctx)
         -- User attribution
         user_id                = ctx.user_id,
         token_label            = ctx.token_label,
+        -- Detector pipeline
+        detectors_fired        = ctx.log_fields and ctx.log_fields.detectors_fired or {},
+        scrub_applied          = ctx.log_fields and ctx.log_fields.scrub_applied or false,
     }
 
     -- Merge any extra log fields added by other middleware (e.g. blocked_by, block_reason)
