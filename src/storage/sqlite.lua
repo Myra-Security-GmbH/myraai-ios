@@ -648,8 +648,8 @@ function M.get_usage_stats()
 
     return {
         today          = period("ts >= strftime('%Y-%m-%dT00:00:00Z','now')"),
-        hour           = period("ts >= datetime('now','-1 hour')"),
-        last_min       = period("ts >= datetime('now','-1 minute')"),
+        hour           = period("ts >= strftime('%Y-%m-%dT%H:%M:%SZ','now','-1 hour')"),
+        last_min       = period("ts >= strftime('%Y-%m-%dT%H:%M:%SZ','now','-1 minute')"),
         by_tenant      = by_tenant,
         recent         = recent,
         recent_blocked = recent_blocked,
