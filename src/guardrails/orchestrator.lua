@@ -106,6 +106,7 @@ function M.run_phase(ctx, phase)
                     end
                     local fired = ctx.log_fields.detectors_fired
                     fired[#fired + 1] = det.name or det.type
+                    ctx.log_fields.block_reason = result and result.pattern
                     -- For request phase, propagate the scrubbed body to nginx
                     if phase == "request" then
                         ngx.req.set_body_data(ctx.raw_request_body)
@@ -115,6 +116,7 @@ function M.run_phase(ctx, phase)
                 elseif verdict == "flagged" then
                     local fired = ctx.log_fields.detectors_fired
                     fired[#fired + 1] = det.name or det.type
+                    ctx.log_fields.block_reason = result and result.pattern
                     -- Continue to remaining detectors
 
                 -- else "pass": continue silently

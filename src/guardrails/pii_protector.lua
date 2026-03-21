@@ -2,14 +2,14 @@
 --
 -- Request phase:
 --   Calls Presidio /analyze to locate PII spans, replaces each unique value
---   with a token [PII:SALT:N], and stores the reverse map in ctx.pii_token_map.
+--   with a token [MYRA-REDACT:SALT:N], and stores the reverse map in ctx.pii_token_map.
 --   The upstream AI provider receives the tokenized body.
 --
 -- Response phase:
 --   Finds tokens in ctx.response_body and replaces them with original values
 --   before the response is sent to the client.
 --
--- Token format: [PII:SALT:N]
+-- Token format: [MYRA-REDACT:SALT:N]
 --   SALT = first 6 hex chars of ngx.md5(request_id .. ngx.now()) — per-request unique
 --   N    = sequential counter starting at 1
 --   Characters [, ], :, alphanumerics are valid inside JSON strings without escaping.
@@ -66,8 +66,11 @@ end
 -- Mirrors the call pattern in guardrails/presidio.lua.
 -- ---------------------------------------------------------------------------
 local function call_analyzer(text, detector)
-    local url     = (detector.analyzer_url or DEFAULT_ANALYZER_URL) .. "/analyze"
-    local timeout = detector.timeout_ms or 3000
+    local url      = (detector.analyzer_url or DEFAULT_ANALYZER_URL) .. "/analyze"
+    -- Connect and send are fast (local service). Read can be slow for large payloads
+    -- because spaCy NLP processing scales with text length.
+    -- timeout_ms (legacy) still works as a unified fallback.
+    local read_ms  = detector.timeout_ms or 15000
 
     local payload = json.encode({
         text            = text,
@@ -77,11 +80,13 @@ local function call_analyzer(text, detector)
     })
 
     local status, _, body, err = http_util.request({
-        method  = "POST",
-        url     = url,
-        headers = { ["Content-Type"] = "application/json" },
-        body    = payload,
-        timeout_ms = timeout,
+        method              = "POST",
+        url                 = url,
+        headers             = { ["Content-Type"] = "application/json" },
+        body                = payload,
+        connect_timeout_ms  = 500,
+        send_timeout_ms     = 2000,
+        read_timeout_ms     = read_ms,
     })
 
     if err or not body then
@@ -141,10 +146,35 @@ local function derive_salt(ctx)
 end
 
 -- ---------------------------------------------------------------------------
--- tokenize_spans: replace entity spans right-to-left with [PII:salt:N] tokens.
+-- char_to_byte_pos: convert a 0-based Unicode codepoint offset to a
+-- 1-based Lua byte position in a UTF-8 string.
+--
+-- Presidio (Python) returns codepoint offsets; Lua string.sub works on bytes.
+-- For ASCII-only text they are equal, but for multi-byte UTF-8 sequences
+-- (emoji, accented chars, CJK, etc.) the positions diverge.
+-- Without this conversion, tokenize_spans cuts the JSON at the wrong byte,
+-- potentially splitting a `"` boundary and producing invalid JSON.
+-- ---------------------------------------------------------------------------
+local function char_to_byte_pos(s, char_pos_0based)
+    local byte_i = 1
+    local char_i = 0
+    while char_i < char_pos_0based and byte_i <= #s do
+        local b = s:byte(byte_i)
+        if     b < 0x80 then byte_i = byte_i + 1  -- 1-byte ASCII
+        elseif b < 0xE0 then byte_i = byte_i + 2  -- 2-byte
+        elseif b < 0xF0 then byte_i = byte_i + 3  -- 3-byte
+        else                  byte_i = byte_i + 4  -- 4-byte (supplementary)
+        end
+        char_i = char_i + 1
+    end
+    return byte_i
+end
+
+-- ---------------------------------------------------------------------------
+-- tokenize_spans: replace entity spans right-to-left with [MYRA-REDACT:salt:N] tokens.
 -- Deduplicates: same original value → same token.
--- Presidio uses 0-based exclusive-end offsets; Lua string.sub uses 1-based inclusive-end.
--- Conversion: lua_start = presidio_start + 1, lua_end = presidio_end (unchanged).
+-- Presidio uses 0-based exclusive-end codepoint offsets; Lua string.sub uses
+-- 1-based inclusive-end byte positions.  char_to_byte_pos() bridges the gap.
 -- Returns: tokenized_text, token_map { token → original_value }
 -- ---------------------------------------------------------------------------
 local function tokenize_spans(text, spans, salt)
@@ -159,25 +189,27 @@ local function tokenize_spans(text, spans, salt)
 
     local result = text
     for _, sp in ipairs(sorted) do
-        local lua_s = sp.start + 1   -- 0-based → 1-based
-        local lua_e = sp["end"]      -- exclusive in Presidio = inclusive in Lua sub
+        -- Convert Presidio's 0-based codepoint offsets to Lua 1-based byte positions.
+        local lua_s = char_to_byte_pos(text, sp.start)          -- inclusive start
+        local lua_e = char_to_byte_pos(text, sp["end"]) - 1     -- exclusive end → inclusive
 
         -- Skip malformed spans
-        if lua_e >= lua_s and lua_s >= 1 and lua_e <= #result then
+        if lua_e >= lua_s and lua_s >= 1 and lua_e <= #text then
             local original = text:sub(lua_s, lua_e)  -- from original text (offsets still valid)
 
             local tok = value_to_token[original]
             if not tok then
                 counter             = counter + 1
-                tok                 = string.format("[PII:%s:%d]", salt, counter)
+                tok                 = string.format("[MYRA-REDACT:%s:%d]", salt, counter)
                 value_to_token[original] = tok
                 token_map[tok]      = original
             end
 
             result = result:sub(1, lua_s - 1) .. tok .. result:sub(lua_e + 1)
         else
-            ngx.log(ngx.WARN, "pii_protector: skipping malformed span start=",
-                    sp.start, " end=", sp["end"], " text_len=", #text)
+            ngx.log(ngx.WARN, "pii_protector: skipping out-of-range span start=",
+                    sp.start, " end=", sp["end"], " byte_s=", lua_s, " byte_e=", lua_e,
+                    " text_len=", #text)
         end
     end
 
@@ -221,6 +253,68 @@ end
 -- collect_entity_types: comma-separated entity type names for logging.
 -- Does NOT include matched text to avoid PII in logs.
 -- ---------------------------------------------------------------------------
+-- extract_scrubbed_prompt: build a compact, human-readable log of only the
+-- message(s) that contain PII tokens.  Skips clean messages and all request
+-- metadata (model, max_tokens, tools, etc.).
+--
+-- Supports:
+--   body.messages[]  — OpenAI-compat and native Anthropic
+--   body.system      — Anthropic system prompt (string or content-block array)
+--   body.prompt      — legacy completions-style
+--
+-- Returns a string, or nil if nothing relevant found / decode fails.
+-- ---------------------------------------------------------------------------
+local TOKEN_MARKER = "%[MYRA%-REDACT:"  -- Lua pattern to detect tokens
+
+local function block_array_to_text(blocks)
+    if type(blocks) ~= "table" then return tostring(blocks) end
+    local parts = {}
+    for _, b in ipairs(blocks) do
+        if b.type == "text" and b.text then parts[#parts+1] = b.text end
+    end
+    return table.concat(parts, "\n")
+end
+
+local function extract_scrubbed_prompt(tokenized_body)
+    local ok, body = pcall(json.decode, tokenized_body)
+    if not ok or not body then return nil end
+
+    local lines = {}
+
+    -- System prompt (Anthropic native)
+    if body.system then
+        local text = type(body.system) == "string"
+                     and body.system
+                     or block_array_to_text(body.system)
+        if text:find(TOKEN_MARKER) then
+            lines[#lines+1] = "[system] " .. text
+        end
+    end
+
+    -- Messages array
+    if type(body.messages) == "table" then
+        for _, msg in ipairs(body.messages) do
+            local text = type(msg.content) == "string"
+                         and msg.content
+                         or block_array_to_text(msg.content or {})
+            if text:find(TOKEN_MARKER) then
+                lines[#lines+1] = "[" .. (msg.role or "?") .. "] " .. text
+            end
+        end
+    end
+
+    -- Legacy completions prompt
+    if body.prompt and type(body.prompt) == "string" then
+        if body.prompt:find(TOKEN_MARKER) then
+            lines[#lines+1] = "[prompt] " .. body.prompt
+        end
+    end
+
+    if #lines == 0 then return nil end
+    return table.concat(lines, "\n\n")
+end
+
+-- ---------------------------------------------------------------------------
 local function collect_entity_types(entities)
     local seen  = {}
     local types = {}
@@ -257,6 +351,15 @@ function M.run(ctx, detector, phase)
         end
 
         local restored, count = restore_tokens(text, ctx.pii_token_map)
+
+        -- Always capture the raw LLM response when PII was tokenized in the
+        -- request phase, regardless of whether the LLM echoed tokens back.
+        -- This lets operators verify what the LLM actually said.
+        if detector.log_raw_response ~= false
+           and ctx.gateway_config
+           and ctx.gateway_config.log_payloads then
+            ctx.log_fields.response_raw = text
+        end
 
         if count > 0 then
             ctx.response_body = restored
@@ -320,6 +423,23 @@ function M.run(ctx, detector, phase)
     -- after we return verdict="scrubbed".
     ctx.pii_token_map    = tmap
     ctx.raw_request_body = tokenized
+
+    -- Log only the affected messages (those containing PII tokens) so operators
+    -- can audit which values were masked without storing the full request JSON.
+    if ctx.gateway_config and ctx.gateway_config.log_payloads then
+        local scrubbed_excerpt = extract_scrubbed_prompt(tokenized)
+        if scrubbed_excerpt then
+            ctx.log_fields = ctx.log_fields or {}
+            ctx.log_fields.prompt_scrubbed = scrubbed_excerpt
+        end
+    end
+
+    -- For compat (OpenAI-format) clients that requested streaming: force the
+    -- upstream call to be buffered so the response phase can restore tokens and
+    -- capture response_raw.  send_response.lua re-emits the result as SSE.
+    if ctx.is_compat and ctx.request_body and ctx.request_body.stream == true then
+        ctx.pii_force_buffered = true
+    end
 
     local entity_types = collect_entity_types(entities)
     ngx.log(ngx.INFO, "pii_protector: tokenized ", map_size,

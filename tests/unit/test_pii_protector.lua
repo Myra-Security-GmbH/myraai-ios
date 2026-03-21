@@ -149,7 +149,7 @@ describe("pii_protector request phase — PII found", function()
         assert.not_nil(ctx.pii_token_map)
     end)
 
-    it("token format is [PII:XXXXXX:N] with 6 lowercase hex chars", function()
+    it("token format is [MYRA-REDACT:XXXXXX:N] with 6 lowercase hex chars", function()
         install_http_mock(SPAN1)
         local d   = reload()
         local ctx = req_ctx(BODY1)
@@ -158,8 +158,8 @@ describe("pii_protector request phase — PII found", function()
         for tok in pairs(ctx.pii_token_map) do
             tok_count = tok_count + 1
             assert.not_nil(
-                tok:match("^%[PII:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]:%d+%]$"),
-                "token must match [PII:XXXXXX:N] format, got: " .. tok)
+                tok:match("^%[MYRA%-REDACT:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]:%d+%]$"),
+                "token must match [MYRA-REDACT:XXXXXX:N] format, got: " .. tok)
         end
         assert.equal(1, tok_count)
     end)
@@ -410,7 +410,7 @@ describe("pii_protector token format", function()
         d.run(ctx, DET, "request")
         for tok in pairs(ctx.pii_token_map) do
             assert.not_nil(
-                tok:match("^%[PII:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]:%d+%]$"),
+                tok:match("^%[MYRA%-REDACT:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]:%d+%]$"),
                 "got: " .. tok)
         end
     end)
