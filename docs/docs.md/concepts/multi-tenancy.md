@@ -1,6 +1,12 @@
 # Multi-Tenancy
 
-AI Gateway is designed from the ground up for multi-tenant operation. A single gateway process can serve many independent tenants, each with their own gateways, provider keys, auth tokens, routing rules, and users — with hard isolation boundaries between them.
+AI Gateway organizes everything into two levels: **tenants** and **gateways**.
+
+A **tenant** is your top-level account — typically one company, application, or team. A **gateway** is a named deployment inside a tenant, such as `production` or `staging`. Each gateway has its own API keys, auth tokens, rate limits, and routing rules — completely isolated from every other gateway.
+
+Most organizations start with one tenant and one or two gateways (e.g. `production` + `development`). You'd create additional tenants if you need to provide the gateway service to separate customers or business units with billing isolation between them.
+
+AI Gateway can serve many tenants and gateways from a single process, with hard isolation boundaries between them.
 
 ---
 
@@ -38,7 +44,7 @@ The gateway resolves `{tenant_slug}` and `{gateway_slug}` on every request and l
 
 | Boundary | Mechanism |
 |----------|-----------|
-| URL routing | `{tenant_slug}/{gateway_slug}` prefix resolved at access processing phase; unknown slugs return `404 TENANT_NOT_FOUND` |
+| URL routing | `{tenant_slug}/{gateway_slug}` prefix resolved on every request; unknown slugs return `404 TENANT_NOT_FOUND` |
 | Internal state isolation | All internal state is namespaced per tenant and gateway — no cross-tenant data leakage is possible |
 | Database | `tenant_id` foreign key on all tables; all queries filter by tenant |
 | BYOK keys | Encrypted at rest; decrypted only for the matching gateway at request time |
@@ -52,7 +58,7 @@ The gateway resolves `{tenant_slug}` and `{gateway_slug}` on every request and l
 | Role | Inference requests | Admin operations |
 |------|-------------------|-----------------|
 | `admin` | Yes, on all gateways in the tenant | Full CRUD on tenant, gateways, users, tokens, rules, keys |
-| `member` | Yes, on gateways where `UserGatewayAccess` is granted | None |
+| `member` | Yes, on gateways explicitly assigned to them | None |
 | `viewer` | No — returns `403 FORBIDDEN` | None |
 
 Role is enforced at the authentication step. A `viewer` token is rejected before the request body is read.
@@ -83,7 +89,7 @@ Tokens are scoped to a single gateway and carry optional per-token overrides:
 | `budget_usd` | Per-token spending cap; takes precedence over gateway-level budget |
 | `user_id` | Optional binding to a user; recorded in request logs |
 
-SHA-256 hashes are stored in the database. The plaintext token is shown only once at creation time — it cannot be recovered.
+Token values are stored as a one-way hash. The plaintext token is shown only once at creation time — it cannot be recovered.
 
 ---
 

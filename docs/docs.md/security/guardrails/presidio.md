@@ -35,7 +35,7 @@ The NLP PII Detector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail
 
 ## Supported Entity Types
 
-The NLP PII Detector supports 50+ entity types. The following are commonly configured. FP rates are benchmarked at `score_threshold: 0.7` across OR-Bench-hard, XSTest-safe, Dolly-15k, and a handcrafted corpus.
+The NLP PII Detector supports 50+ entity types. The following are commonly configured. FP rates are benchmarked at `score_threshold: 0.7` across representative general-purpose and business text corpora.
 
 | Entity Type | Description | FP risk at 0.7 |
 |---|---|---|

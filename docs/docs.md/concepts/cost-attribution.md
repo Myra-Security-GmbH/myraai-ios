@@ -18,10 +18,7 @@ cost_usd += (cache_write_tokens / 1000) × cache_write_per_1k
           + (cache_read_tokens  / 1000) × cache_read_per_1k
 ```
 
-Token counts are extracted from the provider response at step 16 of the [request pipeline](request-pipeline.md). For streaming requests, tokens are accumulated from SSE chunks on the fly.
-
-!!! note "Costs stored as micro-dollars"
-    To avoid floating-point precision loss on small amounts, costs are stored in the database as integer micro-dollars (`cost_usd × 1,000,000`). They are converted back to USD when returned by the API and displayed in the admin UI.
+Token counts come from the provider's response. For streaming requests, they are accumulated across all chunks and recorded when the stream ends.
 
 ---
 
@@ -40,11 +37,11 @@ Both fields appear in request logs and are included in the usage chunk emitted f
 
 ## Pricing sources
 
-The gateway resolves model prices using a two-tier lookup:
+The gateway resolves model prices using a two-level lookup:
 
-**Tier 1 — `model_price` database table**
+**Database prices (highest priority)**
 
-Runtime-configurable via the admin API. Takes precedence over hardcoded defaults. This allows updating prices for new model versions without redeploying.
+Prices stored in the admin UI or via the API take precedence over everything else. Use this to keep prices up-to-date as providers change their rates, or to add custom pricing for fine-tuned models.
 
 ```bash
 # Upsert a model price
@@ -60,13 +57,13 @@ curl -X PUT https://<your-gateway-host>/admin/v1/model-prices \
   }'
 ```
 
-**Tier 2 — The gateway's internal pricing table**
+**Built-in fallback prices**
 
-Used when no matching row exists in the database. These cover the most common models across all supported providers.
+Used when no database entry matches the model. These cover the most common models across all supported providers and are maintained by Myra Security.
 
 ---
 
-## Pre-loaded model prices (hardcoded fallbacks)
+## Built-in fallback prices
 
 The following models have hardcoded fallback prices. All prices are USD per 1,000 tokens.
 
@@ -142,7 +139,7 @@ Cost attribution feeds directly into the budget enforcement system:
 
 ## See also
 
-- [Request Pipeline](request-pipeline.md) — step 16 (cost) in the middleware chain
+- [Request Pipeline](request-pipeline.md) — where cost calculation fits in the request lifecycle
 - [Budgets and Quotas](../configuration/budgets.md) — configuring and resetting spend caps
 - [Response Caching](caching.md) — `saved_cost_usd` logged on cache hits
 - [Models API](../api-reference/models.md) — managing model prices at runtime

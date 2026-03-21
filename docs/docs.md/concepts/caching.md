@@ -4,26 +4,17 @@ AI Gateway implements an exact-match response cache that short-circuits the enti
 
 ---
 
-## Cache key construction
+## When to enable caching
 
-The cache key is a SHA-256 hash computed from:
+Enable caching when your workload includes repeated identical prompts — for example, a support chatbot that frequently receives the same questions, or a pipeline that runs the same classification prompt over many inputs.
 
-```
-SHA-256( provider + ":" + model + ":" + canonical_json_body )
-```
-
-**Canonical JSON body** is the request body with the following fields excluded before hashing:
-
-| Excluded field | Reason |
-|---------------|--------|
-| `stream` | Streaming vs. non-streaming is a delivery preference, not a semantic difference |
-| `user` | User identifier is not part of the prompt semantics |
-| `metadata` | Client-side metadata should not affect cache lookup |
-
-All other fields (messages, temperature, max_tokens, system, tools, etc.) are included. The body is serialized with keys in sorted order to ensure identical prompts produce identical keys regardless of field ordering.
+**Not useful for:** conversational flows where each message is unique, or prompts that vary by temperature or other parameters (any change to the request produces a different cache key and a cache miss).
 
 !!! note "Exact match only"
-    The cache is purely exact-match. Two requests with identical prompts but different temperature values will produce different cache keys and will not share a cache entry. Semantic caching (vector similarity) is planned but not yet implemented.
+    The cache is purely exact-match. Two requests with identical prompts but different `temperature` or `max_tokens` values will not share a cache entry. Only byte-for-byte identical requests hit the cache.
+
+??? info "How the cache key is constructed"
+    The cache key is computed from the provider name, model name, and the request body. The `stream`, `user`, and `metadata` fields are excluded before hashing — these are delivery preferences that don't affect the model's response. All other fields (messages, temperature, max_tokens, system, tools, etc.) are included. Field order within the JSON object does not matter.
 
 ---
 

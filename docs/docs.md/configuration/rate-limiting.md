@@ -2,19 +2,16 @@
 
 The gateway enforces rate limits using a sliding-window dual-bucket algorithm. Limits can be set at the gateway level (applied to all traffic) and per token (applied to an individual caller).
 
-## Algorithm
+Rate limiting is enforced before any upstream call is made, so blocked requests never reach the AI provider.
 
-The gateway maintains two time buckets: the current window and the previous window. On each request, the effective request count is calculated as:
+??? info "How the algorithm works"
+    The gateway uses a sliding-window dual-bucket algorithm. It maintains two time buckets: the current window and the previous window. On each request the effective request count is calculated as:
 
-```
-effective_count = prev_bucket * (1 - elapsed / window_sec) + cur_bucket
-```
+    ```
+    effective_count = prev_bucket * (1 - elapsed / window_sec) + cur_bucket
+    ```
 
-Where `elapsed` is the number of seconds that have passed since the current window started.
-
-This approximation smooths out burst spikes at window boundaries without requiring a full sliding log of timestamps, keeping memory usage constant regardless of traffic volume.
-
-Rate limiting is enforced at the **access phase**, before any upstream call is made.
+    Where `elapsed` is the number of seconds into the current window. This smooths out burst spikes at window boundaries without storing a full log of request timestamps.
 
 ## Configuration
 

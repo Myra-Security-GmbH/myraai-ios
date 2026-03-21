@@ -8,9 +8,9 @@ AI Gateway is a multi-tenant reverse proxy built upon the Global Myra Security C
 
 - **21 provider integrations** — OpenAI, Anthropic, Google Gemini, Vertex AI, AWS Bedrock, Azure OpenAI, Mistral, Groq, Together AI, Fireworks, Cerebras, DeepSeek, OpenRouter, Perplexity, SambaNova, xAI, NVIDIA NIM, Cloudflare AI, Cohere, HuggingFace, Ollama
 - **Unified OpenAI-compatible endpoint** — send any model name to `/compat/chat/completions`; the gateway resolves the provider automatically
-- **Exact-match response caching** — SHA-256 keyed; saves cost and latency on repeated prompts
-- **Rate limiting** — sliding-window per gateway or per token, enforced before the request body is read
-- **Budget enforcement** — hard spending caps at the gateway level and per auth token; stored as micro-dollars to avoid float precision loss
+- **Exact-match response caching** — repeated identical prompts are served from cache, saving cost and latency
+- **Rate limiting** — per-gateway or per-token request caps, enforced before any upstream call is made
+- **Budget enforcement** — hard spending caps at the gateway level and per auth token
 - **Guardrail pipeline** — two-tier system: fast in-process regex/keyword (Tier 1) then optional HTTP sidecars — NLP PII Detector, Prompt Guard, and PII Protector (Tier 2)
 - **BYOK key vault** — provider API keys encrypted at rest with AES-256
 - **Routing rules** — ordered rule engine that can rewrite provider, model, and attach fallback chains based on request metadata
@@ -85,4 +85,4 @@ All policy enforcement — authentication, rate limiting, caching, and security 
 - [Quick Start](quick-start.md) — make your first request in four steps
 - [Getting Access](installation.md) — managed service and on-premise options
 - [Request Pipeline](../concepts/request-pipeline.md) — detailed walkthrough of every middleware step
-- [Supported Providers](../concepts/providers.md) — full provider table with wire formats
+- [Supported Providers](../concepts/providers.md) — full provider table with supported models

@@ -6,7 +6,7 @@ Definitions for all key terms used across the AI Gateway documentation, listed a
 
 ## Auth Token
 
-An opaque bearer credential issued by the Admin API that authenticates inference requests. The gateway stores only the SHA-256 hash of the token; the plaintext is returned once at creation time and never stored again. Tokens are scoped to a single gateway. See [Authentication](../api-reference/authentication.md).
+An access token issued by the Admin UI or API that authenticates inference requests. The plaintext token is returned once at creation time and cannot be recovered afterwards. Tokens are scoped to a single gateway. See [Authentication](../security/authentication.md).
 
 ## Block
 
@@ -60,10 +60,6 @@ A detector action that records a match in the log entry (`detector_flags`) and c
 
 The second-level entity in the tenant hierarchy. A gateway belongs to a tenant and holds a configuration object, a set of provider keys, routing rules, and auth tokens. Each gateway corresponds to a unique path prefix in inference endpoint URLs: `/v1/{tenant}/{gateway}/...`. See [Tenants & Gateways API](../api-reference/tenants-gateways.md).
 
-## In-process shared memory
-
-The gateway's in-process key/value store used for hot state: rate-limit counters, config and BYOK key caches, Prometheus metric counters. On a single-server deployment these are the primary state stores; on multi-node deployments they are swapped for Redis.
-
 ## Llama Guard
 
 An open-weight safety classification model (Meta's Llama Guard 3) that inspects prompt and response content for harm across 14 categories. In AI Gateway it is used as the `prompt_guard` Tier-2 guardrail sidecar. See [Prompt Guard](../security/guardrails/prompt-guard.md).
@@ -114,7 +110,7 @@ A detector action that replaces matched content with a placeholder (e.g. `[REDAC
 
 ## SigV4
 
-AWS Signature Version 4 — the HMAC-SHA256-based request signing scheme used by AWS services including Bedrock. The gateway signs Bedrock requests using credentials stored via BYOK. See [AWS Bedrock](../providers/bedrock.md).
+The request signing scheme used by AWS services including Bedrock. The gateway signs Bedrock requests automatically using credentials stored via BYOK — you don't need to handle signing yourself. See [AWS Bedrock](../providers/bedrock.md).
 
 ## Slug
 

@@ -1,32 +1,40 @@
 # Fallback & Retry
 
+## Why use fallbacks?
+
+AI providers occasionally go down, rate-limit your account, or return errors during high-traffic periods. Without a fallback, your application returns an error to the user. With a fallback chain, the gateway silently retries against another provider (e.g. fall back from OpenAI to Anthropic) and the user gets a response.
+
+Fallbacks are defined per routing rule and are transparent to the caller — the response format is the same regardless of which provider in the chain ultimately handled the request.
+
+---
+
 The gateway automatically retries failed requests against the primary provider and can fall over to alternative providers if the primary is unavailable or exhausted.
 
 ## How the fallback chain works
 
 A request follows this sequence:
 
-1. **Primary provider** — attempted up to `retry_count` times on `5xx` errors (default: 2 attempts total, i.e. 1 retry).
+1. **Primary provider** — attempted up to `retry_count` times on server errors (HTTP 5xx). Default: 2 attempts total (1 retry).
 2. **Fallback providers** — each fallback is attempted **once** in order. Fallbacks are defined in the routing rule that matched the request.
 3. If all providers are exhausted, the gateway returns `502 ALL_PROVIDERS_FAILED`.
 
 ```
 Primary provider
-   ├── attempt 1  ──5xx──► attempt 2 (retry_count=2)
-   │                           │
-   │                          5xx
-   │                           ▼
-   │                    Fallback 1 ──5xx──► Fallback 2 ──5xx──► 502
+   ├── attempt 1  ──error──► attempt 2 (retry_count=2)
+   │                              │
+   │                            error
+   │                              ▼
+   │                    Fallback 1 ──error──► Fallback 2 ──error──► 502
    │
-   └── 4xx ──► return immediately (no retry)
+   └── bad request (4xx) ──► return immediately (no retry)
 ```
 
-## 4xx handling
+## Client errors are not retried
 
-A `4xx` response from a provider (e.g. `400 Bad Request`, `401 Unauthorized`, `404 Not Found`) is treated as a definitive failure — the request is **not retried** and fallbacks are **not attempted**. The error is returned to the client immediately.
+A client error response from a provider (HTTP 4xx — e.g. bad request, unauthorized, not found) is treated as a definitive failure — the request is **not retried** and fallbacks are **not attempted**. The error is returned to the caller immediately.
 
 !!! note
-    This behavior prevents retrying requests that are malformed or unauthorized, which would always fail regardless of which provider handles them.
+    This prevents pointless retries: if your request is malformed or your API key is invalid, retrying against another provider won't help.
 
 ## retry_count
 

@@ -1,6 +1,6 @@
 # Authentication & Tokens
 
-The gateway uses opaque bearer tokens for inference authentication. Tokens are short-lived or long-lived strings issued via the admin UI or API. The gateway stores only the SHA-256 hash of each token — the plaintext is returned once at creation time and never stored again.
+The gateway uses access tokens for inference authentication. Tokens are issued via the admin UI or API and can be configured with expiry dates, rate limits, and spend caps. The gateway stores only a one-way hash of each token — the plaintext is returned once at creation time and cannot be recovered afterwards.
 
 ## Token acceptance order
 
@@ -14,7 +14,7 @@ This order lets you use the gateway as a drop-in replacement for OpenAI-compatib
 
 ## Token security model
 
-- Tokens are hashed with **SHA-256** before storage
+- Tokens are stored as a one-way hash — the original value cannot be recovered from the database
 - The plaintext token is returned **once** in the creation response — copy it immediately
 - If a token is lost, delete it and create a new one; there is no recovery path
 - The hash stored in the database cannot be reversed to recover the plaintext

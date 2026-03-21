@@ -2,6 +2,18 @@
 
 The compat endpoint accepts any model name and automatically resolves which provider to route to. It is designed to be a drop-in replacement for the OpenAI API — any client built against the OpenAI SDK works without modification.
 
+## When to use this endpoint
+
+Use the compat endpoint when you want to:
+
+- **Switch providers without changing code** — point your existing OpenAI SDK client at the gateway and change only the `base_url` and `api_key`. You can then route to Claude, Gemini, or any other provider just by changing the model name.
+- **Access multiple providers from one endpoint** — your code always calls the same URL; the gateway figures out which provider to use.
+- **Use OpenRouter as a fallback** — any model ID that OpenRouter supports will work automatically, even if it isn't listed in the gateway's built-in model registry.
+
+Use the [provider-native endpoint](../concepts/providers.md) instead if you need provider-specific features (like Anthropic's extended thinking or AWS Bedrock's inference profiles) that aren't available through the OpenAI-compatible format.
+
+---
+
 This page is the single authoritative reference for compat model resolution. The [Providers Overview](../concepts/providers.md) page cross-references this page for resolution details.
 
 ## Endpoint URL

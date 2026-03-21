@@ -20,7 +20,7 @@ The regex guardrail is a **Tier 1** (in-process, sub-millisecond) guardrail that
 
 ## Named Patterns
 
-Reference these by name in the `patterns` array. FP rates are benchmarked across OR-Bench-hard, XSTest-safe, Dolly-15k, and a handcrafted business-text corpus. "High FP" patterns appear legitimately in general and business text; prefer `action: flag` or use them only with `action: scrub`.
+Reference these by name in the `patterns` array. FP rates are benchmarked across representative general-purpose and business text corpora. "High FP" patterns appear legitimately in everyday text; prefer `action: flag` or use them only with `action: scrub`.
 
 | Name | Description | FP risk |
 |---|---|---|
@@ -69,7 +69,7 @@ Pattern sets are shorthand aliases that expand to multiple named patterns. Use t
 ## Matching Behavior
 
 - **Named patterns** use pre-compiled regular expressions maintained by the gateway. They are updated centrally and do not require configuration changes.
-- **Custom patterns** use Lua POSIX-style regular expressions. They are evaluated in addition to any named patterns in the same guardrail instance.
+- **Custom patterns** use standard regular expressions (POSIX ERE syntax — the same basic `[0-9]`, `+`, `*`, `{N}` syntax as most regex engines). They are evaluated in addition to any named patterns in the same guardrail instance.
 - **Both lists are evaluated together.** If any pattern from either list matches, the configured `action` is applied.
 - **All matches trigger the action.** There is no minimum-match threshold; a single occurrence is sufficient.
 
