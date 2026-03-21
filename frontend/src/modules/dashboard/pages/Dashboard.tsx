@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { UsageStats } from "src/api/types";
+import { fmtDateTime } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
 
 function fmt(n: number | undefined | null, decimals = 0) {
@@ -139,7 +140,7 @@ export default function Dashboard() {
               <tbody>
                 {stats.recent.map((row, i) => (
                   <tr key={i} className={row.blocked ? s.blocked : ""}>
-                    <td className={s.mono}>{row.ts}</td>
+                    <td className={s.mono}>{fmtDateTime(row.ts)}</td>
                     <td><span className={s.code}>{row.tenant}</span></td>
                     <td>{row.provider}</td>
                     <td className={s.mono} style={{ fontSize: 11 }}>{row.model}</td>
@@ -184,7 +185,7 @@ export default function Dashboard() {
               <tbody>
                 {stats.recent_blocked.map((row, i) => (
                   <tr key={i} className={s.blocked}>
-                    <td className={s.mono}>{row.ts}</td>
+                    <td className={s.mono}>{fmtDateTime(row.ts)}</td>
                     <td><span className={s.code}>{row.tenant}</span></td>
                     <td>{row.blocked_by ?? "—"}</td>
                     <td>{row.block_reason ?? "—"}</td>

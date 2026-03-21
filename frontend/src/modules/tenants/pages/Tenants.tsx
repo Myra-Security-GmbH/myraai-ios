@@ -3,6 +3,7 @@ import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { Tenant, Gateway } from "src/api/types";
+import { fmtDate } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -172,7 +173,7 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Created</div>
-            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{tenant.created_at.slice(0, 10)}</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{fmtDate(tenant.created_at)}</div>
           </div>
         </div>
       </div>
@@ -217,7 +218,7 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
                     </td>
                     <td>{g.config.budget_usd != null ? `$${g.config.budget_usd}` : "—"}</td>
                     <td>{g.config.cache_ttl ?? 0}s</td>
-                    <td className={s.mono}>{g.created_at.slice(0, 10)}</td>
+                    <td className={s.mono}>{fmtDate(g.created_at)}</td>
                     <td>
                       <button
                         className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
@@ -323,7 +324,7 @@ export default function Tenants() {
                     </span>
                   </td>
                   <td>{t.budget_usd != null ? `$${t.budget_usd.toFixed(2)}` : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}</td>
-                  <td className={s.mono}>{t.created_at.slice(0, 10)}</td>
+                  <td className={s.mono}>{fmtDate(t.created_at)}</td>
                   <td>
                     <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/tenants/${t.id}`); }}>
                       Open →

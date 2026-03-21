@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { ModelPrice } from "src/api/types";
+import { fmtDate } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
 
 const PROVIDERS = ["anthropic", "openai", "gemini", "mistral", "groq", "deepseek", "xai"];
@@ -176,7 +177,7 @@ export default function ModelPrices() {
                   <td>{fmt(p.output_per_1k)}</td>
                   <td>{fmt(p.cache_write_per_1k)}</td>
                   <td>{fmt(p.cache_read_per_1k)}</td>
-                  <td className={s.mono} style={{ fontSize: 11 }}>{p.updated_at.slice(0, 10)}</td>
+                  <td className={s.mono} style={{ fontSize: 11 }}>{fmtDate(p.updated_at)}</td>
                   <td style={{ display: "flex", gap: 6 }}>
                     <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={() => setEditing(p)}>Edit</button>
                     <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={() => deletePrice(p)}>Delete</button>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { UsageStats, LogEntry } from "src/api/types";
+import { fmtDateTime, fmtTime } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
 import ms from "./Monitor.module.scss";
 
@@ -122,7 +123,7 @@ export default function Monitor() {
           <h1 className={s["page-title"]}>Live Monitor</h1>
           {lastUpdated && (
             <p className={s["page-subtitle"]}>
-              Last updated: {lastUpdated.toLocaleTimeString()} · auto-refresh {running ? "on" : "paused"}
+              Last updated: {fmtTime(lastUpdated)} · auto-refresh {running ? "on" : "paused"}
             </p>
           )}
         </div>
@@ -238,7 +239,7 @@ export default function Monitor() {
                   <tbody>
                     {stats.recent.map((row: any, i: number) => (
                       <tr key={i} className={row.blocked ? s.blocked : ""}>
-                        <td className={s.mono} style={{ fontSize: 11 }}>{row.ts}</td>
+                        <td className={s.mono} style={{ fontSize: 11 }}>{fmtDateTime(row.ts)}</td>
                         <td><span className={s.code}>{row.tenant ?? row.tenant_id?.slice(0, 8)}</span></td>
                         <td>{row.provider}</td>
                         <td className={s.mono} style={{ fontSize: 11, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{row.model}</td>
@@ -288,7 +289,7 @@ export default function Monitor() {
                   <tbody>
                     {stats.recent_blocked.map((row: any, i: number) => (
                       <tr key={i} className={s.blocked}>
-                        <td className={s.mono} style={{ fontSize: 11 }}>{row.ts}</td>
+                        <td className={s.mono} style={{ fontSize: 11 }}>{fmtDateTime(row.ts)}</td>
                         <td><span className={s.code}>{row.tenant ?? row.tenant_id?.slice(0, 8)}</span></td>
                         <td><span className={`${s.badge} ${s["badge--error"]}`}>{row.blocked_by ?? "?"}</span></td>
                         <td style={{ maxWidth: 280, fontSize: 12 }}>{decodeBlockReason(row.block_reason)}</td>

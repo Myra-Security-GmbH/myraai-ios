@@ -3,6 +3,7 @@ import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { User, Tenant, Gateway, AuthToken } from "src/api/types";
+import { fmtDate } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -358,7 +359,7 @@ function UserDetail({ user: initialUser, onBack, onDeleted, onUpdated }: {
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Created</div>
-            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{user.created_at.slice(0, 10)}</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{fmtDate(user.created_at)}</div>
           </div>
         </div>
       </div>
@@ -407,13 +408,13 @@ function UserDetail({ user: initialUser, onBack, onDeleted, onUpdated }: {
                           ))}
                       </td>
                       <td className={s.mono} style={{ fontSize: 12 }}>
-                        {t.expires_at ? t.expires_at.slice(0, 10) : <span style={{ color: "var(--text-secondary)" }}>never</span>}
+                        {t.expires_at ? fmtDate(t.expires_at) : <span style={{ color: "var(--text-secondary)" }}>never</span>}
                       </td>
                       <td>{t.budget_usd != null ? `$${t.budget_usd}` : <span style={{ color: "var(--text-secondary)" }}>—</span>}</td>
                       <td style={{ fontSize: 12 }}>
                         {rl ? `${rl.requests}/${rl.window_sec}s` : <span style={{ color: "var(--text-secondary)" }}>—</span>}
                       </td>
-                      <td className={s.mono} style={{ fontSize: 12 }}>{t.created_at.slice(0, 10)}</td>
+                      <td className={s.mono} style={{ fontSize: 12 }}>{fmtDate(t.created_at)}</td>
                       <td>
                         <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={() => revokeToken(t.id)}>Revoke</button>
                       </td>
@@ -612,7 +613,7 @@ export default function Users() {
                   <td style={{ color: u.name ? undefined : "var(--text-secondary)" }}>{u.name ?? "—"}</td>
                   <td><span className={`${s.badge} ${roleColor(u.role)}`}>{u.role}</span></td>
                   <td><span className={s.code}>{u.tenant_slug}</span></td>
-                  <td className={s.mono}>{u.created_at.slice(0, 10)}</td>
+                  <td className={s.mono}>{fmtDate(u.created_at)}</td>
                   <td>
                     <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/users/${u.id}`); }}>
                       Open →
