@@ -83,7 +83,7 @@ local function handle_compat_streaming(ctx, res)
     local buf          = ""
     local chat_id      = "chatcmpl-" .. (ctx.request_id or "aig")
     local model        = ctx.model
-    local input_tokens, output_tokens = 0, 0
+    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = 0, 0, 0, 0
     local first_chunk_seen = false
     local done_sent        = false
 
@@ -119,10 +119,10 @@ local function handle_compat_streaming(ctx, res)
 
             local parsed = provider_mod.parse_sse_chunk(line)
             if parsed then
-                if parsed.input_tokens          then input_tokens  = parsed.input_tokens          end
-                if parsed.output_tokens         then output_tokens = parsed.output_tokens         end
-                if parsed.cache_creation_tokens then end  -- tracked internally only
-                if parsed.cache_read_tokens     then end
+                if parsed.input_tokens          then input_tokens          = parsed.input_tokens          end
+                if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
+                if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
+                if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
 
                 if parsed.done and not done_sent then
                     local finish_line = "data: " .. json.encode({
@@ -130,7 +130,7 @@ local function handle_compat_streaming(ctx, res)
                         object  = "chat.completion.chunk",
                         model   = model,
                         choices = {{ index = 0, delta = {}, finish_reason = "stop" }},
-                    }) .. "\n\ndata: [DONE]\n\n"
+                    }) .. "\n\n"
                     ngx.print(finish_line)
                     ngx.flush(true)
                     done_sent = true
@@ -149,17 +149,35 @@ local function handle_compat_streaming(ctx, res)
         end
     end
 
-    if not done_sent then
-        ngx.print("data: [DONE]\n\n")
+    -- Send usage chunk so clients can display token counts in real-time
+    -- (emitted before [DONE] following the OpenAI stream_options.include_usage convention)
+    if input_tokens > 0 or output_tokens > 0 then
+        local usage_obj = {
+            prompt_tokens     = input_tokens,
+            completion_tokens = output_tokens,
+            total_tokens      = input_tokens + output_tokens,
+        }
+        if cache_creation_tokens > 0 then usage_obj.cache_creation_tokens = cache_creation_tokens end
+        if cache_read_tokens     > 0 then usage_obj.cache_read_tokens     = cache_read_tokens     end
+        local usage_line = "data: " .. json.encode({
+            id     = chat_id,
+            object = "chat.completion.chunk",
+            model  = model,
+            usage  = usage_obj,
+        }) .. "\n\n"
+        ngx.print(usage_line)
         ngx.flush(true)
     end
+
+    ngx.print("data: [DONE]\n\n")
+    ngx.flush(true)
 
     if res.httpc then res.httpc:set_keepalive() end
 
     ctx.input_tokens          = input_tokens
     ctx.output_tokens         = output_tokens
-    ctx.cache_creation_tokens = 0
-    ctx.cache_read_tokens     = 0
+    ctx.cache_creation_tokens = cache_creation_tokens
+    ctx.cache_read_tokens     = cache_read_tokens
     ctx.is_streaming          = true
     ctx.provider_status       = 200
 end
@@ -274,6 +292,8 @@ end
 function M.run(ctx)
     local is_streaming = ctx.request_body and ctx.request_body.stream == true
     local retry_count  = ctx.gateway_config.retry_count or 2
+    local cb           = require("core.circuit_breaker")
+    local cb_cfg       = ctx.gateway_config.circuit_breaker
 
     -- Build attempt list: primary + fallbacks
     local attempts = {{ provider = ctx.provider, model = ctx.model }}
@@ -287,6 +307,13 @@ function M.run(ctx)
     for attempt_idx, attempt in ipairs(attempts) do
         local provider_name = attempt.provider or ctx.provider
         local model         = attempt.model    or ctx.model
+
+        -- Circuit breaker: skip this provider if its breaker is open
+        if cb.check(ctx.gateway_id, provider_name, cb_cfg) == "deny" then
+            ngx.log(ngx.INFO, "upstream: circuit open, skipping provider=", provider_name)
+            last_err = "circuit_open:" .. provider_name
+            goto continue
+        end
 
         -- Swap BYOK key if fallback uses a different provider
         if provider_name ~= ctx.provider then
@@ -316,6 +343,7 @@ function M.run(ctx)
             if not res then
                 last_err = err
                 ngx.log(ngx.WARN, "upstream call failed: ", err)
+                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, nil)
                 goto next_try
             end
 
@@ -323,6 +351,7 @@ function M.run(ctx)
             if res.status >= 500 then
                 last_err = "provider HTTP " .. res.status
                 ngx.log(ngx.WARN, "upstream: provider returned ", res.status)
+                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status)
                 goto next_try
             end
 
@@ -360,6 +389,7 @@ function M.run(ctx)
             end
 
             -- Success path
+            cb.record_success(ctx.gateway_id, provider_name, cb_cfg)
             ctx.upstream_latency_ms = call_ms
             ctx.upstream_attempts   = total_attempts
             ctx.provider_request_id = res.headers and
