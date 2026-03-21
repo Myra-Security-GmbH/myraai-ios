@@ -23,7 +23,8 @@ interface PanelState {
   outputTokens: number | null;
   cacheCreationTokens: number | null;
   cacheReadTokens: number | null;
-  searchQuery: string | null;   // set while Claude is searching; persists as "searched for" after
+  searchQuery: string | null;      // set while searching; persists as "searched for" after
+  fetchingUrls: number | null;     // set to URL count while gateway is fetching pages
 }
 
 function makePanel(model = ""): PanelState {
@@ -41,6 +42,7 @@ function makePanel(model = ""): PanelState {
     cacheCreationTokens: null,
     cacheReadTokens: null,
     searchQuery: null,
+    fetchingUrls: null,
   };
 }
 
@@ -608,8 +610,7 @@ const PanelResult = memo(function PanelResult({
             </div>
           </div>
         )}
-        {/* Search indicator — shown while searching and persists as provenance after.
-            searchQuery="" means "search dispatched, query not yet known" (shows badge early). */}
+        {/* Search indicator — cycles through: searching → fetching N URLs → searched */}
         {panel.searchQuery !== null && !panel.error && (
           <div
             style={{
@@ -634,7 +635,11 @@ const PanelResult = memo(function PanelResult({
                 flexShrink: 0,
               }}
             >
-              {panel.loading && panel.content === null ? "searching" : "searched"}
+              {panel.loading && panel.content === null
+                ? panel.fetchingUrls !== null
+                  ? `fetching ${panel.fetchingUrls} URL${panel.fetchingUrls !== 1 ? "s" : ""}`
+                  : "searching"
+                : "searched"}
             </span>
             <span
               style={{
@@ -742,7 +747,8 @@ const DEFAULT_SYSTEM_PROMPT = `You are a professional research assistant.
 
 ### STRICT OPERATING RULES:
 1. **NO HALLUCINATIONS:** If the answer is not clear, state: "I'm sorry, but I don't have information about the requested topic." Do not invent URLs or facts.
-2. **LANGUAGE:** Determine LANGUAGE of user question and remember that as USER LANGUAGE. Make sure to ALWAYS formulate response in the USER LANGUAGE.`;
+2. **LANGUAGE:** Always respond in English unless the user's message is explicitly written in a different language. The language of search results or referenced documents does NOT change the response language.
+3. **WEB SEARCH RESULTS:** When you receive tool results from a web_search call, you MUST use the data in those results to answer the user's question directly. Extract and present the actual facts (numbers, dates, names) from the tool result content. Do NOT say you lack information if tool results are present.`;
 
 interface PersistedState {
   tenantId: string;
@@ -809,9 +815,16 @@ export default function Playground() {
 
   // ── Load tenants + models + provider metadata on mount ────────────────────
   useEffect(() => {
-    api.get<Tenant[]>("/tenants").then(setTenants).catch(() => {});
-    api.get<ModelPrice[]>("/models").then(setModels).catch(() => {});
-    api.get<ProviderMeta[]>("/providers").then(setProviderMeta).catch(() => {});
+    api.get<Tenant[]>("/tenants")
+      .then((rows) => { setTenants(rows); })
+      .catch(() => {});
+    api.get<ModelPrice[]>("/models")
+      .then((rows) => { setModels(rows); })
+      .catch(() => {});
+    api.get<ProviderMeta[]>("/providers")
+      .then((rows) => { setProviderMeta(rows); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Load gateways when tenant changes ─────────────────────────────────────
@@ -824,9 +837,11 @@ export default function Playground() {
         // Restore persisted gateway if it belongs to this tenant, else first
         const saved = persisted.current.gatewayId;
         const match = saved && rows.find((r) => r.id === saved);
-        setSelectedGatewayId(match ? saved! : (rows[0]?.id ?? ""));
+        const chosen = match ? saved! : (rows[0]?.id ?? "");
+        setSelectedGatewayId(chosen);
       })
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTenantId]);
 
   // Ensure selectedTenantId is always a valid tenant (or first available)
@@ -842,8 +857,12 @@ export default function Playground() {
     if (!selectedGatewayId) { setConfiguredProviders(new Set()); return; }
     api
       .get<ProviderConfig[]>(`/gateways/${selectedGatewayId}/keys`)
-      .then((keys) => setConfiguredProviders(new Set(keys.map((k) => k.provider))))
+      .then((keys) => {
+        const providers = keys.map((k) => k.provider);
+        setConfiguredProviders(new Set(providers));
+      })
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGatewayId]);
 
   // ── Restore panel models once catalog loads ───────────────────────────────
@@ -938,10 +957,11 @@ export default function Playground() {
     }
 
     // Refresh token if near expiry (< 60 s left)
-    if (
-      tokenExpiresAt.current &&
-      tokenExpiresAt.current.getTime() - Date.now() < 60_000
-    ) {
+    const tokenAge = tokenExpiresAt.current
+      ? tokenExpiresAt.current.getTime() - Date.now()
+      : null;
+    const needsRefresh = tokenAge !== null && tokenAge < 60_000;
+    if (needsRefresh) {
       await refreshToken(selectedGatewayId);
     }
 
@@ -973,6 +993,7 @@ export default function Playground() {
         cacheCreationTokens: null,
         cacheReadTokens: null,
         searchQuery: null,
+        fetchingUrls: null,
       }))
     );
     setGlobalError(null);
@@ -1026,18 +1047,19 @@ export default function Playground() {
           .map((m) => ({ role: m.role, content: m.content }));
         const system = systemPrompt.trim() || undefined;
 
+        const claudeRequestBody = {
+          model: panel.model,
+          max_tokens: maxTokens,
+          temperature,
+          stream: true,
+          messages: anthropicMessages,
+          ...(system ? { system } : {}),
+        };
         try {
           const res = await fetch(anthropicBase, {
             method: "POST",
             headers: wsHeaders,
-            body: JSON.stringify({
-              model: panel.model,
-              max_tokens: maxTokens,
-              temperature,
-              stream: true,
-              messages: anthropicMessages,
-              ...(system ? { system } : {}),
-            }),
+            body: JSON.stringify(claudeRequestBody),
           });
 
           if (!res.ok) {
@@ -1079,10 +1101,17 @@ export default function Playground() {
               if (!raw) continue;
               try {
                 const chunk = JSON.parse(raw);
+                // Gateway status event — update fetching badge
+                if (chunk?.aig_status === "fetching") {
+                  setPanels((prev) => prev.map((p) =>
+                    p.id === panel.id ? { ...p, fetchingUrls: chunk.count ?? 1 } : p
+                  ));
+                  continue;
+                }
                 if (chunk.type === "content_block_delta" && chunk.delta?.type === "text_delta") {
                   accumulated += chunk.delta.text ?? "";
                   setPanels((prev) => prev.map((p) =>
-                    p.id === panel.id ? { ...p, content: accumulated } : p
+                    p.id === panel.id ? { ...p, content: accumulated, fetchingUrls: null } : p
                   ));
                 }
                 if (chunk.type === "message_start") inputTokens = chunk.message?.usage?.input_tokens ?? null;
@@ -1110,17 +1139,19 @@ export default function Playground() {
       }
 
       // ── Standard streaming via compat/OpenAI endpoint ────────────────────
+      const compatRequestBody = {
+        model: panel.model,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+        stream: true,
+      };
+      const compatUrl = `${compatBase}/chat/completions`;
       try {
-        const res = await fetch(`${compatBase}/chat/completions`, {
+        const res = await fetch(compatUrl, {
           method: "POST",
           headers: wsHeaders,
-          body: JSON.stringify({
-            model: panel.model,
-            messages,
-            temperature,
-            max_tokens: maxTokens,
-            stream: true,
-          }),
+          body: JSON.stringify(compatRequestBody),
         });
 
         // Surface the search query from response header (Gemini / other providers)
@@ -1155,6 +1186,10 @@ export default function Playground() {
         const decoder = new TextDecoder();
         let accumulated = "";
         let buf = "";
+        let inputTokens: number | null = null;
+        let outputTokens: number | null = null;
+        let cacheCreationTokens: number | null = null;
+        let cacheReadTokens: number | null = null;
 
         while (true) {
           const { value, done } = await reader.read();
@@ -1168,32 +1203,39 @@ export default function Playground() {
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
             const data = line.slice(6).trim();
-            if (data === "[DONE]") continue;
+            if (data === "[DONE]") {
+              continue;
+            }
             try {
               const chunk = JSON.parse(data);
+              // Gateway status event — update fetching badge
+              if (chunk?.aig_status === "fetching") {
+                setPanels((prev) => prev.map((p) =>
+                  p.id === panel.id ? { ...p, fetchingUrls: chunk.count ?? 1 } : p
+                ));
+                continue;
+              }
               // Content delta — update text progressively
               const delta = chunk?.choices?.[0]?.delta?.content;
-              if (delta) {
+              if (delta != null) {
                 accumulated += delta;
                 setPanels((prev) =>
                   prev.map((p) =>
-                    p.id === panel.id ? { ...p, content: accumulated } : p
+                    p.id === panel.id ? { ...p, content: accumulated, fetchingUrls: null } : p
                   )
                 );
               }
               // Usage chunk — update token counts in real-time
               const usage = chunk?.usage;
               if (usage) {
+                inputTokens = usage.prompt_tokens ?? null;
+                outputTokens = usage.completion_tokens ?? null;
+                cacheCreationTokens = usage.cache_creation_tokens ?? null;
+                cacheReadTokens = usage.cache_read_tokens ?? null;
                 setPanels((prev) =>
                   prev.map((p) =>
                     p.id === panel.id
-                      ? {
-                          ...p,
-                          inputTokens: usage.prompt_tokens ?? null,
-                          outputTokens: usage.completion_tokens ?? null,
-                          cacheCreationTokens: usage.cache_creation_tokens ?? null,
-                          cacheReadTokens: usage.cache_read_tokens ?? null,
-                        }
+                      ? { ...p, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens }
                       : p
                   )
                 );
@@ -1493,7 +1535,7 @@ export default function Playground() {
       </div>
 
       {/* Message input */}
-      <div className={s.card} style={{ marginBottom: 0 }}>
+      <div className={s.card} style={{ marginBottom: 16 }}>
         <label className={s["form-label"]}>Message</label>
         <textarea
           className={s["form-input"]}
@@ -1543,6 +1585,7 @@ export default function Playground() {
           )}
         </div>
       </div>
+
     </main>
   );
 }

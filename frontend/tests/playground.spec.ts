@@ -11,6 +11,7 @@ const PROMPT = "Reply with exactly one word: hello";
 const WEB_SEARCH_MODEL = "ollama/gpt-oss:120b";
 const WEB_SEARCH_20B_MODEL = "ollama/gpt-oss:20b";
 const WEB_SEARCH_PROMPT = 'do web search for "myra security gmbh", summarize findings';
+const WEATHER_PROMPT = 'do web search for "current weather munich"';
 
 async function setup(page: Page) {
   await page.goto("/playground");
@@ -138,6 +139,60 @@ test.describe("Playground — Web Search e2e", () => {
     expect(text.length).toBeGreaterThan(10);
   });
 
+  test("ollama/gpt-oss:20b current weather munich — no reasoning leak, actual weather data", async ({ page }) => {
+    await setup(page);
+    await pickModelByName(page, WEB_SEARCH_20B_MODEL);
+
+    await expect(page.locator("[aria-haspopup='listbox']").first()).toContainText(WEB_SEARCH_20B_MODEL);
+
+    const wsBtn = page.getByRole("button", { name: /web search/i });
+    await wsBtn.click();
+    await expect(wsBtn).toContainText("Web Search ON");
+
+    await page.getByLabel("User message").fill(WEATHER_PROMPT);
+    await page.getByRole("button", { name: "Run" }).click();
+
+    const response = page.getByLabel("Response").first();
+
+    await expect(response).toContainText("Running…", { timeout: 15000 });
+    await expect(response).not.toContainText("Running…", { timeout: 120000 });
+
+    // Log response before any assertions so we can see it even if something fails
+    const text = (await response.innerText()).trim();
+    console.log("RESPONSE TEXT:\n" + text);
+
+    await page.waitForTimeout(3000);
+
+    // Re-read the response after the wait so we get the fully-rendered content
+    const finalText = (await response.innerText()).trim();
+    console.log("FINAL RESPONSE TEXT:\n" + finalText);
+
+    // searched badge confirms the gateway actually ran Brave search
+    await expect(page.getByText("searched")).toBeVisible({ timeout: 5000 });
+
+    // Hard failures
+    await expect(response).not.toContainText("(no content)");
+    await expect(response).not.toContainText("SERVER ERROR");
+
+    // No reasoning leak — the specific thinking phrases the model emits
+    await expect(response).not.toContainText("Need to summarize");
+    await expect(response).not.toContainText("We have search results");
+    await expect(response).not.toContainText("We must not hallucinate");
+    await expect(response).not.toContainText("We need to provide");
+    await expect(response).not.toContainText("But we can");
+
+    // Must mention Munich (grounded in query)
+    await expect(response).toContainText(/munich/i);
+
+    // Must contain actual weather content — temperature number or conditions
+    const hasWeatherContent =
+      /\d+\s*°/.test(finalText) ||          // temperature like "12°" or "12 °C"
+      /\d+\s*degrees/i.test(finalText) ||   // "12 degrees"
+      /°[CF]/i.test(finalText) ||           // °C or °F
+      /cloud|sun|rain|snow|overcast|clear|fog|wind|storm|partly/i.test(finalText); // conditions
+    expect(hasWeatherContent, `response should contain weather data, got: ${finalText}`).toBeTruthy();
+  });
+
   test("ollama/gpt-oss:120b performs live web search and returns grounded results", async ({ page }) => {
     await setup(page);
     await pickModelByName(page, WEB_SEARCH_MODEL);
@@ -174,6 +229,46 @@ test.describe("Playground — Web Search e2e", () => {
 
     // Response should mention Myra Security
     await expect(response).toContainText(/myra/i);
+  });
+
+  test("ollama/gpt-oss:20b myra security gmbh germany — english response, fetched content used", async ({ page }) => {
+    await setup(page);
+    await pickModelByName(page, WEB_SEARCH_20B_MODEL);
+    await expect(page.locator("[aria-haspopup='listbox']").first()).toContainText(WEB_SEARCH_20B_MODEL);
+
+    const wsBtn = page.getByRole("button", { name: /web search/i });
+    await wsBtn.click();
+    await expect(wsBtn).toContainText("Web Search ON");
+
+    await page.getByLabel("User message").fill('do web search for "myra security gmbh germany", summarize');
+    await page.getByRole("button", { name: "Run" }).click();
+
+    const response = page.getByLabel("Response").first();
+    await expect(response).toContainText("Running…", { timeout: 15000 });
+    await expect(response).not.toContainText("Running…", { timeout: 120000 });
+
+    // Wait for meaningful content to arrive before snapshotting
+    await expect(response).toContainText(/myra/i, { timeout: 30000 });
+    await page.waitForTimeout(5000);
+    const finalText = (await response.innerText()).trim();
+    console.log("FINAL RESPONSE TEXT:\n" + finalText);
+
+    // searched badge must appear
+    await expect(page.getByText("searched")).toBeVisible({ timeout: 5000 });
+
+    // Must not be empty or errored
+    await expect(response).not.toContainText("(no content)");
+    await expect(response).not.toContainText("SERVER ERROR");
+
+    // Must mention Myra
+    await expect(response).toContainText(/myra/i);
+
+    // Must be in English — check for common English function words and absence of German
+    const germanWords = /\b(ist|und|der|die|das|ein|eine|für|mit|von|zu|als|auch|sich|auf|nicht|werden|werden|wurde)\b/i;
+    expect(germanWords.test(finalText), `response should be in English but contains German words: ${finalText}`).toBeFalsy();
+
+    // Must have substantive content (not just a one-liner Brave snippet)
+    expect(finalText.length, `response too short, likely only Brave snippet: ${finalText}`).toBeGreaterThan(100);
   });
 
 });
