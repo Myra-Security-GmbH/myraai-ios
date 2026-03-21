@@ -91,7 +91,7 @@ When `categories` is `null` or omitted, all 14 categories are enforced.
 - **`scrub` action not supported.** Configure `block` or `flag` only.
 - **Request phase classifies only the last user message.** The full conversation history is not sent to the classifier. Only the most recent user turn is evaluated.
 - **Input truncation.** Inputs longer than approximately 4,096 tokens are truncated before classification.
-- **Not a replacement for Tier 1 guardrails.** For structured sensitive data (PII, card numbers, credentials), use regex or Presidio guardrails. Prompt Guard is optimised for unstructured content policy enforcement.
+- **Not a replacement for Tier 1 guardrails.** For structured sensitive data (PII, card numbers, credentials), use regex or the NLP PII Detector guardrail. Prompt Guard is optimised for unstructured content policy enforcement.
 
 ---
 
@@ -169,4 +169,4 @@ Prompt Guard is **Tier 2** — it makes an HTTP call to a sidecar service. All T
 
 - [Guardrail Pipeline Overview](../guardrails.md)
 - [Keyword Guardrail](keyword.md) — fast exact-string blocking, useful as a Tier 1 pre-filter
-- [Presidio Guardrail](presidio.md) — NLP-based PII detection
+- [NLP PII Detector](presidio.md) — NLP-based PII detection

@@ -42,7 +42,7 @@ A configurable content inspection component in the gateway's two-tier pipeline. 
 
 ## DLP
 
-**Data Loss Prevention** — the practice of scanning request and response content for sensitive patterns (PII, credentials, etc.) before they leave or enter the system. In AI Gateway, DLP is implemented through the [guardrail pipeline](../security/guardrails.md) using regex and keyword guardrails, or the Presidio sidecar for NER-based PII detection.
+**Data Loss Prevention** — the practice of scanning request and response content for sensitive patterns (PII, credentials, etc.) before they leave or enter the system. In AI Gateway, DLP is implemented through the [guardrail pipeline](../security/guardrails.md) using regex and keyword guardrails, or the NLP PII Detector sidecar for NER-based PII detection.
 
 ## Exact-match cache
 
@@ -80,9 +80,9 @@ The interactive model testing interface in the Admin UI. Supports multi-model co
 
 A short-lived token issued for the Playground UI. Expires after 10 minutes and is managed automatically by the admin UI. Cannot be used for production inference. See [Authentication](../api-reference/authentication.md).
 
-## Presidio
+## NLP PII Detector
 
-[Microsoft Presidio](https://microsoft.github.io/presidio/) — an open-source NER-based PII detection service. Used as a Tier 2 guardrail sidecar in AI Gateway, operated as a managed sidecar by the Myra Security platform. More accurate than the in-process regex guardrails for unstructured text but adds network round-trip latency. See [Guardrail Pipeline](../security/guardrails.md).
+An NLP-based named entity recognition engine for PII detection. Runs as a locally hosted sidecar within the Myra infrastructure — data never leaves the Myra perimeter. More accurate than the in-process regex guardrails for unstructured text but adds network round-trip latency. See [NLP PII Detector](../security/guardrails/presidio.md).
 
 ## Provider
 

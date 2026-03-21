@@ -11,7 +11,7 @@ AI Gateway is a multi-tenant reverse proxy built upon the Global Myra Security C
 - **Exact-match response caching** — SHA-256 keyed; saves cost and latency on repeated prompts
 - **Rate limiting** — sliding-window per gateway or per token, enforced before the request body is read
 - **Budget enforcement** — hard spending caps at the gateway level and per auth token; stored as micro-dollars to avoid float precision loss
-- **Guardrail pipeline** — two-tier system: fast in-process regex/keyword (Tier 1) then optional HTTP sidecars — Microsoft Presidio, Prompt Guard, and PII Protector (Tier 2)
+- **Guardrail pipeline** — two-tier system: fast in-process regex/keyword (Tier 1) then optional HTTP sidecars — NLP PII Detector, Prompt Guard, and PII Protector (Tier 2)
 - **BYOK key vault** — provider API keys encrypted at rest with AES-256
 - **Routing rules** — ordered rule engine that can rewrite provider, model, and attach fallback chains based on request metadata
 - **Prometheus metrics** — four counters/histograms with `provider`, `tenant_id`, `status`, `cached` labels; exposed at `/metrics`
@@ -28,7 +28,7 @@ Store all provider API keys in one encrypted vault. Applications never touch raw
 Every request is logged with token counts, cost in USD, and a `meta` map of custom headers. Budget caps prevent runaway spend at both the gateway and per-user-token level.
 
 **Compliance and security policy enforcement**
-Apply PII scrubbing via the guardrail pipeline (Presidio, regex, keyword) and Prompt Guard content moderation centrally, before prompts ever reach a provider.
+Apply PII scrubbing via the guardrail pipeline (NLP PII Detector, regex, keyword) and Prompt Guard content moderation centrally, before prompts ever reach a provider.
 
 **A/B routing and model experimentation**
 Write routing rules that redirect a percentage of traffic to a different provider or model, with automatic fallback if the primary fails. Compare results side-by-side in the Playground.
@@ -73,7 +73,7 @@ All policy enforcement — authentication, rate limiting, caching, and security 
 |---|---|
 | Platform | Built upon the Global Myra Security CDN |
 | Providers | 21 AI providers via a unified API |
-| Security | Authentication, rate limiting, budget enforcement, and guardrail pipeline (regex, Presidio, Prompt Guard, PII Protector) — all enforced in-process |
+| Security | Authentication, rate limiting, budget enforcement, and guardrail pipeline (regex, NLP PII Detector, Prompt Guard, PII Protector) — all enforced in-process |
 | Encryption | Provider API keys encrypted at rest with AES-256 |
 | Observability | Structured request logs, Prometheus metrics, real-time admin dashboard |
 | Admin UI | React-based admin interface with playground for model testing |

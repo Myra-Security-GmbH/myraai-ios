@@ -17,7 +17,7 @@ The keyword guardrail is a **Tier 1** (in-process, sub-millisecond) guardrail th
 | `whole_word` | boolean | `true` | When `true`, a keyword only matches when surrounded by non-word characters. Prevents `"kill"` from matching `"skill"`. Disable only when matching substrings such as product codes. |
 
 !!! warning "Scrub is not supported"
-    The keyword guardrail does not support `action: "scrub"`. If `"scrub"` is configured, the guardrail treats it as `"flag"`. To redact matched content, use the [Regex guardrail](regex.md) or [Presidio guardrail](presidio.md) instead.
+    The keyword guardrail does not support `action: "scrub"`. If `"scrub"` is configured, the guardrail treats it as `"flag"`. To redact matched content, use the [Regex guardrail](regex.md) or [NLP PII Detector](presidio.md) instead.
 
 ---
 
@@ -81,7 +81,7 @@ Records a log entry whenever the model response contains an internal codename, w
 ```
 
 !!! note "For pattern-based detection, use a different guardrail"
-    The keyword guardrail only supports exact string matching. For detecting structured sensitive data such as email addresses, credit card numbers, or PII categories, use the [Regex guardrail](regex.md) or [Presidio guardrail](presidio.md) instead.
+    The keyword guardrail only supports exact string matching. For detecting structured sensitive data such as email addresses, credit card numbers, or PII categories, use the [Regex guardrail](regex.md) or [NLP PII Detector](presidio.md) instead.
 
 ---
 
@@ -97,4 +97,4 @@ A `block` verdict from this guardrail stops the pipeline immediately. No subsequ
 
 - [Guardrail Pipeline Overview](../guardrails.md)
 - [Regex Guardrail](regex.md)
-- [Presidio Guardrail](presidio.md)
+- [NLP PII Detector](presidio.md)

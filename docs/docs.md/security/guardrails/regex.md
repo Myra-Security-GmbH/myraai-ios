@@ -42,7 +42,7 @@ Reference these by name in the `patterns` array. FP rates are benchmarked across
 | `jwt` | JSON Web Tokens (ey... three-segment format) | Low — 0% FP |
 
 !!! tip "High-FP patterns and `action: block`"
-    `phone`, `ssn`, and `ip_address` have 11–26% false positive rates on general business text. Use `action: scrub` rather than `action: block` for these patterns, or switch to the [Presidio guardrail](presidio.md) which applies NLP context to reduce false detections.
+    `phone`, `ssn`, and `ip_address` have 11–26% false positive rates on general business text. Use `action: scrub` rather than `action: block` for these patterns, or switch to the [NLP PII Detector](presidio.md) which applies NLP context to reduce false detections.
 
 !!! note "Credit card Luhn validation"
     The `cc` pattern applies a Luhn checksum check in addition to format matching. This significantly reduces false positives from 16-digit numbers that happen to match a card number format but are not valid card numbers.
@@ -172,4 +172,4 @@ A `block` verdict from this guardrail stops the pipeline immediately. No subsequ
 
 - [Guardrail Pipeline Overview](../guardrails.md)
 - [Keyword Guardrail](keyword.md)
-- [Presidio Guardrail](presidio.md)
+- [NLP PII Detector](presidio.md)
