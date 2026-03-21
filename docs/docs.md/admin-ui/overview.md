@@ -22,7 +22,7 @@ https://<your-gateway-host>/admin
 | Users | `/admin/users` | Auth token management per gateway |
 | Logs | `/admin/logs` | Searchable, filterable request log viewer |
 | Prices | `/admin/prices` | Per-provider per-model pricing table (used for cost calculation) |
-| Detectors | `/admin/detectors` | Visual builder for the detector pipeline (regex, keyword, PII, Presidio, LLM Guard) |
+| Detectors | `/admin/detectors` | Visual builder for the detector pipeline (regex, keyword, PII Protector, NLP PII Detector, LLM Guard) |
 | Monitor | `/admin/monitor` | Real-time request stream and live metrics charts |
 | Settings | `/admin/settings` | Gateway-level global settings |
 | Playground | `/admin/playground` | Interactive multi-model testing interface |

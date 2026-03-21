@@ -62,7 +62,7 @@ Looks up the request in the exact-match response cache. On a hit, returns the st
 Two-tier guardrail pipeline runs against the outbound request body:
 
 - **Tier 1** (in-process, sub-millisecond): regex and keyword guardrails
-- **Tier 2** (HTTP sidecar, milliseconds): Presidio, Prompt Guard, PII Protector — only if Tier 1 passes
+- **Tier 2** (HTTP sidecar, milliseconds): NLP PII Detector, Prompt Guard, PII Protector — only if Tier 1 passes
 
 A `block` verdict returns a synthetic error response to the client. `scrub` replaces matched content. `flag` records the match in the log. See [Guardrail Pipeline](../security/guardrails.md).
 

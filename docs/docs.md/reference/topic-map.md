@@ -45,7 +45,7 @@ Browse all documentation topics by category.
     - [Guardrail Pipeline Overview](../security/guardrails.md)
     - [Regex Guardrail](../security/guardrails/regex.md)
     - [Keyword Guardrail](../security/guardrails/keyword.md)
-    - [Presidio Guardrail](../security/guardrails/presidio.md)
+    - [NLP PII Detector](../security/guardrails/presidio.md)
     - [Prompt Guard](../security/guardrails/prompt-guard.md)
     - [PII Protector](../security/guardrails/pii-protector.md)
 

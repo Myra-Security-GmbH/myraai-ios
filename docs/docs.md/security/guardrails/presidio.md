@@ -148,7 +148,7 @@ Running a regex guardrail first (Tier 1) can reduce the volume of content reachi
 
 ## Pipeline Position
 
-The Presidio guardrail is **Tier 2** — it makes an HTTP call to a sidecar service. All Tier 1 guardrails (regex, keyword) run before any Tier 2 guardrail. Within Tier 2, guardrails run in the order they appear in the `guardrails` array.
+The NLP PII Detector is **Tier 2** — it makes an HTTP call to a sidecar service. All Tier 1 guardrails (regex, keyword) run before any Tier 2 guardrail. Within Tier 2, guardrails run in the order they appear in the `guardrails` array.
 
 ---
 

@@ -29,7 +29,7 @@ The `code` field is a stable machine-readable string. The `message` is informati
 | `INVALID_REQUEST` | 400 | Malformed request body, missing required fields, or an unrecognised parameter value. |
 | `RATE_LIMITED` | 429 | The sliding-window rate limit was exceeded. The response includes `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers. |
 | `QUOTA_EXCEEDED` | 429 | The configured spend budget has been exhausted (gateway-level or per-token). |
-| `DETECTOR_BLOCKED` | 400 | The detector pipeline (regex, keyword, PII, Presidio, or LLM Guard) matched with a `block` action. The `message` field names the blocking detector. |
+| `DETECTOR_BLOCKED` | 400 | The detector pipeline (regex, keyword, PII Protector, NLP PII Detector, or LLM Guard) matched with a `block` action. The `message` field names the blocking detector. |
 | `GUARDRAIL_BLOCKED` | 400 | Llama Guard 3 classified the request as unsafe. The `message` includes the harm category (e.g. `unsafe S1`). See note below. |
 | `PROVIDER_ERROR` | 502 | The upstream provider returned a 5xx error and all retries were exhausted for that provider. |
 | `ALL_PROVIDERS_FAILED` | 502 | All providers in the routing chain (primary + all fallbacks) returned errors or timed out. |
