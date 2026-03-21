@@ -89,6 +89,12 @@ function M.parse_sse_chunk(line)
     local choice = chunk.choices and chunk.choices[1]
     if choice and choice.delta then
         delta = choice.delta.content or ""
+        -- Reasoning models (e.g. DeepSeek-R1, gpt-oss) sometimes emit content via
+        -- delta.reasoning instead of delta.content.  Fall back so they always stream.
+        if (delta == "" or delta == nil) and choice.delta.reasoning then
+            delta = choice.delta.reasoning
+        end
+        delta = delta or ""
     end
 
     -- OpenAI sends usage in the final chunk when stream_options.include_usage=true
