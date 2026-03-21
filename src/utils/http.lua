@@ -3,15 +3,26 @@ local http_lib = require("resty.http")
 
 local M = {}
 
-local DEFAULT_TIMEOUT = 60000  -- 60s (LLM calls can be slow)
+local DEFAULT_CONNECT_MS =  5000  -- TCP handshake should be near-instant for local/CDN
+local DEFAULT_SEND_MS    = 10000  -- sending the request body
+local DEFAULT_READ_MS    = 60000  -- waiting for the response (LLM calls can be slow)
 
 -- Perform an HTTP request to an upstream provider.
 -- opts fields:
---   method, url, headers, body, timeout_ms, stream (bool)
+--   method, url, headers, body, stream (bool)
+--   timeout_ms           — unified fallback for all three phases (backwards-compat)
+--   connect_timeout_ms   — TCP connect phase (default 5 s)
+--   send_timeout_ms      — sending request headers + body (default 10 s)
+--   read_timeout_ms      — waiting for + reading response (default 60 s)
 -- Returns (status, headers, body_or_reader, err)
 function M.request(opts)
     local httpc = http_lib.new()
-    httpc:set_timeout(opts.timeout_ms or DEFAULT_TIMEOUT)
+    local fallback = opts.timeout_ms
+    httpc:set_timeouts(
+        opts.connect_timeout_ms or fallback or DEFAULT_CONNECT_MS,
+        opts.send_timeout_ms    or fallback or DEFAULT_SEND_MS,
+        opts.read_timeout_ms    or fallback or DEFAULT_READ_MS
+    )
 
     local parsed, err = httpc:parse_uri(opts.url)
     if not parsed then

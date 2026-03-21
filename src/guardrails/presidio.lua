@@ -81,7 +81,7 @@ end
 -- Call presidio-analyzer. Returns list of entity results or nil, err.
 local function call_analyzer(text, detector)
     local url     = (detector.url or DEFAULT_ANALYZER_URL) .. "/analyze"
-    local timeout = detector.timeout_ms or 3000
+    local read_ms = detector.timeout_ms or 15000
 
     local payload = json.encode({
         text            = text,
@@ -91,11 +91,13 @@ local function call_analyzer(text, detector)
     })
 
     local status, _, body, err = http_util.request({
-        method     = "POST",
-        url        = url,
-        headers    = { ["Content-Type"] = "application/json" },
-        body       = payload,
-        timeout_ms = timeout,
+        method             = "POST",
+        url                = url,
+        headers            = { ["Content-Type"] = "application/json" },
+        body               = payload,
+        connect_timeout_ms = 500,
+        send_timeout_ms    = 2000,
+        read_timeout_ms    = read_ms,
     })
 
     if err or not body then
@@ -115,7 +117,7 @@ end
 -- Call presidio-anonymizer. Returns anonymized text or nil, err.
 local function call_anonymizer(text, analyzer_results, detector)
     local url     = (detector.anonymizer_url or DEFAULT_ANONYMIZER_URL) .. "/anonymize"
-    local timeout = detector.timeout_ms or 3000
+    local read_ms = detector.timeout_ms or 15000
 
     local payload = json.encode({
         text             = text,
@@ -123,11 +125,13 @@ local function call_anonymizer(text, analyzer_results, detector)
     })
 
     local status, _, body, err = http_util.request({
-        method     = "POST",
-        url        = url,
-        headers    = { ["Content-Type"] = "application/json" },
-        body       = payload,
-        timeout_ms = timeout,
+        method             = "POST",
+        url                = url,
+        headers            = { ["Content-Type"] = "application/json" },
+        body               = payload,
+        connect_timeout_ms = 500,
+        send_timeout_ms    = 2000,
+        read_timeout_ms    = read_ms,
     })
 
     if err or not body then

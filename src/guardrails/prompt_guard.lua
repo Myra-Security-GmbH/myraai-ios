@@ -109,7 +109,7 @@ end
 -- Returns { verdict="safe"|"unsafe", categories="S2,S9"|nil } or nil, err.
 local function classify(messages, detector)
     local url     = (detector.url or DEFAULT_URL) .. "/v1/chat/completions"
-    local timeout = detector.timeout_ms or DEFAULT_TIMEOUT
+    local read_ms = detector.timeout_ms or DEFAULT_TIMEOUT
 
     local payload = json.encode({
         model       = "llama-guard-3-8b",
@@ -119,11 +119,13 @@ local function classify(messages, detector)
     })
 
     local status, _, body, err = http_util.request({
-        method     = "POST",
-        url        = url,
-        headers    = { ["Content-Type"] = "application/json" },
-        body       = payload,
-        timeout_ms = timeout,
+        method             = "POST",
+        url                = url,
+        headers            = { ["Content-Type"] = "application/json" },
+        body               = payload,
+        connect_timeout_ms = 500,
+        send_timeout_ms    = 2000,
+        read_timeout_ms    = read_ms,
     })
 
     if err or not body then
