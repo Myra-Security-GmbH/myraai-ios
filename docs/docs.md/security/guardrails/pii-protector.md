@@ -6,7 +6,7 @@ PII Protector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that p
 
 ## How It Works
 
-1. **Request phase** — Presidio scans the request body for PII spans. Each unique value is replaced with a token in the format `[PII:SALT:N]`, where `SALT` is a random per-request prefix and `N` is a sequential counter. The same original value always maps to the same token within a single request.
+1. **Request phase** — The NLP PII detection engine scans the request body for PII spans. Each unique value is replaced with a token in the format `[PII:SALT:N]`, where `SALT` is a random per-request prefix and `N` is a sequential counter. The same original value always maps to the same token within a single request.
 2. **Provider call** — The upstream AI provider receives only the tokenized body. Real PII values are never transmitted.
 3. **Response phase** — All tokens present in the response are replaced with their original values before the response is sent to the client.
 
@@ -28,6 +28,16 @@ PII Protector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that p
 
 !!! note "No `action` or `target` fields"
     PII Protector does not have an `action` or `target` field. It always tokenizes on the request phase and restores on the response phase. Both phases are always active. Configure `target: "both"` is implicit and not required.
+
+---
+
+## Entity Types and FP Risk
+
+PII Protector uses the same entity types as the [NLP PII Detector](presidio.md). See that page for the full list of supported entity types and their benchmarked false-positive rates.
+
+For `entities`, the 13 low-FP types are: `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `CREDIT_CARD`, `US_BANK_NUMBER`, `IBAN_CODE`, `US_PASSPORT`, `US_DRIVER_LICENSE`, `US_ITIN`, `CRYPTO`, `IP_ADDRESS`, `MEDICAL_LICENSE`, `URL`.
+
+The 4 high-FP entities — `PERSON`, `LOCATION`, `DATE_TIME`, `NRP` — are useful for contextual continuity (the model can reference names and places naturally) but produce false positives on general text. The gateway automatically raises `score_threshold` to `0.9` for these entities when they are included.
 
 ---
 
@@ -121,7 +131,7 @@ The same original value appearing multiple times in a single request always maps
 
 ## Comparison with Presidio `scrub`
 
-| | PII Protector | Presidio (`action: "scrub"`) |
+| | PII Protector | NLP PII Detector (`action: "scrub"`) |
 |---|---|---|
 | Request PII handling | Tokenized (reversible) | Replaced with `<TYPE>` placeholder (permanent) |
 | Response restoration | Yes (non-streaming only) | No |
@@ -142,5 +152,5 @@ PII Protector is **Tier 2** — it makes an HTTP call to the Presidio sidecar. A
 ## See Also
 
 - [Guardrail Pipeline Overview](../guardrails.md)
-- [Presidio Guardrail](presidio.md) — permanent scrubbing without restoration
+- [NLP PII Detector](presidio.md) — permanent scrubbing without restoration
 - [Regex Guardrail](regex.md) — in-process pattern matching for structured data

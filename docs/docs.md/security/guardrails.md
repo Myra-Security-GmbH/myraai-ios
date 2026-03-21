@@ -88,32 +88,67 @@ Tier 2 guardrails make an HTTP call to an external sidecar service. If that serv
 
 ## Configuration
 
-Guardrails are configured in the gateway's `config.guardrails` array. The gateway configuration is managed through the Admin API.
+### Using the admin UI
 
-```bash
-curl -X PATCH "https://<your-gateway-host>/admin/v1/gateways/{id}" \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "config": {
-      "guardrails": [
-        {
-          "type": "regex",
-          "name": "block-pci",
-          "action": "block",
-          "target": "request",
-          "patterns": ["pci_pan"]
-        },
-        {
-          "type": "presidio",
-          "name": "scrub-pii",
-          "action": "scrub",
-          "target": "both",
-          "fail_open": true
-        }
-      ]
+Guardrails are configured inside the gateway create and edit dialogs using the visual **Guardrail Builder**.
+
+**To open the Guardrail Builder:**
+
+1. Open **Gateways** in the left sidebar.
+2. Click **Edit** on an existing gateway, or click **New Gateway** to create one.
+3. Scroll to the **Guardrails** section at the bottom of the dialog.
+
+**To add a guardrail:**
+
+1. Click **Add Guardrail** and select a type from the dropdown: Regex, Keyword, NLP PII Detector, Prompt Guard, or PII Protector.
+2. Fill in the fields for that guardrail type (see the individual guardrail pages for field details).
+3. Set the **Action** — what the gateway does when a match is found:
+   - **Block** — deny the request immediately
+   - **Scrub** — replace matched content with a placeholder (not available on Keyword or Prompt Guard)
+   - **Flag** — record the match in the log without blocking
+4. Set the **Target** — which traffic direction to inspect:
+   - **Request** — outbound prompt (default)
+   - **Response** — inbound model reply
+   - **Both** — inspect both directions
+5. Click **Save**.
+
+**To reorder guardrails:**
+
+Use the up/down arrows next to each guardrail. Order matters: Tier 1 guardrails always run before Tier 2, but within the same tier the list order is the execution order.
+
+**To view the execution plan:**
+
+Click **Execution Plan** to see a read-only summary of the full pipeline — which tier each guardrail is in, what phase it runs in, and what mode it uses. Use this to verify ordering before saving.
+
+**To remove a guardrail:**
+
+Click the delete icon on the guardrail row.
+
+### API
+
+Guardrails are also configurable via the Admin API as the `guardrails` array in the gateway config. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for the PATCH endpoint.
+
+Example config:
+
+```json
+{
+  "guardrails": [
+    {
+      "type": "regex",
+      "name": "block-pci",
+      "action": "block",
+      "target": "request",
+      "patterns": ["pci_pan"]
+    },
+    {
+      "type": "presidio",
+      "name": "scrub-pii",
+      "action": "scrub",
+      "target": "both",
+      "fail_open": true
     }
-  }'
+  ]
+}
 ```
 
 In this example, the `regex` guardrail (Tier 1) runs first. If a PCI pattern is found, the request is blocked and the `presidio` guardrail never runs. If no match is found, the `presidio` guardrail (Tier 2) runs and scrubs any PII from both the request and the response.
@@ -139,7 +174,7 @@ Every guardrail that runs produces structured output. The following fields are s
 |---|---|---|
 | [`regex`](guardrails/regex.md) | 1 | In-process regex and named pattern matching |
 | [`keyword`](guardrails/keyword.md) | 1 | In-process exact keyword matching |
-| [`presidio`](guardrails/presidio.md) | 2 | NLP-based PII detection via Microsoft Presidio sidecar |
+| [`presidio`](guardrails/presidio.md) | 2 | NLP-based PII detection — hosted within Myra's infrastructure |
 | [`prompt_guard`](guardrails/prompt-guard.md) | 2 | Safety classification via Llama Guard 3 sidecar |
 | [`pii_protector`](guardrails/pii-protector.md) | 2 | Reversible PII tokenization — real values restored in response |
 
@@ -149,6 +184,6 @@ Every guardrail that runs produces structured output. The following fields are s
 
 - [Regex Guardrail](guardrails/regex.md)
 - [Keyword Guardrail](guardrails/keyword.md)
-- [Presidio Guardrail](guardrails/presidio.md)
+- [NLP PII Detector](guardrails/presidio.md)
 - [Prompt Guard](guardrails/prompt-guard.md)
 - [PII Protector](guardrails/pii-protector.md)

@@ -14,6 +14,7 @@ The keyword guardrail is a **Tier 1** (in-process, sub-millisecond) guardrail th
 | `target` | string | `"request"` | Which traffic to inspect: `request`, `response`, or `both` |
 | `keywords` | array | `[]` | Exact strings to match |
 | `case_sensitive` | boolean | `false` | When `true`, matching is case-exact; when `false`, matching is case-insensitive |
+| `whole_word` | boolean | `true` | When `true`, a keyword only matches when surrounded by non-word characters. Prevents `"kill"` from matching `"skill"`. Disable only when matching substrings such as product codes. |
 
 !!! warning "Scrub is not supported"
     The keyword guardrail does not support `action: "scrub"`. If `"scrub"` is configured, the guardrail treats it as `"flag"`. To redact matched content, use the [Regex guardrail](regex.md) or [Presidio guardrail](presidio.md) instead.
@@ -26,8 +27,13 @@ The keyword guardrail performs plain string matching — each keyword in the `ke
 
 - **Case-insensitive (default):** `"lawsuit"` matches `lawsuit`, `Lawsuit`, `LAWSUIT`, and any other case variant.
 - **Case-sensitive:** `"API"` matches only `API`, not `api` or `Api`.
+- **Whole-word (default `true`):** `"kill"` matches only when surrounded by non-word characters — it will not match `"skill"` or `"killing"`. Set `whole_word: false` only when intentionally matching substrings, such as internal product codes that appear as part of longer strings.
 
 A single match from any keyword in the list is sufficient to trigger the configured action. All matched keyword names are recorded in the `detectors_fired` log field.
+
+!!! tip "Reducing false positives"
+    For `action: block`, keep `whole_word: true` (the default) and use unambiguous, specific terms.
+    Broad words such as `"attack"`, `"kill"`, or `"hack"` have high false-positive rates — use `action: flag` for those.
 
 ---
 

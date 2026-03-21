@@ -1,6 +1,6 @@
-# Presidio Guardrail
+# NLP PII Detector
 
-The Presidio guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that uses Microsoft Presidio's NLP-based named entity recognition to detect and optionally anonymize personally identifiable information (PII) in request and response bodies.
+The NLP PII Detector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that uses an NLP-based named entity recognition engine to detect and optionally anonymize personally identifiable information (PII) in request and response bodies. The detection engine runs as a locally hosted sidecar within the Myra infrastructure — data is never transmitted outside the Myra perimeter.
 
 ---
 
@@ -35,26 +35,30 @@ The Presidio guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) guardra
 
 ## Supported Entity Types
 
-Presidio supports 50+ entity types. The following are among the most commonly used:
+The NLP PII Detector supports 50+ entity types. The following are commonly configured. FP rates are benchmarked at `score_threshold: 0.7` across OR-Bench-hard, XSTest-safe, Dolly-15k, and a handcrafted corpus.
 
-| Entity Type | Description |
-|---|---|
-| `PERSON` | Full or partial person names |
-| `EMAIL_ADDRESS` | Email addresses |
-| `PHONE_NUMBER` | Phone numbers |
-| `CREDIT_CARD` | Credit card numbers |
-| `IBAN_CODE` | IBAN bank account codes |
-| `IP_ADDRESS` | IPv4 and IPv6 addresses |
-| `US_SSN` | US Social Security numbers |
-| `US_BANK_NUMBER` | US bank account numbers |
-| `NRP` | Nationality, religion, or political affiliation |
-| `MEDICAL_LICENSE` | Medical license numbers |
-| `URL` | Web URLs |
-| `DATE_TIME` | Dates and times |
-| `LOCATION` | Location names |
-| `ORGANIZATION` | Organization names |
-| `US_PASSPORT` | US passport numbers |
-| `US_DRIVER_LICENSE` | US driver's license numbers |
+| Entity Type | Description | FP risk at 0.7 |
+|---|---|---|
+| `EMAIL_ADDRESS` | Email addresses | Low |
+| `PHONE_NUMBER` | Phone numbers | Low |
+| `US_SSN` | US Social Security numbers | Low |
+| `CREDIT_CARD` | Credit card numbers (Luhn-validated) | Low |
+| `US_BANK_NUMBER` | US bank account numbers | Low |
+| `IBAN_CODE` | IBAN bank account codes | Low |
+| `US_PASSPORT` | US passport numbers | Low |
+| `US_DRIVER_LICENSE` | US driver's license numbers | Low |
+| `US_ITIN` | Individual Taxpayer Identification Numbers | Low |
+| `CRYPTO` | Cryptocurrency wallet addresses | Low |
+| `IP_ADDRESS` | IPv4 and IPv6 addresses | Low |
+| `MEDICAL_LICENSE` | Medical license numbers | Low |
+| `URL` | Web URLs | Low |
+| `PERSON` | Full or partial person names | **High** — ~20% FP; threshold auto-raised to 0.9 |
+| `LOCATION` | Location names | **High** — ~18% FP; threshold auto-raised to 0.9 |
+| `DATE_TIME` | Dates and times | **High** — ~7–14% FP; threshold auto-raised to 0.9 |
+| `NRP` | Nationality, religion, or political affiliation | **High** — ~5% FP; threshold auto-raised to 0.9 |
+
+!!! tip "Focused PII preset"
+    For `action: block` or `action: scrub`, restrict `entities` to the 13 low-FP types and omit `PERSON`, `LOCATION`, `DATE_TIME`, and `NRP`. This set produces 0% false positives across benchmarks. The gateway automatically raises `score_threshold` to 0.9 for high-FP entities when they are included.
 
 To restrict detection to specific entity types, provide them in the `entities` array. Set `entities` to `null` (or omit it) to detect all supported types.
 

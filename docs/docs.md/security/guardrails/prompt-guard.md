@@ -20,22 +20,28 @@ The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) gua
 
 ## Safety Categories
 
-| Code | Category |
-|---|---|
-| `S1` | Violent Crimes |
-| `S2` | Non-Violent Crimes |
-| `S3` | Sex-Related Crimes |
-| `S4` | Child Sexual Exploitation |
-| `S5` | Defamation |
-| `S6` | Specialized Advice (medical, legal, or financial) |
-| `S7` | Privacy Violations |
-| `S8` | Intellectual Property Infringement |
-| `S9` | Weapons of Mass Destruction (CBRN) |
-| `S10` | Hate Speech |
-| `S11` | Suicide and Self-Harm |
-| `S12` | Explicit Sexual Content |
-| `S13` | Elections Integrity |
-| `S14` | Code Interpreter Abuse |
+| Code | Category | FP risk for `block` |
+|---|---|---|
+| `S1` | Violent Crimes | Low |
+| `S2` | Non-Violent Crimes | **High** — triggers on security research and education content |
+| `S3` | Sex-Related Crimes | Low |
+| `S4` | Child Sexual Exploitation | Low |
+| `S5` | Defamation | Medium |
+| `S6` | Specialized Advice (medical, legal, or financial) | **High** — triggers on any professional context |
+| `S7` | Privacy Violations | Medium |
+| `S8` | Intellectual Property Infringement | Medium |
+| `S9` | Weapons of Mass Destruction (CBRN) | Low |
+| `S10` | Hate Speech | Medium — triggers on academic and historical text |
+| `S11` | Suicide and Self-Harm | Low |
+| `S12` | Explicit Sexual Content | Low |
+| `S13` | Elections Integrity | Medium |
+| `S14` | Code Interpreter Abuse | Low — only fires in agentic/tool-use scenarios |
+
+!!! tip "Recommended block configuration"
+    For `action: block`, use only the **low-FP** categories: `S1`, `S3`, `S4`, `S9`, `S11`, `S12`, `S14`.
+    This set produces ~1% false positives across OR-Bench-hard and XSTest-safe benchmarks.
+    Avoid `S2` and `S6` for blocking — they produce 6.5% and high FP rates respectively on legitimate content.
+    Use `action: flag` if you need visibility into S2, S6, or S10 without blocking.
 
 ---
 
@@ -91,7 +97,7 @@ When `categories` is `null` or omitted, all 14 categories are enforced.
 
 ## Examples
 
-### Block violent, extremist, and harmful content
+### Block violent, extremist, and harmful content (recommended low-FP set)
 
 ```json
 {
@@ -99,7 +105,7 @@ When `categories` is `null` or omitted, all 14 categories are enforced.
   "name": "safety-filter",
   "action": "block",
   "target": "both",
-  "categories": ["S1", "S4", "S9", "S10", "S11", "S12"]
+  "categories": ["S1", "S3", "S4", "S9", "S11", "S12", "S14"]
 }
 ```
 
@@ -146,7 +152,7 @@ Running keyword guardrails first (Tier 1) can catch simple jailbreak strings bef
     "name": "safety-filter",
     "action": "block",
     "target": "both",
-    "categories": ["S1", "S3", "S4", "S9", "S10", "S11", "S12"]
+    "categories": ["S1", "S3", "S4", "S9", "S11", "S12", "S14"]
   }
 ]
 ```
