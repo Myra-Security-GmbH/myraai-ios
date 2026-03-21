@@ -64,8 +64,10 @@ local function migrate_columns(cfg)
     local ldb = open_db(cfg.sqlite.logs_db)
     local lcols = {}
     for row in ldb:nrows("PRAGMA table_info(request_log)") do lcols[row.name] = true end
-    if not lcols.user_id     then ldb:exec("ALTER TABLE request_log ADD COLUMN user_id     TEXT") end
-    if not lcols.token_label then ldb:exec("ALTER TABLE request_log ADD COLUMN token_label TEXT") end
+    if not lcols.user_id          then ldb:exec("ALTER TABLE request_log ADD COLUMN user_id          TEXT") end
+    if not lcols.token_label      then ldb:exec("ALTER TABLE request_log ADD COLUMN token_label      TEXT") end
+    if not lcols.detectors_fired  then ldb:exec("ALTER TABLE request_log ADD COLUMN detectors_fired  TEXT") end
+    if not lcols.scrub_applied    then ldb:exec("ALTER TABLE request_log ADD COLUMN scrub_applied    INTEGER NOT NULL DEFAULT 0") end
     ldb:close()
 end
 
@@ -216,8 +218,9 @@ function M.insert_log(f)
              saved_cost_usd, saved_latency_ms,
              upstream_latency_ms, time_to_first_token_ms, upstream_attempts,
              fallback_provider, fallback_model, provider_request_id,
-             request_size_bytes, quota_remaining, user_id, token_label)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             request_size_bytes, quota_remaining, user_id, token_label,
+             detectors_fired, scrub_applied)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
@@ -242,7 +245,9 @@ function M.insert_log(f)
         f.request_size_bytes or 0,
         f.quota_remaining,
         f.user_id,
-        f.token_label
+        f.token_label,
+        json.encode(f.detectors_fired or {}),
+        f.scrub_applied and 1 or 0
     )
     return err
 end
@@ -367,7 +372,7 @@ end
 
 function M.list_gateways(tenant_id)
     return query_all(cfg_db(), [[
-        SELECT g.id, g.slug, g.config, g.created_at
+        SELECT g.id, g.slug, g.tenant_id, g.config, g.created_at
         FROM gateway g WHERE g.tenant_id = ? ORDER BY g.created_at DESC
     ]], tenant_id) or {}
 end
@@ -376,6 +381,16 @@ function M.get_gateway_by_id(gateway_id)
     return query_one(cfg_db(), [[
         SELECT g.id, g.slug, g.config, g.created_at, g.tenant_id
         FROM gateway g WHERE g.id = ?
+    ]], gateway_id)
+end
+
+function M.get_gateway_with_tenant_slug(gateway_id)
+    return query_one(cfg_db(), [[
+        SELECT g.id, g.slug AS gateway_slug, g.tenant_id,
+               t.slug AS tenant_slug
+        FROM   gateway g
+        JOIN   tenant  t ON t.id = g.tenant_id
+        WHERE  g.id = ? AND t.deleted_at IS NULL
     ]], gateway_id)
 end
 
@@ -388,6 +403,12 @@ end
 
 function M.delete_auth_token(token_id)
     return exec_one(cfg_db(), "DELETE FROM auth_token WHERE id = ?", token_id)
+end
+
+function M.delete_playground_tokens(gateway_id)
+    return exec_one(cfg_db(),
+        "DELETE FROM auth_token WHERE gateway_id = ? AND label = 'playground'",
+        gateway_id)
 end
 
 function M.list_provider_configs(gateway_id)
@@ -489,6 +510,20 @@ function M.list_model_prices()
                cache_write_per_1k, cache_read_per_1k, updated_at
         FROM model_price ORDER BY provider, model
     ]]) or {}
+end
+
+-- List models with optional provider filter. Returns same shape as list_model_prices.
+function M.list_models(provider)
+    if provider and provider ~= "" then
+        return query_all(cfg_db(), [[
+            SELECT provider, model, input_per_1k, output_per_1k,
+                   cache_write_per_1k, cache_read_per_1k, updated_at
+            FROM   model_price
+            WHERE  provider = ?
+            ORDER  BY model
+        ]], provider) or {}
+    end
+    return M.list_model_prices()
 end
 
 function M.upsert_model_price(provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k)
@@ -619,6 +654,26 @@ function M.get_usage_stats()
         recent         = recent,
         recent_blocked = recent_blocked,
     }
+end
+
+-- ---------------------------------------------------------------------------
+-- Client error log
+-- ---------------------------------------------------------------------------
+
+function M.insert_client_error(id, message, stack, url, user_agent, ts)
+    return exec_one(log_db(), [[
+        INSERT OR IGNORE INTO client_error_log (id, message, stack, url, user_agent, ts)
+        VALUES (?,?,?,?,?,?)
+    ]], id, message, stack, url, user_agent, ts)
+end
+
+function M.list_client_errors(limit)
+    return query_all(log_db(), [[
+        SELECT id, message, stack, url, user_agent, ts
+        FROM   client_error_log
+        ORDER  BY ts DESC
+        LIMIT  ?
+    ]], limit or 200)
 end
 
 return M

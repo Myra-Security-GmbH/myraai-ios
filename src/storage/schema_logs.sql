@@ -46,9 +46,23 @@ CREATE TABLE IF NOT EXISTS request_log (
     quota_remaining       REAL,
     -- User attribution (NULL for service tokens or open gateways)
     user_id               TEXT,
-    token_label           TEXT
+    token_label           TEXT,
+    -- Detector pipeline fields
+    detectors_fired       TEXT,   -- JSON array of detector names that triggered
+    scrub_applied         INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_log_tenant_ts   ON request_log(tenant_id, ts);
 CREATE INDEX IF NOT EXISTS idx_log_gateway_ts  ON request_log(gateway_id, ts);
 CREATE INDEX IF NOT EXISTS idx_log_ts          ON request_log(ts);
+
+CREATE TABLE IF NOT EXISTS client_error_log (
+    id          TEXT PRIMARY KEY,
+    message     TEXT NOT NULL,
+    stack       TEXT,
+    url         TEXT,
+    user_agent  TEXT,
+    ts          TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_error_ts ON client_error_log(ts);
