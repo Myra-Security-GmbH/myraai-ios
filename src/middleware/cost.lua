@@ -12,11 +12,14 @@ function M.run(ctx)
     local cache_cre  = ctx.cache_creation_tokens or 0
     local cache_read = ctx.cache_read_tokens     or 0
 
+    -- nil means pricing is unknown for this provider/model combination.
+    -- We preserve nil rather than coercing to 0 so that callers can distinguish
+    -- "zero cost" (free/local model) from "cost unknown" (missing price entry).
     local cost = cost_table.calculate(ctx.provider, ctx.model,
                                       input_t, output_t, cache_cre, cache_read)
     ctx.cost_usd = cost
 
-    if cost > 0 then
+    if cost and cost > 0 then
         -- Increment persistent budget counter (float stored as string * 1e6 int)
         -- Using integer micro-dollars to avoid float precision issues in shared_dict
         local micro = math.floor(cost * 1e6)
