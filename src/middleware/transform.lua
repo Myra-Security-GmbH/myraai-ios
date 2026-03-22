@@ -9,6 +9,43 @@ local req_util    = require("utils.request")
 
 local M = {}
 
+-- LiteLLM-style namespace prefixes per provider.
+-- These are stripped from the model name before forwarding to the provider API.
+-- Order matters for providers with multiple prefixes: longer prefixes first.
+local PROVIDER_PREFIXES = {
+    gemini     = { "gemini/" },
+    vertex     = { "vertex_ai/" },
+    azure      = { "azure_ai/", "azure/" },
+    groq       = { "groq/" },
+    mistral    = { "text-completion-codestral/", "mistral/" },
+    together   = { "together_ai/" },
+    fireworks  = { "fireworks_ai/" },
+    nvidia     = { "nvidia_nim/" },
+    sambanova  = { "sambanova/" },
+    deepseek   = { "deepseek/" },
+    xai        = { "xai/" },
+    perplexity = { "perplexity/" },
+    cerebras   = { "cerebras/" },
+    cohere     = { "cohere/" },
+    bedrock    = { "bedrock/" },
+    openrouter = { "openrouter/" },
+    ollama     = { "ollama/" },
+}
+
+-- Strip the provider namespace prefix (if any) from a model ID.
+-- Returns the bare model name that the upstream API expects.
+local function strip_provider_prefix(model, provider)
+    local prefixes = PROVIDER_PREFIXES[provider]
+    if not prefixes then return model end
+    local lower = model:lower()
+    for _, prefix in ipairs(prefixes) do
+        if lower:sub(1, #prefix) == prefix then
+            return model:sub(#prefix + 1)
+        end
+    end
+    return model
+end
+
 function M.run(ctx)
     -- Body may have already been read by cache_check or DLP
     if not ctx.raw_request_body then
@@ -43,6 +80,14 @@ function M.run(ctx)
     if ctx.is_compat then
         ctx.provider      = compat.infer_provider(ctx.model)
         ctx.provider_path = compat.provider_path(ctx.provider_path)
+    end
+
+    -- Strip LiteLLM-style provider namespace prefix (e.g. "groq/gemma-7b-it" → "gemma-7b-it").
+    -- Must run after ctx.provider is finalised (compat or URL-resolved).
+    local bare = strip_provider_prefix(ctx.model, ctx.provider)
+    if bare ~= ctx.model then
+        ctx.model          = bare
+        body.model         = bare
     end
 
     -- Collect custom metadata from x-aig-meta-* headers
