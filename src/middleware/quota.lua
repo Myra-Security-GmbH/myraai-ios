@@ -1,18 +1,29 @@
--- middleware/quota.lua — hard-stop when gateway budget_usd is exceeded
--- Budget counter lives in state; reset is a manual admin operation.
+-- middleware/quota.lua — hard-stop when budget_usd is exceeded
+-- Three scopes checked in order: per-token → per-tenant → per-gateway.
+-- Budget counters live in state; reset via DELETE /admin/v1/.../budget.
 
-local state  = require("state")
-local errors = require("core.errors")
+local state   = require("state")
+local errors  = require("core.errors")
+local webhook = require("utils.webhook")
 
 local M = {}
 
+local function fire_budget_webhook(ctx, scope, budget, spent)
+    webhook.fire(ctx.gateway_config.webhooks, "budget_exceeded", {
+        scope      = scope,
+        budget_usd = budget,
+        spent_usd  = spent,
+    }, { gateway_id = ctx.gateway_id, tenant_id = ctx.tenant_id })
+end
+
 function M.run(ctx)
-    -- Per-token budget check (takes priority over gateway budget)
+    -- ── Per-token budget ────────────────────────────────────────────────────
     if ctx.token_budget_usd and ctx.token_id then
         local spent_micro  = state.counter_get("budget:token:" .. ctx.token_id) or 0
         local budget_micro = ctx.token_budget_usd * 1e6
         ctx.log_fields.token_quota_remaining = math.max(0, (budget_micro - spent_micro) / 1e6)
         if spent_micro >= budget_micro then
+            fire_budget_webhook(ctx, "token", ctx.token_budget_usd, spent_micro / 1e6)
             ctx.log_fields.blocked_by   = "quota"
             ctx.log_fields.block_reason = string.format("token spent $%.4f of $%.4f",
                                               spent_micro / 1e6, ctx.token_budget_usd)
@@ -22,15 +33,32 @@ function M.run(ctx)
         end
     end
 
-    -- Per-gateway budget check
-    local budget = ctx.gateway_config.budget_usd
-    if not budget then return end  -- no budget cap configured
+    -- ── Per-tenant budget ───────────────────────────────────────────────────
+    local tenant_budget = ctx.gateway_config.tenant_budget_usd
+    if tenant_budget and ctx.tenant_id then
+        local spent_micro  = state.counter_get("budget:tenant:" .. ctx.tenant_id) or 0
+        local budget_micro = tenant_budget * 1e6
+        ctx.log_fields.tenant_quota_remaining = math.max(0, (budget_micro - spent_micro) / 1e6)
+        if spent_micro >= budget_micro then
+            fire_budget_webhook(ctx, "tenant", tenant_budget, spent_micro / 1e6)
+            ctx.log_fields.blocked_by   = "quota"
+            ctx.log_fields.block_reason = string.format("tenant spent $%.4f of $%.4f",
+                                              spent_micro / 1e6, tenant_budget)
+            errors.send("QUOTA_EXCEEDED",
+                string.format("Tenant budget $%.4f exceeded (spent $%.4f)",
+                              tenant_budget, spent_micro / 1e6))
+        end
+    end
 
-    -- counter is stored in micro-dollars (cost * 1e6) to avoid float precision loss
-    local spent_micro  = state.counter_get("budget:" .. ctx.gateway_id)
+    -- ── Per-gateway budget ──────────────────────────────────────────────────
+    local budget = ctx.gateway_config.budget_usd
+    if not budget then return end
+
+    local spent_micro  = state.counter_get("budget:" .. ctx.gateway_id) or 0
     local budget_micro = budget * 1e6
     ctx.log_fields.quota_remaining = math.max(0, (budget_micro - spent_micro) / 1e6)
     if spent_micro >= budget_micro then
+        fire_budget_webhook(ctx, "gateway", budget, spent_micro / 1e6)
         ctx.log_fields.blocked_by   = "quota"
         ctx.log_fields.block_reason = string.format("spent $%.4f of $%.4f",
                                           spent_micro / 1e6, budget)

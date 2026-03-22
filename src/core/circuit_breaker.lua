@@ -92,7 +92,8 @@ end
 
 -- Call after an upstream failure (5xx or connection error).
 -- `status_code` is the HTTP status number, or nil for connection/timeout errors.
-function M.record_failure(gw_id, provider, cfg, status_code)
+-- `webhook_cfg`  is optional gateway_config.webhooks; fires "circuit_open" event.
+function M.record_failure(gw_id, provider, cfg, status_code, webhook_cfg)
     if not cfg or not cfg.enabled then return end
 
     -- Check if this status code should count as a failure
@@ -131,6 +132,17 @@ function M.record_failure(gw_id, provider, cfg, status_code)
         ngx.log(ngx.WARN, "circuit_breaker: opened gw=", gw_id,
                 " provider=", provider, " failures=", count,
                 "/", threshold, " in ", window_sec, "s")
+        if webhook_cfg then
+            local ok, wh = pcall(require, "utils.webhook")
+            if ok then
+                wh.fire(webhook_cfg, "circuit_open", {
+                    provider  = provider,
+                    failures  = count,
+                    threshold = threshold,
+                    window_sec = window_sec,
+                }, { gateway_id = gw_id })
+            end
+        end
     end
 end
 

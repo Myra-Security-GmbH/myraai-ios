@@ -24,6 +24,10 @@ function M.run(ctx)
         -- Using integer micro-dollars to avoid float precision issues in shared_dict
         local micro = math.floor(cost * 1e6)
         state.counter_incr("budget:" .. ctx.gateway_id, micro)
+        -- Per-tenant counter (checked by quota.lua against tenant.budget_usd)
+        if ctx.tenant_id then
+            state.counter_incr("budget:tenant:" .. ctx.tenant_id, micro)
+        end
         -- Also increment per-token counter when the token has its own budget cap
         if ctx.token_id and ctx.token_budget_usd then
             state.counter_incr("budget:token:" .. ctx.token_id, micro)
