@@ -2,7 +2,8 @@
 -- Runs request-phase guardrails (regex, keyword, presidio, prompt_guard, pii_protector).
 -- On block: sends a synthetic blocked response (same format for all guardrail types).
 
-local json = require("utils.json")
+local json  = require("utils.json")
+local trace = require("utils.trace")
 
 local CATEGORY_LABELS = {
     S1  = "Violent Crimes",
@@ -105,6 +106,19 @@ end
 
 function M.run(ctx)
     local result = require("guardrails.orchestrator").run_phase(ctx, "request")
+
+    -- TRACE: guardrail outcome
+    if ctx.trace_id then
+        local lf = ctx.log_fields or {}
+        trace.step(ctx, "guardrail_result", {
+            verdict      = lf.guardrail_verdict or (result == "block" and "unsafe" or "safe"),
+            blocked      = result == "block",
+            blocked_by   = lf.blocked_by,
+            block_reason = lf.block_reason,
+            latency_ms   = lf.guardrail_latency_ms,
+        })
+    end
+
     if result == "block" then
         local reason = expand_categories(ctx.log_fields.block_reason)
         send_synthetic(ctx, "Request blocked by content policy (" ..

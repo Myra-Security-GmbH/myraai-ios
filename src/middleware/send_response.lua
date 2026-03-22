@@ -9,6 +9,7 @@
 
 local errors = require("core.errors")
 local json   = require("utils.json")
+local trace  = require("utils.trace")
 
 local M = {}
 
@@ -91,10 +92,24 @@ function M.run(ctx)
     -- pii_protector forced the upstream to buffer a streaming request so it
     -- could restore tokens.  Re-emit as SSE so the client gets what it asked for.
     if ctx.pii_force_buffered then
+        trace.step(ctx, "response_delivered", {
+            streaming       = true,
+            compat          = true,
+            buffered_pii    = true,
+            body_size       = ctx.response_body and #ctx.response_body or 0,
+            provider_status = ctx.provider_status,
+        })
+        trace.done(ctx, "done")
         reemit_as_sse(ctx)
         return
     end
 
+    trace.step(ctx, "response_delivered", {
+        streaming       = false,
+        body_size       = ctx.response_body and #ctx.response_body or 0,
+        provider_status = ctx.provider_status,
+    })
+    trace.done(ctx, "done")
     ngx.print(ctx.response_body)
 end
 

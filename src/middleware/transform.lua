@@ -6,6 +6,7 @@ local json        = require("utils.json")
 local compat      = require("providers.compat")
 local errors      = require("core.errors")
 local req_util    = require("utils.request")
+local trace       = require("utils.trace")
 
 local M = {}
 
@@ -47,6 +48,17 @@ local function strip_provider_prefix(model, provider)
 end
 
 function M.run(ctx)
+    -- Initialise gateway-level tracing if enabled and not already started.
+    -- Playground tokens already set ctx.trace_id in auth.lua.
+    if not ctx.trace_id then
+        local tracing = ctx.gateway_config and ctx.gateway_config.tracing
+        if tracing and tracing.enabled then
+            ctx.trace_id               = ctx.request_id
+            ctx.trace_seq              = 0
+            ctx.tracing_include_bodies = tracing.include_bodies == true
+        end
+    end
+
     -- Body may have already been read by cache_check or DLP
     if not ctx.raw_request_body then
         ctx.raw_request_body = req_util.read_body()
@@ -75,6 +87,28 @@ function M.run(ctx)
         return
     end
 
+    -- Capture pre-normalisation values for tracing
+    local original_model    = ctx.model
+    local original_provider = ctx.provider
+
+    -- TRACE: request_received — what arrived from the client before any transformation
+    if ctx.trace_id then
+        local step_data = {
+            model          = original_model,
+            provider       = original_provider,
+            messages_count = body.messages and #body.messages or 0,
+            streaming      = body.stream == true,
+            size_bytes     = raw and #raw or 0,
+            is_compat      = ctx.is_compat,
+        }
+        if ctx.tracing_include_bodies and body.messages then
+            step_data.messages = body.messages
+        end
+        -- Create the trace record now that we have enough context
+        trace.create(ctx, "gateway")
+        trace.step(ctx, "request_received", step_data)
+    end
+
     -- For compat endpoint: infer the real provider from the model name.
     -- infer_provider() always returns a provider string (falls back to openrouter).
     if ctx.is_compat then
@@ -88,6 +122,16 @@ function M.run(ctx)
     if bare ~= ctx.model then
         ctx.model          = bare
         body.model         = bare
+    end
+
+    -- TRACE: request_transformed — what changed after normalisation
+    if ctx.trace_id and (ctx.model ~= original_model or ctx.provider ~= original_provider) then
+        trace.step(ctx, "request_transformed", {
+            model_before    = original_model,
+            model_after     = ctx.model,
+            provider_before = original_provider,
+            provider_after  = ctx.provider,
+        })
     end
 
     -- Collect custom metadata from x-aig-meta-* headers

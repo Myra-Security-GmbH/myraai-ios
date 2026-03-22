@@ -41,6 +41,11 @@ local providers_mod = require("providers")
 
 local M = {}
 
+-- Error format note: the admin API uses a flat {"error": "message"} shape,
+-- intentionally simpler than the inference API's {"error": {"code": "...", "message": "..."}}
+-- (core/errors.lua). The admin API is consumed only by the admin UI and operator
+-- tooling; the structured code field is not needed here.
+
 -- Convert JSON null (cjson.null userdata) to Lua nil so SQLite bindings work.
 local function nullable(v)
     return (v == json.null) and nil or v
@@ -139,13 +144,13 @@ route("PATCH", "^/admin/v1/tenants/([^/]+)$", function(tenant_id)
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
     local err = storage.update_tenant(tenant_id, b.plan, b.budget_usd)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
 route("DELETE", "^/admin/v1/tenants/([^/]+)$", function(tenant_id)
     local err = storage.delete_tenant(tenant_id)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
@@ -187,7 +192,7 @@ end)
 
 route("DELETE", "^/admin/v1/gateways/([^/]+)$", function(gateway_id)
     local err = storage.delete_gateway(gateway_id)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
@@ -204,13 +209,13 @@ route("POST", "^/admin/v1/gateways/([^/]+)/keys$", function(gateway_id)
         return send(400, { error = "provider and key required" })
     end
     local err = byok.store_key(gateway_id, b.provider, b.alias or "default", b.key)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(201, { ok = true, provider = b.provider, alias = b.alias or "default" })
 end)
 
 route("DELETE", "^/admin/v1/gateways/([^/]+)/keys/([^/]+)/([^/]+)$", function(gateway_id, provider, alias)
     local err = storage.delete_provider_config(gateway_id, provider, alias)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
@@ -299,7 +304,7 @@ route("PUT", "^/admin/v1/model%-prices$", function()
     end
     local err = storage.upsert_model_price(b.provider, b.model,
         b.input_per_1k, b.output_per_1k, b.cache_write_per_1k, b.cache_read_per_1k)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
@@ -354,7 +359,7 @@ route("POST", "^/admin/v1/playground/token$", function()
     local _, err = storage.insert_auth_token(
         b.gateway_id, hash, {"playground"}, expires_ts,
         nil, "playground", nil, nil)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
 
     send(201, {
         token        = raw_token,
@@ -397,6 +402,21 @@ route("GET", "^/admin/v1/playground/search$", function()
     send(200, { results = results, query = q })
 end)
 
+-- GET /admin/v1/gateways/:id/traces  — list recent gateway-level request traces
+route("GET", "^/admin/v1/gateways/([^/]+)/traces$", function(gateway_id)
+    local limit = math.min(tonumber(ngx.var.arg_limit) or 50, 200)
+    send(200, storage.list_gateway_traces(gateway_id, limit))
+end)
+
+-- GET /admin/v1/traces/:id  — fetch any trace (gateway or playground) by ID
+route("GET", "^/admin/v1/traces/([^/]+)$", function(trace_id)
+    local t = storage.get_playground_trace(trace_id)
+    if not t then return send(404, { error = "trace not found" }) end
+    local steps = storage.get_playground_trace_steps(trace_id)
+    for _, s in ipairs(steps) do s.data = json.decode(s.data) or s.data end
+    return send(200, { trace = t, steps = steps })
+end)
+
 -- GET /admin/v1/playground/trace/:id
 route("GET", "^/admin/v1/playground/trace/([^/]+)$", function(trace_id)
     local t = storage.get_playground_trace(trace_id)
@@ -426,7 +446,7 @@ route("POST", "^/admin/v1/gateways/([^/]+)/tokens$", function(gateway_id)
     local id, err = storage.insert_auth_token(gateway_id, hash,
         b and b.scopes or {}, b and nullable(b.expires_at),
         nil, b and nullable(b.label), rate_limit_json, b and nullable(b.budget_usd))
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(201, { id = id, token = raw_token, gateway_id = gateway_id })
 end)
 
@@ -446,7 +466,7 @@ route("POST", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
     local b = read_body()
     if not b or not b.email then return send(400, { error = "email required" }) end
     local id, err = storage.insert_user(tenant_id, b.email, nullable(b.name), b.role)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(201, { id = id, email = b.email })
 end)
 
@@ -454,13 +474,13 @@ route("PATCH", "^/admin/v1/users/([^/]+)$", function(user_id)
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
     local err = storage.update_user(user_id, nullable(b.email), nullable(b.name), b.role)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
 route("DELETE", "^/admin/v1/users/([^/]+)$", function(user_id)
     local err = storage.delete_user(user_id)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
@@ -477,7 +497,7 @@ route("POST", "^/admin/v1/users/([^/]+)/tokens$", function(user_id)
     local id, err = storage.insert_auth_token(b.gateway_id, hash,
         b.scopes or {}, nullable(b.expires_at),
         user_id, nullable(b.label), rate_limit_json, nullable(b.budget_usd))
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(201, { id = id, token = raw_token, gateway_id = b.gateway_id })
 end)
 
@@ -487,13 +507,13 @@ end)
 
 route("POST", "^/admin/v1/users/([^/]+)/gateways/([^/]+)$", function(user_id, gateway_id)
     local err = storage.set_user_gateway_access(user_id, gateway_id)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(201, { ok = true })
 end)
 
 route("DELETE", "^/admin/v1/users/([^/]+)/gateways/([^/]+)$", function(user_id, gateway_id)
     local err = storage.delete_user_gateway_access(user_id, gateway_id)
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
@@ -524,7 +544,7 @@ route("POST", "^/admin/v1/client%-errors$", function()
         b.user_agent and tostring(b.user_agent):sub(1, 500) or nil,
         ts
     )
-    if err then return send(500, { error = err }) end
+    if err then return send(500, { error = tostring(err) }) end
     send(201, { ok = true })
 end)
 

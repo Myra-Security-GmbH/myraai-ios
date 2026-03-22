@@ -44,6 +44,8 @@ function M.init()
     ctx.response_body              = nil
     ctx.input_tokens               = 0
     ctx.output_tokens              = 0
+    ctx.cache_creation_tokens      = 0
+    ctx.cache_read_tokens          = 0
     ctx.provider_status            = nil
     ctx.is_streaming               = false
     ctx.upstream_latency_ms        = nil  -- TTFB from provider

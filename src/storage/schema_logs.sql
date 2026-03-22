@@ -49,8 +49,18 @@ CREATE TABLE IF NOT EXISTS request_log (
     token_label           TEXT,
     -- Detector pipeline fields
     detectors_fired       TEXT,   -- JSON array of detector names that triggered
-    scrub_applied         INTEGER NOT NULL DEFAULT 0
+    scrub_applied         INTEGER NOT NULL DEFAULT 0,
+    -- PII tokenizer payloads (NULL when pii_protector disabled or log_payloads=false)
+    response_raw          TEXT,   -- raw LLM response before token restoration
+    prompt_scrubbed       TEXT,   -- affected messages after PII tokenization
+    -- Per-scope quota remaining at request time (NULL when that scope has no budget)
+    token_quota_remaining  REAL,
+    tenant_quota_remaining REAL,
+    -- Request trace link (NULL when gateway tracing disabled)
+    trace_id               TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_log_trace_id ON request_log(trace_id);
 
 CREATE INDEX IF NOT EXISTS idx_log_tenant_ts   ON request_log(tenant_id, ts);
 CREATE INDEX IF NOT EXISTS idx_log_gateway_ts  ON request_log(gateway_id, ts);

@@ -31,6 +31,12 @@ end
 -- Cohere v2 accepts the same role names (system/user/assistant) and message
 -- structure, so no role translation is required.
 function M.build_request(ctx)
+    -- Embedding models cannot be used with the chat endpoint.
+    if ctx.model and ctx.model:lower():find("embed", 1, true) then
+        ngx.log(ngx.WARN, "cohere: model '", ctx.model,
+                "' is an embedding model and cannot be used for chat completions")
+    end
+
     local src = ctx.request_body
 
     local messages = {}

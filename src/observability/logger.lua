@@ -5,6 +5,7 @@
 local storage = require("storage")
 local json    = require("utils.json")
 local uuid    = require("utils.uuid")
+local trace   = require("utils.trace")
 
 local M = {}
 
@@ -67,6 +68,8 @@ function M.emit(ctx)
         -- Detector pipeline
         detectors_fired        = ctx.log_fields and ctx.log_fields.detectors_fired or {},
         scrub_applied          = ctx.log_fields and ctx.log_fields.scrub_applied or false,
+        -- Request trace link
+        trace_id               = ctx.trace_id,
     }
 
     -- Merge any extra log fields added by other middleware (e.g. blocked_by, block_reason)
@@ -80,6 +83,13 @@ function M.emit(ctx)
     local err = storage.insert_log(fields)
     if err then
         ngx.log(ngx.ERR, "logger: insert_log error: ", err)
+    end
+
+    -- Finalise trace for blocked/error paths that did not reach send_response.lua
+    -- or the streaming handlers (idempotent — already called for normal completions)
+    if ctx.trace_id then
+        trace.done(ctx, fields.blocked and "blocked" or "done",
+                   fields.blocked and fields.block_reason or nil)
     end
 
     -- Fire "blocked" webhook asynchronously when the request was blocked

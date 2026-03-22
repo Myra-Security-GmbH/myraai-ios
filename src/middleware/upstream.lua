@@ -89,6 +89,7 @@ local function call_provider(ctx, provider_name, model, is_streaming)
         httpc         = httpc,
         provider_name = provider_name,
         provider_mod  = provider_mod,
+        url           = url,             -- for tracing (no auth key)
     }
 end
 
@@ -261,7 +262,15 @@ local function handle_compat_streaming(ctx, res)
         ngx.flush(true)
     end
 
-    trace.done(ctx, "done")
+    trace.step(ctx, "response_delivered", {
+        streaming      = true,
+        compat         = true,
+        input_tokens   = input_tokens,
+        output_tokens  = output_tokens,
+        content_length = #accumulated_content,
+        errored        = stream_errored,
+    })
+    trace.done(ctx, stream_errored and "error" or "done")
 
     if res.httpc then res.httpc:set_keepalive() end
 
@@ -350,6 +359,14 @@ local function handle_streaming(ctx, res)
     ctx.cache_read_tokens     = cache_read_tokens
     ctx.is_streaming          = true
     ctx.provider_status       = 200
+
+    trace.step(ctx, "response_delivered", {
+        streaming     = true,
+        compat        = false,
+        input_tokens  = input_tokens,
+        output_tokens = output_tokens,
+    })
+    trace.done(ctx, "done")
 
     -- pii_protector: log raw streamed content for audit (response phase is skipped
     -- for streaming, so we capture here instead).
@@ -508,6 +525,17 @@ function M.run(ctx)
             end
 
             total_attempts = total_attempts + 1
+
+            -- TRACE: what we are about to send to the provider
+            trace.step(ctx, "upstream_request", {
+                attempt    = total_attempts,
+                provider   = provider_name,
+                model      = model,
+                streaming  = is_streaming,
+                body_size  = ctx.raw_request_body and #ctx.raw_request_body or 0,
+                timeout_ms = ctx.rule_timeout_ms or ctx.gateway_config.timeout_ms or 60000,
+            })
+
             local t_call = ngx.now()
             local res, err = call_provider(ctx, provider_name, model, is_streaming)
             local call_ms = math.floor((ngx.now() - t_call) * 1000)
@@ -515,6 +543,14 @@ function M.run(ctx)
             if not res then
                 last_err = err
                 ngx.log(ngx.WARN, "upstream call failed: ", err)
+                -- TRACE: call error
+                trace.step(ctx, "upstream_error", {
+                    attempt    = total_attempts,
+                    provider   = provider_name,
+                    model      = model,
+                    error      = err,
+                    latency_ms = call_ms,
+                })
                 cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, nil,
                               ctx.gateway_config.webhooks)
                 goto next_try
@@ -576,11 +612,31 @@ function M.run(ctx)
                 ngx.header["X-AIG-Cache"]  = "MISS"
                 ngx.header["X-AIG-Provider"] = provider_name
                 ngx.header["X-AIG-Model"]    = model
+                trace.step(ctx, "response_delivered", {
+                    streaming       = false,
+                    provider_status = res.status,
+                    body_size       = body_str and #body_str or 0,
+                    error_passthrough = true,
+                })
+                trace.done(ctx, "error", "provider_" .. res.status)
                 return
             end
 
             -- Success path
             cb.record_success(ctx.gateway_id, provider_name, cb_cfg)
+
+            -- TRACE: what the provider returned
+            trace.step(ctx, "upstream_response", {
+                attempt             = total_attempts,
+                provider            = provider_name,
+                model               = model,
+                url                 = res.url,
+                status              = res.status,
+                latency_ms          = call_ms,
+                provider_request_id = res.headers and
+                    (res.headers["x-request-id"] or res.headers["request-id"]),
+            })
+
             -- #7: for streaming, call_ms is TTFB; streaming handlers will overwrite
             -- upstream_latency_ms with total duration using upstream_t_start.
             ctx.upstream_latency_ms = call_ms

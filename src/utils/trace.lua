@@ -1,9 +1,22 @@
--- utils/trace.lua — fire-and-forget server-side playground query tracer.
+-- utils/trace.lua — request trace recorder (playground + gateway tracing).
 -- All writes are pcall'd — tracing never breaks request flow.
 
 local json = require("utils.json")
 
 local M = {}
+
+-- Create a new trace record. ctx.trace_id and ctx.gateway_id must be set.
+-- source: 'playground' | 'gateway'
+function M.create(ctx, source)
+    if not ctx or not ctx.trace_id then return end
+    pcall(function()
+        require("storage").create_trace(
+            ctx.trace_id, ctx.gateway_id,
+            ctx.request_body and ctx.request_body.model or nil,
+            source or "gateway"
+        )
+    end)
+end
 
 -- Append one trace step. ctx.trace_id must be set.
 function M.step(ctx, step, data)

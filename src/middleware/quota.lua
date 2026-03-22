@@ -17,6 +17,13 @@ local function fire_budget_webhook(ctx, scope, budget, spent)
 end
 
 function M.run(ctx)
+    -- ctx.log_fields is initialised by context.lua before the pipeline runs;
+    -- guard here for defensive consistency with other middlewares.
+    ctx.log_fields = ctx.log_fields or {}
+
+    -- ctx.token_id and ctx.token_budget_usd are set by middleware/auth.lua.
+    -- quota.lua must run after auth.lua in the pipeline.
+
     -- ── Per-token budget ────────────────────────────────────────────────────
     if ctx.token_budget_usd and ctx.token_id then
         local spent_micro  = state.counter_get("budget:token:" .. ctx.token_id) or 0

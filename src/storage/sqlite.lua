@@ -75,6 +75,8 @@ local function migrate_columns(cfg)
     if not lcols.prompt_scrubbed       then ldb:exec("ALTER TABLE request_log ADD COLUMN prompt_scrubbed       TEXT") end
     if not lcols.token_quota_remaining  then ldb:exec("ALTER TABLE request_log ADD COLUMN token_quota_remaining  REAL") end
     if not lcols.tenant_quota_remaining then ldb:exec("ALTER TABLE request_log ADD COLUMN tenant_quota_remaining REAL") end
+    if not lcols.trace_id               then ldb:exec("ALTER TABLE request_log ADD COLUMN trace_id               TEXT") end
+    if not lcols.trace_id then ldb:exec("CREATE INDEX IF NOT EXISTS idx_log_trace_id ON request_log(trace_id)") end
     ldb:close()
 
     -- Playground trace tables (added after initial schema)
@@ -100,6 +102,12 @@ local function migrate_columns(cfg)
         CREATE INDEX IF NOT EXISTS idx_pgt_gateway    ON playground_trace(gateway_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_pgts_trace_seq ON playground_trace_step(trace_id, seq);
     ]])
+    -- Add source column for gateway-level tracing (idempotent)
+    local pgt_cols = {}
+    for row in cfg_db2:nrows("PRAGMA table_info(playground_trace)") do pgt_cols[row.name] = true end
+    if not pgt_cols.source then
+        cfg_db2:exec("ALTER TABLE playground_trace ADD COLUMN source TEXT NOT NULL DEFAULT 'playground'")
+    end
     cfg_db2:close()
 end
 
@@ -522,8 +530,8 @@ function M.insert_log(f)
              fallback_provider, fallback_model, provider_request_id,
              request_size_bytes, quota_remaining, user_id, token_label,
              detectors_fired, scrub_applied, response_raw, prompt_scrubbed,
-             token_quota_remaining, tenant_quota_remaining)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             token_quota_remaining, tenant_quota_remaining, trace_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
@@ -554,7 +562,8 @@ function M.insert_log(f)
         f.response_raw,
         f.prompt_scrubbed,
         f.token_quota_remaining,
-        f.tenant_quota_remaining
+        f.tenant_quota_remaining,
+        f.trace_id
     )
     return err
 end
@@ -940,7 +949,7 @@ function M.list_logs(filters)
                input_tokens, output_tokens, cost_usd, latency_ms,
                upstream_latency_ms, guardrail_latency_ms, upstream_attempts,
                fallback_provider, fallback_model, saved_cost_usd, request_size_bytes,
-               detectors_fired, scrub_applied, response_raw
+               detectors_fired, scrub_applied, response_raw, trace_id
         FROM request_log WHERE %s ORDER BY ts DESC LIMIT %d OFFSET %d
     ]], table.concat(where, " AND "), limit, offset)
     local rows = query_all(log_db(), sql, table.unpack(params)) or {}
@@ -1226,9 +1235,37 @@ end
 
 function M.create_playground_trace(id, gateway_id, model)
     return exec_one(cfg_db(), [[
-        INSERT OR IGNORE INTO playground_trace (id, gateway_id, model)
-        VALUES (?, ?, ?)
+        INSERT OR IGNORE INTO playground_trace (id, gateway_id, model, source)
+        VALUES (?, ?, ?, 'playground')
     ]], id, gateway_id, model)
+end
+
+-- Create a gateway-level request trace (source = 'gateway')
+function M.create_trace(id, gateway_id, model, source)
+    return exec_one(cfg_db(), [[
+        INSERT OR IGNORE INTO playground_trace (id, gateway_id, model, source)
+        VALUES (?, ?, ?, ?)
+    ]], id, gateway_id, model, source or "gateway")
+end
+
+-- List recent gateway traces for a gateway
+function M.list_gateway_traces(gateway_id, limit)
+    limit = math.min(limit or 50, 200)
+    return query_all(cfg_db(), string.format([[
+        SELECT id, model, created_at, completed_at, status, error, source
+        FROM   playground_trace
+        WHERE  gateway_id = ? AND source = 'gateway'
+        ORDER  BY created_at DESC
+        LIMIT  %d
+    ]], limit), gateway_id) or {}
+end
+
+-- Purge gateway traces older than retention_sec seconds (uses os.time())
+function M.purge_old_traces(retention_sec)
+    local cutoff = os.time() - (retention_sec or 86400)
+    exec_one(cfg_db(), [[
+        DELETE FROM playground_trace WHERE source = 'gateway' AND created_at < ?
+    ]], cutoff)
 end
 
 function M.add_playground_trace_step(trace_id, seq, step, data_json)
