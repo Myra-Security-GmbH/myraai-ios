@@ -438,27 +438,27 @@ describe("Playground — ModelPicker", () => {
 // ---------------------------------------------------------------------------
 
 describe("Playground — system prompt", () => {
-  it("system prompt textarea hidden by default", async () => {
+  it("system prompt textarea shown by default with default prompt", async () => {
     setupDefaultMocks();
     renderPlayground();
-    await waitFor(() => expect(screen.getByText("Playground")).toBeInTheDocument());
-    expect(screen.queryByLabelText("System prompt")).not.toBeInTheDocument();
-  });
-
-  it("shows system prompt textarea after toggle", async () => {
-    setupDefaultMocks();
-    renderPlayground();
-    await waitFor(() => expect(screen.getByRole("button", { name: "System prompt" })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: "System prompt" }));
+    await waitFor(() => expect(screen.getByLabelText("System prompt")).toBeInTheDocument());
     expect(screen.getByLabelText("System prompt")).toBeInTheDocument();
   });
 
-  it("button label toggles to 'Hide system' when open", async () => {
+  it("hides system prompt textarea after toggle", async () => {
     setupDefaultMocks();
     renderPlayground();
-    await waitFor(() => expect(screen.getByRole("button", { name: "System prompt" })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: "System prompt" }));
-    expect(screen.getByRole("button", { name: "Hide system" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hide system" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Hide system" }));
+    expect(screen.queryByLabelText("System prompt")).not.toBeInTheDocument();
+  });
+
+  it("button label toggles to 'System prompt' when closed", async () => {
+    setupDefaultMocks();
+    renderPlayground();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hide system" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Hide system" }));
+    expect(screen.getByRole("button", { name: "System prompt" })).toBeInTheDocument();
   });
 });
 
@@ -521,8 +521,8 @@ describe("Playground — state persistence", () => {
     setupDefaultMocks();
     const { container } = renderPlayground();
     await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
-    // Open system prompt and type
-    await userEvent.click(screen.getByRole("button", { name: "System prompt" }));
+    // System prompt is already visible by default; clear default and type
+    await userEvent.clear(screen.getByLabelText("System prompt"));
     await userEvent.type(screen.getByLabelText("System prompt"), "Be concise.");
     // Open params and change temperature via fireEvent (range input)
     await userEvent.click(screen.getByRole("button", { name: "Parameters" }));
@@ -1470,8 +1470,8 @@ describe("Playground — web search", () => {
 
     renderPlayground();
     await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
-    // Open system prompt and type custom instruction
-    await userEvent.click(screen.getByRole("button", { name: "System prompt" }));
+    // System prompt is already visible by default; clear default and type custom instruction
+    await userEvent.clear(screen.getByLabelText("System prompt"));
     await userEvent.type(screen.getByLabelText("System prompt"), "Be concise.");
     const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
     await userEvent.click(pickerBtn);
