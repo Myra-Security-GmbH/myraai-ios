@@ -111,13 +111,42 @@ test.describe("Gateways page", () => {
     await expect(page.getByLabel("API Key *")).toBeVisible();
   });
 
-  test("Generate token modal shows expiry field", async ({ page }) => {
+  test("Generate token modal shows expiry, rate limit, and spend cap fields", async ({ page }) => {
     const ok = await openFirstGateway(page);
     if (!ok) { test.skip(); return; }
     await page.getByRole("button", { name: /\+ Generate/i }).click();
     await expect(page.getByRole("heading", { name: /Create Auth Token/i })).toBeVisible();
     await expect(page.getByLabel(/Expires At/i)).toBeVisible();
+    await expect(page.getByLabel(/Spend cap/i)).toBeVisible();
+    await expect(page.getByLabel(/Rate limit/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /Generate Token/i })).toBeVisible();
+  });
+
+  test("Edit gateway modal has webhook configuration section", async ({ page }) => {
+    const ok = await openFirstGateway(page);
+    if (!ok) { test.skip(); return; }
+    await page.getByRole("button", { name: /^Edit$/i }).first().click();
+    await expect(page.getByRole("heading", { name: /Edit Gateway/i })).toBeVisible();
+    await expect(page.getByText(/Webhook/i).first()).toBeVisible();
+    await expect(page.getByPlaceholder(/hooks.example.com/i)).toBeVisible();
+  });
+
+  test("gateway detail token table has label and rate limit columns", async ({ page }) => {
+    const ok = await openFirstGateway(page);
+    if (!ok) { test.skip(); return; }
+    // Token table headers
+    const tokenSection = page.getByRole("heading", { name: "Auth Tokens" }).locator("xpath=ancestor::*[2]");
+    const hasTokens = await tokenSection.locator("table").isVisible().catch(() => false);
+    if (!hasTokens) { test.skip(); return; }
+    await expect(tokenSection.getByRole("columnheader", { name: /Label/i })).toBeVisible();
+    await expect(tokenSection.getByRole("columnheader", { name: /Rate Limit/i })).toBeVisible();
+    await expect(tokenSection.getByRole("columnheader", { name: /Spend Cap/i })).toBeVisible();
+  });
+
+  test("gateway detail shows Webhook stat card", async ({ page }) => {
+    const ok = await openFirstGateway(page);
+    if (!ok) { test.skip(); return; }
+    await expect(page.getByText("Webhook").first()).toBeVisible();
   });
 
   test("New routing rule modal has condition/action editors", async ({ page }) => {
