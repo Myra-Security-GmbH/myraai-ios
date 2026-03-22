@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
-import { UsageStats, PeriodStats, TimeseriesPoint } from "src/api/types";
+import { UsageStats, PeriodStats, TimeseriesPoint, AnalyticsDepth } from "src/api/types";
 import { fmtDateTime } from "src/common/utils/date";
 import { GuardrailEventsTable } from "src/common/components/GuardrailEventsTable";
 import s from "src/common/components/layout/Layout.module.scss";
@@ -38,6 +38,18 @@ const TIMEFRAME_SERIES: Record<Timeframe, keyof SeriesData> = {
   hour:      "recent",
   last_min:  "recent",
 };
+
+function timeframeSince(tf: Timeframe): number {
+  const now = Date.now();
+  const todayMs = Math.floor(now / 86400000) * 86400000;
+  switch (tf) {
+    case "today":     return todayMs;
+    case "yesterday": return todayMs - 86400000;
+    case "last_7d":   return todayMs - 7 * 86400000;
+    case "hour":      return now - 3600000;
+    case "last_min":  return now - 60000;
+  }
+}
 
 interface SeriesData {
   hourly:    TimeseriesPoint[];  // 1h × today's hours
@@ -135,6 +147,7 @@ function HeroCards({ data, series }: { data: PeriodStats; series: TimeseriesPoin
         </div>
         {blockedSeries && <Sparkline values={blockedSeries} />}
       </div>
+
     </div>
   );
 }
@@ -143,12 +156,12 @@ export default function Dashboard() {
   useDocumentTitle("Dashboard");
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [series, setSeries] = useState<SeriesData | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsDepth | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<Timeframe>("today");
 
   useEffect(() => {
     const hoursToday = Math.max(2, new Date().getUTCHours() + 1);
-    // yesterday ends at midnight UTC today (as unix seconds)
     const midnightToday = Math.floor(Date.now() / 86400000) * 86400;
     Promise.allSettled([
       api.get<UsageStats>("/stats"),
@@ -168,6 +181,13 @@ export default function Dashboard() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    setAnalytics(null);
+    api.get<AnalyticsDepth>(`/stats/analytics?since=${timeframeSince(timeframe)}`)
+      .then(setAnalytics)
+      .catch(() => {});
+  }, [timeframe]);
 
   if (loading) return <div className={s.page}><p className={s.empty}>Loading…</p></div>;
 
@@ -249,10 +269,10 @@ export default function Dashboard() {
       </div>
 
       {/* By tenant */}
-      {(stats?.by_tenant?.length ?? 0) > 0 && (
+      {(analytics?.by_tenant?.length ?? 0) > 0 && (
         <div className={s.card}>
           <div className={s["card-header"]}>
-            <h2 className={s["card-title"]}>Usage by Tenant (Today)</h2>
+            <h2 className={s["card-title"]}>Usage by Tenant — {TIMEFRAMES.find(t => t.key === timeframe)?.label}</h2>
           </div>
           <div className={s["table-wrapper"]}>
             <table className={s.table}>
@@ -266,7 +286,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {stats?.by_tenant.map((row) => (
+                {analytics!.by_tenant.map((row) => (
                   <tr key={row.tenant_id}>
                     <td><span className={s.code}>{row.tenant}</span></td>
                     <td>{fmt(row.requests)}</td>
@@ -279,6 +299,43 @@ export default function Dashboard() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Top models */}
+      {analytics && (
+        <>
+          {analytics.top_models.length > 0 && (
+            <div className={s.card}>
+              <div className={s["card-header"]}>
+                <h2 className={s["card-title"]}>Top Models — {TIMEFRAMES.find(t => t.key === timeframe)?.label}</h2>
+              </div>
+              <div className={s["table-wrapper"]}>
+                <table className={s.table}>
+                  <thead>
+                    <tr>
+                      <th>Provider</th>
+                      <th>Model</th>
+                      <th>Requests</th>
+                      <th>Cost</th>
+                      <th>Avg Latency</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analytics.top_models.slice(0, 5).map((row, i) => (
+                      <tr key={i}>
+                        <td>{row.provider}</td>
+                        <td className={s.mono} style={{ fontSize: 11 }}>{row.model}</td>
+                        <td>{fmt(row.requests)}</td>
+                        <td>{row.cost_usd > 0 ? `$${row.cost_usd.toFixed(4)}` : "—"}</td>
+                        <td>{fmt(row.avg_latency_ms)} ms</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Recent requests */}

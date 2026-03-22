@@ -106,6 +106,14 @@ export interface CircuitBreakerConfig {
   failure_status_codes?: number[]; // default [500,502,503,504]
 }
 
+export type WebhookEvent = "blocked" | "budget_exceeded" | "circuit_open";
+
+export interface WebhookConfig {
+  url: string;
+  secret?: string;               // optional HMAC-SHA256 signing key
+  events?: WebhookEvent[];       // absent = subscribe to all events
+}
+
 export interface GatewayConfig {
   auth_required?: boolean;
   budget_usd?: number;
@@ -115,6 +123,7 @@ export interface GatewayConfig {
   log_payloads?: boolean;
   rate_limit?: { requests: number; window_sec: number };
   circuit_breaker?: CircuitBreakerConfig;
+  webhooks?: WebhookConfig;
   guardrails?: DetectorConfig[];
   /** @deprecated Use `guardrails`. Accepted for backwards compatibility with configs saved before the rename. */
   detectors?: DetectorConfig[];
@@ -315,4 +324,24 @@ export interface PlaygroundPanelResult {
 export interface ProviderMeta {
   name: string;
   requires_key: boolean;
+}
+
+export interface LatencyPercentiles {
+  p50: number | null;
+  p95: number | null;
+  p99: number | null;
+}
+
+export interface TopModelRow {
+  model: string;
+  provider: string;
+  requests: number;
+  cost_usd: number;
+  avg_latency_ms: number;
+}
+
+export interface AnalyticsDepth {
+  percentiles: LatencyPercentiles;
+  top_models: TopModelRow[];
+  by_tenant: TenantStats[];
 }
