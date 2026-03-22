@@ -77,6 +77,8 @@ nav:
     - routing/routing-rules.md
     - routing/compat-endpoint.md
     - routing/fallback.md
+    - routing/load-balancing.md
+    - routing/circuit-breaker.md
   - Providers:
     - providers/overview.md
     - providers/openai.md

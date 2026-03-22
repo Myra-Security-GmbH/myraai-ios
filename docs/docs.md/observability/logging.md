@@ -193,6 +193,5 @@ Request logs are stored and retained by the Myra Security platform. Log retentio
 
 ## See also
 
-- [Prometheus Metrics](prometheus.md)
 - [Admin Dashboard](dashboard.md)
 - [Gateway Configuration](../configuration/gateway-config.md) — `log_payloads`

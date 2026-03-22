@@ -56,6 +56,8 @@ Browse all documentation topics by category.
     - [Routing Rules](../routing/routing-rules.md)
     - [OpenAI-Compatible Endpoint](../routing/compat-endpoint.md)
     - [Fallback & Retry](../routing/fallback.md)
+    - [Load Balancing](../routing/load-balancing.md)
+    - [Circuit Breaker](../routing/circuit-breaker.md)
 
 -   **Providers**
 

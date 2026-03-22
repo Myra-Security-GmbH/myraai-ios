@@ -190,4 +190,4 @@ The selected target is the primary provider for the request. All other **active*
 
 - [Dynamic Routing & Fallback](fallback.md)
 - [Circuit Breaker](circuit-breaker.md) — automatically removes unhealthy targets
-- [Gateway Configuration Reference](../reference/gateway-config.md)
+- [Gateway Configuration Reference](../reference/config-reference.md)

@@ -161,4 +161,4 @@ Opens after 3 failures in 30 seconds. Probes after 10 seconds. Appropriate when 
 
 - [Dynamic Routing & Fallback](fallback.md)
 - [Load Balancing](load-balancing.md)
-- [Gateway Configuration Reference](../reference/gateway-config.md)
+- [Gateway Configuration Reference](../reference/config-reference.md)

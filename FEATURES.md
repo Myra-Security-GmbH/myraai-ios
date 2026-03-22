@@ -113,10 +113,16 @@ The following HuggingFace-hosted org prefixes are recognized:
 
 `HuggingFaceH4/`, `tiiuae/`, `bigcode/`, `EleutherAI/`, `microsoft/`, `google/` (HF-hosted), `stabilityai/`, `mistralai/`
 
+### LiteLLM-Style Provider Prefix Stripping
+
+The `transform` middleware strips LiteLLM-style namespace prefixes from model names before forwarding to the provider. This allows clients that use LiteLLM naming conventions (e.g. `gemini/gemma-3-27b-it`, `groq/llama3-8b-8192`, `fireworks_ai/accounts/fireworks/models/llama-v3p1-8b-instruct`) to route through the gateway unchanged.
+
+Recognised prefixes (17 providers): `gemini/`, `vertex_ai/`, `azure_ai/`, `azure/`, `groq/`, `text-completion-codestral/`, `mistral/`, `together_ai/`, `fireworks_ai/`, `nvidia_nim/`, `sambanova/`, `deepseek/`, `xai/`, `perplexity/`, `cerebras/`, `cohere/`, `bedrock/`, `openrouter/`, `ollama/`.
+
 ### Request Translation
 
 - **Anthropic:** Converts OpenAI `chat/completions` to the Messages API; system messages extracted; extended thinking via `x-aig-provider-anthropic-beta: interleaved-thinking-2025-05-14`
-- **Gemini / Vertex:** Converts to `GenerateContent` with system instruction support; SSE chunks normalised; native `googleSearch` grounding used when web search is enabled
+- **Gemini / Vertex:** Converts to `GenerateContent` with system instruction support; SSE chunks normalised; native `googleSearch` grounding used when web search is enabled (Gemini models only — not Gemma)
 - **Bedrock:** Converse API with SigV4 HMAC-SHA256 request signing; region from `bedrock_region` gateway config
 - **Cohere:** Native Chat API format; response translated back to OpenAI shape
 - **OpenRouter / Groq / Fireworks / etc.:** Forwarded as-is (OpenAI format)
@@ -288,23 +294,26 @@ effective_count = prev_bucket * (1 - elapsed/window) + cur_bucket
 
 ### Configuration
 
-- Per gateway: `rate_limit: {requests: N, window_sec: S}`
-- Per token: override via `auth_token.rate_limit` JSON field
+- **Per gateway:** `gateway_config.rate_limit: {requests: N, window_sec: S}` — shared across all tokens
+- **Per token:** `auth_token.rate_limit` JSON `{requests: N, window_sec: S}` — independent per-token limit
+
+Both limits are checked independently in the same access phase. Token creation via the admin UI exposes rate limit fields.
 
 ### Behavior
 
-- Enforced at the access phase (before body read)
-- Returns `429` with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` headers
-- Logs `blocked_by="rate_limit"` with current/limit ratio
+- Returns `429` with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` headers
+- Logs `blocked_by="rate_limit"` with scope (`token:` prefix for per-token blocks)
+- Shared dict keys: `rl:{gateway_id}` (gateway), `rl:token:{token_id}` (token)
 
 ---
 
 ## 7. Budget & Quota Enforcement
 
-### Levels
+### Levels (checked in order, most specific first)
 
-1. **Per-token budget:** `auth_token.budget_usd` (optional; takes precedence over gateway)
-2. **Per-gateway budget:** `gateway.budget_usd`
+1. **Per-token budget:** `auth_token.budget_usd` — blocks this token when cumulative cost exceeds cap
+2. **Per-tenant budget:** `tenant.budget_usd` — blocks all gateways under the tenant
+3. **Per-gateway budget:** `gateway_config.budget_usd` — blocks this gateway only
 
 ### Cost Calculation
 
@@ -319,10 +328,48 @@ Costs are stored as micro-dollars (`cost * 1e6`) to avoid floating-point precisi
 
 ### Behavior
 
-- Budget counter atomically incremented after each request
-- Returns `429 QUOTA_EXCEEDED` when `spent >= budget`
-- Budget can be reset via `DELETE /admin/v1/gateways/{id}/budget`
-- User token budgets reset via `DELETE /admin/v1/users/{id}/budget`
+- Budget counters incremented atomically after each request
+- Returns `429 QUOTA_EXCEEDED` when `spent >= budget` at any scope
+- Budget resets:
+  - Gateway: `DELETE /admin/v1/gateways/{id}/budget`
+  - Tenant: `DELETE /admin/v1/tenants/{id}/budget`
+  - User tokens: `DELETE /admin/v1/users/{id}/budget`
+- Budget exceeded events fire the `budget_exceeded` webhook (see §7a)
+
+---
+
+## 7a. Webhooks
+
+Real-time HTTP POST notifications on gateway events. Configured per gateway in `gateway_config.webhooks`.
+
+### Configuration
+
+```json
+"webhooks": {
+  "url":    "https://hooks.example.com/ai-gateway",
+  "secret": "optional-hmac-signing-key",
+  "events": ["blocked", "budget_exceeded", "circuit_open"]
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `url` | Yes | HTTPS endpoint to POST events to |
+| `secret` | No | Signs body: `X-AIG-Signature: sha256=<hex>` |
+| `events` | No | Subscribed events; absent = all events |
+
+### Events
+
+| Event | When fired | Key `data` fields |
+|---|---|---|
+| `blocked` | Any request blocked (guardrail / quota / rate limit) | `blocked_by`, `block_reason`, `provider`, `model`, `request_id` |
+| `budget_exceeded` | Spend limit reached at token / tenant / gateway scope | `scope`, `budget_usd`, `spent_usd` |
+| `circuit_open` | Circuit breaker transitions to OPEN for a provider | `provider`, `failures`, `threshold`, `window_sec` |
+
+### Delivery
+
+- Asynchronous via `ngx.timer.at(0, ...)` — never blocks the request path
+- Timeout: 5 s; failed deliveries log WARN (no retry)
 
 ---
 
@@ -716,8 +763,9 @@ All endpoints are under `/admin/v1/`.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/stats` | Aggregated usage statistics (last_min, hour, today, yesterday, last_7d; by_tenant; recent requests) |
+| GET | `/stats` | Aggregated usage statistics (last_min, hour, today, yesterday, last_7d; recent requests) |
 | GET | `/stats/timeseries` | Time-bucketed request/cost/blocked counts (params: `bucket` 5m/15m/30m/1h/6h/1d, `n` 1–168, `until` unix seconds) |
+| GET | `/stats/analytics` | Latency percentiles (p50/p95/p99), top models by volume, and usage by tenant — all scoped to `?since=<unix_ms>` (default: last 24 h) |
 | GET | `/logs` | Query request logs (filters: `tenant_id`, `gateway_id`, `provider`, `since`, `limit`, `offset`) |
 
 ### Playground
@@ -748,13 +796,13 @@ Three top-level metric cards are always visible:
 |---|---|---|
 | Requests | Total request count | Cache hit rate (%) |
 | Cost | Total cost in USD | Savings via cache |
-| Blocked | Total blocked requests | Percentage of requests blocked |
+| Guardrail Hits | blocked + scrubbed + flagged total | Individual breakdown (N blocked · N scrubbed · N flagged) |
 
 Each card contains an inline SVG sparkline showing the trend over the selected timeframe.
 
 ### Timeframe Switcher
 
-A tab bar above the hero cards selects the reporting period:
+A tab bar above the hero cards selects the reporting period. The selection applies to **all** dashboard sections: hero cards, Top Models, and Usage by Tenant.
 
 | Tab | Period | Chart granularity |
 |---|---|---|
@@ -764,9 +812,17 @@ A tab bar above the hero cards selects the reporting period:
 | Last hour | Rolling 60 minutes | 5 m buckets × 12 |
 | Last minute | Rolling 60 seconds | 5 m buckets × 12 |
 
+### Top Models
+
+Shows the top 10 models by request volume for the selected timeframe, with provider, requests, cost, and average latency. Sourced from `/stats/analytics?since=<unix_ms>`. Only rendered when data is non-empty.
+
+### Usage by Tenant
+
+Shows all tenants with their request count, token consumption, and cost for the selected timeframe. Sourced from `/stats/analytics?since=<unix_ms>`. Only rendered when data is non-empty.
+
 ### Data Fetching
 
-All API calls use `Promise.allSettled` — the dashboard always renders with whatever data arrived and never shows an error page. Missing or failed fetches fall back to zero values silently.
+On mount, period stats and timeseries data are loaded in a single `Promise.allSettled` batch — the dashboard always renders with whatever data arrived and never shows an error page. On each timeframe change, `/stats/analytics` is re-fetched with the matching `since` timestamp to update the Top Models and Usage by Tenant tables. Missing or failed fetches fall back to zero values or hidden sections silently.
 
 ---
 
@@ -782,10 +838,10 @@ A React single-page app (`frontend/`) for interactive model testing and comparis
 
 ### Request Configuration
 
-- System prompt (collapsible)
+- System prompt — always visible; pre-filled with a sensible default; a "restore default" link appears when the prompt has been modified
 - Temperature slider (0–2, default 1)
 - Max tokens input (default 2048)
-- Web search toggle — injects `X-Web-Search: 1`; only shown when the active gateway has `web_search.enabled: true`
+- Web search toggle — injects `X-Web-Search: 1`; only shown when the active gateway has `web_search.enabled: true` and the selected model supports tool use
 
 ### Streaming
 

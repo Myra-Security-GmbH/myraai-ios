@@ -62,7 +62,6 @@
 ### Observability
 
 - [Logging](observability/logging.md)
-- [Prometheus Metrics](observability/prometheus.md)
 - [Dashboard](observability/dashboard.md)
 
 ### Observability
