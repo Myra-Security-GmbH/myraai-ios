@@ -15,7 +15,7 @@ AI Gateway can serve many tenants and gateways from a single process, with hard 
 ```mermaid
 graph TD
     T[Tenant]
-    T --> G[Gateway\nconfig · provider keys · auth tokens · routing rules]
+    T --> G["Gateway<br/>config · provider keys · auth tokens · routing rules"]
     T --> U[User\nrole: admin · member · viewer]
     U --> GA[per-gateway access grant]
 ```

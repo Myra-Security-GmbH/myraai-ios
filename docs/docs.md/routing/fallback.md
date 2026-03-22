@@ -26,7 +26,7 @@ flowchart LR
         P1[Attempt 1] -- 5xx --> P2[Attempt 2]
     end
 
-    P1 -- 4xx --> Bail([Return 4xx immediately\nno retry or fallback])
+    P1 -- 4xx --> Bail(["Return 4xx immediately<br/>no retry or fallback"])
     P2 -- 5xx --> F1[Fallback 1]
     F1 -- 5xx --> F2[Fallback 2]
     F2 -- 5xx --> E([502 ALL_PROVIDERS_FAILED])

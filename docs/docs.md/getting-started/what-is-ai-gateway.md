@@ -42,19 +42,18 @@ Route requests to a self-hosted Ollama instance via `provider_base_urls`. Applic
 
 ```mermaid
 flowchart TD
-    Client([Consumer\nPOST /v1/{tenant}/{gateway}/{provider}/chat/completions])
-    Client --> GW
+    Client(["Consumer<br/>POST /v1/tenant-slug/gateway-slug/provider/chat/completions"])
+    Client --> A
 
     subgraph GW ["AI Gateway"]
-        direction TB
-        A["Access phase\nauth · rate-limit · IP allowlist"]
-        B["Content phase\ncache · guardrails · routing · BYOK\nupstream · cost · cache-store"]
-        C["Log phase\nstructured log · Prometheus"]
+        A["Access phase<br/>auth · rate-limit · IP allowlist"]
+        B["Content phase<br/>cache · guardrails · routing · BYOK<br/>upstream · cost · cache-store"]
+        C["Log phase<br/>structured log · Prometheus"]
         A --> B --> C
     end
 
-    GW --> DB[(Configuration Store\n& Request Logs)]
-    GW --> UP[Upstream Providers\n21 total]
+    B --> UP["Upstream Providers<br/>21 total"]
+    C --> DB[("Configuration Store<br/>& Request Logs")]
 ```
 
 All policy enforcement — authentication, rate limiting, caching, and security checks — runs in-process with no additional network round trips, ensuring consistent low-latency enforcement at scale.

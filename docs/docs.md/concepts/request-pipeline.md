@@ -31,7 +31,7 @@ flowchart TD
         L1[Structured request log · Prometheus metrics]
     end
 
-    Log --> Response([Consumer Response])
+    L1 --> Response([Consumer Response])
 ```
 
 ---
