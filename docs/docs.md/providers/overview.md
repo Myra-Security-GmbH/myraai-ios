@@ -139,9 +139,12 @@ This is useful for:
 
 Any request header prefixed with `x-aig-provider-` is stripped of that prefix and forwarded verbatim to the upstream provider.
 
-```
+Client sends:
+```http
 x-aig-provider-anthropic-beta: interleaved-thinking-2025-05-14
-→ forwarded as →
+```
+Gateway forwards to provider:
+```http
 anthropic-beta: interleaved-thinking-2025-05-14
 ```
 

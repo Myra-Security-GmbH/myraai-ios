@@ -40,31 +40,21 @@ Route requests to a self-hosted Ollama instance via `provider_base_urls`. Applic
 
 ## Architecture overview
 
-```
-Consumer
-   │  POST /v1/{tenant}/{gateway}/{provider}/chat/completions
-   ▼
-┌──────────────────────────────────────────┐
-│           AI Gateway                     │
-│  ┌────────────────────────────────────┐  │
-│  │     Access processing phase        │  │
-│  │  auth · rate-limit · IP allowlist  │  │
-│  ├────────────────────────────────────┤  │
-│  │     Content processing phase       │  │
-│  │  cache · guardrails · routing ·    │  │
-│  │  BYOK · upstream ·                 │  │
-│  │  cost · cache-store                │  │
-│  ├────────────────────────────────────┤  │
-│  │     Log phase (best-effort)        │  │
-│  │  structured log · Prometheus       │  │
-│  └────────────────────────────────────┘  │
-└──────────────────────────────────────────┘
-          │                    │
-   ┌──────┴──────┐      ┌──────┴──────┐
-   │Configuration│      │  Upstream   │
-   │   Store     │      │  Providers  │
-   │Request Logs │      │ (21 total)  │
-   └─────────────┘      └─────────────┘
+```mermaid
+flowchart TD
+    Client([Consumer\nPOST /v1/{tenant}/{gateway}/{provider}/chat/completions])
+    Client --> GW
+
+    subgraph GW ["AI Gateway"]
+        direction TB
+        A["Access phase\nauth · rate-limit · IP allowlist"]
+        B["Content phase\ncache · guardrails · routing · BYOK\nupstream · cost · cache-store"]
+        C["Log phase\nstructured log · Prometheus"]
+        A --> B --> C
+    end
+
+    GW --> DB[(Configuration Store\n& Request Logs)]
+    GW --> UP[Upstream Providers\n21 total]
 ```
 
 All policy enforcement — authentication, rate limiting, caching, and security checks — runs in-process with no additional network round trips, ensuring consistent low-latency enforcement at scale.

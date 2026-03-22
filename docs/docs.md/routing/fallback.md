@@ -18,15 +18,18 @@ A request follows this sequence:
 2. **Fallback providers** — each fallback is attempted **once** in order. Fallbacks are defined in the routing rule that matched the request.
 3. If all providers are exhausted, the gateway returns `502 ALL_PROVIDERS_FAILED`.
 
-```
-Primary provider
-   ├── attempt 1  ──error──► attempt 2 (retry_count=2)
-   │                              │
-   │                            error
-   │                              ▼
-   │                    Fallback 1 ──error──► Fallback 2 ──error──► 502
-   │
-   └── bad request (4xx) ──► return immediately (no retry)
+```mermaid
+flowchart LR
+    Start([Request]) --> P1
+
+    subgraph Primary ["Primary provider"]
+        P1[Attempt 1] -- 5xx --> P2[Attempt 2]
+    end
+
+    P1 -- 4xx --> Bail([Return 4xx immediately\nno retry or fallback])
+    P2 -- 5xx --> F1[Fallback 1]
+    F1 -- 5xx --> F2[Fallback 2]
+    F2 -- 5xx --> E([502 ALL_PROVIDERS_FAILED])
 ```
 
 ## Client errors are not retried
