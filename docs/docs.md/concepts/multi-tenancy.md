@@ -12,13 +12,12 @@ AI Gateway can serve many tenants and gateways from a single process, with hard 
 
 ## Object hierarchy
 
-```
-Tenant
-  │
-  ├── Gateway  (config, provider keys, auth tokens, routing rules)
-  │
-  └── User  (role: admin | member | viewer)
-        └── per-gateway access grant
+```mermaid
+graph TD
+    T[Tenant]
+    T --> G[Gateway\nconfig · provider keys · auth tokens · routing rules]
+    T --> U[User\nrole: admin · member · viewer]
+    U --> GA[per-gateway access grant]
 ```
 
 A **Tenant** is the top-level billing and isolation boundary. Each tenant can have multiple **Gateways** — each gateway is an independent policy domain with its own config, keys, tokens, and rules.

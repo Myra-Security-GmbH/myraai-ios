@@ -6,21 +6,32 @@ Every request to the gateway passes through three processing phases. Each phase 
 
 ## Phase overview
 
-```
-[Consumer]
-    │
-    ▼  ── Access phase ─────────────────────────────────────────────
-    │   Authenticate · rate-limit · IP allowlist
-    │   (runs before the request body is read)
-    │
-    ▼  ── Content phase ─────────────────────────────────────────────
-    │   Cache check · guardrails · routing · provider call
-    │   · response guardrails · cost accounting · cache store
-    │
-    ▼  ── Log phase (after response sent) ──────────────────────────
-    │   Structured request log
-    │
-[Consumer Response]
+```mermaid
+flowchart TD
+    Client([Consumer])
+    Client --> A1
+
+    subgraph Access ["Access phase — before body is read"]
+        A1[Authenticate] --> A2[Rate limit] --> A3[IP allowlist]
+    end
+
+    A3 --> B1
+
+    subgraph Content ["Content phase — body available"]
+        B1[Cache check] --> B2[Guardrails — request]
+        B2 --> B3[Transform & routing]
+        B3 --> B4[Provider call]
+        B4 --> B5[Guardrails — response]
+        B5 --> B6[Cost · cache store · send response]
+    end
+
+    B6 --> L1
+
+    subgraph Log ["Log phase — after response sent"]
+        L1[Structured request log · Prometheus metrics]
+    end
+
+    Log --> Response([Consumer Response])
 ```
 
 ---

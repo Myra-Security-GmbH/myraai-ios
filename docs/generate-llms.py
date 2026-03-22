@@ -130,7 +130,14 @@ def main() -> None:
         print(f"Error: mkdocs.yml not found at {mkdocs_path}", file=sys.stderr)
         sys.exit(1)
 
-    config = yaml.safe_load(mkdocs_path.read_text(encoding="utf-8"))
+    # safe_load rejects !!python/name: tags used by pymdownx.superfences;
+    # add a no-op constructor so those nodes are silently ignored.
+    loader = yaml.SafeLoader
+    loader.add_multi_constructor(
+        "tag:yaml.org,2002:python/name:",
+        lambda _l, _s, node: _l.construct_scalar(node),
+    )
+    config = yaml.load(mkdocs_path.read_text(encoding="utf-8"), Loader=loader)
     site_name = config.get("site_name", "Documentation")
     site_description = config.get("site_description", "")
     docs_dir = script_dir / config.get("docs_dir", "docs")

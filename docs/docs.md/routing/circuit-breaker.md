@@ -6,17 +6,13 @@ The circuit breaker automatically stops routing traffic to a provider that is co
 
 ## State Machine
 
-```
-            failures >= threshold
-CLOSED ──────────────────────────────────▶ OPEN
-  ▲                                           │
-  │                                    cooldown elapsed
-  │                                           │
-  │   probe succeeds                          ▼
-  └────────────────────────────────── HALF_OPEN
-                                             │
-                               probe fails   │
-                           ─────────────────▶ OPEN (restart cooldown)
+```mermaid
+stateDiagram-v2
+    [*] --> CLOSED
+    CLOSED --> OPEN      : failures ≥ threshold
+    OPEN --> HALF_OPEN   : cooldown elapsed
+    HALF_OPEN --> CLOSED : probe succeeds
+    HALF_OPEN --> OPEN   : probe fails (restart cooldown)
 ```
 
 | State | Behaviour |
