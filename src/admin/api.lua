@@ -13,6 +13,7 @@
 --   DELETE /admin/v1/gateways/:id/tokens/:tid
 --   POST   /admin/v1/gateways/:id/keys
 --   DELETE /admin/v1/gateways/:id/budget
+--   DELETE /admin/v1/tenants/:id/budget
 --   PATCH  /admin/v1/users/:id
 --   DELETE /admin/v1/users/:id
 --   GET    /admin/v1/users/:id/tokens
@@ -96,11 +97,22 @@ route("GET", "^/admin/v1/logs$", function()
         tenant_id         = args.tenant_id,
         gateway_id        = args.gateway_id,
         provider          = args.provider,
-        since             = args.since,
+        model             = args.model,
+        status            = args.status,
+        blocked           = args.blocked,
+        since             = tonumber(args.since),
         guardrail_outcome = args.guardrail_outcome,
         limit             = tonumber(args.limit),
         offset            = tonumber(args.offset),
     }))
+end)
+
+-- GET /admin/v1/stats/analytics?since=<unix_ms>
+-- Returns latency percentiles (p50/p95/p99) and top models by request volume.
+route("GET", "^/admin/v1/stats/analytics$", function()
+    local args    = ngx.req.get_uri_args()
+    local since   = tonumber(args.since)
+    send(200, storage.get_analytics_depth(since))
 end)
 
 route("GET", "^/admin/v1/logs/([^/]+)$", function(id)
@@ -528,6 +540,13 @@ route("DELETE", "^/admin/v1/gateways/([^/]+)/budget$", function(gateway_id)
     local state = require("state")
     local cur = state.counter_get("budget:" .. gateway_id) or 0
     if cur > 0 then state.counter_incr("budget:" .. gateway_id, -cur) end
+    send(200, { ok = true })
+end)
+
+route("DELETE", "^/admin/v1/tenants/([^/]+)/budget$", function(tenant_id)
+    local state = require("state")
+    local cur = state.counter_get("budget:tenant:" .. tenant_id) or 0
+    if cur > 0 then state.counter_incr("budget:tenant:" .. tenant_id, -cur) end
     send(200, { ok = true })
 end)
 

@@ -71,8 +71,10 @@ local function migrate_columns(cfg)
     if not lcols.token_label      then ldb:exec("ALTER TABLE request_log ADD COLUMN token_label      TEXT") end
     if not lcols.detectors_fired  then ldb:exec("ALTER TABLE request_log ADD COLUMN detectors_fired  TEXT") end
     if not lcols.scrub_applied    then ldb:exec("ALTER TABLE request_log ADD COLUMN scrub_applied    INTEGER NOT NULL DEFAULT 0") end
-    if not lcols.response_raw     then ldb:exec("ALTER TABLE request_log ADD COLUMN response_raw     TEXT") end
-    if not lcols.prompt_scrubbed  then ldb:exec("ALTER TABLE request_log ADD COLUMN prompt_scrubbed  TEXT") end
+    if not lcols.response_raw          then ldb:exec("ALTER TABLE request_log ADD COLUMN response_raw          TEXT") end
+    if not lcols.prompt_scrubbed       then ldb:exec("ALTER TABLE request_log ADD COLUMN prompt_scrubbed       TEXT") end
+    if not lcols.token_quota_remaining  then ldb:exec("ALTER TABLE request_log ADD COLUMN token_quota_remaining  REAL") end
+    if not lcols.tenant_quota_remaining then ldb:exec("ALTER TABLE request_log ADD COLUMN tenant_quota_remaining REAL") end
     ldb:close()
 
     -- Playground trace tables (added after initial schema)
@@ -154,7 +156,11 @@ local function migrate_timestamps(cfg)
                 user_id               TEXT,
                 token_label           TEXT,
                 detectors_fired       TEXT,
-                scrub_applied         INTEGER NOT NULL DEFAULT 0
+                scrub_applied         INTEGER NOT NULL DEFAULT 0,
+                response_raw          TEXT,
+                prompt_scrubbed       TEXT,
+                token_quota_remaining  REAL,
+                tenant_quota_remaining REAL
             );
             INSERT INTO request_log_new
                 SELECT id, tenant_id, gateway_id, provider, model, status, cached,
@@ -167,7 +173,8 @@ local function migrate_timestamps(cfg)
                        upstream_latency_ms, time_to_first_token_ms, upstream_attempts,
                        fallback_provider, fallback_model, provider_request_id,
                        request_size_bytes, quota_remaining, user_id, token_label,
-                       detectors_fired, COALESCE(scrub_applied, 0)
+                       detectors_fired, COALESCE(scrub_applied, 0),
+                       NULL, NULL, NULL, NULL
                 FROM request_log;
             DROP TABLE request_log;
             ALTER TABLE request_log_new RENAME TO request_log;
@@ -374,6 +381,9 @@ end
 function M.init(cfg)
     _cfg_db = open_db(cfg.sqlite.config_db)
     _log_db = open_db(cfg.sqlite.logs_db)
+    -- Attach config.db to the log connection so reporting queries can JOIN
+    -- cfg.tenant directly in SQL instead of doing a Lua-side slug lookup.
+    _log_db:exec("ATTACH DATABASE '" .. cfg.sqlite.config_db:gsub("'", "''") .. "' AS cfg")
 end
 
 -- Returns the db handle; opens lazily if not yet initialised.
@@ -440,7 +450,8 @@ end
 
 function M.get_gateway(tenant_slug, gateway_slug)
     local row, err = query_one(cfg_db(), [[
-        SELECT t.id AS tenant_id, g.id AS gateway_id, g.config
+        SELECT t.id AS tenant_id, g.id AS gateway_id, g.config,
+               t.budget_usd AS tenant_budget_usd
         FROM   gateway g
         JOIN   tenant  t ON t.id = g.tenant_id
         WHERE  t.slug = ? AND g.slug = ? AND t.deleted_at IS NULL
@@ -451,8 +462,9 @@ function M.get_gateway(tenant_slug, gateway_slug)
     if not row then return nil, "not_found" end
 
     local config = json.decode(row.config or "{}") or {}
-    config.tenant_id  = row.tenant_id
-    config.gateway_id = row.gateway_id
+    config.tenant_id         = row.tenant_id
+    config.gateway_id        = row.gateway_id
+    config.tenant_budget_usd = row.tenant_budget_usd  -- nil when uncapped
     return config
 end
 
@@ -509,8 +521,9 @@ function M.insert_log(f)
              upstream_latency_ms, time_to_first_token_ms, upstream_attempts,
              fallback_provider, fallback_model, provider_request_id,
              request_size_bytes, quota_remaining, user_id, token_label,
-             detectors_fired, scrub_applied, response_raw, prompt_scrubbed)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             detectors_fired, scrub_applied, response_raw, prompt_scrubbed,
+             token_quota_remaining, tenant_quota_remaining)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
@@ -539,7 +552,9 @@ function M.insert_log(f)
         (f.detectors_fired and #f.detectors_fired > 0) and json.encode(f.detectors_fired) or nil,
         f.scrub_applied and 1 or 0,
         f.response_raw,
-        f.prompt_scrubbed
+        f.prompt_scrubbed,
+        f.token_quota_remaining,
+        f.tenant_quota_remaining
     )
     return err
 end
@@ -552,14 +567,23 @@ local function uuid()
     return uuid_lib.v4()
 end
 
+-- Fix 5: shared helper — avoids copy-paste across list_logs, get_log,
+-- get_usage_stats, list_guardrail_events.
+local function decode_detectors(row)
+    if row.detectors_fired and row.detectors_fired ~= "" then
+        row.detectors_fired = json.decode(row.detectors_fired) or {}
+    else
+        row.detectors_fired = {}
+    end
+end
+
 function M.upsert_tenant(slug, plan, budget_usd)
-    local existing = query_one(cfg_db(), "SELECT id FROM tenant WHERE slug = ?", slug)
-    if existing then return existing.id end
     local id = uuid()
     exec_one(cfg_db(), [[
-        INSERT INTO tenant (id, slug, plan, budget_usd) VALUES (?,?,?,?)
+        INSERT OR IGNORE INTO tenant (id, slug, plan, budget_usd) VALUES (?,?,?,?)
     ]], id, slug, plan or "free", budget_usd)
-    return id
+    local row = query_one(cfg_db(), "SELECT id FROM tenant WHERE slug = ?", slug)
+    return row and row.id
 end
 
 function M.update_tenant(id, plan, budget_usd)
@@ -570,8 +594,8 @@ end
 
 function M.delete_tenant(id)
     return exec_one(cfg_db(), [[
-        UPDATE tenant SET deleted_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ?
-    ]], id)
+        UPDATE tenant SET deleted_at = ? WHERE id = ?
+    ]], os.time(), id)
 end
 
 function M.delete_gateway(id)
@@ -579,18 +603,15 @@ function M.delete_gateway(id)
 end
 
 function M.upsert_gateway(tenant_id, slug, config_table)
-    local existing = query_one(cfg_db(),
-        "SELECT id FROM gateway WHERE tenant_id = ? AND slug = ?", tenant_id, slug)
-    if existing then
-        exec_one(cfg_db(), "UPDATE gateway SET config = ? WHERE id = ?",
-            json.encode(config_table or {}), existing.id)
-        return existing.id
-    end
     local id = uuid()
     exec_one(cfg_db(), [[
         INSERT INTO gateway (id, tenant_id, slug, config) VALUES (?,?,?,?)
+        ON CONFLICT(tenant_id, slug) DO UPDATE SET config = excluded.config
     ]], id, tenant_id, slug, json.encode(config_table or {}))
-    return id
+    local row = query_one(cfg_db(), [[
+        SELECT id FROM gateway WHERE tenant_id = ? AND slug = ?
+    ]], tenant_id, slug)
+    return row and row.id
 end
 
 function M.upsert_provider_config(gateway_id, provider, alias, encrypted_key, nonce)
@@ -635,8 +656,8 @@ end
 
 function M.delete_user(id)
     return exec_one(cfg_db(), [[
-        UPDATE user SET deleted_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ?
-    ]], id)
+        UPDATE user SET deleted_at = ? WHERE id = ?
+    ]], os.time(), id)
 end
 
 function M.set_user_gateway_access(user_id, gateway_id)
@@ -695,8 +716,10 @@ function M.list_auth_tokens(gateway_id)
                CASE WHEN expires_at IS NOT NULL
                     THEN strftime('%Y-%m-%dT%H:%M:%SZ', expires_at, 'unixepoch') END AS expires_at,
                strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
-        FROM auth_token WHERE gateway_id = ? ORDER BY created_at DESC
-    ]], gateway_id) or {}
+        FROM auth_token WHERE gateway_id = ?
+          AND (expires_at IS NULL OR expires_at > ?)
+        ORDER BY created_at DESC
+    ]], gateway_id, os.time()) or {}
 end
 
 function M.delete_auth_token(token_id)
@@ -714,8 +737,8 @@ function M.delete_expired_playground_tokens(gateway_id)
         DELETE FROM auth_token
         WHERE  gateway_id = ? AND label = 'playground'
           AND  expires_at IS NOT NULL
-          AND  expires_at <= CAST(strftime('%s','now') AS INTEGER)
-    ]], gateway_id)
+          AND  expires_at <= ?
+    ]], gateway_id, os.time())
 end
 
 function M.list_provider_configs(gateway_id)
@@ -848,14 +871,14 @@ function M.upsert_model_price(provider, model, input_per_1k, output_per_1k, cach
     return exec_one(cfg_db(), [[
         INSERT INTO model_price (provider, model, input_per_1k, output_per_1k,
                                  cache_write_per_1k, cache_read_per_1k, updated_at)
-        VALUES (?,?,?,?,?,?, CAST(strftime('%s','now') AS INTEGER))
+        VALUES (?,?,?,?,?,?,?)
         ON CONFLICT(provider, model) DO UPDATE SET
             input_per_1k       = excluded.input_per_1k,
             output_per_1k      = excluded.output_per_1k,
             cache_write_per_1k = excluded.cache_write_per_1k,
             cache_read_per_1k  = excluded.cache_read_per_1k,
             updated_at         = excluded.updated_at
-    ]], provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k)
+    ]], provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, os.time())
 end
 
 function M.delete_model_price(provider, model)
@@ -878,9 +901,19 @@ function M.list_logs(filters)
         where[#where+1] = "provider = ?"
         params[#params+1] = filters.provider
     end
+    if filters.model then
+        where[#where+1] = "model = ?"
+        params[#params+1] = filters.model
+    end
+    if filters.status then
+        where[#where+1] = "status = ?"
+        params[#params+1] = tonumber(filters.status)
+    end
+    if filters.blocked == "1" or filters.blocked == true then
+        where[#where+1] = "blocked = 1"
+    end
     if filters.since then
-        -- since is an ISO date string (YYYY-MM-DD or full ISO); convert to ms
-        where[#where+1] = "ts >= CAST(strftime('%s', ?) AS INTEGER) * 1000"
+        where[#where+1] = "ts >= ?"
         params[#params+1] = filters.since
     end
     -- guardrail_outcome filter: "blocked" | "scrubbed" | "flagged" | "any"
@@ -911,14 +944,7 @@ function M.list_logs(filters)
         FROM request_log WHERE %s ORDER BY ts DESC LIMIT %d OFFSET %d
     ]], table.concat(where, " AND "), limit, offset)
     local rows = query_all(log_db(), sql, table.unpack(params)) or {}
-    -- parse detectors_fired JSON array for each row
-    for _, row in ipairs(rows) do
-        if row.detectors_fired and row.detectors_fired ~= "" then
-            row.detectors_fired = json.decode(row.detectors_fired) or {}
-        else
-            row.detectors_fired = {}
-        end
-    end
+    for _, row in ipairs(rows) do decode_detectors(row) end
     return rows
 end
 
@@ -936,11 +962,7 @@ function M.get_log(id)
         FROM request_log WHERE id = ?
     ]], id)
     if not row then return nil end
-    if row.detectors_fired and row.detectors_fired ~= "" then
-        row.detectors_fired = json.decode(row.detectors_fired) or {}
-    else
-        row.detectors_fired = {}
-    end
+    decode_detectors(row)
     return row
 end
 
@@ -950,116 +972,113 @@ end
 
 function M.get_usage_stats()
     local ldb = log_db()
-    local cdb = cfg_db()
 
-    -- Resolve tenant slugs
-    local slugs = {}
-    local slug_rows = query_all(cdb, "SELECT id, slug FROM tenant") or {}
-    for _, r in ipairs(slug_rows) do slugs[r.id] = r.slug end
+    -- Period thresholds in milliseconds
+    local now          = math.floor(ngx.now())
+    local today_ms     = (now - (now % 86400)) * 1000
+    local yesterday_ms = today_ms - 86400 * 1000
+    local last_7d_ms   = today_ms - 7 * 86400 * 1000
+    local hour_ms      = (now - 3600) * 1000
+    local last_min_ms  = (now - 60) * 1000
 
-    -- Pre-compute period thresholds as INTEGER milliseconds (avoids SQL strftime)
-    local now           = math.floor(ngx.now())
-    local today_ms      = (now - (now % 86400)) * 1000
-    local yesterday_ms  = today_ms - 86400 * 1000
-    local last_7d_ms    = today_ms - 7 * 86400 * 1000
-    local hour_ms       = (now - 3600) * 1000
-    local last_min_ms   = (now - 60) * 1000
-
-    local function period(since_ms)
-        return query_one(ldb, [[
-            SELECT COUNT(*) AS requests,
-                   SUM(CASE WHEN cached=1  THEN 1 ELSE 0 END) AS cached,
-                   SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
-                   SUM(CASE WHEN scrub_applied=1 AND blocked=0 THEN 1 ELSE 0 END) AS scrubbed,
-                   SUM(CASE WHEN blocked=0 AND scrub_applied=0
-                                 AND detectors_fired IS NOT NULL AND detectors_fired != '[]'
-                            THEN 1 ELSE 0 END) AS flagged,
-                   COALESCE(SUM(input_tokens),0)              AS input_tokens,
-                   COALESCE(SUM(output_tokens),0)             AS output_tokens,
-                   ROUND(COALESCE(SUM(cost_usd),0),6)         AS cost_usd,
-                   ROUND(COALESCE(SUM(saved_cost_usd),0),6)   AS saved_cost_usd,
-                   ROUND(COALESCE(AVG(latency_ms),0))         AS avg_latency_ms,
-                   ROUND(COALESCE(AVG(upstream_latency_ms),0)) AS avg_upstream_latency_ms
-            FROM request_log WHERE ts >= ?]], since_ms) or {}
+    -- Build one SELECT with conditional aggregates for all 5 periods.
+    -- Values embedded as literals (all are integer results of Lua arithmetic).
+    -- WHERE ts >= last_7d_ms covers every period; inner CASE WHENs slice each one.
+    local function pcols(p, cond)
+        return string.format([[
+            COUNT(CASE WHEN %s THEN 1 END) AS %s_req,
+            SUM(CASE WHEN %s AND cached=1 THEN 1 ELSE 0 END) AS %s_cached,
+            SUM(CASE WHEN %s AND blocked=1 THEN 1 ELSE 0 END) AS %s_blocked,
+            SUM(CASE WHEN %s AND scrub_applied=1 AND blocked=0 THEN 1 ELSE 0 END) AS %s_scrubbed,
+            SUM(CASE WHEN %s AND blocked=0 AND scrub_applied=0 AND detectors_fired IS NOT NULL AND detectors_fired != '[]' THEN 1 ELSE 0 END) AS %s_flagged,
+            COALESCE(SUM(CASE WHEN %s THEN input_tokens END),0) AS %s_in_tok,
+            COALESCE(SUM(CASE WHEN %s THEN output_tokens END),0) AS %s_out_tok,
+            ROUND(COALESCE(SUM(CASE WHEN %s THEN cost_usd END),0),6) AS %s_cost,
+            ROUND(COALESCE(SUM(CASE WHEN %s THEN saved_cost_usd END),0),6) AS %s_saved,
+            ROUND(COALESCE(AVG(CASE WHEN %s THEN latency_ms END),0)) AS %s_avg_lat,
+            ROUND(COALESCE(AVG(CASE WHEN %s THEN upstream_latency_ms END),0)) AS %s_avg_up]],
+            cond,p, cond,p, cond,p, cond,p, cond,p,
+            cond,p, cond,p, cond,p, cond,p, cond,p, cond,p)
     end
 
-    local function period_range(from_ms, to_ms)
-        return query_one(ldb, [[
-            SELECT COUNT(*) AS requests,
-                   SUM(CASE WHEN cached=1  THEN 1 ELSE 0 END) AS cached,
-                   SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
-                   SUM(CASE WHEN scrub_applied=1 AND blocked=0 THEN 1 ELSE 0 END) AS scrubbed,
-                   SUM(CASE WHEN blocked=0 AND scrub_applied=0
-                                 AND detectors_fired IS NOT NULL AND detectors_fired != '[]'
-                            THEN 1 ELSE 0 END) AS flagged,
-                   COALESCE(SUM(input_tokens),0)              AS input_tokens,
-                   COALESCE(SUM(output_tokens),0)             AS output_tokens,
-                   ROUND(COALESCE(SUM(cost_usd),0),6)         AS cost_usd,
-                   ROUND(COALESCE(SUM(saved_cost_usd),0),6)   AS saved_cost_usd,
-                   ROUND(COALESCE(AVG(latency_ms),0))         AS avg_latency_ms,
-                   ROUND(COALESCE(AVG(upstream_latency_ms),0)) AS avg_upstream_latency_ms
-            FROM request_log WHERE ts >= ? AND ts < ?]], from_ms, to_ms) or {}
+    local all_sql = string.format("SELECT %s, %s, %s, %s, %s FROM request_log WHERE ts >= %d",
+        pcols("lm", "ts >= " .. last_min_ms),
+        pcols("hr", "ts >= " .. hour_ms),
+        pcols("td", "ts >= " .. today_ms),
+        pcols("yd", "ts >= " .. yesterday_ms .. " AND ts < " .. today_ms),
+        pcols("l7", "1=1"),
+        last_7d_ms)
+
+    local r = query_one(ldb, all_sql) or {}
+
+    local function extract(p)
+        return {
+            requests              = r[p.."_req"]     or 0,
+            cached                = r[p.."_cached"]  or 0,
+            blocked               = r[p.."_blocked"] or 0,
+            scrubbed              = r[p.."_scrubbed"] or 0,
+            flagged               = r[p.."_flagged"] or 0,
+            input_tokens          = r[p.."_in_tok"]  or 0,
+            output_tokens         = r[p.."_out_tok"] or 0,
+            cost_usd              = r[p.."_cost"]    or 0,
+            saved_cost_usd        = r[p.."_saved"]   or 0,
+            avg_latency_ms        = r[p.."_avg_lat"] or 0,
+            avg_upstream_latency_ms = r[p.."_avg_up"] or 0,
+        }
     end
 
+    -- by_tenant: JOIN cfg.tenant (ATTACHed in M.init) for slug resolution in SQL
     local by_tenant = query_all(ldb, [[
-        SELECT tenant_id,
+        SELECT r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
                COUNT(*) AS requests,
-               COALESCE(SUM(input_tokens),0)  AS input_tokens,
-               COALESCE(SUM(output_tokens),0) AS output_tokens,
-               ROUND(COALESCE(SUM(cost_usd),0),4) AS cost_usd
-        FROM request_log
-        WHERE ts >= ?
-        GROUP BY tenant_id ORDER BY cost_usd DESC
+               COALESCE(SUM(r.input_tokens),0)  AS input_tokens,
+               COALESCE(SUM(r.output_tokens),0) AS output_tokens,
+               ROUND(COALESCE(SUM(r.cost_usd),0),4) AS cost_usd
+        FROM request_log r
+        LEFT JOIN cfg.tenant t ON t.id = r.tenant_id
+        WHERE r.ts >= ?
+        GROUP BY r.tenant_id ORDER BY cost_usd DESC
     ]], today_ms) or {}
 
-    for _, row in ipairs(by_tenant) do
-        row.tenant = slugs[row.tenant_id] or row.tenant_id
-    end
-
     local recent = query_all(ldb, [[
-        SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
-               tenant_id, provider, model,
-               status, input_tokens, output_tokens,
-               ROUND(cost_usd,5) AS cost_usd, latency_ms, cached,
-               blocked, blocked_by, block_reason,
-               guardrail_verdict, guardrail_latency_ms,
-               upstream_latency_ms, upstream_attempts,
-               fallback_provider, fallback_model,
-               ROUND(saved_cost_usd,5) AS saved_cost_usd, request_size_bytes
-        FROM request_log ORDER BY ts DESC LIMIT 10
+        SELECT strftime('%Y-%m-%dT%H:%M:%SZ', r.ts/1000, 'unixepoch') AS ts,
+               r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
+               r.provider, r.model,
+               r.status, r.input_tokens, r.output_tokens,
+               ROUND(r.cost_usd,5) AS cost_usd, r.latency_ms, r.cached,
+               r.blocked, r.blocked_by, r.block_reason,
+               r.guardrail_verdict, r.guardrail_latency_ms,
+               r.upstream_latency_ms, r.upstream_attempts,
+               r.fallback_provider, r.fallback_model,
+               ROUND(r.saved_cost_usd,5) AS saved_cost_usd, r.request_size_bytes
+        FROM request_log r
+        LEFT JOIN cfg.tenant t ON t.id = r.tenant_id
+        ORDER BY r.ts DESC LIMIT 10
     ]]) or {}
-
-    for _, row in ipairs(recent) do
-        row.tenant = slugs[row.tenant_id] or row.tenant_id
-    end
 
     local recent_blocked = query_all(ldb, [[
-        SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
-               tenant_id, blocked_by, block_reason, latency_ms,
-               guardrail_latency_ms, guardrail_verdict,
-               blocked, scrub_applied, detectors_fired, response_raw, prompt_scrubbed
-        FROM request_log
-        WHERE blocked = 1
-           OR scrub_applied = 1
-           OR (detectors_fired IS NOT NULL AND detectors_fired != '[]')
-        ORDER BY ts DESC LIMIT 20
+        SELECT strftime('%Y-%m-%dT%H:%M:%SZ', r.ts/1000, 'unixepoch') AS ts,
+               r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
+               r.blocked_by, r.block_reason, r.latency_ms,
+               r.guardrail_latency_ms, r.guardrail_verdict,
+               r.blocked, r.scrub_applied, r.detectors_fired,
+               r.response_raw, r.prompt_scrubbed
+        FROM request_log r
+        LEFT JOIN cfg.tenant t ON t.id = r.tenant_id
+        WHERE r.blocked = 1
+           OR r.scrub_applied = 1
+           OR (r.detectors_fired IS NOT NULL AND r.detectors_fired != '[]')
+        ORDER BY r.ts DESC LIMIT 20
     ]]) or {}
 
-    for _, row in ipairs(recent_blocked) do
-        row.tenant = slugs[row.tenant_id] or row.tenant_id
-        if row.detectors_fired and row.detectors_fired ~= "" then
-            row.detectors_fired = json.decode(row.detectors_fired) or {}
-        else
-            row.detectors_fired = {}
-        end
-    end
+    for _, row in ipairs(recent_blocked) do decode_detectors(row) end
 
     return {
-        today          = period(today_ms),
-        yesterday      = period_range(yesterday_ms, today_ms),
-        last_7d        = period(last_7d_ms),
-        hour           = period(hour_ms),
-        last_min       = period(last_min_ms),
+        today          = extract("td"),
+        yesterday      = extract("yd"),
+        last_7d        = extract("l7"),
+        hour           = extract("hr"),
+        last_min       = extract("lm"),
         by_tenant      = by_tenant,
         recent         = recent,
         recent_blocked = recent_blocked,
@@ -1117,6 +1136,70 @@ function M.get_stats_timeseries(bucket_sec, n, end_sec)
 end
 
 -- ---------------------------------------------------------------------------
+-- Analytics depth: latency percentiles + top models
+-- ---------------------------------------------------------------------------
+
+-- Returns latency percentiles (p50/p95/p99) and top models for the last
+-- since_ms epoch milliseconds window (default: last 24 h).
+function M.get_analytics_depth(since_ms)
+    local ldb    = log_db()
+    local cdb    = cfg_db()
+    local now_ms = math.floor(ngx.now() * 1000)
+    local from   = since_ms or (now_ms - 86400 * 1000)
+
+    -- Percentiles via window function (SQLite ≥ 3.25).
+    -- CEIL is required so that small datasets (n=1) still return a value:
+    -- without it, rn=1 vs cnt*0.50=0.5 → 1<=0.5 is false → NULL.
+    local pct = query_one(ldb, [[
+        SELECT
+            MAX(CASE WHEN rn <= CAST(CEIL(cnt * 0.50) AS INTEGER) THEN latency_ms END) AS p50,
+            MAX(CASE WHEN rn <= CAST(CEIL(cnt * 0.95) AS INTEGER) THEN latency_ms END) AS p95,
+            MAX(CASE WHEN rn <= CAST(CEIL(cnt * 0.99) AS INTEGER) THEN latency_ms END) AS p99
+        FROM (
+            SELECT latency_ms,
+                   ROW_NUMBER() OVER (ORDER BY latency_ms) AS rn,
+                   COUNT(*)     OVER ()                    AS cnt
+            FROM request_log
+            WHERE ts >= ? AND latency_ms IS NOT NULL AND blocked = 0
+        )
+    ]], from) or {}
+
+    -- Top models by request volume + cost
+    local top_models = query_all(ldb, [[
+        SELECT model, provider,
+               COUNT(*) AS requests,
+               ROUND(COALESCE(SUM(cost_usd), 0), 4) AS cost_usd,
+               ROUND(COALESCE(AVG(latency_ms), 0))  AS avg_latency_ms
+        FROM request_log
+        WHERE ts >= ?
+        GROUP BY provider, model
+        ORDER BY requests DESC
+        LIMIT 10
+    ]], from) or {}
+
+    -- Usage by tenant
+    local slugs = {}
+    local slug_rows = query_all(cdb, "SELECT id, slug FROM tenant") or {}
+    for _, r in ipairs(slug_rows) do slugs[r.id] = r.slug end
+
+    local by_tenant = query_all(ldb, [[
+        SELECT tenant_id,
+               COUNT(*) AS requests,
+               COALESCE(SUM(input_tokens),0)      AS input_tokens,
+               COALESCE(SUM(output_tokens),0)     AS output_tokens,
+               ROUND(COALESCE(SUM(cost_usd),0),4) AS cost_usd
+        FROM request_log
+        WHERE ts >= ?
+        GROUP BY tenant_id ORDER BY cost_usd DESC
+    ]], from) or {}
+    for _, row in ipairs(by_tenant) do
+        row.tenant = slugs[row.tenant_id] or row.tenant_id
+    end
+
+    return { percentiles = pct, top_models = top_models, by_tenant = by_tenant }
+end
+
+-- ---------------------------------------------------------------------------
 -- Client error log
 -- ---------------------------------------------------------------------------
 
@@ -1158,9 +1241,9 @@ end
 function M.complete_playground_trace(id, status, error_msg)
     return exec_one(cfg_db(), [[
         UPDATE playground_trace
-        SET status = ?, error = ?, completed_at = CAST(strftime('%s','now') AS INTEGER)
+        SET status = ?, error = ?, completed_at = ?
         WHERE id = ?
-    ]], status, error_msg, id)
+    ]], status, error_msg, os.time(), id)
 end
 
 function M.get_playground_trace(id)
@@ -1214,13 +1297,7 @@ function M.list_guardrail_events(gateway_id, limit)
                OR (detectors_fired IS NOT NULL AND detectors_fired != '[]'))
         ORDER BY ts DESC LIMIT %d
     ]], limit), gateway_id) or {}
-    for _, row in ipairs(rows) do
-        if row.detectors_fired and row.detectors_fired ~= "" then
-            row.detectors_fired = json.decode(row.detectors_fired) or {}
-        else
-            row.detectors_fired = {}
-        end
-    end
+    for _, row in ipairs(rows) do decode_detectors(row) end
     return rows
 end
 

@@ -19,6 +19,29 @@ local trace      = require("utils.trace")
 
 local M = {}
 
+-- Sleep with jittered exponential back-off between retries.
+-- Respects Retry-After (seconds) and Retry-After-Ms (milliseconds) response headers.
+local function backoff_sleep(try, headers)
+    local delay_ms
+    if headers then
+        local ra_ms = tonumber(headers["retry-after-ms"] or headers["x-ratelimit-reset-after-ms"])
+        local ra    = tonumber(headers["retry-after"])
+        if ra_ms then
+            delay_ms = ra_ms
+        elseif ra then
+            delay_ms = ra * 1000
+        end
+    end
+    if not delay_ms then
+        -- Jittered exponential: 500ms × 2^try, capped at 30 s, ±25% jitter
+        local base = math.min(500 * (2 ^ try), 30000)
+        delay_ms   = base * (0.75 + math.random() * 0.5)
+    end
+    delay_ms = math.min(delay_ms, 30000)
+    ngx.log(ngx.INFO, "upstream: retry backoff ", math.floor(delay_ms), "ms (try=", try, ")")
+    ngx.sleep(delay_ms / 1000)
+end
+
 -- Attempt a single call to one provider+model. Returns response table or nil, err.
 local function call_provider(ctx, provider_name, model, is_streaming)
     local provider_mod, err = providers.get(provider_name)
@@ -51,7 +74,7 @@ local function call_provider(ctx, provider_name, model, is_streaming)
             url        = url,
             headers    = headers,
             body       = body,
-            timeout_ms = ctx.gateway_config.timeout_ms or 60000,
+            timeout_ms = ctx.rule_timeout_ms or ctx.gateway_config.timeout_ms or 60000,
             stream     = is_streaming,
         })
 
@@ -412,10 +435,12 @@ function M.call_one(ctx)
             local call_ms = math.floor((ngx.now() - t_call) * 1000)
             if not res then
                 last_err = err
-                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, nil)
+                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, nil,
+                                  ctx.gateway_config.webhooks)
             elseif res.status >= 500 then
                 last_err = "provider HTTP " .. res.status
-                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status)
+                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status,
+                                  ctx.gateway_config.webhooks)
             else
                 cb.record_success(ctx.gateway_id, provider_name, cb_cfg)
                 -- #4: keep ctx consistent with the provider actually used
@@ -490,7 +515,8 @@ function M.run(ctx)
             if not res then
                 last_err = err
                 ngx.log(ngx.WARN, "upstream call failed: ", err)
-                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, nil)
+                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, nil,
+                              ctx.gateway_config.webhooks)
                 goto next_try
             end
 
@@ -498,7 +524,25 @@ function M.run(ctx)
             if res.status >= 500 then
                 last_err = "provider HTTP " .. res.status
                 ngx.log(ngx.WARN, "upstream: provider returned ", res.status)
-                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status)
+                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status,
+                                  ctx.gateway_config.webhooks)
+                goto next_try
+            end
+
+            -- 429 Too Many Requests → retry with back-off instead of passing through
+            if res.status == 429 then
+                last_err = "provider HTTP 429"
+                ngx.log(ngx.WARN, "upstream: 429 rate-limited by ", provider_name)
+                cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status,
+                                  ctx.gateway_config.webhooks)
+                -- drain body to return connection to pool
+                if type(res.body) == "function" then
+                    while true do
+                        local c = res.body(8192)
+                        if not c or c == "" then break end
+                    end
+                end
+                if res.httpc then res.httpc:set_keepalive() end
                 goto next_try
             end
 
@@ -585,6 +629,10 @@ function M.run(ctx)
             end
 
             ::next_try::
+            -- backoff between retries (skip sleep after the last attempt)
+            if try < retries then
+                backoff_sleep(try, res and res.headers)
+            end
         end
 
         ::continue::

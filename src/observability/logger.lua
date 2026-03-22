@@ -81,6 +81,20 @@ function M.emit(ctx)
     if err then
         ngx.log(ngx.ERR, "logger: insert_log error: ", err)
     end
+
+    -- Fire "blocked" webhook asynchronously when the request was blocked
+    if fields.blocked and ctx.gateway_config and ctx.gateway_config.webhooks then
+        local ok, wh = pcall(require, "utils.webhook")
+        if ok then
+            wh.fire(ctx.gateway_config.webhooks, "blocked", {
+                blocked_by   = fields.blocked_by,
+                block_reason = fields.block_reason,
+                provider     = fields.provider,
+                model        = fields.model,
+                request_id   = fields.id,
+            }, { gateway_id = ctx.gateway_id, tenant_id = ctx.tenant_id })
+        end
+    end
 end
 
 return M

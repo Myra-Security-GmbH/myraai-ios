@@ -17,6 +17,8 @@ function M.run(ctx)
         end
         -- Build fallback chain: [{provider, model}, ...]
         ctx.fallback_chain = actions.fallbacks or {}
+        -- Per-rule timeout override
+        if actions.timeout_ms then ctx.rule_timeout_ms = tonumber(actions.timeout_ms) end
     else
         -- No rule matched — use whatever was in the request as-is
         ctx.fallback_chain = {}
