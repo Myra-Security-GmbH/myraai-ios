@@ -149,7 +149,7 @@ describe("pii_protector request phase — PII found", function()
         assert.not_nil(ctx.pii_token_map)
     end)
 
-    it("token format is [MYRA-REDACT:XXXXXX:N] with 6 lowercase hex chars", function()
+    it("token format is [MYRA-REDACT-TYPE:XXXXXX:N] with entity type and 6 lowercase hex chars", function()
         install_http_mock(SPAN1)
         local d   = reload()
         local ctx = req_ctx(BODY1)
@@ -158,8 +158,8 @@ describe("pii_protector request phase — PII found", function()
         for tok in pairs(ctx.pii_token_map) do
             tok_count = tok_count + 1
             assert.not_nil(
-                tok:match("^%[MYRA%-REDACT:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]:%d+%]$"),
-                "token must match [MYRA-REDACT:XXXXXX:N] format, got: " .. tok)
+                tok:match("^%[MYRA%-REDACT%-[A-Z_]+:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]:%d+%]$"),
+                "token must match [MYRA-REDACT-TYPE:XXXXXX:N] format, got: " .. tok)
         end
         assert.equal(1, tok_count)
     end)
@@ -401,7 +401,7 @@ end)
 -- ============================================================================
 describe("pii_protector token format", function()
 
-    it("token matches [PII:XXXXXX:N] with 6 lowercase hex chars", function()
+    it("token embeds entity type: [MYRA-REDACT-SSN:XXXXXX:N]", function()
         local spans = {{ entity_type = "SSN", start = 4, ["end"] = 15, score = 0.99 }}
         install_http_mock(spans)
         local d   = reload()
@@ -410,8 +410,9 @@ describe("pii_protector token format", function()
         d.run(ctx, DET, "request")
         for tok in pairs(ctx.pii_token_map) do
             assert.not_nil(
-                tok:match("^%[MYRA%-REDACT:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]:%d+%]$"),
+                tok:match("^%[MYRA%-REDACT%-[A-Z_]+:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]:%d+%]$"),
                 "got: " .. tok)
+            assert.not_nil(tok:find("MYRA-REDACT-SSN:", 1, true), "token must embed entity type SSN, got: " .. tok)
         end
     end)
 

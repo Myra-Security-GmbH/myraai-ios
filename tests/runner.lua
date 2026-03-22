@@ -51,6 +51,47 @@ function assert_mt.is_string(v, msg)
     end
 end
 
+function assert_mt.truthy(v, msg)
+    if not v then error((msg or ("expected truthy, got " .. tostring(v))), 2) end
+end
+
+function assert_mt.falsy(v, msg)
+    if v then error((msg or ("expected falsy, got " .. tostring(v))), 2) end
+end
+
+function assert_mt.match(pattern, v, msg)
+    if type(v) ~= "string" or not v:match(pattern) then
+        error((msg or ("expected " .. tostring(v) .. " to match /" .. pattern .. "/")), 2)
+    end
+end
+
+function assert_mt.near(expected, actual, tol, msg)
+    if math.abs(expected - actual) > tol then
+        error((msg or (tostring(actual) .. " not near " .. tostring(expected) .. " (tol=" .. tol .. ")")), 2)
+    end
+end
+
+function assert_mt.same(a, b, msg)
+    -- shallow table equality for test use
+    if type(a) ~= type(b) then
+        error((msg or ("expected same type: " .. type(a) .. " vs " .. type(b))), 2)
+    end
+    if type(a) == "table" then
+        for k, v in pairs(a) do
+            if b[k] ~= v then
+                error((msg or ("tables differ at key " .. tostring(k))), 2)
+            end
+        end
+        for k in pairs(b) do
+            if a[k] == nil then
+                error((msg or ("tables differ: extra key " .. tostring(k) .. " in second")), 2)
+            end
+        end
+    else
+        if a ~= b then error((msg or ("expected " .. tostring(a) .. " == " .. tostring(b))), 2) end
+    end
+end
+
 -- assert.has_no.errors(fn)
 local has_no = {
     errors = function(fn, msg)
