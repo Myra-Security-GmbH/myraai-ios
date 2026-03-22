@@ -75,25 +75,29 @@ interface ModelPickerProps {
   id?: string;
 }
 
-function ModelPicker({ models, value, onChange, runnableProviders, id }: ModelPickerProps) {
+const ModelPicker = memo(function ModelPicker({ models, value, onChange, runnableProviders, id }: ModelPickerProps) {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [onlyRunnable, setOnlyRunnable] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const lower = search.toLowerCase();
-  const filtered = models.filter((m) => {
-    if (onlyRunnable && !runnableProviders.has(m.provider)) return false;
-    if (search && !m.model.toLowerCase().includes(lower) && !m.provider.toLowerCase().includes(lower)) return false;
-    return true;
-  });
-
-  // Group by provider
-  const byProvider: Record<string, ModelPrice[]> = {};
-  for (const m of filtered) {
-    (byProvider[m.provider] ??= []).push(m);
-  }
-  const providers = Object.keys(byProvider).sort();
+  const { byProvider, providers } = useMemo(() => {
+    const lower = search.toLowerCase();
+    const filtered = models.filter((m) => {
+      if (onlyRunnable && !runnableProviders.has(m.provider)) return false;
+      if (search && !m.model.toLowerCase().includes(lower) && !m.provider.toLowerCase().includes(lower)) return false;
+      // Exclude non-chat models: embedding, rerank, and moderation models
+      // are not compatible with the chat completions endpoint.
+      const lm = m.model.toLowerCase();
+      if (lm.includes("embed") || lm.includes("rerank") || lm.includes("moderation")) return false;
+      return true;
+    });
+    const byProvider: Record<string, ModelPrice[]> = {};
+    for (const m of filtered) {
+      (byProvider[m.provider] ??= []).push(m);
+    }
+    return { byProvider, providers: Object.keys(byProvider).sort() };
+  }, [models, search, onlyRunnable, runnableProviders]);
 
   // Close on outside click
   useEffect(() => {
@@ -214,31 +218,13 @@ function ModelPicker({ models, value, onChange, runnableProviders, id }: ModelPi
                     key={m.model}
                     role="option"
                     aria-selected={m.model === value}
+                    className={s["model-option"]}
+                    data-selected={m.model === value ? "true" : undefined}
                     onClick={() => {
                       onChange(m.model);
                       setOpen(false);
                       setSearch("");
                     }}
-                    style={{
-                      padding: "6px 12px",
-                      cursor: "pointer",
-                      fontSize: 13,
-                      fontFamily: "var(--font-mono, monospace)",
-                      background:
-                        m.model === value
-                          ? "var(--table-row-hover)"
-                          : undefined,
-                    }}
-                    onMouseOver={(e) =>
-                      ((e.currentTarget as HTMLElement).style.background =
-                        "var(--table-row-hover)")
-                    }
-                    onMouseOut={(e) =>
-                      ((e.currentTarget as HTMLElement).style.background =
-                        m.model === value
-                          ? "var(--table-row-hover)"
-                          : "")
-                    }
                   >
                     {m.model}
                   </div>
@@ -250,7 +236,7 @@ function ModelPicker({ models, value, onChange, runnableProviders, id }: ModelPi
       )}
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // MarkdownRenderer — renders model output as formatted markdown
@@ -798,9 +784,9 @@ export default function Playground() {
   const tokenExpiresAt = useRef<Date | null>(null);
 
   // Prompt
-  const [systemPrompt, setSystemPrompt] = useState(persisted.current.systemPrompt ?? "");
+  const [systemPrompt, setSystemPrompt] = useState(persisted.current.systemPrompt ?? DEFAULT_SYSTEM_PROMPT);
   const [userMessage, setUserMessage] = useState("");
-  const [showSystem, setShowSystem] = useState(!!(persisted.current.systemPrompt));
+  const [showSystem, setShowSystem] = useState(true);
 
   // Params
   const [temperature, setTemperature] = useState(persisted.current.temperature ?? 0.3);
@@ -885,7 +871,7 @@ export default function Playground() {
         tenantId: selectedTenantId,
         gatewayId: selectedGatewayId,
         panelModels: panels.map((p) => p.model),
-        systemPrompt: systemPrompt || undefined,
+        systemPrompt: systemPrompt === DEFAULT_SYSTEM_PROMPT ? undefined : (systemPrompt || undefined),
         webSearch,
         temperature,
         maxTokens,
@@ -938,7 +924,9 @@ export default function Playground() {
     (model: string): "claude" | "gemini" | "perplexity" | "openai" | null => {
       if (model.startsWith("claude-")) return "claude";
       const meta = models.find((m) => m.model === model);
-      if (meta?.provider === "gemini") return "gemini";
+      // Only native Gemini models support Google Search grounding; Gemma models do not
+      const modelName = model.replace(/^gemini\//, "");
+      if (meta?.provider === "gemini" && modelName.startsWith("gemini")) return "gemini";
       if (meta?.provider === "perplexity") return "perplexity";
       return null;
     },
@@ -1425,14 +1413,16 @@ export default function Playground() {
 
   const isRunning = panels.some((p) => p.loading);
 
-  const showSearchHint =
-    !webSearch &&
-    SEARCH_HINT_RE.test(userMessage) &&
-    panels.some((p) => getWebSearchMode(p.model) !== null);
+  const showSearchHint = useMemo(
+    () => !webSearch && SEARCH_HINT_RE.test(userMessage) && panels.some((p) => getWebSearchMode(p.model) !== null),
+    [webSearch, userMessage, panels, getWebSearchMode]
+  );
 
   // True when web search is ON but at least one selected model doesn't support it
-  const webSearchUnsupported =
-    webSearch && panels.some((p) => p.model !== "" && getWebSearchMode(p.model) === null);
+  const webSearchUnsupported = useMemo(
+    () => webSearch && panels.some((p) => p.model !== "" && getWebSearchMode(p.model) === null),
+    [webSearch, panels, getWebSearchMode]
+  );
 
   const canRun =
     !!userMessage.trim() &&
@@ -1578,12 +1568,14 @@ export default function Playground() {
         {/* System prompt */}
         {showSystem && (
           <div style={{ marginTop: 16 }}>
-            <label className={s["form-label"]}>
-              System prompt{" "}
-              {!!systemPrompt && (
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+              <label htmlFor="system-prompt" className={s["form-label"]} style={{ margin: 0 }}>
+                System prompt
+              </label>
+              {systemPrompt !== DEFAULT_SYSTEM_PROMPT && (
                 <button
                   type="button"
-                  onClick={() => setSystemPrompt("")}
+                  onClick={() => setSystemPrompt(DEFAULT_SYSTEM_PROMPT)}
                   style={{ background: "none", border: "none", padding: 0,
                            fontSize: 11, color: "var(--text-secondary)",
                            cursor: "pointer", textDecoration: "underline" }}
@@ -1591,8 +1583,9 @@ export default function Playground() {
                   restore default
                 </button>
               )}
-            </label>
+            </div>
             <textarea
+              id="system-prompt"
               className={s["form-input"]}
               rows={3}
               placeholder="You are a helpful assistant…"

@@ -393,6 +393,17 @@ table.table tbody tr.blocked td {
   cursor: pointer;
 }
 
+.model-option {
+  padding: tools.pixelToRem(6) tools.pixelToRem(12);
+  cursor: pointer;
+  font-size: tools.pixelToRem(13);
+  font-family: var(--font-mono, monospace);
+
+  &:hover, &[data-selected="true"] {
+    background: var(--table-row-hover);
+  }
+}
+
 .form-hint {
   font-family: $primary-font-family;
   font-size: tools.pixelToRem(12);
