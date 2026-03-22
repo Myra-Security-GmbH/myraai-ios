@@ -191,6 +191,30 @@ export interface LogEntry {
   response_raw?: string | null;
   prompt?: string | null;
   response?: string | null;
+  trace_id?: string | null;
+}
+
+export interface TraceStep {
+  id: number;
+  trace_id: string;
+  seq: number;
+  step: string;
+  data: Record<string, unknown>;
+  ts: number;
+}
+
+export interface TraceDetail {
+  trace: {
+    id: string;
+    gateway_id: string;
+    model: string | null;
+    created_at: number;
+    completed_at: number | null;
+    status: string;
+    error: string | null;
+    source: string;
+  };
+  steps: TraceStep[];
 }
 
 export interface PeriodStats {

@@ -123,6 +123,10 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
   const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>(
     cfg.webhooks?.events ?? ["blocked", "budget_exceeded", "circuit_open"]
   );
+  const tracingCfg = (cfg as any).tracing;
+  const [tracingEnabled, setTracingEnabled] = useState<boolean>(tracingCfg?.enabled ?? false);
+  const [tracingBodies, setTracingBodies] = useState<boolean>(tracingCfg?.include_bodies ?? false);
+  const [tracingRetention, setTracingRetention] = useState(String(tracingCfg?.retention_hours ?? 48));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -162,6 +166,15 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
         };
       } else {
         newConfig.webhooks = null;
+      }
+      if (tracingEnabled) {
+        newConfig.tracing = {
+          enabled: true,
+          include_bodies: tracingBodies,
+          retention_hours: parseInt(tracingRetention) || 48,
+        };
+      } else {
+        newConfig.tracing = null;
       }
       await api.patch(`/gateways/${gw.id}`, { config: newConfig });
       onSaved({ ...gw, config: { ...cfg, ...newConfig } });
@@ -327,6 +340,38 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
                       <span>{ev}</span>
                     </label>
                   ))}
+                </div>
+              </>
+            )}
+          </div>
+          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          {/* Request Tracing */}
+          <div className={s["form-group"]}>
+            <label className={s["form-label"]}>Request Tracing</label>
+            <p className={s["form-hint"]} style={{ marginBottom: 8 }}>
+              Record a full step-by-step trace for every request — received, transformed, routed, upstream call, and delivery.
+            </p>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, marginBottom: 8 }}>
+              <input type="checkbox" checked={tracingEnabled} onChange={(e) => setTracingEnabled(e.target.checked)} />
+              Enable request tracing
+            </label>
+            {tracingEnabled && (
+              <>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, marginBottom: 8 }}>
+                  <input type="checkbox" checked={tracingBodies} onChange={(e) => setTracingBodies(e.target.checked)} />
+                  Include message bodies in trace (privacy-sensitive — off by default)
+                </label>
+                <div className={s["form-group"]} style={{ margin: 0 }}>
+                  <label className={s["form-label"]}>Retention (hours)</label>
+                  <input
+                    className={s["form-input"]}
+                    type="number"
+                    min={1}
+                    max={720}
+                    value={tracingRetention}
+                    onChange={(e) => setTracingRetention(e.target.value)}
+                    style={{ width: 100 }}
+                  />
                 </div>
               </>
             )}
@@ -941,6 +986,14 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
               {cfg.webhooks?.url
                 ? <span title={cfg.webhooks.url}>{cfg.webhooks.events?.join(", ") ?? "all events"}</span>
                 : <span style={{ color: "var(--text-secondary)" }}>—</span>}
+            </div>
+          </div>
+          <div className={s["stat-card"]}>
+            <div className={s["stat-label"]}>Tracing</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ fontSize: 11 }}>
+              {(cfg as any).tracing?.enabled
+                ? <span style={{ color: "#10b981" }}>on{(cfg as any).tracing?.include_bodies ? " + bodies" : ""}</span>
+                : <span style={{ color: "var(--text-secondary)" }}>off</span>}
             </div>
           </div>
         </div>
