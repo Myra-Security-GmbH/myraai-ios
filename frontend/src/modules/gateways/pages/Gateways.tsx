@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
-import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig, GatewayGuardrailStats, GuardrailEvent, CircuitBreakerStatus, CircuitBreakerConfig, LoadBalanceConfig } from "src/api/types";
+import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig, GatewayGuardrailStats, GuardrailEvent, CircuitBreakerStatus, CircuitBreakerConfig, LoadBalanceConfig, WebhookConfig, WebhookEvent } from "src/api/types";
 import { GuardrailBuilder } from "src/modules/guardrails/GuardrailBuilder";
 import { fmtDate, fmtDateTime } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
@@ -118,6 +118,11 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
   const [baseUrls, setBaseUrls] = useState<Array<{ provider: string; url: string }>>(
     Object.entries(cfg.provider_base_urls ?? {}).map(([provider, url]) => ({ provider, url }))
   );
+  const [webhookUrl, setWebhookUrl] = useState(cfg.webhooks?.url ?? "");
+  const [webhookSecret, setWebhookSecret] = useState(cfg.webhooks?.secret ?? "");
+  const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>(
+    cfg.webhooks?.events ?? ["blocked", "budget_exceeded", "circuit_open"]
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -148,6 +153,15 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
       const validBaseUrls = baseUrls.filter((e) => e.provider.trim() && e.url.trim());
       if (validBaseUrls.length > 0) {
         newConfig.provider_base_urls = Object.fromEntries(validBaseUrls.map((e) => [e.provider.trim(), e.url.trim()]));
+      }
+      if (webhookUrl.trim()) {
+        newConfig.webhooks = {
+          url: webhookUrl.trim(),
+          ...(webhookSecret.trim() ? { secret: webhookSecret.trim() } : {}),
+          events: webhookEvents.length > 0 ? webhookEvents : undefined,
+        };
+      } else {
+        newConfig.webhooks = null;
       }
       await api.patch(`/gateways/${gw.id}`, { config: newConfig });
       onSaved({ ...gw, config: { ...cfg, ...newConfig } });
@@ -277,6 +291,46 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
               </div>
             )}
           </div>
+          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          {/* Webhooks */}
+          <div className={s["form-group"]}>
+            <label className={s["form-label"]}>Webhook</label>
+            <p className={s["form-hint"]} style={{ marginBottom: 8 }}>
+              Receive HTTP POST notifications on gateway events. Leave URL blank to disable.
+            </p>
+            <input
+              className={s["form-input"]}
+              placeholder="https://hooks.example.com/ai-gateway"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              style={{ marginBottom: 8 }}
+            />
+            {webhookUrl.trim() && (
+              <>
+                <input
+                  className={s["form-input"]}
+                  placeholder="Signing secret (optional — adds X-AIG-Signature header)"
+                  value={webhookSecret}
+                  onChange={(e) => setWebhookSecret(e.target.value)}
+                  style={{ marginBottom: 8 }}
+                />
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {(["blocked", "budget_exceeded", "circuit_open"] as WebhookEvent[]).map((ev) => (
+                    <label key={ev} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.includes(ev)}
+                        onChange={(e) => setWebhookEvents((prev) =>
+                          e.target.checked ? [...prev, ev] : prev.filter((x) => x !== ev)
+                        )}
+                      />
+                      <span>{ev}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <div className={s["form-actions"]}>
             <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
             <button type="submit" className={`${s.btn} ${s["btn--primary"]}`} disabled={loading}>
@@ -297,6 +351,7 @@ function AddKeyModal({ gatewayId, onClose, onAdded }: { gatewayId: string; onClo
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [providerList, setProviderList] = useState<ProviderMeta[]>([]);
+  const [showKey, setShowKey] = useState(false);
 
   useEffect(() => {
     api.get<ProviderMeta[]>("/providers").then(setProviderList).catch(() => {});
@@ -347,7 +402,30 @@ function AddKeyModal({ gatewayId, onClose, onAdded }: { gatewayId: string; onClo
             <div className={s["form-group"]}>
               <label htmlFor="apikey" className={s["form-label"]}>API Key{needsKey ? " *" : ""}</label>
               {needsKey ? (
-                <input id="apikey" className={s["form-input"]} type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" required />
+                <div style={{ position: "relative" }}>
+                  <input
+                    id="apikey"
+                    className={s["form-input"]}
+                    type={showKey ? "text" : "password"}
+                    autoComplete="off"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="Paste API key…"
+                    style={{ paddingRight: "2.5rem" }}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey((v) => !v)}
+                    style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: 2 }}
+                    title={showKey ? "Hide" : "Show"}
+                  >
+                    {showKey
+                      ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    }
+                  </button>
+                </div>
               ) : (
                 <p className={s["form-hint"]} style={{ marginTop: 4 }}>
                   This provider does not require an API key.
@@ -375,14 +453,20 @@ function CreateTokenModal({ gatewayId, onClose, onCreated }: {
   const [error, setError] = useState<string | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState("");
+  const [label, setLabel] = useState("");
+  const [budgetUsd, setBudgetUsd] = useState("");
+  const [rateRequests, setRateRequests] = useState("");
+  const [rateWindow, setRateWindow] = useState("60");
   const [copied, setCopied] = useState(false);
 
   async function handleCreate() {
     setLoading(true); setError(null);
     try {
-      const res = await api.post<{ token: string }>(`/gateways/${gatewayId}/tokens`, {
-        expires_at: expiresAt || null,
-      });
+      const body: any = { expires_at: expiresAt || null };
+      if (label.trim()) body.label = label.trim();
+      if (budgetUsd !== "") body.budget_usd = parseFloat(budgetUsd);
+      if (rateRequests !== "") body.rate_limit = { requests: parseInt(rateRequests), window_sec: parseInt(rateWindow) || 60 };
+      const res = await api.post<{ token: string }>(`/gateways/${gatewayId}/tokens`, body);
       setNewToken(res.token);
       onCreated();
     } catch (err: any) { setError(err.message); }
@@ -422,9 +506,28 @@ function CreateTokenModal({ gatewayId, onClose, onCreated }: {
         ) : (
           <>
             <div className={s["form-group"]}>
+              <label htmlFor="tokenlabel" className={s["form-label"]}>Label (optional)</label>
+              <input id="tokenlabel" className={s["form-input"]} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. ci-pipeline" />
+            </div>
+            <div className={s["form-group"]}>
               <label htmlFor="expiresat" className={s["form-label"]}>Expires At (optional)</label>
               <input id="expiresat" className={s["form-input"]} type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
               <p className={s["form-hint"]}>Leave blank for a non-expiring token.</p>
+            </div>
+            <div className={s["form-group"]}>
+              <label htmlFor="tokenbudget" className={s["form-label"]}>Spend cap (USD, optional)</label>
+              <input id="tokenbudget" className={s["form-input"]} type="number" min="0" step="0.01" value={budgetUsd} onChange={(e) => setBudgetUsd(e.target.value)} placeholder="unlimited" />
+              <p className={s["form-hint"]}>Block this token once cumulative cost exceeds this amount.</p>
+            </div>
+            <div className={s["form-row"]}>
+              <div className={s["form-group"]}>
+                <label htmlFor="tokenrateReq" className={s["form-label"]}>Rate limit (req, optional)</label>
+                <input id="tokenrateReq" className={s["form-input"]} type="number" min="1" value={rateRequests} onChange={(e) => setRateRequests(e.target.value)} placeholder="unlimited" />
+              </div>
+              <div className={s["form-group"]}>
+                <label htmlFor="tokenrateWin" className={s["form-label"]}>Window (s)</label>
+                <input id="tokenrateWin" className={s["form-input"]} type="number" min="1" value={rateWindow} onChange={(e) => setRateWindow(e.target.value)} />
+              </div>
             </div>
             <div className={s["form-actions"]}>
               <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
@@ -832,6 +935,14 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
             <div className={s["stat-label"]}>Log Payloads</div>
             <div className={s["stat-value"]}>{cfg.log_payloads !== false ? "yes" : "no"}</div>
           </div>
+          <div className={s["stat-card"]}>
+            <div className={s["stat-label"]}>Webhook</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ fontSize: 11 }}>
+              {cfg.webhooks?.url
+                ? <span title={cfg.webhooks.url}>{cfg.webhooks.events?.join(", ") ?? "all events"}</span>
+                : <span style={{ color: "var(--text-secondary)" }}>—</span>}
+            </div>
+          </div>
         </div>
         <div className={s["form-group"]} style={{ marginTop: 12 }}>
           <label className={s["form-label"]}>Base URL</label>
@@ -882,13 +993,19 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
           <div className={s["table-wrapper"]}>
             <table className={s.table}>
               <thead>
-                <tr><th>ID</th><th>Hash (first 16)</th><th>Expires</th><th>Created</th><th></th></tr>
+                <tr><th>Label</th><th>Hash (first 16)</th><th>Rate Limit</th><th>Spend Cap</th><th>Expires</th><th>Created</th><th></th></tr>
               </thead>
               <tbody>
                 {tokens.map((t) => (
                   <tr key={t.id}>
-                    <td className={s.mono} style={{ fontSize: 11 }}>{t.id.slice(0, 8)}…</td>
+                    <td><span className={s.code}>{t.label ?? <span style={{ color: "var(--text-secondary)" }}>—</span>}</span></td>
                     <td className={s.mono} style={{ fontSize: 11 }}>{t.token_hash.slice(0, 16)}…</td>
+                    <td style={{ fontSize: 12 }}>
+                      {t.rate_limit ? `${t.rate_limit.requests}/${t.rate_limit.window_sec}s` : <span style={{ color: "var(--text-secondary)" }}>—</span>}
+                    </td>
+                    <td style={{ fontSize: 12 }}>
+                      {t.budget_usd != null ? `$${t.budget_usd}` : <span style={{ color: "var(--text-secondary)" }}>—</span>}
+                    </td>
                     <td>{t.expires_at ? fmtDateTime(t.expires_at) : <span style={{ color: "var(--text-secondary)" }}>never</span>}</td>
                     <td className={s.mono}>{fmtDate(t.created_at)}</td>
                     <td><button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={() => deleteToken(t.id)}>Revoke</button></td>
