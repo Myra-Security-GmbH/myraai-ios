@@ -200,7 +200,7 @@ local function tokenize_spans(text, spans, salt)
             local tok = value_to_token[original]
             if not tok then
                 counter             = counter + 1
-                tok                 = string.format("[MYRA-REDACT:%s:%d]", salt, counter)
+                tok                 = string.format("[MYRA-REDACT-%s:%s:%d]", sp.entity_type or sp.type or "PII", salt, counter)
                 value_to_token[original] = tok
                 token_map[tok]      = original
             end
@@ -264,7 +264,7 @@ end
 --
 -- Returns a string, or nil if nothing relevant found / decode fails.
 -- ---------------------------------------------------------------------------
-local TOKEN_MARKER = "%[MYRA%-REDACT:"  -- Lua pattern to detect tokens
+local TOKEN_MARKER = "%[MYRA%-REDACT"   -- Lua pattern to detect tokens
 
 local function block_array_to_text(blocks)
     if type(blocks) ~= "table" then return tostring(blocks) end
