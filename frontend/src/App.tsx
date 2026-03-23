@@ -10,6 +10,7 @@ import Logs from "src/modules/logs/pages/Logs";
 import ModelPrices from "src/modules/prices/pages/ModelPrices";
 import Playground from "src/modules/playground/pages/Playground";
 import Users from "src/modules/users/pages/Users";
+import TenantAnalytics from "src/modules/analytics/pages/TenantAnalytics";
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
               <Route path="/users" element={<Users />} />
               <Route path="/users/:userId" element={<Users />} />
               <Route path="/logs" element={<Logs />} />
+              <Route path="/analytics" element={<TenantAnalytics />} />
               <Route path="/playground" element={<Playground />} />
               <Route path="/model-prices" element={<ModelPrices />} />
             </Routes>

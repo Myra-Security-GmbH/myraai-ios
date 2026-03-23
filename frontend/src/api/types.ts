@@ -55,6 +55,17 @@ export interface KeywordDetector {
   whole_word?: boolean;
 }
 
+export interface JailbreakDetector {
+  type: "jailbreak";
+  name: string;
+  action: DetectorAction;
+  target?: DetectorTarget;
+  /** When non-empty, replaces the built-in 18 phrases entirely. */
+  keywords?: string[];
+  case_sensitive?: boolean;
+  whole_word?: boolean;
+}
+
 export interface PresidioDetector {
   type: "presidio";
   name: string;
@@ -94,6 +105,7 @@ export interface PiiProtectorDetector {
 export type DetectorConfig =
   | RegexDetector
   | KeywordDetector
+  | JailbreakDetector
   | PresidioDetector
   | PromptGuardDetector
   | PiiProtectorDetector;
@@ -276,9 +288,47 @@ export interface TenantStats {
   tenant_id: string;
   tenant: string;
   requests: number;
+  blocked: number;
+  cached: number;
   input_tokens: number;
   output_tokens: number;
   cost_usd: number;
+  saved_cost_usd: number;
+  avg_latency_ms: number;
+  errors: number;
+}
+
+export interface GatewayStats {
+  gateway_id: string;
+  gateway: string;
+  tenant: string | null;
+  requests: number;
+  blocked: number;
+  cached: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  saved_cost_usd: number;
+  avg_latency_ms: number;
+  errors: number;
+}
+
+export interface UserStats {
+  user_id: string;
+  requests: number;
+  blocked: number;
+  cached: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  saved_cost_usd: number;
+  avg_latency_ms: number;
+  errors: number;
+}
+
+export interface TenantAnalyticsDetail {
+  timeseries: TimeseriesPoint[];
+  top_models: TopModelRow[];
 }
 
 export type TimeseriesBucket = "5m" | "15m" | "30m" | "1h" | "6h" | "1d";
@@ -379,4 +429,6 @@ export interface AnalyticsDepth {
   percentiles: LatencyPercentiles;
   top_models: TopModelRow[];
   by_tenant: TenantStats[];
+  by_gateway: GatewayStats[];
+  by_user: UserStats[];
 }
