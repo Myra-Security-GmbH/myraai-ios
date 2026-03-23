@@ -265,7 +265,7 @@ describe("Gateways — edit modal", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: /Edit Gateway: prod/i })).toBeInTheDocument());
-    expect(screen.getByLabelText(/Budget/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Budget \(USD\)/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Cache TTL/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Retry Count/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Timeout/i)).toBeInTheDocument();

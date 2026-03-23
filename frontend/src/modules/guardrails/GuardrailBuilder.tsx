@@ -7,6 +7,7 @@ import {
   DetectorConfig,
   RegexDetector,
   KeywordDetector,
+  JailbreakDetector,
   PresidioDetector,
   PromptGuardDetector,
   PiiProtectorDetector,
@@ -105,6 +106,29 @@ const PII_FOCUSED_ENTITIES = PRESIDIO_ENTITY_CATALOG
   .filter((e) => e.fp_risk === "low")
   .map((e) => e.entity);
 
+// Built-in jailbreak phrases — mirrors BUILT_IN_KEYWORDS in src/guardrails/jailbreak.lua.
+// Used to pre-populate emptyJailbreak() so the UI shows what the gateway will match.
+const JAILBREAK_KEYWORDS = [
+  "ignore previous instructions",
+  "ignore all instructions",
+  "ignore your instructions",
+  "disregard previous instructions",
+  "disregard your instructions",
+  "forget your instructions",
+  "DAN mode",
+  "do anything now",
+  "jailbreak",
+  "developer mode",
+  "unrestricted mode",
+  "your true self",
+  "bypass your guidelines",
+  "bypass your restrictions",
+  "override your guidelines",
+  "override your restrictions",
+  "prompt injection",
+  "[SYSTEM]",
+];
+
 const DETECTOR_ACTIONS: DetectorAction[] = ["block", "scrub", "flag"];
 const DETECTOR_TARGETS: DetectorTarget[] = ["request", "response", "both"];
 
@@ -118,6 +142,13 @@ function emptyRegex(): RegexDetector {
 
 function emptyKeyword(): KeywordDetector {
   return { type: "keyword", name: "keyword-check", action: "flag", target: "request", keywords: [], case_sensitive: false, whole_word: true };
+}
+
+function emptyJailbreak(): JailbreakDetector {
+  // Pre-populate keywords so the editor shows what will be matched.
+  // When saved with the full list it behaves identically to zero-config
+  // (the Lua module uses the same built-in list as its fallback).
+  return { type: "jailbreak", name: "jailbreak-check", action: "flag", target: "request", keywords: [...JAILBREAK_KEYWORDS], case_sensitive: false, whole_word: false };
 }
 
 function emptyPresidio(): PresidioDetector {
@@ -371,6 +402,88 @@ function KeywordEditor({ det, onChange }: { det: KeywordDetector; onChange: (d: 
           </label>
           <p className={s["form-hint"]} style={{ marginLeft: 24 }}>
             Recommended: prevents "kill" matching "skill". Disable only for substrings like product codes.
+          </p>
+        </div>
+        <div className={s["form-group"]} style={{ margin: 0 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={det.case_sensitive ?? false}
+              onChange={(e) => onChange({ ...det, case_sensitive: e.target.checked })}
+            />
+            <span className={s["form-label"]} style={{ margin: 0 }}>Case sensitive</span>
+          </label>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function JailbreakEditor({ det, onChange }: { det: JailbreakDetector; onChange: (d: JailbreakDetector) => void }) {
+  const [kwInput, setKwInput] = useState("");
+  const keywords = det.keywords ?? [];
+  const usingBuiltIns = keywords.length === 0;
+
+  function addKeyword() {
+    const trimmed = kwInput.trim();
+    if (!trimmed) return;
+    onChange({ ...det, keywords: [...keywords, trimmed] });
+    setKwInput("");
+  }
+
+  function removeKeyword(i: number) {
+    const kws = [...keywords];
+    kws.splice(i, 1);
+    onChange({ ...det, keywords: kws });
+  }
+
+  const activeList = usingBuiltIns ? JAILBREAK_KEYWORDS : keywords;
+
+  return (
+    <>
+      <div style={{ background: "var(--section-bg, #f9fafb)", border: "1px solid var(--card-border, #e4e4e7)", borderRadius: 6, padding: "8px 12px", marginBottom: 10, fontSize: 12, lineHeight: 1.6 }}>
+        {usingBuiltIns
+          ? <><strong>Using built-in phrases</strong> ({JAILBREAK_KEYWORDS.length} phrases). Add keywords below to override with a fully custom list.</>
+          : <><strong>Custom list active</strong> ({keywords.length} phrase{keywords.length !== 1 ? "s" : ""}). Remove all keywords to revert to built-in defaults.</>
+        }
+      </div>
+      <div className={s["form-group"]}>
+        <label className={s["form-label"]}>
+          {usingBuiltIns ? "Built-in phrases (read-only — add below to override)" : "Active phrases"}
+        </label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+          {activeList.map((kw, i) => (
+            <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface-2, #f4f4f5)", borderRadius: 4, padding: "2px 8px", fontSize: 12 }}>
+              {kw}
+              {!usingBuiltIns && (
+                <button type="button" onClick={() => removeKeyword(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--text-muted, #888)" }}>×</button>
+              )}
+            </span>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            className={s["form-input"]}
+            value={kwInput}
+            onChange={(e) => setKwInput(e.target.value)}
+            placeholder="add a phrase…"
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKeyword())}
+          />
+          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addKeyword}>Add</button>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <div className={s["form-group"]} style={{ margin: 0 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={det.whole_word ?? false}
+              onChange={(e) => onChange({ ...det, whole_word: e.target.checked })}
+            />
+            <span className={s["form-label"]} style={{ margin: 0 }}>Whole-word matching</span>
+          </label>
+          <p className={s["form-hint"]} style={{ marginLeft: 24 }}>
+            Off by default: catches inflected forms like "bypassing your restrictions". Enable only when you need exact boundaries.
           </p>
         </div>
         <div className={s["form-group"]} style={{ margin: 0 }}>
@@ -794,6 +907,7 @@ function PiiProtectorEditor({ det, onChange }: { det: PiiProtectorDetector; onCh
 const TYPE_LABELS: Record<DetectorConfig["type"], string> = {
   regex: "Regex / Pattern",
   keyword: "Keyword",
+  jailbreak: "Jailbreak",
   presidio: "Presidio (NLP)",
   prompt_guard: "Prompt Guard",
   pii_protector: "PII Protector",
@@ -802,6 +916,7 @@ const TYPE_LABELS: Record<DetectorConfig["type"], string> = {
 const TYPE_BADGE_COLORS: Record<DetectorConfig["type"], string> = {
   regex: "#3b82f6",
   keyword: "#8b5cf6",
+  jailbreak: "#ef4444",
   presidio: "#10b981",
   prompt_guard: "#f59e0b",
   pii_protector: "#06b6d4",
@@ -811,6 +926,7 @@ const TYPE_BADGE_COLORS: Record<DetectorConfig["type"], string> = {
 const DETECTOR_TIER: Record<DetectorConfig["type"], number> = {
   regex: 1,
   keyword: 1,
+  jailbreak: 1,
   presidio: 2,
   prompt_guard: 2,
   pii_protector: 2,
@@ -836,6 +952,7 @@ function DetectorCard({
   function renderEditor() {
     if (det.type === "regex") return <RegexEditor det={det} onChange={onUpdate} />;
     if (det.type === "keyword") return <KeywordEditor det={det} onChange={onUpdate} />;
+    if (det.type === "jailbreak") return <JailbreakEditor det={det} onChange={onUpdate} />;
     if (det.type === "presidio") return <PresidioEditor det={det} onChange={onUpdate} />;
     if (det.type === "prompt_guard") return <PromptGuardEditor det={det} onChange={onUpdate} />;
     if (det.type === "pii_protector") return <PiiProtectorEditor det={det} onChange={onUpdate} />;
@@ -1014,6 +1131,7 @@ export function GuardrailBuilder({ value, onChange }: GuardrailBuilderProps) {
     let d: DetectorConfig;
     if (type === "regex") d = emptyRegex();
     else if (type === "keyword") d = emptyKeyword();
+    else if (type === "jailbreak") d = emptyJailbreak();
     else if (type === "presidio") d = emptyPresidio();
     else if (type === "pii_protector") d = emptyPiiProtector();
     else d = emptyPromptGuard();
@@ -1045,7 +1163,7 @@ export function GuardrailBuilder({ value, onChange }: GuardrailBuilderProps) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span className={s["form-label"]} style={{ margin: 0 }}>Guardrails ({value.length})</span>
         <div style={{ display: "flex", gap: 6 }}>
-          {(["regex", "keyword", "presidio", "prompt_guard", "pii_protector"] as const).map((type) => (
+          {(["regex", "keyword", "jailbreak", "presidio", "prompt_guard", "pii_protector"] as const).map((type) => (
             <button
               key={type}
               type="button"

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GuardrailBuilder } from "./GuardrailBuilder";
 import type { DetectorConfig } from "src/api/types";
@@ -293,7 +293,7 @@ describe("GuardrailBuilder — presidio editor", () => {
     const det: DetectorConfig = { type: "presidio", name: "p", action: "block", entities: [] };
     const { onChange } = setup([det]);
     await userEvent.click(screen.getAllByText("p")[0]); // expand
-    const entityInput = screen.getByPlaceholderText(/PERSON/);
+    const entityInput = screen.getByPlaceholderText(/IN_PAN/);
     await userEvent.type(entityInput, "email_address");
     await userEvent.click(screen.getByRole("button", { name: "Add" }));
     const [updated] = onChange.mock.calls[0];
@@ -315,12 +315,13 @@ describe("GuardrailBuilder — prompt_guard editor", () => {
   });
 
   it("adds a safety category", async () => {
+    // Categories are now checkboxes (S1–S14), not a free-text input.
     const det: DetectorConfig = { type: "prompt_guard", name: "pg", action: "block", categories: [] };
-    const { onChange } = setup([det]);
+    const { onChange, container } = setup([det]);
     await userEvent.click(screen.getAllByText("pg")[0]); // expand
-    const catInput = screen.getByPlaceholderText(/S1, S2/);
-    await userEvent.type(catInput, "S1");
-    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    // Scope to this render's container — the preceding test leaves its expanded
+    // editor in the DOM, so screen.getBy* would find duplicate category checkboxes.
+    await userEvent.click(within(container).getByRole("checkbox", { name: /^Violent Crimes/i }));
     const [updated] = onChange.mock.calls[0];
     expect(updated[0].categories).toContain("S1");
   });
@@ -449,7 +450,7 @@ describe("GuardrailBuilder — pii_protector editor", () => {
   it("adds an entity type uppercased", async () => {
     const { onChange } = setup([piiDet]);
     await userEvent.click(screen.getAllByText("pii-protect")[0]); // expand
-    const entityInput = screen.getByPlaceholderText(/PERSON/);
+    const entityInput = screen.getByPlaceholderText(/IN_PAN/);
     await userEvent.type(entityInput, "email_address");
     await userEvent.click(screen.getByRole("button", { name: "Add" }));
     const [updated] = onChange.mock.calls[0];
@@ -552,5 +553,219 @@ describe("GuardrailBuilder — execution plan", () => {
     setup([det]);
     // Should render tier 2 for pii_protector
     expect(screen.getByText("2")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Jailbreak guardrail type — add button
+// ---------------------------------------------------------------------------
+
+describe("GuardrailBuilder — jailbreak add button", () => {
+  it("renders the + Jailbreak button", () => {
+    setup();
+    expect(screen.getByText(/\+ Jailbreak/i)).toBeInTheDocument();
+  });
+
+  it("calls onChange with type='jailbreak' when clicked", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    expect(onChange).toHaveBeenCalledOnce();
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].type).toBe("jailbreak");
+  });
+
+  it("default jailbreak has action='flag'", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].action).toBe("flag");
+  });
+
+  it("default jailbreak has whole_word=false", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].whole_word).toBe(false);
+  });
+
+  it("default jailbreak has case_sensitive=false", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].case_sensitive).toBe(false);
+  });
+
+  it("default jailbreak keywords list is non-empty (18 built-in phrases)", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].keywords.length).toBe(18);
+  });
+
+  it("default jailbreak keywords list has no duplicates", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    const [guardrails] = onChange.mock.calls[0];
+    const kws: string[] = guardrails[0].keywords;
+    expect(new Set(kws).size).toBe(kws.length);
+  });
+
+  it("default jailbreak includes 'ignore previous instructions'", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].keywords).toContain("ignore previous instructions");
+  });
+
+  it("default jailbreak includes 'DAN mode'", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].keywords).toContain("DAN mode");
+  });
+
+  it("default jailbreak includes 'prompt injection'", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].keywords).toContain("prompt injection");
+  });
+
+  it("default jailbreak includes '[SYSTEM]'", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByText(/\+ Jailbreak/i));
+    const [guardrails] = onChange.mock.calls[0];
+    expect(guardrails[0].keywords).toContain("[SYSTEM]");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Jailbreak guardrail type — card rendering
+// ---------------------------------------------------------------------------
+
+describe("GuardrailBuilder — jailbreak card rendering", () => {
+  const jbDet: DetectorConfig = {
+    type: "jailbreak",
+    name: "jailbreak-check",
+    action: "flag",
+    keywords: ["ignore previous instructions", "DAN mode"],
+    whole_word: false,
+    case_sensitive: false,
+  };
+
+  it("shows 'Jailbreak' type badge", () => {
+    setup([jbDet]);
+    expect(screen.getByText("Jailbreak")).toBeInTheDocument();
+  });
+
+  it("shows name in collapsed card header", () => {
+    setup([jbDet]);
+    expect(screen.getAllByText("jailbreak-check")[0]).toBeInTheDocument();
+  });
+
+  it("shows action in collapsed card header", () => {
+    setup([jbDet]);
+    expect(screen.getAllByText(/flag/i)[0]).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Jailbreak guardrail type — editor
+// ---------------------------------------------------------------------------
+
+describe("GuardrailBuilder — jailbreak editor", () => {
+  const jbDet: DetectorConfig = {
+    type: "jailbreak",
+    name: "jailbreak-check",
+    action: "flag",
+    keywords: ["ignore previous instructions", "DAN mode"],
+    whole_word: false,
+    case_sensitive: false,
+  };
+
+  it("expands when card header is clicked", async () => {
+    setup([jbDet]);
+    // jbDet has keywords, so the expanded callout says "Custom list active"
+    expect(screen.queryByText(/custom list active/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getAllByText("jailbreak-check")[0]);
+    expect(screen.getByText(/custom list active/i)).toBeInTheDocument();
+  });
+
+  it("shows custom list active notice when keywords are populated", async () => {
+    setup([jbDet]);
+    await userEvent.click(screen.getAllByText("jailbreak-check")[0]);
+    expect(screen.getByText(/custom list active/i)).toBeInTheDocument();
+  });
+
+  it("shows built-in phrases notice when keywords is empty", async () => {
+    const emptyDet: DetectorConfig = { type: "jailbreak", name: "jb", action: "flag", keywords: [] };
+    setup([emptyDet]);
+    await userEvent.click(screen.getAllByText("jb")[0]);
+    expect(screen.getByText(/using built-in phrases/i)).toBeInTheDocument();
+  });
+
+  it("renders keyword chips for each phrase in the list", async () => {
+    setup([jbDet]);
+    const card = screen.getByTestId("detector-card");
+    const header = card.querySelector("span[style*='font-weight: 500']") as HTMLElement;
+    await userEvent.click(header);
+    expect(screen.getByText(/^ignore previous instructions/)).toBeInTheDocument();
+    expect(screen.getByText(/^DAN mode/)).toBeInTheDocument();
+  });
+
+  it("adds a custom phrase via input + Add button", async () => {
+    const det: DetectorConfig = { type: "jailbreak", name: "jb", action: "flag", keywords: ["existing"] };
+    const { onChange } = setup([det]);
+    await userEvent.click(screen.getAllByText("jb")[0]);
+    const input = screen.getByPlaceholderText("add a phrase…");
+    await userEvent.type(input, "new phrase");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1];
+    expect(lastCall[0][0].keywords).toContain("new phrase");
+  });
+
+  it("shows whole_word checkbox (unchecked by default)", async () => {
+    setup([jbDet]);
+    await userEvent.click(screen.getAllByText("jailbreak-check")[0]);
+    const cb = screen.getByRole("checkbox", { name: /whole-word/i });
+    expect(cb).not.toBeChecked();
+  });
+
+  it("shows case_sensitive checkbox (unchecked by default)", async () => {
+    setup([jbDet]);
+    await userEvent.click(screen.getAllByText("jailbreak-check")[0]);
+    const cb = screen.getByRole("checkbox", { name: /case sensitive/i });
+    expect(cb).not.toBeChecked();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Jailbreak guardrail type — execution plan
+// ---------------------------------------------------------------------------
+
+describe("GuardrailBuilder — jailbreak type in execution plan", () => {
+  it("appears as Tier 1", () => {
+    const det: DetectorConfig = { type: "jailbreak", name: "jb", action: "flag", keywords: [] };
+    setup([det]);
+    expect(screen.getByText("1")).toBeInTheDocument();
+  });
+
+  it("shows → arrow (request phase by default)", () => {
+    const det: DetectorConfig = { type: "jailbreak", name: "jb", action: "flag", keywords: [] };
+    setup([det]);
+    expect(screen.getByText("→")).toBeInTheDocument();
+  });
+
+  it("sorts before prompt_guard (Tier 2) in the execution plan", () => {
+    const dets: DetectorConfig[] = [
+      { type: "prompt_guard", name: "pg", action: "block", categories: ["S1"] },
+      { type: "jailbreak",    name: "jb", action: "flag",  keywords: [] },
+    ];
+    setup(dets);
+    const rows = screen.getAllByRole("row").filter((r) =>
+      r.textContent?.includes("jb") || r.textContent?.includes("pg")
+    );
+    expect(rows[0].textContent).toContain("jb");
+    expect(rows[1].textContent).toContain("pg");
   });
 });
