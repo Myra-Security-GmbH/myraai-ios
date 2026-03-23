@@ -58,10 +58,28 @@ local function migrate_columns(cfg)
     local db = open_db(cfg.sqlite.config_db)
     local cols = {}
     for row in db:nrows("PRAGMA table_info(auth_token)") do cols[row.name] = true end
-    if not cols.user_id    then db:exec("ALTER TABLE auth_token ADD COLUMN user_id    TEXT") end
-    if not cols.label      then db:exec("ALTER TABLE auth_token ADD COLUMN label      TEXT") end
-    if not cols.rate_limit then db:exec("ALTER TABLE auth_token ADD COLUMN rate_limit TEXT") end
-    if not cols.budget_usd then db:exec("ALTER TABLE auth_token ADD COLUMN budget_usd REAL") end
+    if not cols.user_id       then db:exec("ALTER TABLE auth_token ADD COLUMN user_id       TEXT") end
+    if not cols.label         then db:exec("ALTER TABLE auth_token ADD COLUMN label         TEXT") end
+    if not cols.rate_limit    then db:exec("ALTER TABLE auth_token ADD COLUMN rate_limit    TEXT") end
+    if not cols.budget_usd    then db:exec("ALTER TABLE auth_token ADD COLUMN budget_usd    REAL") end
+    if not cols.budget_period then db:exec("ALTER TABLE auth_token ADD COLUMN budget_period TEXT NOT NULL DEFAULT 'monthly'") end
+
+    local tcols = {}
+    for row in db:nrows("PRAGMA table_info(tenant)") do tcols[row.name] = true end
+    if not tcols.budget_period then db:exec("ALTER TABLE tenant ADD COLUMN budget_period TEXT NOT NULL DEFAULT 'monthly'") end
+
+    -- spend_ledger: period-aware persistent spend tracking (replaces shared-dict counters)
+    db:exec([[
+        CREATE TABLE IF NOT EXISTS spend_ledger (
+            entity_type  TEXT    NOT NULL,
+            entity_id    TEXT    NOT NULL,
+            period       TEXT    NOT NULL,
+            amount_micro INTEGER NOT NULL DEFAULT 0,
+            updated_at   INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            PRIMARY KEY (entity_type, entity_id, period)
+        );
+        CREATE INDEX IF NOT EXISTS idx_spend_entity ON spend_ledger(entity_type, entity_id, period DESC);
+    ]])
     db:close()
 
     local ldb = open_db(cfg.sqlite.logs_db)
@@ -217,6 +235,20 @@ local function migrate_timestamps(cfg)
             COMMIT;
         ]])
     end
+
+    -- Even when the column type is already INTEGER, SQLite's dynamic typing
+    -- allows ISO-string values to slip in (e.g. from an old logger version).
+    -- Repair any such rows so strftime(ts/1000) always returns a valid date.
+    ldb:exec([[
+        UPDATE request_log
+        SET ts = CAST(strftime('%s', ts) AS INTEGER) * 1000
+        WHERE typeof(ts) = 'text'
+    ]])
+    ldb:exec([[
+        UPDATE client_error_log
+        SET ts = CAST(strftime('%s', ts) AS INTEGER) * 1000
+        WHERE typeof(ts) = 'text'
+    ]])
     ldb:close()
 
     -- ---- config.db -------------------------------------------------------
@@ -459,7 +491,8 @@ end
 function M.get_gateway(tenant_slug, gateway_slug)
     local row, err = query_one(cfg_db(), [[
         SELECT t.id AS tenant_id, g.id AS gateway_id, g.config,
-               t.budget_usd AS tenant_budget_usd
+               t.budget_usd AS tenant_budget_usd,
+               t.budget_period AS tenant_budget_period
         FROM   gateway g
         JOIN   tenant  t ON t.id = g.tenant_id
         WHERE  t.slug = ? AND g.slug = ? AND t.deleted_at IS NULL
@@ -470,9 +503,10 @@ function M.get_gateway(tenant_slug, gateway_slug)
     if not row then return nil, "not_found" end
 
     local config = json.decode(row.config or "{}") or {}
-    config.tenant_id         = row.tenant_id
-    config.gateway_id        = row.gateway_id
-    config.tenant_budget_usd = row.tenant_budget_usd  -- nil when uncapped
+    config.tenant_id            = row.tenant_id
+    config.gateway_id           = row.gateway_id
+    config.tenant_budget_usd    = row.tenant_budget_usd     -- nil when uncapped
+    config.tenant_budget_period = row.tenant_budget_period or "monthly"
     return config
 end
 
@@ -490,7 +524,7 @@ end
 
 function M.get_auth_token(gateway_id, token_hash)
     return query_one(cfg_db(), [[
-        SELECT id, scopes, expires_at, user_id, label, rate_limit, budget_usd
+        SELECT id, scopes, expires_at, user_id, label, rate_limit, budget_usd, budget_period
         FROM   auth_token
         WHERE  gateway_id = ? AND token_hash = ?
         LIMIT 1
@@ -586,19 +620,19 @@ local function decode_detectors(row)
     end
 end
 
-function M.upsert_tenant(slug, plan, budget_usd)
+function M.upsert_tenant(slug, plan, budget_usd, budget_period)
     local id = uuid()
     exec_one(cfg_db(), [[
-        INSERT OR IGNORE INTO tenant (id, slug, plan, budget_usd) VALUES (?,?,?,?)
-    ]], id, slug, plan or "free", budget_usd)
+        INSERT OR IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period) VALUES (?,?,?,?,?)
+    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly")
     local row = query_one(cfg_db(), "SELECT id FROM tenant WHERE slug = ?", slug)
     return row and row.id
 end
 
-function M.update_tenant(id, plan, budget_usd)
+function M.update_tenant(id, plan, budget_usd, budget_period)
     return exec_one(cfg_db(), [[
-        UPDATE tenant SET plan = ?, budget_usd = ? WHERE id = ?
-    ]], plan, budget_usd, id)
+        UPDATE tenant SET plan = ?, budget_usd = ?, budget_period = COALESCE(?, budget_period) WHERE id = ?
+    ]], plan, budget_usd, budget_period, id)
 end
 
 function M.delete_tenant(id)
@@ -687,7 +721,7 @@ end
 
 function M.list_tenants()
     return query_all(cfg_db(), [[
-        SELECT id, slug, plan, budget_usd,
+        SELECT id, slug, plan, budget_usd, budget_period,
                strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
         FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
     ]]) or {}
@@ -894,6 +928,53 @@ function M.delete_model_price(provider, model)
     return exec_one(cfg_db(), "DELETE FROM model_price WHERE provider=? AND model=?", provider, model)
 end
 
+-- ---------------------------------------------------------------------------
+-- Spend ledger (period-aware budget tracking)
+-- ---------------------------------------------------------------------------
+
+-- Atomically add `micro` (USD * 1e6) to the spend for a given entity+period.
+function M.incr_spend(entity_type, entity_id, period, micro)
+    return exec_one(cfg_db(), [[
+        INSERT INTO spend_ledger (entity_type, entity_id, period, amount_micro, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(entity_type, entity_id, period) DO UPDATE SET
+            amount_micro = amount_micro + excluded.amount_micro,
+            updated_at   = excluded.updated_at
+    ]], entity_type, entity_id, period, micro, os.time())
+end
+
+-- Return the current spend for an entity+period as micro-dollars (INTEGER).
+function M.get_spend(entity_type, entity_id, period)
+    local row = query_one(cfg_db(), [[
+        SELECT amount_micro FROM spend_ledger
+        WHERE entity_type = ? AND entity_id = ? AND period = ?
+    ]], entity_type, entity_id, period)
+    return row and row.amount_micro or 0
+end
+
+-- Return all spend periods for an entity, newest first (for history display).
+function M.get_spend_history(entity_type, entity_id, limit)
+    return query_all(cfg_db(), [[
+        SELECT period, amount_micro, updated_at
+        FROM spend_ledger
+        WHERE entity_type = ? AND entity_id = ?
+        ORDER BY period DESC
+        LIMIT ?
+    ]], entity_type, entity_id, limit or 12) or {}
+end
+
+-- Delete spend records: if period given, deletes only that period; otherwise all periods.
+function M.reset_spend(entity_type, entity_id, period)
+    if period then
+        return exec_one(cfg_db(), [[
+            DELETE FROM spend_ledger WHERE entity_type = ? AND entity_id = ? AND period = ?
+        ]], entity_type, entity_id, period)
+    end
+    return exec_one(cfg_db(), [[
+        DELETE FROM spend_ledger WHERE entity_type = ? AND entity_id = ?
+    ]], entity_type, entity_id)
+end
+
 function M.list_logs(filters)
     filters = filters or {}
     local where = {"1=1"}
@@ -979,7 +1060,7 @@ end
 -- Monitor / reporting queries (uses already-open handles)
 -- ---------------------------------------------------------------------------
 
-function M.get_usage_stats()
+function M.get_usage_stats(tenant_id)
     local ldb = log_db()
 
     -- Period thresholds in milliseconds
@@ -989,6 +1070,13 @@ function M.get_usage_stats()
     local last_7d_ms   = today_ms - 7 * 86400 * 1000
     local hour_ms      = (now - 3600) * 1000
     local last_min_ms  = (now - 60) * 1000
+
+    -- Optional tenant filter: validate UUID format then build SQL clause
+    local tenant_clause = ""
+    if tenant_id and tenant_id ~= "" then
+        if not tenant_id:match("^[0-9a-fA-F%-]+$") then tenant_id = nil
+        else tenant_clause = " AND tenant_id = '" .. tenant_id .. "'" end
+    end
 
     -- Build one SELECT with conditional aggregates for all 5 periods.
     -- Values embedded as literals (all are integer results of Lua arithmetic).
@@ -1010,13 +1098,13 @@ function M.get_usage_stats()
             cond,p, cond,p, cond,p, cond,p, cond,p, cond,p)
     end
 
-    local all_sql = string.format("SELECT %s, %s, %s, %s, %s FROM request_log WHERE ts >= %d",
+    local all_sql = string.format("SELECT %s, %s, %s, %s, %s FROM request_log WHERE ts >= %d%s",
         pcols("lm", "ts >= " .. last_min_ms),
         pcols("hr", "ts >= " .. hour_ms),
         pcols("td", "ts >= " .. today_ms),
         pcols("yd", "ts >= " .. yesterday_ms .. " AND ts < " .. today_ms),
         pcols("l7", "1=1"),
-        last_7d_ms)
+        last_7d_ms, tenant_clause)
 
     local r = query_one(ldb, all_sql) or {}
 
@@ -1037,7 +1125,7 @@ function M.get_usage_stats()
     end
 
     -- by_tenant: JOIN cfg.tenant (ATTACHed in M.init) for slug resolution in SQL
-    local by_tenant = query_all(ldb, [[
+    local by_tenant_sql = string.format([[
         SELECT r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
                COUNT(*) AS requests,
                COALESCE(SUM(r.input_tokens),0)  AS input_tokens,
@@ -1045,12 +1133,13 @@ function M.get_usage_stats()
                ROUND(COALESCE(SUM(r.cost_usd),0),4) AS cost_usd
         FROM request_log r
         LEFT JOIN cfg.tenant t ON t.id = r.tenant_id
-        WHERE r.ts >= ?
+        WHERE r.ts >= %d%s
         GROUP BY r.tenant_id ORDER BY cost_usd DESC
-    ]], today_ms) or {}
+    ]], today_ms, tenant_clause)
+    local by_tenant = query_all(ldb, by_tenant_sql) or {}
 
-    local recent = query_all(ldb, [[
-        SELECT strftime('%Y-%m-%dT%H:%M:%SZ', r.ts/1000, 'unixepoch') AS ts,
+    local recent_sql = string.format([[
+        SELECT strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ', r.ts/1000, 'unixepoch') AS ts,
                r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
                r.provider, r.model,
                r.status, r.input_tokens, r.output_tokens,
@@ -1062,11 +1151,13 @@ function M.get_usage_stats()
                ROUND(r.saved_cost_usd,5) AS saved_cost_usd, r.request_size_bytes
         FROM request_log r
         LEFT JOIN cfg.tenant t ON t.id = r.tenant_id
+        %s
         ORDER BY r.ts DESC LIMIT 10
-    ]]) or {}
+    ]], tenant_id and ("WHERE r.tenant_id = '" .. tenant_id .. "'") or "")
+    local recent = query_all(ldb, recent_sql) or {}
 
-    local recent_blocked = query_all(ldb, [[
-        SELECT strftime('%Y-%m-%dT%H:%M:%SZ', r.ts/1000, 'unixepoch') AS ts,
+    local recent_blocked_sql = string.format([[
+        SELECT strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ', r.ts/1000, 'unixepoch') AS ts,
                r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
                r.blocked_by, r.block_reason, r.latency_ms,
                r.guardrail_latency_ms, r.guardrail_verdict,
@@ -1074,11 +1165,12 @@ function M.get_usage_stats()
                r.response_raw, r.prompt_scrubbed
         FROM request_log r
         LEFT JOIN cfg.tenant t ON t.id = r.tenant_id
-        WHERE r.blocked = 1
+        WHERE (r.blocked = 1
            OR r.scrub_applied = 1
-           OR (r.detectors_fired IS NOT NULL AND r.detectors_fired != '[]')
+           OR (r.detectors_fired IS NOT NULL AND r.detectors_fired != '[]'))%s
         ORDER BY r.ts DESC LIMIT 20
-    ]]) or {}
+    ]], tenant_clause)
+    local recent_blocked = query_all(ldb, recent_blocked_sql) or {}
 
     for _, row in ipairs(recent_blocked) do decode_detectors(row) end
 
