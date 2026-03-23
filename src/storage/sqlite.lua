@@ -126,6 +126,18 @@ local function migrate_columns(cfg)
     if not pgt_cols.source then
         cfg_db2:exec("ALTER TABLE playground_trace ADD COLUMN source TEXT NOT NULL DEFAULT 'playground'")
     end
+    -- Audit log table (idempotent)
+    cfg_db2:exec([[
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts         INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER) * 1000),
+            actor_ip   TEXT,
+            method     TEXT NOT NULL,
+            path       TEXT NOT NULL,
+            status     INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
+    ]])
     cfg_db2:close()
 end
 
@@ -1384,6 +1396,31 @@ function M.list_client_errors(limit)
         ORDER  BY ts DESC
         LIMIT  ?
     ]], limit or 200)
+end
+
+-- ---------------------------------------------------------------------------
+-- Audit log
+-- ---------------------------------------------------------------------------
+
+function M.insert_audit_log(actor_ip, method, path, status)
+    -- Best-effort: ignore errors so audit failures never affect the response.
+    pcall(exec_one, cfg_db(), [[
+        INSERT INTO audit_log (actor_ip, method, path, status)
+        VALUES (?, ?, ?, ?)
+    ]], actor_ip, method, path, status)
+end
+
+function M.list_audit_logs(limit, offset)
+    limit  = math.min(limit or 100, 500)
+    offset = offset or 0
+    return query_all(cfg_db(), [[
+        SELECT id,
+               strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
+               actor_ip, method, path, status
+        FROM   audit_log
+        ORDER  BY ts DESC
+        LIMIT  ? OFFSET ?
+    ]], limit, offset)
 end
 
 -- ---------------------------------------------------------------------------

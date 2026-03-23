@@ -147,3 +147,15 @@ CREATE TABLE IF NOT EXISTS playground_trace_step (
 
 CREATE INDEX IF NOT EXISTS idx_pgt_gateway    ON playground_trace(gateway_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_pgts_trace_seq ON playground_trace_step(trace_id, seq);
+
+-- Admin API audit log: records every mutating admin request (POST/PATCH/DELETE).
+-- actor_id is NULL until admin API authentication is implemented (Sprint 1a).
+CREATE TABLE IF NOT EXISTS audit_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER) * 1000),
+    actor_ip   TEXT,
+    method     TEXT NOT NULL,
+    path       TEXT NOT NULL,
+    status     INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);

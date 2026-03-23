@@ -35,6 +35,7 @@
 --   GET    /admin/v1/playground/trace/:id
 --   POST   /admin/v1/client-errors
 --   GET    /admin/v1/client-errors
+--   GET    /admin/v1/audit-log
 
 local json         = require("utils.json")
 local storage      = require("storage")
@@ -556,6 +557,12 @@ route("GET", "^/admin/v1/client%-errors$", function()
     send(200, storage.list_client_errors(tonumber(args.limit)))
 end)
 
+-- GET /admin/v1/audit-log?limit=100&offset=0
+route("GET", "^/admin/v1/audit%-log$", function()
+    local args = ngx.req.get_uri_args()
+    send(200, storage.list_audit_logs(tonumber(args.limit), tonumber(args.offset)))
+end)
+
 -- ---------------------------------------------------------------------------
 -- Budget: spend history and reset
 -- ---------------------------------------------------------------------------
@@ -611,8 +618,9 @@ end)
 -- Dispatcher
 -- ---------------------------------------------------------------------------
 function M.handle()
-    local method = ngx.req.get_method()
-    local path   = ngx.var.uri
+    local method   = ngx.req.get_method()
+    local path     = ngx.var.uri
+    local actor_ip = ngx.var.remote_addr
 
     -- CORS preflight
     if method == "OPTIONS" then
@@ -624,11 +632,20 @@ function M.handle()
         return
     end
 
+    -- Audit log is written for every mutating request (POST/PATCH/DELETE).
+    -- actor_ip is the only identity available until admin API auth is added.
+    local function audit()
+        if method ~= "GET" then
+            storage.insert_audit_log(actor_ip, method, path, ngx.status)
+        end
+    end
+
     for _, r in ipairs(ROUTES) do
         if r.method == method then
             local captures = { path:match(r.pattern) }
             if #captures > 0 then
                 r.handler(table.unpack(captures))
+                audit()
                 return
             end
         end
@@ -638,11 +655,13 @@ function M.handle()
     for _, r in ipairs(ROUTES) do
         if r.method == method and path:match(r.pattern) then
             r.handler()
+            audit()
             return
         end
     end
 
     send(404, { error = "not found" })
+    audit()
 end
 
 return M
