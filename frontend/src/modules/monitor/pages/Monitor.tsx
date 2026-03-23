@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
-import { UsageStats, LogEntry } from "src/api/types";
+import { UsageStats, LogEntry, Tenant } from "src/api/types";
 import { fmtDateTime, fmtTime } from "src/common/utils/date";
 import { GuardrailEventsTable } from "src/common/components/GuardrailEventsTable";
 import s from "src/common/components/layout/Layout.module.scss";
@@ -73,6 +73,8 @@ function Sparkline({ values, color = "#3edcfe" }: { values: number[]; color?: st
 export default function Monitor() {
   useDocumentTitle("Monitor");
   const [stats, setStats] = useState<UsageStats | null>(null);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [tenantFilter, setTenantFilter] = useState("");
   const [interval, setIntervalMs] = useState(3000);
   const [running, setRunning] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -80,8 +82,13 @@ export default function Monitor() {
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    api.get<Tenant[]>("/tenants").then(setTenants).catch(() => {});
+  }, []);
+
   const fetchStats = useCallback(() => {
-    api.get<UsageStats>("/stats")
+    const params = tenantFilter ? `?tenant_id=${tenantFilter}` : "";
+    api.get<UsageStats>(`/stats${params}`)
       .then((data) => {
         setStats(data);
         setLastUpdated(new Date());
@@ -89,10 +96,14 @@ export default function Monitor() {
         setReqHistory((h) => [...h.slice(-59), data.last_min?.requests ?? 0]);
       })
       .catch((e) => setError(e.message));
-  }, []);
+  }, [tenantFilter]);
 
   useEffect(() => {
+    setReqHistory([]);
     fetchStats();
+  }, [tenantFilter]);
+
+  useEffect(() => {
     if (!running) return;
     timerRef.current = setInterval(fetchStats, interval);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
@@ -113,6 +124,20 @@ export default function Monitor() {
           )}
         </div>
         <div className={ms["controls"]}>
+          {tenants.length > 0 && (
+            <>
+              <label className={s["form-label"]} style={{ margin: 0 }}>Tenant</label>
+              <select
+                className={s["form-select"]}
+                style={{ width: 160 }}
+                value={tenantFilter}
+                onChange={(e) => setTenantFilter(e.target.value)}
+              >
+                <option value="">All tenants</option>
+                {tenants.map((t) => <option key={t.id} value={t.id}>{t.slug}</option>)}
+              </select>
+            </>
+          )}
           <label className={s["form-label"]} style={{ margin: 0 }}>Interval</label>
           <select
             className={s["form-select"]}
