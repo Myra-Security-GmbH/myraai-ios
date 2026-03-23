@@ -1193,7 +1193,7 @@ end
 -- Returns n buckets of (requests, blocked, cost_usd) aggregated per bucket_sec
 -- seconds, ordered oldest → newest, zero-filling any empty buckets.
 -- Supported bucket_sec values: 300, 900, 1800, 3600, 21600, 86400.
-function M.get_stats_timeseries(bucket_sec, n, end_sec)
+function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
     local ldb      = log_db()
     local ref      = end_sec or math.floor(ngx.now())
     local bms      = bucket_sec * 1000   -- bucket size in milliseconds
@@ -1205,17 +1205,23 @@ function M.get_stats_timeseries(bucket_sec, n, end_sec)
     -- bms is embedded as a literal (not a bind param) to ensure SQLite uses
     -- integer division. Binding it as a Lua number causes real-number division,
     -- making every row its own unique bucket.
+    local tenant_clause = tenant_id and " AND tenant_id = ?" or ""
     local sql = string.format([[
         SELECT (ts / %d) * %d AS bucket_ts,
                COUNT(*) AS requests,
                SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
                ROUND(COALESCE(SUM(cost_usd),0),6) AS cost_usd
         FROM request_log
-        WHERE ts >= ?
+        WHERE ts >= ?%s
         GROUP BY bucket_ts
         ORDER BY bucket_ts ASC
-    ]], bms, bms)
-    local rows = query_all(ldb, sql, since_ms) or {}
+    ]], bms, bms, tenant_clause)
+    local rows
+    if tenant_id then
+        rows = query_all(ldb, sql, since_ms, tenant_id) or {}
+    else
+        rows = query_all(ldb, sql, since_ms) or {}
+    end
 
     -- Index results by bucket start ms
     local by_ts = {}
@@ -1244,7 +1250,6 @@ end
 -- since_ms epoch milliseconds window (default: last 24 h).
 function M.get_analytics_depth(since_ms)
     local ldb    = log_db()
-    local cdb    = cfg_db()
     local now_ms = math.floor(ngx.now() * 1000)
     local from   = since_ms or (now_ms - 86400 * 1000)
 
@@ -1278,26 +1283,86 @@ function M.get_analytics_depth(since_ms)
         LIMIT 10
     ]], from) or {}
 
-    -- Usage by tenant
-    local slugs = {}
-    local slug_rows = query_all(cdb, "SELECT id, slug FROM tenant") or {}
-    for _, r in ipairs(slug_rows) do slugs[r.id] = r.slug end
-
+    -- Usage by tenant (cfg.tenant ATTACHed to _log_db as "cfg")
     local by_tenant = query_all(ldb, [[
-        SELECT tenant_id,
-               COUNT(*) AS requests,
-               COALESCE(SUM(input_tokens),0)      AS input_tokens,
-               COALESCE(SUM(output_tokens),0)     AS output_tokens,
-               ROUND(COALESCE(SUM(cost_usd),0),4) AS cost_usd
-        FROM request_log
-        WHERE ts >= ?
-        GROUP BY tenant_id ORDER BY cost_usd DESC
+        SELECT r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
+               COUNT(*)                                                            AS requests,
+               SUM(CASE WHEN r.blocked=1 OR r.scrub_applied=1 THEN 1 ELSE 0 END) AS blocked,
+               SUM(CASE WHEN r.cached=1 THEN 1 ELSE 0 END)                        AS cached,
+               COALESCE(SUM(r.input_tokens),0)                                    AS input_tokens,
+               COALESCE(SUM(r.output_tokens),0)                                   AS output_tokens,
+               ROUND(COALESCE(SUM(r.cost_usd),0),4)                               AS cost_usd,
+               ROUND(COALESCE(SUM(r.saved_cost_usd),0),4)                         AS saved_cost_usd,
+               ROUND(AVG(CASE WHEN r.blocked=0 THEN r.latency_ms END),0)          AS avg_latency_ms,
+               SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
+        FROM request_log r
+        LEFT JOIN cfg.tenant t ON t.id = r.tenant_id
+        WHERE r.ts >= ?
+        GROUP BY r.tenant_id ORDER BY cost_usd DESC
     ]], from) or {}
-    for _, row in ipairs(by_tenant) do
-        row.tenant = slugs[row.tenant_id] or row.tenant_id
-    end
 
-    return { percentiles = pct, top_models = top_models, by_tenant = by_tenant }
+    -- Usage by gateway
+    local by_gateway = query_all(ldb, [[
+        SELECT r.gateway_id, COALESCE(g.slug, r.gateway_id) AS gateway,
+               COALESCE(t.slug, r.tenant_id) AS tenant,
+               COUNT(*)                                                            AS requests,
+               SUM(CASE WHEN r.blocked=1 OR r.scrub_applied=1 THEN 1 ELSE 0 END) AS blocked,
+               SUM(CASE WHEN r.cached=1 THEN 1 ELSE 0 END)                        AS cached,
+               COALESCE(SUM(r.input_tokens),0)                                    AS input_tokens,
+               COALESCE(SUM(r.output_tokens),0)                                   AS output_tokens,
+               ROUND(COALESCE(SUM(r.cost_usd),0),4)                               AS cost_usd,
+               ROUND(COALESCE(SUM(r.saved_cost_usd),0),4)                         AS saved_cost_usd,
+               ROUND(AVG(CASE WHEN r.blocked=0 THEN r.latency_ms END),0)          AS avg_latency_ms,
+               SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
+        FROM request_log r
+        LEFT JOIN cfg.gateway g ON g.id = r.gateway_id
+        LEFT JOIN cfg.tenant  t ON t.id = r.tenant_id
+        WHERE r.ts >= ?
+        GROUP BY r.gateway_id ORDER BY cost_usd DESC
+    ]], from) or {}
+
+    -- Usage by authenticated user (user_id populated by auth middleware from token)
+    local by_user = query_all(ldb, [[
+        SELECT r.user_id,
+               COUNT(*)                                                            AS requests,
+               SUM(CASE WHEN r.blocked=1 OR r.scrub_applied=1 THEN 1 ELSE 0 END) AS blocked,
+               SUM(CASE WHEN r.cached=1 THEN 1 ELSE 0 END)                        AS cached,
+               COALESCE(SUM(r.input_tokens),0)                                    AS input_tokens,
+               COALESCE(SUM(r.output_tokens),0)                                   AS output_tokens,
+               ROUND(COALESCE(SUM(r.cost_usd),0),4)                               AS cost_usd,
+               ROUND(COALESCE(SUM(r.saved_cost_usd),0),4)                         AS saved_cost_usd,
+               ROUND(AVG(CASE WHEN r.blocked=0 THEN r.latency_ms END),0)          AS avg_latency_ms,
+               SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
+        FROM request_log r
+        WHERE r.ts >= ? AND r.user_id IS NOT NULL
+        GROUP BY r.user_id ORDER BY cost_usd DESC
+        LIMIT 50
+    ]], from) or {}
+
+    return {
+        percentiles = pct,
+        top_models  = top_models,
+        by_tenant   = by_tenant,
+        by_gateway  = by_gateway,
+        by_user     = by_user,
+    }
+end
+
+-- Top models for a single tenant, used by the per-tenant analytics detail panel.
+function M.get_tenant_top_models(tenant_id, since_ms)
+    local ldb  = log_db()
+    local from = since_ms or (math.floor(ngx.now() * 1000) - 86400 * 1000)
+    return query_all(ldb, [[
+        SELECT model, provider,
+               COUNT(*) AS requests,
+               ROUND(COALESCE(SUM(cost_usd),0),4) AS cost_usd,
+               ROUND(COALESCE(AVG(latency_ms),0))  AS avg_latency_ms
+        FROM request_log
+        WHERE ts >= ? AND tenant_id = ?
+        GROUP BY provider, model
+        ORDER BY requests DESC
+        LIMIT 10
+    ]], from, tenant_id) or {}
 end
 
 -- ---------------------------------------------------------------------------

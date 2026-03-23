@@ -16,6 +16,7 @@
 --   DELETE /admin/v1/gateways/:id/budget
 --   GET    /admin/v1/tenants/:id/spend
 --   DELETE /admin/v1/tenants/:id/budget
+--   GET    /admin/v1/tenants/:id/analytics
 --   PATCH  /admin/v1/users/:id
 --   DELETE /admin/v1/users/:id
 --   GET    /admin/v1/users/:id/tokens
@@ -87,7 +88,7 @@ route("GET", "^/admin/v1/stats$", function()
     send(200, storage.get_usage_stats(args.tenant_id))
 end)
 
--- GET /admin/v1/stats/timeseries?bucket=1h&n=24
+-- GET /admin/v1/stats/timeseries?bucket=1h&n=24[&tenant_id=X]
 -- bucket: 5m | 15m | 30m | 1h (default) | 6h | 1d
 -- n: number of buckets to return (default 24, max 168)
 local BUCKET_SIZES = { ["5m"]=300, ["15m"]=900, ["30m"]=1800, ["1h"]=3600, ["6h"]=21600, ["1d"]=86400 }
@@ -95,8 +96,9 @@ route("GET", "^/admin/v1/stats/timeseries$", function()
     local args       = ngx.req.get_uri_args()
     local bucket_sec = BUCKET_SIZES[args.bucket or "1h"] or 3600
     local n          = math.min(math.max(tonumber(args.n) or 24, 1), 168)
-    local end_sec = tonumber(args["until"])  -- optional unix seconds; defaults to now
-    send(200, storage.get_stats_timeseries(bucket_sec, n, end_sec))
+    local end_sec    = tonumber(args["until"])
+    local tenant_id  = (args.tenant_id ~= nil and args.tenant_id ~= "") and args.tenant_id or nil
+    send(200, storage.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id))
 end)
 
 route("GET", "^/admin/v1/logs$", function()
@@ -566,6 +568,18 @@ route("GET", "^/admin/v1/gateways/([^/]+)/spend$", function(gateway_id)
     -- Enrich: convert amount_micro → amount_usd
     for _, r in ipairs(rows) do r.amount_usd = r.amount_micro / 1e6 end
     send(200, rows)
+end)
+
+-- GET /admin/v1/tenants/:id/analytics?since=<unix_ms>&bucket=<bucket>&n=<n>
+-- Returns per-tenant timeseries + top models for the analytics detail panel.
+route("GET", "^/admin/v1/tenants/([^/]+)/analytics$", function(tenant_id)
+    local args       = ngx.req.get_uri_args()
+    local since      = tonumber(args.since)
+    local bucket_sec = BUCKET_SIZES[args.bucket or "1d"] or 86400
+    local n          = math.min(math.max(tonumber(args.n) or 30, 1), 168)
+    local timeseries = storage.get_stats_timeseries(bucket_sec, n, nil, tenant_id)
+    local top_models = storage.get_tenant_top_models(tenant_id, since)
+    send(200, { timeseries = timeseries, top_models = top_models })
 end)
 
 -- GET /admin/v1/tenants/:id/spend  — tenant spend history (all periods)
