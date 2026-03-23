@@ -177,7 +177,7 @@ end
 
 function M.run(ctx)
     local ws = ctx.gateway_config.web_search
-    if not ws or not ws.enabled or not ws.api_key then return end
+    if type(ws) ~= "table" or not ws.enabled or not ws.api_key then return end
 
     -- Default mode is opt-in: client must send X-Web-Search: 1
     if ws.mode ~= "always" then

@@ -102,6 +102,55 @@ For LogEntry field definitions see the [Logs API](logs.md).
 
 ---
 
+## GET /stats/analytics
+
+Returns latency percentiles and a breakdown of top models by request volume, along with a per-tenant cost summary. Used by the analytics dashboard view.
+
+```bash
+curl "https://<your-gateway-host>/admin/v1/stats/analytics?since=1742544000000"
+```
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `since` | integer | 24 hours ago | Start of the analysis window as Unix milliseconds. |
+
+### Response structure
+
+```json
+{
+  "percentiles": {
+    "p50": 420,
+    "p95": 1840,
+    "p99": 3210
+  },
+  "top_models": [
+    {
+      "model": "gpt-4o",
+      "provider": "openai",
+      "requests": 842,
+      "cost_usd": 3.14,
+      "avg_latency_ms": 680
+    }
+  ],
+  "by_tenant": [
+    {
+      "tenant_id": "ten_abc123",
+      "tenant": "myapp",
+      "requests": 1423,
+      "input_tokens": 1840200,
+      "output_tokens": 312400,
+      "cost_usd": 9.84
+    }
+  ]
+}
+```
+
+Latency percentiles cover only non-blocked requests. Up to 10 models are returned in `top_models`, ordered by request count descending.
+
+---
+
 ## GET /stats/timeseries
 
 Returns an array of time-bucketed data points, suitable for rendering sparklines or charts. Buckets with no activity are included as zero-filled entries so the array length is always exactly `n`.

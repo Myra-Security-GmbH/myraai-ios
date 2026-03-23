@@ -6,11 +6,11 @@ PII Protector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that p
 
 ## How It Works
 
-1. **Request phase** — The NLP PII detection engine scans the request body for PII spans. Each unique value is replaced with a token in the format `[PII:SALT:N]`, where `SALT` is a random per-request prefix and `N` is a sequential counter. The same original value always maps to the same token within a single request.
+1. **Request phase** — The NLP PII detection engine scans the request body for PII spans. Each unique value is replaced with a token in the format `[MYRA-REDACT-{TYPE}:SALT:N]`, where `TYPE` is the detected entity type (e.g. `EMAIL_ADDRESS`, `US_SSN`), `SALT` is a random per-request prefix, and `N` is a sequential counter. The same original value always maps to the same token within a single request.
 2. **Provider call** — The upstream AI provider receives only the tokenized body. Real PII values are never transmitted.
 3. **Response phase** — All tokens present in the response are replaced with their original values before the response is sent to the client.
 
-**Example:** a prompt containing `"My SSN is 123-45-6789"` is forwarded to the provider as `"My SSN is [PII:a3f1c2:1]"`. If the model echoes the token back, the client receives the response with `123-45-6789` restored.
+**Example:** a prompt containing `"My SSN is 123-45-6789"` is forwarded to the provider as `"My SSN is [MYRA-REDACT-US_SSN:a3f1c2:1]"`. If the model echoes the token back, the client receives the response with `123-45-6789` restored.
 
 ---
 
@@ -89,12 +89,15 @@ Use a regex guardrail (Tier 1) to block structured PCI data before PII Protector
 
 ## Token Format
 
-Tokens use the format `[PII:SALT:N]`:
+Tokens use the format `[MYRA-REDACT-{TYPE}:SALT:N]`:
 
 | Component | Description |
 |---|---|
+| `TYPE` | Detected entity type in uppercase (e.g. `EMAIL_ADDRESS`, `US_SSN`, `PHONE_NUMBER`, `CREDIT_CARD`). Falls back to `PII` if the type is unavailable. |
 | `SALT` | 6-character random hex prefix, unique per request |
 | `N` | Sequential integer starting at 1, incremented for each distinct PII value found |
+
+Including the entity type in the token lets the AI model respond semantically — for example, it can say "I'll contact you at your email address" rather than echoing the opaque token verbatim.
 
 The same original value appearing multiple times in a single request always maps to the same token. On the response side, all occurrences of a given token are restored to the same original value.
 
@@ -120,7 +123,7 @@ The same original value appearing multiple times in a single request always maps
 ## Limitations
 
 !!! warning "Streaming responses"
-    PII Protector does not restore tokens in streaming responses. When a request is streamed, the response body is not buffered by the gateway, so token restoration is skipped. The client will see raw tokens such as `[PII:a3f1c2:1]` in the streamed output instead of the original values.
+    PII Protector does not restore tokens in streaming responses. When a request is streamed, the response body is not buffered by the gateway, so token restoration is skipped. The client will see raw tokens such as `[MYRA-REDACT-US_SSN:a3f1c2:1]` in the streamed output instead of the original values.
 
     Privacy is fully preserved — the AI model never received the real PII — but the user experience is degraded for streaming. Use non-streaming requests (`"stream": false`) when complete token restoration is required.
 

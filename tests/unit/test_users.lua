@@ -400,9 +400,9 @@ end)
 -- middleware/quota.lua — per-token budget enforcement
 -- =========================================================================
 describe("middleware.quota per-token budget", function()
-    local QUOTA_MODULES = { "middleware.quota", "state", "core.errors" }
+    local QUOTA_MODULES = { "middleware.quota", "state", "storage", "utils.budget", "utils.webhook", "core.errors" }
 
-    local function setup_quota(token_counter, gw_counter)
+    local function setup_quota(token_spend_micro, gw_spend_micro)
         clear(QUOTA_MODULES)
 
         package.preload["core.errors"] = function()
@@ -413,14 +413,33 @@ describe("middleware.quota per-token budget", function()
             }
         end
 
-        local counters = {}
-        if token_counter then counters["budget:token:tok-1"] = token_counter end
-        if gw_counter    then counters["budget:gw-1"]        = gw_counter    end
+        package.preload["utils.budget"] = function()
+            return { current_period = function() return "2026-03" end }
+        end
 
+        package.preload["utils.webhook"] = function()
+            return { fire = function() end }
+        end
+
+        package.preload["storage"] = function()
+            return {
+                get_spend = function(entity_type, entity_id, _period)
+                    if entity_type == "token" and entity_id == "tok-1" then
+                        return token_spend_micro or 0
+                    elseif entity_type == "gateway" and entity_id == "gw-1" then
+                        return gw_spend_micro or 0
+                    end
+                    return 0
+                end,
+            }
+        end
+
+        local cache = {}
         package.preload["state"] = function()
             return {
-                counter_get  = function(k)    return counters[k] or 0 end,
-                counter_incr = function(k, d) counters[k] = (counters[k] or 0) + d; return counters[k] end,
+                cache_get = function(k)        return cache[k] end,
+                cache_set = function(k, v, _t) cache[k] = v end,
+                cache_del = function(k)        cache[k] = nil end,
             }
         end
 
@@ -505,7 +524,7 @@ end)
 -- middleware/cost.lua — per-token counter increment
 -- =========================================================================
 describe("middleware.cost per-token counter", function()
-    local COST_MODULES = { "middleware.cost", "observability.cost_table", "state" }
+    local COST_MODULES = { "middleware.cost", "observability.cost_table", "storage", "utils.budget", "state" }
 
     local function setup_cost(cost_result)
         clear(COST_MODULES)
@@ -514,23 +533,31 @@ describe("middleware.cost per-token counter", function()
             return { calculate = function() return cost_result or 0.001 end }
         end
 
-        local counters = {}
-        package.preload["state"] = function()
+        package.preload["utils.budget"] = function()
+            return { current_period = function() return "2026-03" end }
+        end
+
+        -- spend[entity_type][entity_id] = micro_usd
+        local spend = {}
+        package.preload["storage"] = function()
             return {
-                counter_get  = function(k) return counters[k] or 0 end,
-                counter_incr = function(k, d)
-                    counters[k] = (counters[k] or 0) + d
-                    return counters[k]
+                incr_spend = function(entity_type, entity_id, _period, micro)
+                    spend[entity_type] = spend[entity_type] or {}
+                    spend[entity_type][entity_id] = (spend[entity_type][entity_id] or 0) + micro
                 end,
             }
         end
 
+        package.preload["state"] = function()
+            return { cache_del = function() end }
+        end
+
         local mod = require("middleware.cost")
-        return mod, counters
+        return mod, spend
     end
 
     it("increments gateway counter for all requests", function()
-        local cost, counters = setup_cost(0.002)
+        local cost, spend = setup_cost(0.002)
         local ctx = {
             provider = "openai", model = "gpt-4o",
             input_tokens = 100, output_tokens = 50,
@@ -539,12 +566,12 @@ describe("middleware.cost per-token counter", function()
             token_id = nil, token_budget_usd = nil,
         }
         cost.run(ctx)
-        assert.equal(2000, counters["budget:gw-1"])
+        assert.equal(2000, spend.gateway and spend.gateway["gw-1"])
         assert.equal(0.002, ctx.cost_usd)
     end)
 
     it("increments token counter when token has a budget cap", function()
-        local cost, counters = setup_cost(0.005)
+        local cost, spend = setup_cost(0.005)
         local ctx = {
             provider = "openai", model = "gpt-4o",
             input_tokens = 200, output_tokens = 100,
@@ -554,12 +581,12 @@ describe("middleware.cost per-token counter", function()
             token_budget_usd = 10.0,   -- token has a budget
         }
         cost.run(ctx)
-        assert.equal(5000, counters["budget:gw-2"],         "gateway counter should be incremented")
-        assert.equal(5000, counters["budget:token:tok-99"], "token counter should be incremented")
+        assert.equal(5000, spend.gateway and spend.gateway["gw-2"],       "gateway counter should be incremented")
+        assert.equal(5000, spend.token   and spend.token["tok-99"],       "token counter should be incremented")
     end)
 
     it("does not increment token counter when token has no budget cap", function()
-        local cost, counters = setup_cost(0.003)
+        local cost, spend = setup_cost(0.003)
         local ctx = {
             provider = "openai", model = "gpt-4o",
             input_tokens = 100, output_tokens = 50,
@@ -569,12 +596,12 @@ describe("middleware.cost per-token counter", function()
             token_budget_usd = nil,   -- no per-token budget
         }
         cost.run(ctx)
-        assert.equal(3000, counters["budget:gw-3"])
-        assert.is_nil(counters["budget:token:tok-no-budget"])
+        assert.equal(3000, spend.gateway and spend.gateway["gw-3"])
+        assert.is_nil(spend.token and spend.token["tok-no-budget"])
     end)
 
     it("does not increment token counter when token_id is nil (open gateway)", function()
-        local cost, counters = setup_cost(0.001)
+        local cost, spend = setup_cost(0.001)
         local ctx = {
             provider = "openai", model = "gpt-4o",
             input_tokens = 100, output_tokens = 50,
@@ -584,13 +611,8 @@ describe("middleware.cost per-token counter", function()
             token_budget_usd = nil,
         }
         cost.run(ctx)
-        assert.equal(1000, counters["budget:gw-4"])
-        -- no budget:token:* keys should have been created
-        local found = false
-        for k, _ in pairs(counters) do
-            if k:find("budget:token:") then found = true end
-        end
-        assert.is_false(found, "no per-token counter should be created when token_id is nil")
+        assert.equal(1000, spend.gateway and spend.gateway["gw-4"])
+        assert.is_nil(spend.token, "no per-token spend should be recorded when token_id is nil")
     end)
 
     it("zero cost does not increment any counter", function()

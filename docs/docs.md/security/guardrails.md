@@ -126,7 +126,47 @@ Click the delete icon on the guardrail row.
 
 ### API
 
-Guardrails are also configurable via the Admin API as the `guardrails` array in the gateway config. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for the PATCH endpoint.
+Guardrails are configurable via the Admin API as the `guardrails` array in the gateway config. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for the PATCH endpoint.
+
+Two read-only endpoints expose guardrail activity for a gateway.
+
+**`GET /admin/v1/gateways/{id}/guardrail-stats`** — Returns a summary of guardrail activity over the last 24 hours.
+
+```bash
+curl "https://<your-gateway-host>/admin/v1/gateways/gw_xyz789/guardrail-stats"
+```
+
+Response:
+
+| Field | Type | Description |
+|---|---|---|
+| `blocked` | integer | Requests blocked by a guardrail in the last 24h. |
+| `scrubbed` | integer | Requests where content was scrubbed (not blocked) in the last 24h. |
+| `flagged` | integer | Requests where a guardrail fired but neither blocked nor scrubbed in the last 24h. |
+| `avg_guardrail_ms` | number | Average guardrail processing time across all guardrail calls in the last 24h. |
+
+Example response:
+
+```json
+{
+  "blocked": 14,
+  "scrubbed": 8,
+  "flagged": 3,
+  "avg_guardrail_ms": 42
+}
+```
+
+**`GET /admin/v1/gateways/{id}/guardrail-events`** — Returns individual request events where a guardrail fired (blocked, scrubbed, or flagged), ordered newest-first.
+
+```bash
+curl "https://<your-gateway-host>/admin/v1/gateways/gw_xyz789/guardrail-events?limit=50"
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `limit` | integer | `50` | Maximum events to return. Range: 1–200. |
+
+Each event includes: `ts`, `blocked`, `scrub_applied`, `detectors_fired`, `blocked_by`, `block_reason`, `guardrail_verdict`, `guardrail_latency_ms`, `provider`, `model`, `latency_ms`.
 
 Example config:
 
@@ -187,3 +227,5 @@ Every guardrail that runs produces structured output. The following fields are s
 - [NLP PII Detector](guardrails/presidio.md)
 - [Prompt Guard](guardrails/prompt-guard.md)
 - [PII Protector](guardrails/pii-protector.md)
+- [Logs API](../api-reference/logs.md) — `blocked_by`, `block_reason`, `guardrail_verdict` fields
+- [Gateway Configuration Reference](../reference/config-reference.md) — `guardrails` array

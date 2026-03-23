@@ -93,7 +93,7 @@ function M.emit(ctx)
     end
 
     -- Fire "blocked" webhook asynchronously when the request was blocked
-    if fields.blocked and ctx.gateway_config and ctx.gateway_config.webhooks then
+    if fields.blocked and ctx.gateway_config and type(ctx.gateway_config.webhooks) == "table" then
         local ok, wh = pcall(require, "utils.webhook")
         if ok then
             wh.fire(ctx.gateway_config.webhooks, "blocked", {

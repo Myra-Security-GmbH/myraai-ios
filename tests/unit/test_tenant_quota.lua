@@ -20,54 +20,81 @@ _G.ngx = {
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 -- ─── module stubs ──────────────────────────────────────────────────────────
-for _, n in ipairs({ "middleware.quota", "middleware.cost", "state",
-                     "core.errors", "utils.webhook", "observability.cost_table" }) do
-    package.loaded[n]  = nil
-    package.preload[n] = nil
+local ALL_MODS = { "middleware.quota", "middleware.cost", "state", "storage",
+                   "utils.budget", "core.errors", "utils.webhook",
+                   "observability.cost_table" }
+
+local function clear_all()
+    for _, n in ipairs(ALL_MODS) do
+        package.loaded[n]  = nil
+        package.preload[n] = nil
+    end
 end
 
-local _counters = {}
-
-package.preload["state"] = function()
-    return {
-        counter_get  = function(k)    return _counters[k] or 0 end,
-        counter_incr = function(k, d)
-            _counters[k] = (_counters[k] or 0) + d
-            return _counters[k]
-        end,
-    }
-end
-
-package.preload["core.errors"] = function()
-    return { send = function(code, msg) error("QUOTA:" .. tostring(msg)) end }
-end
-
+-- _spend_read:    what storage.get_spend returns (pre-set per test)
+--   key: entity_type .. ":" .. entity_id   e.g. "tenant:t1"
+-- _spend_written: what storage.incr_spend accumulates
+--   key: entity_type .. ":" .. entity_id
+local _spend_read    = {}
+local _spend_written = {}
 local _webhook_calls = {}
-package.preload["utils.webhook"] = function()
-    return {
-        fire = function(cfg, event, data, info)
-            -- Mirror real webhook.fire: no-op when cfg is nil/not a table/has no url
-            if not cfg or type(cfg) ~= "table" then return end
-            if not cfg.url or cfg.url == "" then return end
-            _webhook_calls[#_webhook_calls+1] = { cfg = cfg, event = event, data = data, info = info }
-        end,
-    }
+local _cache         = {}
+
+local function setup_mocks()
+    package.preload["utils.budget"] = function()
+        return { current_period = function() return "2026-03" end }
+    end
+
+    package.preload["storage"] = function()
+        return {
+            get_spend = function(entity_type, entity_id, _period)
+                return _spend_read[entity_type .. ":" .. entity_id] or 0
+            end,
+            incr_spend = function(entity_type, entity_id, _period, micro)
+                local k = entity_type .. ":" .. entity_id
+                _spend_written[k] = (_spend_written[k] or 0) + micro
+            end,
+        }
+    end
+
+    package.preload["state"] = function()
+        return {
+            cache_get = function(k)        return _cache[k] end,
+            cache_set = function(k, v, _t) _cache[k] = v end,
+            cache_del = function(k)        _cache[k] = nil end,
+        }
+    end
+
+    package.preload["core.errors"] = function()
+        return { send = function(code, msg) error("QUOTA:" .. tostring(msg)) end }
+    end
+
+    package.preload["utils.webhook"] = function()
+        return {
+            fire = function(cfg, event, data, info)
+                if not cfg or type(cfg) ~= "table" then return end
+                if not cfg.url or cfg.url == "" then return end
+                _webhook_calls[#_webhook_calls+1] = { cfg = cfg, event = event, data = data, info = info }
+            end,
+        }
+    end
+
+    package.preload["observability.cost_table"] = function()
+        return { calculate = function() return 0.01 end }
+    end
 end
 
-package.preload["observability.cost_table"] = function()
-    return { calculate = function() return 0.01 end }
+local function reset()
+    _spend_read    = {}
+    _spend_written = {}
+    _webhook_calls = {}
+    _cache         = {}
+    _log_calls     = {}
+    clear_all()
+    setup_mocks()
 end
-
-local quota = require("middleware.quota")
-local cost  = require("middleware.cost")
 
 -- ─── helpers ───────────────────────────────────────────────────────────────
-local function reset()
-    _counters      = {}
-    _log_calls     = {}
-    _webhook_calls = {}
-end
-
 local function make_ctx(opts)
     opts = opts or {}
     return {
@@ -91,25 +118,28 @@ describe("cost.run: tenant counter", function()
     before_each(reset)
 
     it("increments budget:tenant:<tenant_id> when cost > 0", function()
+        local cost = require("middleware.cost")
         local ctx = make_ctx()
         cost.run(ctx)
-        assert.truthy((_counters["budget:tenant:t1"] or 0) > 0)
+        assert.truthy((_spend_written["tenant:t1"] or 0) > 0)
     end)
 
-    it("increments budget:gw1 and budget:tenant:t1 independently", function()
+    it("increments gateway and tenant spend independently", function()
+        local cost = require("middleware.cost")
         local ctx = make_ctx()
         cost.run(ctx)
-        assert.truthy((_counters["budget:gw1"] or 0) > 0)
-        assert.truthy((_counters["budget:tenant:t1"] or 0) > 0)
+        assert.truthy((_spend_written["gateway:gw1"] or 0) > 0)
+        assert.truthy((_spend_written["tenant:t1"]   or 0) > 0)
     end)
 
     it("does not increment tenant counter when tenant_id is nil", function()
+        local cost = require("middleware.cost")
         local ctx = make_ctx()
         ctx.tenant_id = nil
         cost.run(ctx)
         local found = false
-        for k in pairs(_counters) do
-            if k:find("budget:tenant:") then found = true end
+        for k in pairs(_spend_written) do
+            if k:find("tenant:") then found = true end
         end
         assert.falsy(found)
     end)
@@ -120,18 +150,21 @@ describe("quota.run: per-tenant budget", function()
     before_each(reset)
 
     it("passes when no tenant_budget_usd configured", function()
+        local quota = require("middleware.quota")
         local ctx = make_ctx({ gateway_config = {} })
         quota.run(ctx)   -- no error
     end)
 
     it("passes when tenant spend is below budget", function()
-        _counters["budget:tenant:t1"] = 50000  -- $0.05 in micro-dollars
+        _spend_read["tenant:t1"] = 50000  -- $0.05 spent
+        local quota = require("middleware.quota")
         local ctx = make_ctx({ gateway_config = { tenant_budget_usd = 1.0 } })
         quota.run(ctx)   -- no error
     end)
 
     it("blocks when tenant spend meets budget", function()
-        _counters["budget:tenant:t1"] = 1000000  -- $1.00 in micro-dollars
+        _spend_read["tenant:t1"] = 1000000  -- $1.00 spent = budget
+        local quota = require("middleware.quota")
         local ctx = make_ctx({ gateway_config = { tenant_budget_usd = 1.0 } })
         local ok, err = pcall(quota.run, ctx)
         assert.falsy(ok)
@@ -140,7 +173,8 @@ describe("quota.run: per-tenant budget", function()
     end)
 
     it("fires budget_exceeded webhook on tenant block", function()
-        _counters["budget:tenant:t1"] = 1000000
+        _spend_read["tenant:t1"] = 1000000
+        local quota = require("middleware.quota")
         local wh = { url = "http://hook.test/wh", events = {"budget_exceeded"} }
         local ctx = make_ctx({ gateway_config = { tenant_budget_usd = 1.0, webhooks = wh } })
         pcall(quota.run, ctx)
@@ -150,14 +184,16 @@ describe("quota.run: per-tenant budget", function()
     end)
 
     it("sets tenant_quota_remaining log field", function()
-        _counters["budget:tenant:t1"] = 500000  -- $0.50
+        _spend_read["tenant:t1"] = 500000  -- $0.50
+        local quota = require("middleware.quota")
         local ctx = make_ctx({ gateway_config = { tenant_budget_usd = 1.0 } })
         quota.run(ctx)
         assert.near(0.5, ctx.log_fields.tenant_quota_remaining, 0.001)
     end)
 
     it("tenant block does not fire webhook when no webhook configured", function()
-        _counters["budget:tenant:t1"] = 2000000
+        _spend_read["tenant:t1"] = 2000000
+        local quota = require("middleware.quota")
         local ctx = make_ctx({ gateway_config = { tenant_budget_usd = 1.0 } })
         pcall(quota.run, ctx)
         assert.equal(0, #_webhook_calls)
@@ -169,7 +205,8 @@ describe("quota.run: gateway budget unaffected", function()
     before_each(reset)
 
     it("blocks when gateway spend meets budget", function()
-        _counters["budget:gw1"] = 500000  -- $0.50
+        _spend_read["gateway:gw1"] = 500000  -- $0.50
+        local quota = require("middleware.quota")
         local ctx = make_ctx({ gateway_config = { budget_usd = 0.5 } })
         local ok, err = pcall(quota.run, ctx)
         assert.falsy(ok)
@@ -177,7 +214,8 @@ describe("quota.run: gateway budget unaffected", function()
     end)
 
     it("fires budget_exceeded webhook on gateway block", function()
-        _counters["budget:gw1"] = 500000
+        _spend_read["gateway:gw1"] = 500000
+        local quota = require("middleware.quota")
         local wh = { url = "http://hook.test/wh" }
         local ctx = make_ctx({ gateway_config = { budget_usd = 0.5, webhooks = wh } })
         pcall(quota.run, ctx)

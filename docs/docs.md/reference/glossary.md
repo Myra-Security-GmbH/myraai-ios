@@ -90,7 +90,7 @@ The exhaustion state when a budget cap is reached. Requests are blocked with `42
 
 ## Rate limit
 
-A sliding-window request frequency cap, applied at the gateway level (`config.rate_limit`) or per token (`auth_token.rate_limit`). Implemented using a dual-bucket approximation in in-process shared memory. Exceeded limits return `429 RATE_LIMITED`. See [Rate Limiting](../configuration/rate-limiting.md).
+A sliding-window request frequency cap, applied at the gateway level (`config.rate_limit`) or per token (`auth_token.rate_limit`). Implemented using a dual-bucket approximation in in-process shared memory (nginx shared-dict). Exceeded limits return `429 RATE_LIMITED`. See [Rate Limiting](../configuration/rate-limiting.md).
 
 ## Retry
 
@@ -127,6 +127,10 @@ The mode of operation when a request includes `"stream": true`. The provider sen
 ## Tenant
 
 The top-level organizational unit. A tenant corresponds to one application or team. Each tenant has a unique slug that appears in all inference endpoint URLs. Tenants contain gateways, users, and tokens. See [Tenants & Gateways API](../api-reference/tenants-gateways.md).
+
+## Trace
+
+A structured step-by-step record of a single request's execution through the gateway pipeline. Each trace captures per-phase timing and data (auth, guardrail, upstream call, log) and is stored in the `playground_trace` table. Gateway traces are linked to log entries via the `trace_id` field. See [Traces API](../api-reference/traces.md).
 
 ## Tier 1 guardrail
 

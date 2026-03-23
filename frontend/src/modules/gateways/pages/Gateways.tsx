@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
-import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig, GatewayGuardrailStats, GuardrailEvent, CircuitBreakerStatus, CircuitBreakerConfig, LoadBalanceConfig, WebhookConfig, WebhookEvent } from "src/api/types";
+import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig, GatewayGuardrailStats, GuardrailEvent, CircuitBreakerStatus, CircuitBreakerConfig, LoadBalanceConfig, WebhookConfig, WebhookEvent, BudgetPeriod } from "src/api/types";
 import { GuardrailBuilder } from "src/modules/guardrails/GuardrailBuilder";
 import { fmtDate, fmtDateTime } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
@@ -104,6 +104,7 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
 function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () => void; onSaved: (updated: Gateway) => void }) {
   const cfg = gw.config;
   const [budgetUsd, setBudgetUsd] = useState(cfg.budget_usd != null ? String(cfg.budget_usd) : "");
+  const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>(cfg.budget_period ?? "monthly");
   const [cacheTtl, setCacheTtl] = useState(String(cfg.cache_ttl ?? 0));
   const [retryCount, setRetryCount] = useState(String(cfg.retry_count ?? 2));
   const [timeoutMs, setTimeoutMs] = useState(String(cfg.timeout_ms ?? 120000));
@@ -142,8 +143,8 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
         timeout_ms: parseInt(timeoutMs) || 120000,
         rate_limit: { requests: parseInt(rateRequests) || 500, window_sec: parseInt(rateWindow) || 60 },
       };
-      if (budgetUsd !== "") newConfig.budget_usd = parseFloat(budgetUsd);
-      else newConfig.budget_usd = null;
+      if (budgetUsd !== "") { newConfig.budget_usd = parseFloat(budgetUsd); newConfig.budget_period = budgetPeriod; }
+      else { newConfig.budget_usd = null; newConfig.budget_period = undefined; }
       if (cbEnabled) {
         newConfig.circuit_breaker = {
           enabled: true,
@@ -199,6 +200,16 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
               <label htmlFor="budgetusd" className={s["form-label"]}>Budget (USD)</label>
               <input id="budgetusd" className={s["form-input"]} type="number" min="0" step="0.01" value={budgetUsd} onChange={(e) => setBudgetUsd(e.target.value)} placeholder="unlimited" />
             </div>
+            <div className={s["form-group"]}>
+              <label htmlFor="budgetperiod" className={s["form-label"]}>Budget Period</label>
+              <select id="budgetperiod" className={s["form-input"]} value={budgetPeriod} onChange={(e) => setBudgetPeriod(e.target.value as BudgetPeriod)} disabled={budgetUsd === ""}>
+                <option value="monthly">Monthly</option>
+                <option value="daily">Daily</option>
+                <option value="total">Lifetime</option>
+              </select>
+            </div>
+          </div>
+          <div className={s["form-row"]}>
             <div className={s["form-group"]}>
               <label htmlFor="cachettl" className={s["form-label"]}>Cache TTL (s)</label>
               <input id="cachettl" className={s["form-input"]} type="number" min="0" value={cacheTtl} onChange={(e) => setCacheTtl(e.target.value)} />

@@ -11,7 +11,7 @@ local ACCESS_PIPELINE = {
     "middleware.tenant",
     "middleware.auth",
     "middleware.rate_limit",
-    -- "middleware.quota",  -- disabled
+    "middleware.quota",
     "middleware.ip_allowlist",
 }
 

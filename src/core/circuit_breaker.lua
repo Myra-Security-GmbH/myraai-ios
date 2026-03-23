@@ -62,7 +62,7 @@ end
 -- Returns "allow" or "deny".
 -- Call this before attempting an upstream call for `provider`.
 function M.check(gw_id, provider, cfg)
-    if not cfg or not cfg.enabled then return "allow" end
+    if type(cfg) ~= "table" or not cfg.enabled then return "allow" end
 
     local cooldown_sec = ((cfg.cooldown_ms or DEFAULT_COOLDOWN_MS) / 1000)
     local state_val    = cfg_dict():get(k_state(gw_id, provider))
@@ -94,7 +94,7 @@ end
 -- `status_code` is the HTTP status number, or nil for connection/timeout errors.
 -- `webhook_cfg`  is optional gateway_config.webhooks; fires "circuit_open" event.
 function M.record_failure(gw_id, provider, cfg, status_code, webhook_cfg)
-    if not cfg or not cfg.enabled then return end
+    if type(cfg) ~= "table" or not cfg.enabled then return end
 
     -- Check if this status code should count as a failure
     if status_code ~= nil then
@@ -132,7 +132,7 @@ function M.record_failure(gw_id, provider, cfg, status_code, webhook_cfg)
         ngx.log(ngx.WARN, "circuit_breaker: opened gw=", gw_id,
                 " provider=", provider, " failures=", count,
                 "/", threshold, " in ", window_sec, "s")
-        if webhook_cfg then
+        if type(webhook_cfg) == "table" then
             local ok, wh = pcall(require, "utils.webhook")
             if ok then
                 wh.fire(webhook_cfg, "circuit_open", {
@@ -148,7 +148,7 @@ end
 
 -- Call after a successful upstream response.
 function M.record_success(gw_id, provider, cfg)
-    if not cfg or not cfg.enabled then return end
+    if type(cfg) ~= "table" or not cfg.enabled then return end
 
     local state_val = cfg_dict():get(k_state(gw_id, provider))
     if state_val == "half_open" or state_val == "open" then

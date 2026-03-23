@@ -12,6 +12,9 @@ The config is **merged at the top level** on each PATCH — only the fields you 
 {
   "auth_required": true,
   "budget_usd": null,
+  "budget_period": "monthly",
+  "tenant_budget_usd": null,
+  "tenant_budget_period": "monthly",
   "cache_ttl": 0,
   "retry_count": 2,
   "timeout_ms": 60000,
@@ -36,7 +39,10 @@ The config is **merged at the top level** on each PATCH — only the fields you 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `auth_required` | boolean | `true` | Require a valid `x-aig-token`, `Authorization: Bearer`, or `x-api-key` header on all inference requests. Set to `false` only for development. |
-| `budget_usd` | number \| null | `null` | Gateway-level cumulative spend cap in USD. Blocks all requests once exhausted. Reset via `DELETE /gateways/{id}/budget`. `null` = no cap. |
+| `budget_usd` | number \| null | `null` | Gateway-level spend cap in USD for the current budget period. Blocks all requests once exhausted. `null` = no cap. |
+| `budget_period` | string | `"monthly"` | Period over which gateway spend is accumulated. One of: `"daily"`, `"weekly"`, `"monthly"`. Spend resets automatically at the start of each new period. |
+| `tenant_budget_usd` | number \| null | `null` | Tenant-level spend cap in USD. Applies across all gateways belonging to the tenant. `null` = no cap. |
+| `tenant_budget_period` | string | `"monthly"` | Period for the tenant-level budget. One of: `"daily"`, `"weekly"`, `"monthly"`. |
 | `cache_ttl` | integer | `0` | Response cache TTL in seconds. `0` disables the cache. Cached responses are keyed on `SHA-256(provider:model:canonical_body)`. |
 | `retry_count` | integer | `2` | Maximum number of retry attempts against the primary provider on 5xx errors before the fallback chain is walked. |
 | `timeout_ms` | integer | `60000` | Per-upstream-request timeout in milliseconds. Applies to each attempt individually, not the total request time. |

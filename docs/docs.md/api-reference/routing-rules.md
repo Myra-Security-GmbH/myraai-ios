@@ -230,7 +230,7 @@ Rules are evaluated in ascending priority order. The **first matching rule wins*
 If no rule matches the request, the provider and model from the original request URL or body are used as-is.
 
 !!! note
-    Rules are cached for 30 seconds in in-process shared memory. Changes take effect within one cache TTL cycle. In a multi-worker deployment, each worker refreshes independently.
+    Rules are cached for 30 seconds in in-process shared memory (nginx shared-dict). Changes take effect within one cache TTL cycle. In a multi-worker deployment, each worker refreshes independently.
 
 ---
 

@@ -12,7 +12,9 @@
 --   POST   /admin/v1/gateways/:id/tokens
 --   DELETE /admin/v1/gateways/:id/tokens/:tid
 --   POST   /admin/v1/gateways/:id/keys
+--   GET    /admin/v1/gateways/:id/spend
 --   DELETE /admin/v1/gateways/:id/budget
+--   GET    /admin/v1/tenants/:id/spend
 --   DELETE /admin/v1/tenants/:id/budget
 --   PATCH  /admin/v1/users/:id
 --   DELETE /admin/v1/users/:id
@@ -81,7 +83,8 @@ end
 -- Stats & logs
 -- ---------------------------------------------------------------------------
 route("GET", "^/admin/v1/stats$", function()
-    send(200, storage.get_usage_stats())
+    local args = ngx.req.get_uri_args()
+    send(200, storage.get_usage_stats(args.tenant_id))
 end)
 
 -- GET /admin/v1/stats/timeseries?bucket=1h&n=24
@@ -136,14 +139,14 @@ end)
 route("POST", "^/admin/v1/tenants$", function()
     local b = read_body()
     if not b or not b.slug then return send(400, { error = "slug required" }) end
-    local id = storage.upsert_tenant(b.slug, b.plan, b.budget_usd)
+    local id = storage.upsert_tenant(b.slug, b.plan, b.budget_usd, b.budget_period)
     send(201, { id = id, slug = b.slug })
 end)
 
 route("PATCH", "^/admin/v1/tenants/([^/]+)$", function(tenant_id)
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
-    local err = storage.update_tenant(tenant_id, b.plan, b.budget_usd)
+    local err = storage.update_tenant(tenant_id, b.plan, b.budget_usd, b.budget_period)
     if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
@@ -518,12 +521,10 @@ route("DELETE", "^/admin/v1/users/([^/]+)/gateways/([^/]+)$", function(user_id, 
 end)
 
 route("DELETE", "^/admin/v1/users/([^/]+)/budget$", function(user_id)
-    local state = require("state")
-    -- Reset all token budget counters for this user
+    -- Reset spend_ledger for all tokens belonging to this user
     local tokens = storage.list_user_tokens(user_id)
     for _, t in ipairs(tokens) do
-        local cur = state.counter_get("budget:token:" .. t.id) or 0
-        if cur > 0 then state.counter_incr("budget:token:" .. t.id, -cur) end
+        storage.reset_spend("token", t.id)
     end
     send(200, { ok = true })
 end)
@@ -554,19 +555,41 @@ route("GET", "^/admin/v1/client%-errors$", function()
 end)
 
 -- ---------------------------------------------------------------------------
--- Budget reset
+-- Budget: spend history and reset
 -- ---------------------------------------------------------------------------
+
+-- GET /admin/v1/gateways/:id/spend  — spend history (all periods)
+route("GET", "^/admin/v1/gateways/([^/]+)/spend$", function(gateway_id)
+    local args  = ngx.req.get_uri_args()
+    local limit = tonumber(args.limit) or 12
+    local rows  = storage.get_spend_history("gateway", gateway_id, limit)
+    -- Enrich: convert amount_micro → amount_usd
+    for _, r in ipairs(rows) do r.amount_usd = r.amount_micro / 1e6 end
+    send(200, rows)
+end)
+
+-- GET /admin/v1/tenants/:id/spend  — tenant spend history (all periods)
+route("GET", "^/admin/v1/tenants/([^/]+)/spend$", function(tenant_id)
+    local args  = ngx.req.get_uri_args()
+    local limit = tonumber(args.limit) or 12
+    local rows  = storage.get_spend_history("tenant", tenant_id, limit)
+    for _, r in ipairs(rows) do r.amount_usd = r.amount_micro / 1e6 end
+    send(200, rows)
+end)
+
+-- DELETE /admin/v1/gateways/:id/budget  — reset all (or ?period=) spend for a gateway
 route("DELETE", "^/admin/v1/gateways/([^/]+)/budget$", function(gateway_id)
-    local state = require("state")
-    local cur = state.counter_get("budget:" .. gateway_id) or 0
-    if cur > 0 then state.counter_incr("budget:" .. gateway_id, -cur) end
+    local args   = ngx.req.get_uri_args()
+    local period = args.period ~= "" and args.period or nil
+    storage.reset_spend("gateway", gateway_id, period)
     send(200, { ok = true })
 end)
 
+-- DELETE /admin/v1/tenants/:id/budget  — reset all (or ?period=) spend for a tenant
 route("DELETE", "^/admin/v1/tenants/([^/]+)/budget$", function(tenant_id)
-    local state = require("state")
-    local cur = state.counter_get("budget:tenant:" .. tenant_id) or 0
-    if cur > 0 then state.counter_incr("budget:tenant:" .. tenant_id, -cur) end
+    local args   = ngx.req.get_uri_args()
+    local period = args.period ~= "" and args.period or nil
+    storage.reset_spend("tenant", tenant_id, period)
     send(200, { ok = true })
 end)
 

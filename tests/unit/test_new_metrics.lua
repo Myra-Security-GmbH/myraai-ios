@@ -262,24 +262,35 @@ end)
 -- quota: quota_remaining
 -- =========================================================================
 describe("middleware.quota: quota_remaining", function()
-    clear({"middleware.quota","state","core.errors"})
+    local QUOTA_MODS = {"middleware.quota","state","storage","utils.budget","utils.webhook","core.errors"}
 
-    package.preload["core.errors"] = function()
-        return { send = function(c) error(c) end, codes = {} }
+    local function make_quota_mocks(spend_micro)
+        clear(QUOTA_MODS)
+        package.preload["core.errors"] = function()
+            return { send = function(c) error(c) end, codes = {} }
+        end
+        package.preload["utils.budget"] = function()
+            return { current_period = function() return "2026-03" end }
+        end
+        package.preload["utils.webhook"] = function()
+            return { fire = function() end }
+        end
+        package.preload["storage"] = function()
+            return { get_spend = function() return spend_micro or 0 end }
+        end
+        local cache = {}
+        package.preload["state"] = function()
+            return {
+                cache_get = function(k)        return cache[k] end,
+                cache_set = function(k, v, _t) cache[k] = v end,
+                cache_del = function(k)        cache[k] = nil end,
+            }
+        end
     end
-
-    package.preload["state"] = function()
-        return {
-            counter_get = function(k)
-                if k == "budget:gw1" then return 250000 end  -- $0.25 spent
-                return 0
-            end,
-        }
-    end
-
-    local quota = require("middleware.quota")
 
     it("sets quota_remaining = budget - spent", function()
+        make_quota_mocks(250000)  -- $0.25 spent
+        local quota = require("middleware.quota")
         local ctx = {
             gateway_config = { budget_usd = 1.0 },
             gateway_id     = "gw1",
@@ -292,12 +303,9 @@ describe("middleware.quota: quota_remaining", function()
     end)
 
     it("quota_remaining=0 when budget fully exhausted", function()
-        clear({"middleware.quota","state","core.errors"})
+        make_quota_mocks(1000000)  -- $1.00 spent
         package.preload["core.errors"] = function()
             return { send = function() end, codes = {} }
-        end
-        package.preload["state"] = function()
-            return { counter_get = function() return 1000000 end }  -- $1.00 spent
         end
         local q = require("middleware.quota")
         local ctx = {
@@ -310,12 +318,9 @@ describe("middleware.quota: quota_remaining", function()
     end)
 
     it("does not set quota_remaining when no budget configured", function()
-        clear({"middleware.quota","state","core.errors"})
+        make_quota_mocks(0)
         package.preload["core.errors"] = function()
             return { send = function() end, codes = {} }
-        end
-        package.preload["state"] = function()
-            return { counter_get = function() return 0 end }
         end
         local q = require("middleware.quota")
         local ctx = {

@@ -28,7 +28,7 @@ end
 function M.run(ctx)
     -- ── Gateway-level rate limit ────────────────────────────────────────────
     local gw_rl = ctx.gateway_config.rate_limit
-    if gw_rl then
+    if type(gw_rl) == "table" then
         local limit      = gw_rl.requests  or 100
         local window_sec = gw_rl.window_sec or 60
         local allowed, count = check_limit("rl:" .. ctx.gateway_id, window_sec, limit,

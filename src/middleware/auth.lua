@@ -56,10 +56,11 @@ function M.run(ctx)
         end
     end
 
-    ctx.token_id         = row.id
-    ctx.token_label      = row.label
-    ctx.token_budget_usd = row.budget_usd
-    ctx.token_rate_limit = row.rate_limit  -- raw JSON string, parsed by rate_limit middleware
+    ctx.token_id            = row.id
+    ctx.token_label         = row.label
+    ctx.token_budget_usd    = row.budget_usd
+    ctx.token_budget_period = row.budget_period or "monthly"
+    ctx.token_rate_limit    = row.rate_limit  -- raw JSON string, parsed by rate_limit middleware
 
     -- Start a playground trace for playground tokens
     if row.label == "playground" then

@@ -1,8 +1,18 @@
+export type BudgetPeriod = "monthly" | "daily" | "total";
+
+export interface SpendRecord {
+  period: string;
+  amount_micro: number;
+  amount_usd: number;
+  updated_at: number;
+}
+
 export interface Tenant {
   id: string;
   slug: string;
   plan: string;
   budget_usd: number | null;
+  budget_period: BudgetPeriod;
   created_at: string;
 }
 
@@ -117,6 +127,7 @@ export interface WebhookConfig {
 export interface GatewayConfig {
   auth_required?: boolean;
   budget_usd?: number;
+  budget_period?: BudgetPeriod;
   cache_ttl?: number;
   retry_count?: number;
   timeout_ms?: number;

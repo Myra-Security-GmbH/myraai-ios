@@ -1,15 +1,29 @@
 # Budget & Quota Enforcement
 
-The gateway tracks cumulative spend per gateway and per token and blocks requests once a configured budget is exhausted. Budgets are useful for hard cost caps on individual clients or on entire gateways.
+The gateway tracks cumulative spend per token, per tenant, and per gateway, and blocks requests once a configured budget is exhausted. Budgets are useful for hard cost caps on individual clients, tenants, or entire gateways.
 
 ## Budget hierarchy
 
-Two budget levels exist and are evaluated independently:
+Three budget levels exist and are evaluated in order: per-token → per-tenant → per-gateway.
 
-1. **Per-token budget** — tracks spend for one specific token. If the token budget is exhausted the request is blocked regardless of the gateway budget.
-2. **Per-gateway budget** — tracks aggregate spend across all tokens on that gateway. Acts as a hard cap for the gateway as a whole.
+1. **Per-token budget** — tracks spend for one specific auth token. If the token budget is exhausted the request is blocked regardless of the other budget levels.
+2. **Per-tenant budget** — tracks aggregate spend for all requests across a tenant (all gateways belonging to that tenant). Set via the `tenant_budget_usd` field in the gateway config. Blocks requests for the entire tenant when exhausted.
+3. **Per-gateway budget** — tracks aggregate spend across all tokens on one gateway. Acts as a hard cap for that gateway as a whole.
 
-Either level can be set independently. A gateway with no `budget_usd` set (`null`) has no gateway-level cap. A token with no `budget_usd` has no token-level cap.
+All three levels are independent. A request must pass all applicable checks before reaching the provider. Setting any level to `null` disables that level's budget enforcement.
+
+## Budget periods
+
+Each budget level has a configurable **period** — the window over which spend is accumulated. At the start of each new period, spend resets automatically with no manual action required.
+
+| Config field | Scope | Default | Options |
+|---|---|---|---|
+| `budget_period` | Gateway | `monthly` | `daily`, `weekly`, `monthly` |
+| `tenant_budget_period` | Tenant | `monthly` | `daily`, `weekly`, `monthly` |
+| `token_budget_period` | Token (auth_token) | `monthly` | `daily`, `weekly`, `monthly` |
+
+!!! note
+    Automatic period reset is distinct from a manual budget reset (which clears accumulated spend immediately). Manual resets are still available for one-off corrections.
 
 ## Cost calculation
 
@@ -33,7 +47,7 @@ When a budget is exhausted, the gateway returns `HTTP 429`:
 }
 ```
 
-This applies whether the token budget or the gateway budget triggered the block.
+This applies whether the per-token, per-tenant, or per-gateway budget triggered the block.
 
 ## Using the admin UI
 

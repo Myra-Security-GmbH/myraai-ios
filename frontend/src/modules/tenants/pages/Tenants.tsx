@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
-import { Tenant, Gateway } from "src/api/types";
+import { Tenant, Gateway, BudgetPeriod } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
 
@@ -17,6 +17,7 @@ function TenantModal({ tenant, onClose, onSaved }: {
   const [slug, setSlug] = useState(tenant?.slug ?? "");
   const [plan, setPlan] = useState(tenant?.plan ?? "standard");
   const [budget, setBudget] = useState(tenant?.budget_usd != null ? String(tenant.budget_usd) : "");
+  const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>(tenant?.budget_period ?? "monthly");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,9 +27,9 @@ function TenantModal({ tenant, onClose, onSaved }: {
     try {
       const budgetVal = budget !== "" ? parseFloat(budget) : null;
       if (isEdit) {
-        await api.patch(`/tenants/${tenant!.id}`, { plan, budget_usd: budgetVal });
+        await api.patch(`/tenants/${tenant!.id}`, { plan, budget_usd: budgetVal, budget_period: budgetPeriod });
       } else {
-        await api.post("/tenants", { slug, plan, budget_usd: budgetVal });
+        await api.post("/tenants", { slug, plan, budget_usd: budgetVal, budget_period: budgetPeriod });
       }
       onSaved(); onClose();
     } catch (err: any) { setError(err.message); }
@@ -65,6 +66,14 @@ function TenantModal({ tenant, onClose, onSaved }: {
             <div className={s["form-group"]}>
               <label htmlFor="budget" className={s["form-label"]}>Budget (USD)</label>
               <input id="budget" className={s["form-input"]} type="number" min="0" step="0.01" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="unlimited" />
+            </div>
+            <div className={s["form-group"]}>
+              <label htmlFor="budgetperiod" className={s["form-label"]}>Budget Period</label>
+              <select id="budgetperiod" className={s["form-select"]} value={budgetPeriod} onChange={(e) => setBudgetPeriod(e.target.value as BudgetPeriod)} disabled={budget === ""}>
+                <option value="monthly">Monthly</option>
+                <option value="daily">Daily</option>
+                <option value="total">Lifetime</option>
+              </select>
             </div>
           </div>
           <div className={s["form-actions"]}>
@@ -160,7 +169,9 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Budget Limit</div>
             <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>
-              {tenant.budget_usd != null ? `$${tenant.budget_usd.toFixed(2)}` : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}
+              {tenant.budget_usd != null
+                ? <>{`$${tenant.budget_usd.toFixed(2)}`} <span style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>/ {tenant.budget_period ?? "monthly"}</span></>
+                : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}
             </div>
           </div>
           <div className={s["stat-card"]}>

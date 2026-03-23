@@ -52,7 +52,7 @@ function M.run(ctx)
     -- Playground tokens already set ctx.trace_id in auth.lua.
     if not ctx.trace_id then
         local tracing = ctx.gateway_config and ctx.gateway_config.tracing
-        if tracing and tracing.enabled then
+        if type(tracing) == "table" and tracing.enabled then
             ctx.trace_id               = ctx.request_id
             ctx.trace_seq              = 0
             ctx.tracing_include_bodies = tracing.include_bodies == true

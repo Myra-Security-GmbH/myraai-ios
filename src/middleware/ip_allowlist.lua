@@ -32,7 +32,7 @@ end
 
 function M.run(ctx)
     local allowlist = ctx.gateway_config.ip_allowlist
-    if not allowlist or #allowlist == 0 then return end
+    if type(allowlist) ~= "table" or #allowlist == 0 then return end
 
     local client_ip = ngx.var.remote_addr
     for _, cidr in ipairs(allowlist) do

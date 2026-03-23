@@ -4,12 +4,13 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS tenant (
-    id          TEXT PRIMARY KEY,                   -- UUID
-    slug        TEXT UNIQUE NOT NULL,
-    plan        TEXT NOT NULL DEFAULT 'free',
-    budget_usd  REAL,
-    deleted_at  INTEGER,                            -- Unix seconds, NULL = active
-    created_at  INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+    id            TEXT PRIMARY KEY,                   -- UUID
+    slug          TEXT UNIQUE NOT NULL,
+    plan          TEXT NOT NULL DEFAULT 'free',
+    budget_usd    REAL,
+    budget_period TEXT NOT NULL DEFAULT 'monthly',    -- 'monthly' | 'daily' | 'total'
+    deleted_at    INTEGER,                            -- Unix seconds, NULL = active
+    created_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
 );
 
 CREATE TABLE IF NOT EXISTS gateway (
@@ -62,9 +63,10 @@ CREATE TABLE IF NOT EXISTS auth_token (
     created_at  INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
     -- User association (NULL = service/machine token)
     user_id     TEXT REFERENCES user(id) ON DELETE CASCADE,
-    label       TEXT,                               -- human-readable name, e.g. "dev laptop"
-    rate_limit  TEXT,                               -- JSON {requests, window_sec} override or NULL
-    budget_usd  REAL                                -- per-token spend cap or NULL
+    label         TEXT,                               -- human-readable name, e.g. "dev laptop"
+    rate_limit    TEXT,                               -- JSON {requests, window_sec} override or NULL
+    budget_usd    REAL,                              -- per-token spend cap or NULL
+    budget_period TEXT NOT NULL DEFAULT 'monthly'    -- 'monthly' | 'daily' | 'total'
 );
 
 -- Routing rules evaluated in priority order
@@ -107,6 +109,20 @@ INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('gemini',    'gemini-1.5-flash',            0.000075, 0.0003,  NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('mistral',   'mistral-large-latest',        0.002,    0.006,   NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('groq',      'llama-3.3-70b-versatile',     0.00059,  0.00079, NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
+
+-- Period-aware spend ledger — replaces ephemeral shared-dict budget counters.
+-- entity_type: 'gateway' | 'tenant' | 'token'
+-- period:      'YYYY-MM' (monthly) | 'YYYY-MM-DD' (daily) | 'total' (lifetime)
+-- amount_micro: USD * 1e6 stored as INTEGER to avoid float precision drift.
+CREATE TABLE IF NOT EXISTS spend_ledger (
+    entity_type  TEXT    NOT NULL,
+    entity_id    TEXT    NOT NULL,
+    period       TEXT    NOT NULL,
+    amount_micro INTEGER NOT NULL DEFAULT 0,
+    updated_at   INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    PRIMARY KEY (entity_type, entity_id, period)
+);
+CREATE INDEX IF NOT EXISTS idx_spend_entity ON spend_ledger(entity_type, entity_id, period DESC);
 
 -- Playground query traces: one row per playground request
 CREATE TABLE IF NOT EXISTS playground_trace (
