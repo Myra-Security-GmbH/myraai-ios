@@ -1418,7 +1418,7 @@ function M.list_audit_logs(limit, offset)
                strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
                actor_ip, method, path, status
         FROM   audit_log
-        ORDER  BY ts DESC
+        ORDER  BY id DESC
         LIMIT  ? OFFSET ?
     ]], limit, offset)
 end
