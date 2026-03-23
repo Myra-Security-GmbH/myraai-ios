@@ -19,6 +19,8 @@ Routing rules let you redirect requests to different providers and models based 
 6. Set the **Actions**: choose a target provider, optionally rewrite the model name, and add fallback providers.
 7. Toggle **Enabled** on and click **Save**.
 
+![Routing rule editor](../assets/screenshots/routing-rule-editor.png)
+
 To reorder rules, edit their priority values. To temporarily disable a rule without deleting it, toggle **Enabled** off.
 
 ## Condition fields and operators

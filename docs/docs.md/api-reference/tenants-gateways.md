@@ -41,7 +41,8 @@ curl https://<your-gateway-host>/admin/v1/tenants
       "slug": "myapp",
       "plan": "starter",
       "budget_usd": null,
-      "created_at": 1742544000
+      "budget_period": "monthly",
+      "created_at": "2025-03-21T10:00:00Z"
     }
   ]
 }
@@ -63,16 +64,17 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants \
 |---|---|---|---|
 | `slug` | string | Yes | URL-safe identifier. Must be unique. Used in inference endpoint URLs. |
 | `plan` | string | No | Arbitrary plan label (e.g. `starter`, `pro`). Not enforced by the gateway. |
-| `budget_usd` | number \| null | No | Tenant-level spend cap. `null` disables the cap. |
+| `budget_usd` | number \| null | No | Tenant-level spend cap in USD. `null` disables the cap. |
+| `budget_period` | string | No | Reset period for the spend counter: `"daily"`, `"monthly"`, or `"total"`. Default: `"monthly"`. |
 
-**Response:** The created tenant object.
+**Response:** `{ "id": "...", "slug": "..." }`
 
 ### Update a tenant
 
 ```bash
 curl -X PATCH https://<your-gateway-host>/admin/v1/tenants/{id} \
   -H "Content-Type: application/json" \
-  -d '{"plan": "pro", "budget_usd": 1000.00}'
+  -d '{"plan": "pro", "budget_usd": 1000.00, "budget_period": "monthly"}'
 ```
 
 ### Delete a tenant
@@ -104,8 +106,7 @@ curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/gateways
       "tenant_id": "ten_abc123",
       "slug": "production",
       "config": { "auth_required": true, "cache_ttl": 300 },
-      "spend_usd": 12.34,
-      "created_at": 1742544000
+      "created_at": "2025-03-21T10:00:00Z"
     }
   ]
 }
@@ -135,7 +136,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/gateways \
 | `slug` | string | Yes | URL-safe identifier unique within the tenant. |
 | `config` | object | No | Gateway configuration. Omitted fields use defaults. |
 
-**Response:** The created gateway object including the assigned `id`.
+**Response:** `{ "id": "...", "slug": "..." }`
 
 ### Get a gateway
 
@@ -202,6 +203,9 @@ The complete config object with all defaults:
 {
   "auth_required": true,
   "budget_usd": null,
+  "budget_period": "monthly",
+  "tenant_budget_usd": null,
+  "tenant_budget_period": "monthly",
   "cache_ttl": 0,
   "retry_count": 2,
   "timeout_ms": 60000,

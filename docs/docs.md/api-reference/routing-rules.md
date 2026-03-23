@@ -58,21 +58,19 @@ Each condition object specifies a `field`, an `op` (operator), and a `value` to 
 |---|---|
 | `model` | The model name from the request body. |
 | `provider` | The provider from the request URL path (e.g. `openai`, `compat`). |
-| `tenant` | The tenant slug from the URL. |
-| `gateway` | The gateway slug from the URL. |
-| `meta.*` | Any custom metadata field attached via `x-aig-meta-{key}` request header. For example, `meta.env` matches the value of `x-aig-meta-env`. |
+| `tenant_id` | The tenant identifier resolved from the URL. |
+| `header:{name}` | The value of HTTP header `{name}` (e.g. `header:x-customer-tier`). |
+| `meta:{key}` | Any custom metadata field attached via `x-aig-meta-{key}` request header. For example, `meta:env` matches the value of `x-aig-meta-env`. |
 
 ### Condition operators
 
 | Operator | Behavior |
 |---|---|
 | `eq` | Exact string match. Case-sensitive. |
+| `neq` | Exact string non-match. Case-sensitive. |
 | `prefix` | Value starts with the given string. |
-| `suffix` | Value ends with the given string. |
 | `contains` | Value contains the given substring. |
-| `regex` | Value matches the given regular expression (POSIX ERE). |
-| `exists` | Field is present and non-empty (no `value` needed). |
-| `neq` | Exact string non-match. |
+| `regex` | Value matches the given regular expression. |
 
 ### Examples
 
@@ -91,7 +89,7 @@ Match a specific model:
 Match requests tagged with a custom header (`x-aig-meta-env: production`):
 
 ```json
-{"field": "meta.env", "op": "eq", "value": "production"}
+{"field": "meta:env", "op": "eq", "value": "production"}
 ```
 
 Match all requests (catch-all rule, empty conditions):
@@ -172,7 +170,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules \
   -d '{
     "priority": 5,
     "conditions": [
-      {"field": "meta.env", "op": "eq", "value": "production"},
+      {"field": "meta:env", "op": "eq", "value": "production"},
       {"field": "model", "op": "contains", "value": "claude"}
     ],
     "actions": {

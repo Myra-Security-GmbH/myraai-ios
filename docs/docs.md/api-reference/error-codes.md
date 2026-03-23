@@ -21,27 +21,29 @@ The `code` field is a stable machine-readable string. The `message` is informati
 
 ## Error codes
 
+!!! note "Admin API vs inference API error format"
+    Inference endpoint errors (`/v1/...`) use the structured format below with `code` and `message` fields. Admin API errors (`/admin/v1/...`) use a simpler flat format: `{"error": "message string"}`.
+
 | Code | HTTP Status | Description |
 |---|---|---|
-| `UNAUTHORIZED` | 401 | The request did not include a valid auth token, or the token has expired or been revoked. |
-| `FORBIDDEN` | 403 | The token is valid but does not have permission. Causes: `viewer` role on inference, or IP not in the gateway's `ip_allowlist`. |
-| `TENANT_NOT_FOUND` | 404 | The tenant or gateway slug in the URL does not exist. |
-| `INVALID_REQUEST` | 400 | Malformed request body, missing required fields, or an unrecognised parameter value. |
-| `RATE_LIMITED` | 429 | The sliding-window rate limit was exceeded. The response includes `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers. |
-| `QUOTA_EXCEEDED` | 429 | The configured spend budget has been exhausted (gateway-level or per-token). |
-| `DETECTOR_BLOCKED` | 400 | The detector pipeline (regex, keyword, PII Protector, NLP PII Detector, or LLM Guard) matched with a `block` action. The `message` field names the blocking detector. |
-| `GUARDRAIL_BLOCKED` | 400 | Llama Guard 3 classified the request as unsafe. The `message` includes the harm category (e.g. `unsafe S1`). See note below. |
-| `PROVIDER_ERROR` | 502 | The upstream provider returned a 5xx error and all retries were exhausted for that provider. |
-| `ALL_PROVIDERS_FAILED` | 502 | All providers in the routing chain (primary + all fallbacks) returned errors or timed out. |
-| `INTERNAL` | 500 | An unexpected error occurred inside the gateway. Check the gateway error log for details. |
+| `unauthorized` | 401 | The request did not include a valid auth token, or the token has expired or been revoked. |
+| `forbidden` | 403 | The token is valid but does not have permission. Causes: `viewer` role on inference, or IP not in the gateway's `ip_allowlist`. |
+| `tenant_not_found` | 404 | The tenant or gateway slug in the URL does not exist. |
+| `invalid_request` | 400 | Malformed request body, missing required fields, or an unrecognised parameter value. |
+| `rate_limited` | 429 | The sliding-window rate limit was exceeded. The response includes `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `Retry-After` headers. |
+| `quota_exceeded` | 429 | The configured spend budget has been exhausted (token-level, tenant-level, or gateway-level). |
+| `guardrail_blocked` | 400 | A guardrail (regex, keyword, NLP PII Detector, Prompt Guard, PII Protector) matched with a `block` action. The `message` names the blocking guardrail and pattern/category. |
+| `provider_error` | 502 | The upstream provider returned a 5xx error and all retries were exhausted for that provider. |
+| `all_providers_failed` | 502 | All providers in the routing chain (primary + all fallbacks) returned errors or timed out. |
+| `internal_error` | 500 | An unexpected error occurred inside the gateway. Check the gateway error log for details. |
 
 ---
 
 ## Notes on specific codes
 
-### GUARDRAIL_BLOCKED — streaming vs. non-streaming
+### guardrail_blocked — streaming vs. non-streaming
 
-In **non-streaming** mode, a guardrail block returns `HTTP 400` with the `GUARDRAIL_BLOCKED` error JSON.
+In **non-streaming** mode, a guardrail block returns `HTTP 400` with the `guardrail_blocked` error JSON.
 
 In **streaming** mode (`"stream": true`), the guardrail check runs before the provider call. When a block occurs the gateway returns `HTTP 200` with a synthetic SSE stream containing an error message chunk followed by `data: [DONE]`. This is necessary because some streaming clients do not gracefully handle a non-200 HTTP status on a streaming response.
 
@@ -54,17 +56,20 @@ data: [DONE]
 !!! note
     Your client should inspect the chunk content for the block message if it processes streaming responses. The log entry for the request will have `blocked: true` and `blocked_by: "guardrail"` regardless of the HTTP status returned.
 
-### RATE_LIMITED — response headers
+!!! note "Retry-After semantics"
+    The `Retry-After` header contains the window duration in seconds (e.g. `60`), not an absolute timestamp. It represents the maximum time before the window resets — retrying after `Retry-After` seconds is guaranteed to succeed if no new requests have been made.
 
-When `RATE_LIMITED` is returned, the response includes three headers:
+### rate_limited — response headers
+
+When `rate_limited` is returned, the response includes three headers:
 
 | Header | Description |
 |---|---|
 | `X-RateLimit-Limit` | The configured request limit for the window. |
-| `X-RateLimit-Remaining` | Estimated remaining requests in the current window. |
-| `X-RateLimit-Reset` | Unix timestamp (seconds) when the window resets. |
+| `X-RateLimit-Remaining` | Estimated remaining requests in the current window (0 when blocked). |
+| `Retry-After` | The window duration in seconds — the minimum time before retrying. |
 
-### ALL_PROVIDERS_FAILED — when to expect it
+### all_providers_failed — when to expect it
 
 This error is returned only when all of the following are true:
 
@@ -76,7 +81,7 @@ This error is returned only when all of the following are true:
 !!! warning
     A `PROVIDER_ERROR` on a single provider with no fallbacks configured behaves identically to `ALL_PROVIDERS_FAILED` — both return `502`. Configure fallbacks in your routing rules to avoid single-provider outages surfacing as errors to your end users.
 
-### INVALID_REQUEST — common causes
+### invalid_request — common causes
 
 - Missing required fields in a POST body (e.g. no `slug` when creating a tenant)
 - Unknown `bucket` value in `GET /stats/timeseries`
@@ -92,8 +97,8 @@ This error is returned only when all of the following are true:
 ```json
 {
   "error": {
-    "code": "UNAUTHORIZED",
-    "message": "Missing or invalid authentication token"
+    "code": "unauthorized",
+    "message": "Missing or invalid gateway token"
   }
 }
 ```
@@ -103,8 +108,8 @@ This error is returned only when all of the following are true:
 ```json
 {
   "error": {
-    "code": "RATE_LIMITED",
-    "message": "Rate limit exceeded: 100 requests per 60 seconds"
+    "code": "rate_limited",
+    "message": "Rate limit: 101/100 requests per 60s"
   }
 }
 ```
@@ -114,19 +119,19 @@ This error is returned only when all of the following are true:
 ```json
 {
   "error": {
-    "code": "QUOTA_EXCEEDED",
-    "message": "Budget limit reached"
+    "code": "quota_exceeded",
+    "message": "Gateway budget $200.0000 exceeded (spent $200.0019). Adjust budget_usd in the gateway config (PATCH /admin/v1/gateways/{id}) or reset spend (DELETE /admin/v1/gateways/{id}/budget)."
   }
 }
 ```
 
-### 400 — detector blocked
+### 400 — guardrail blocked
 
 ```json
 {
   "error": {
-    "code": "DETECTOR_BLOCKED",
-    "message": "Request blocked by detector: pii-scan"
+    "code": "guardrail_blocked",
+    "message": "Request blocked by content policy (block-pci): cc – Credit/Debit Card Number"
   }
 }
 ```
@@ -136,8 +141,8 @@ This error is returned only when all of the following are true:
 ```json
 {
   "error": {
-    "code": "ALL_PROVIDERS_FAILED",
-    "message": "All upstream providers failed after retries and fallbacks"
+    "code": "all_providers_failed",
+    "message": "All configured providers failed"
   }
 }
 ```

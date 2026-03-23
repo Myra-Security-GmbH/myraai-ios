@@ -73,10 +73,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
 {
   "id": "tok_abc123",
   "token": "aig_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "label": "my-service",
-  "scopes": ["inference"],
-  "expires_at": "2027-01-01T00:00:00Z",
-  "created_at": "2026-03-21T10:00:00Z"
+  "gateway_id": "gw_xyz789"
 }
 ```
 

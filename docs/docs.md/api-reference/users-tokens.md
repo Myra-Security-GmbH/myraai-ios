@@ -57,7 +57,7 @@ curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users
       "email": "alice@example.com",
       "name": "Alice",
       "role": "member",
-      "created_at": 1742544000
+      "created_at": "2025-03-21T10:00:00Z"
     }
   ]
 }
@@ -80,6 +80,8 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users \
 | `email` | string | Yes | User's email address. Must be unique within the tenant. |
 | `name` | string | No | Display name. |
 | `role` | string | Yes | One of `admin`, `member`, or `viewer`. |
+
+**Response:** `{ "id": "usr_abc123", "email": "alice@example.com" }`
 
 ### Update a user
 
@@ -117,11 +119,11 @@ curl -X DELETE https://<your-gateway-host>/admin/v1/users/{id}/budget
 | `user_id` | string \| null | `null` | Associates the token with a user for audit trail and per-user budget tracking. |
 | `scopes` | array | `[]` | Permission scopes. `["inference"]` grants inference access. Reserved for future use. |
 | `expires_at` | string \| null | `null` | ISO-8601 expiry timestamp. `null` means the token never expires. |
-| `rate_limit` | object \| null | `null` | Per-token sliding-window limit: `{"requests": N, "window_sec": S}`. Overrides the gateway-level rate limit. |
+| `rate_limit` | object \| null | `null` | Per-token sliding-window limit: `{"requests": N, "window_sec": S}`. Applied independently of the gateway-level rate limit — a request can be blocked by either. |
 | `budget_usd` | number \| null | `null` | Per-token spend cap in USD. `null` means no cap. |
 
 !!! note
-    Tokens are hashed with SHA-256 before storage. The plaintext `token` value is returned once in the creation response and cannot be retrieved later. If a token is lost, revoke it and create a new one.
+    Tokens are hashed with SHA-256 before storage. The plaintext `token` value is returned once in the creation response and cannot be retrieved later. If a token is lost, revoke it and create a new one. The list endpoint returns `token_hash`, not the plaintext value.
 
 ### List gateway tokens
 
@@ -149,10 +151,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
 {
   "id": "tok_def456",
   "token": "aig_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "label": "CI bot",
-  "scopes": ["inference"],
-  "expires_at": null,
-  "created_at": "2026-03-21T10:00:00Z"
+  "gateway_id": "gw_xyz789"
 }
 ```
 
@@ -173,12 +172,13 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
 
 ### Create a user token
 
-User tokens work identically to gateway tokens but are listed under the user and can be managed via the user endpoint.
+User tokens work identically to gateway tokens but are listed under the user and can be managed via the user endpoint. `gateway_id` is required — it specifies which gateway the token grants access to.
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/users/{user_id}/tokens \
   -H "Content-Type: application/json" \
   -d '{
+    "gateway_id": "gw_xyz789",
     "label": "personal dev token",
     "scopes": ["inference"],
     "budget_usd": 10.00

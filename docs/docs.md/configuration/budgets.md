@@ -18,9 +18,15 @@ Each budget level has a configurable **period** — the window over which spend 
 
 | Config field | Scope | Default | Options |
 |---|---|---|---|
-| `budget_period` | Gateway | `monthly` | `daily`, `weekly`, `monthly` |
-| `tenant_budget_period` | Tenant | `monthly` | `daily`, `weekly`, `monthly` |
-| `token_budget_period` | Token (auth_token) | `monthly` | `daily`, `weekly`, `monthly` |
+| `budget_period` | Gateway | `monthly` | `daily`, `monthly`, `total` |
+| `tenant_budget_period` | Tenant | `monthly` | `daily`, `monthly`, `total` |
+| `token_budget_period` | Token (auth_token) | `monthly` | `daily`, `monthly`, `total` |
+
+| Value | Resets | Use case |
+|---|---|---|
+| `daily` | Each calendar day at midnight UTC | Per-day spend caps for high-volume tenants |
+| `monthly` | First day of each calendar month | Standard billing-period enforcement (default) |
+| `total` | Never — lifetime accumulation | One-time spend allowances, trial accounts |
 
 !!! note
     Automatic period reset is distinct from a manual budget reset (which clears accumulated spend immediately). Manual resets are still available for one-off corrections.
@@ -36,18 +42,42 @@ Spend is incremented after each successful inference response. Streaming respons
 
 ## QUOTA_EXCEEDED response
 
-When a budget is exhausted, the gateway returns `HTTP 429`:
+When a budget is exhausted, the gateway returns `HTTP 429` with an actionable message identifying the scope that triggered the block and the exact API call needed to resolve it:
+
+**Token budget exhausted**
 
 ```json
 {
   "error": {
     "code": "QUOTA_EXCEEDED",
-    "message": "Budget limit reached"
+    "message": "Token budget $10.0000 exceeded (spent $10.0023). Adjust budget_usd on the auth token (PATCH /admin/v1/tokens/{id}) or reset spend (DELETE /admin/v1/tokens/{id}/budget)."
   }
 }
 ```
 
-This applies whether the per-token, per-tenant, or per-gateway budget triggered the block.
+**Tenant budget exhausted**
+
+```json
+{
+  "error": {
+    "code": "QUOTA_EXCEEDED",
+    "message": "Tenant budget $50.0000 exceeded (spent $50.0041). Adjust budget_usd on the tenant (PATCH /admin/v1/tenants/{id}) or reset spend (DELETE /admin/v1/tenants/{id}/budget)."
+  }
+}
+```
+
+**Gateway budget exhausted**
+
+```json
+{
+  "error": {
+    "code": "QUOTA_EXCEEDED",
+    "message": "Gateway budget $200.0000 exceeded (spent $200.0019). Adjust budget_usd in the gateway config (PATCH /admin/v1/gateways/{id}) or reset spend (DELETE /admin/v1/gateways/{id}/budget)."
+  }
+}
+```
+
+The message always includes the configured budget, the current spend, and the two corrective actions: increase the budget or reset spend for the current period.
 
 ## Using the admin UI
 

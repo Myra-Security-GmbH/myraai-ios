@@ -53,8 +53,8 @@ When a request is rate limited, the gateway returns `HTTP 429` with the followin
 | Header | Description |
 |---|---|
 | `X-RateLimit-Limit` | The configured request limit for the window. |
-| `X-RateLimit-Remaining` | Estimated requests remaining in the current window. |
-| `X-RateLimit-Reset` | Unix timestamp (seconds) at which the window resets. |
+| `X-RateLimit-Remaining` | Estimated requests remaining in the current window (0 when blocked). |
+| `Retry-After` | The window duration in seconds — the minimum time before retrying. |
 
 Example 429 response body:
 
@@ -68,7 +68,7 @@ Example 429 response body:
 ```
 
 !!! warning
-    Clients must implement backoff and retry logic. The `X-RateLimit-Reset` header gives the earliest time at which retrying will succeed.
+    Clients must implement backoff and retry logic. The `Retry-After` header gives the window duration in seconds — waiting at least this long before retrying is sufficient.
 
 ## API
 

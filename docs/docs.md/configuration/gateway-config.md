@@ -8,6 +8,8 @@ Every gateway has a `config` object that controls caching, timeouts, security, r
 2. Open the **Config** tab.
 3. Edit any field and click **Save**. Only the fields you change are updated — other settings are unaffected.
 
+![Gateway configuration editor](../assets/screenshots/gateway-edit-modal.png)
+
 ## Config fields reference
 
 | Field | Type | Default | Description |
@@ -90,7 +92,7 @@ Certain behaviors can be overridden on individual requests without changing the 
 | Header | Type | Description |
 |---|---|---|
 | `x-aig-byok-alias` | string | Select a non-default BYOK key alias for this request. See [Provider Key Management](../security/byok.md). |
-| `x-aig-meta-{key}` | string | Attach arbitrary metadata to the request log entry. Accessible as `meta.{key}` in routing rule conditions. |
+| `x-aig-meta-{key}` | string | Attach arbitrary metadata to the request log entry. Accessible as `meta:{key}` (colon notation) in routing rule conditions. |
 | `x-aig-collect-log` | `"0"` or `"false"` to disable; `"1"` to enable | Override whether this request is written to the log table. Both `"0"` and `"false"` disable logging for this request. |
 | `x-aig-collect-log-payload` | `"0"` or `"false"` to disable; `"1"` to enable | Override whether request/response bodies are stored for this request, independent of `log_payloads` config. Both `"0"` and `"false"` suppress body storage. |
 | `x-aig-provider-{field}` | string | Override a provider-specific field for this request (e.g. `x-aig-provider-model`). |

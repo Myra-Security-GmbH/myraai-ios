@@ -40,9 +40,9 @@ The config is **merged at the top level** on each PATCH — only the fields you 
 |---|---|---|---|
 | `auth_required` | boolean | `true` | Require a valid `x-aig-token`, `Authorization: Bearer`, or `x-api-key` header on all inference requests. Set to `false` only for development. |
 | `budget_usd` | number \| null | `null` | Gateway-level spend cap in USD for the current budget period. Blocks all requests once exhausted. `null` = no cap. |
-| `budget_period` | string | `"monthly"` | Period over which gateway spend is accumulated. One of: `"daily"`, `"weekly"`, `"monthly"`. Spend resets automatically at the start of each new period. |
+| `budget_period` | string | `"monthly"` | Period over which gateway spend is accumulated. One of: `"daily"` (resets each UTC day), `"monthly"` (resets each calendar month), `"total"` (lifetime, never resets). |
 | `tenant_budget_usd` | number \| null | `null` | Tenant-level spend cap in USD. Applies across all gateways belonging to the tenant. `null` = no cap. |
-| `tenant_budget_period` | string | `"monthly"` | Period for the tenant-level budget. One of: `"daily"`, `"weekly"`, `"monthly"`. |
+| `tenant_budget_period` | string | `"monthly"` | Period for the tenant-level budget. One of: `"daily"`, `"monthly"`, `"total"`. |
 | `cache_ttl` | integer | `0` | Response cache TTL in seconds. `0` disables the cache. Cached responses are keyed on `SHA-256(provider:model:canonical_body)`. |
 | `retry_count` | integer | `2` | Maximum number of retry attempts against the primary provider on 5xx errors before the fallback chain is walked. |
 | `timeout_ms` | integer | `60000` | Per-upstream-request timeout in milliseconds. Applies to each attempt individually, not the total request time. |
@@ -54,7 +54,7 @@ The config is **merged at the top level** on each PATCH — only the fields you 
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `rate_limit` | object \| null | `null` (disabled) | Gateway-level sliding-window rate limit applied to all callers. Default: `null` (disabled). Example: `{"requests": 100, "window_sec": 60}`. Per-token limits override this for individual tokens. |
+| `rate_limit` | object \| null | `null` (disabled) | Gateway-level sliding-window rate limit applied to all callers. Default: `null` (disabled). Example: `{"requests": 100, "window_sec": 60}`. Per-token limits are checked independently — a request can be blocked by either limit. |
 | `rate_limit.requests` | integer | — | Maximum requests allowed in the window. |
 | `rate_limit.window_sec` | integer | — | Window duration in seconds. |
 
@@ -149,7 +149,7 @@ These headers can be sent on individual inference requests to override gateway c
 | Header | Type | Description |
 |---|---|---|
 | `x-aig-byok-alias` | string | Use a non-default BYOK provider key alias for this request. Must match an alias stored for the resolved provider. |
-| `x-aig-meta-{key}` | string | Attach a custom key-value pair to the request log entry and make it available in routing rule conditions as `meta.{key}`. Multiple headers allowed. |
+| `x-aig-meta-{key}` | string | Attach a custom key-value pair to the request log entry and make it available in routing rule conditions as `meta:{key}` (colon notation). Multiple headers allowed. |
 | `x-aig-collect-log` | `"0"`, `"false"`, or `"1"` | `"0"` or `"false"` = skip writing this request to the log table entirely. `"1"` = log (default). |
 | `x-aig-collect-log-payload` | `"0"`, `"false"`, or `"1"` | `"0"` or `"false"` = log request metadata but omit the prompt and response body. `"1"` = log body (default). Does not affect the gateway-level `log_payloads` setting. |
 | `x-aig-provider-{field}` | string | Strip the `x-aig-provider-` prefix and forward the header verbatim to the upstream provider. Useful for provider-specific beta flags. |

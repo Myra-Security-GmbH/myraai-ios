@@ -36,6 +36,8 @@ curl https://<your-gateway-host>/admin/v1/stats
 | `requests` | integer | Total inference requests in the period. |
 | `cached` | integer | Requests served from cache (no provider call made). |
 | `blocked` | integer | Requests blocked by auth, rate limit, quota, or detectors. |
+| `scrubbed` | integer | Requests where a guardrail scrubbed PII from the payload but allowed the request through. |
+| `flagged` | integer | Requests where a guardrail raised a flag but took no blocking or scrubbing action. |
 | `input_tokens` | integer | Total prompt tokens consumed. |
 | `output_tokens` | integer | Total completion tokens generated. |
 | `cost_usd` | number | Total cost in USD (from model pricing table). |
@@ -43,7 +45,9 @@ curl https://<your-gateway-host>/admin/v1/stats
 | `avg_latency_ms` | number | Average end-to-end request latency in milliseconds. |
 | `avg_upstream_latency_ms` | number | Average time waiting for the upstream provider, excluding gateway overhead. |
 
-### TenantStats fields
+### TenantStats fields (GET /stats)
+
+`by_tenant` in `GET /stats` is a summary view with the following fields:
 
 | Field | Type | Description |
 |---|---|---|
@@ -53,6 +57,8 @@ curl https://<your-gateway-host>/admin/v1/stats
 | `input_tokens` | integer | Total input tokens. |
 | `output_tokens` | integer | Total output tokens. |
 | `cost_usd` | number | Total cost in USD. |
+
+The full `TenantStats` shape (with `blocked`, `cached`, `errors`, `avg_latency_ms`, etc.) is returned by `GET /stats/analytics`. See below.
 
 ### Example response
 
@@ -93,6 +99,7 @@ curl https://<your-gateway-host>/admin/v1/stats
       "cost_usd": 9.84
     }
   ],
+
   "recent": [ { "...": "LogEntry" } ],
   "recent_blocked": [ { "...": "LogEntry" } ]
 }
@@ -104,7 +111,7 @@ For LogEntry field definitions see the [Logs API](logs.md).
 
 ## GET /stats/analytics
 
-Returns latency percentiles and a breakdown of top models by request volume, along with a per-tenant cost summary. Used by the analytics dashboard view.
+Returns latency percentiles, top-model breakdown, and per-tenant, per-gateway, and per-user cost summaries. Used by the analytics dashboard view.
 
 ```bash
 curl "https://<your-gateway-host>/admin/v1/stats/analytics?since=1742544000000"
@@ -120,34 +127,107 @@ curl "https://<your-gateway-host>/admin/v1/stats/analytics?since=1742544000000"
 
 ```json
 {
-  "percentiles": {
-    "p50": 420,
-    "p95": 1840,
-    "p99": 3210
-  },
+  "percentiles": { ...LatencyPercentiles },
+  "top_models":  [ ...TopModelRow ],
+  "by_tenant":   [ ...TenantStats ],
+  "by_gateway":  [ ...GatewayStats ],
+  "by_user":     [ ...UserStats ]
+}
+```
+
+### LatencyPercentiles fields
+
+| Field | Type | Description |
+|---|---|---|
+| `p50` | number \| null | Median end-to-end latency in milliseconds. `null` if no data. |
+| `p95` | number \| null | 95th-percentile latency in milliseconds. |
+| `p99` | number \| null | 99th-percentile latency in milliseconds. |
+
+Percentiles cover only non-blocked requests.
+
+### TopModelRow fields
+
+| Field | Type | Description |
+|---|---|---|
+| `model` | string | Model name. |
+| `provider` | string | Provider slug (e.g. `openai`, `anthropic`). |
+| `requests` | integer | Request count in the window. |
+| `cost_usd` | number | Total cost in USD. |
+| `avg_latency_ms` | number | Average end-to-end latency in milliseconds. |
+
+Up to 10 models are returned, ordered by request count descending.
+
+### GatewayStats fields
+
+| Field | Type | Description |
+|---|---|---|
+| `gateway_id` | string | Gateway UUID. |
+| `gateway` | string | Gateway slug. |
+| `tenant` | string \| null | Tenant slug. |
+| `requests` | integer | Total requests. |
+| `blocked` | integer | Blocked request count. |
+| `cached` | integer | Cache hit count. |
+| `input_tokens` | integer | Total input tokens. |
+| `output_tokens` | integer | Total output tokens. |
+| `cost_usd` | number | Total cost in USD. |
+| `saved_cost_usd` | number | Cost saved by cache hits. |
+| `avg_latency_ms` | number | Average end-to-end latency in milliseconds. |
+| `errors` | integer | Requests that received an HTTP 4xx or 5xx response from the upstream provider. |
+
+### UserStats fields
+
+| Field | Type | Description |
+|---|---|---|
+| `user_id` | string | User UUID (from the auth token's `user_id` field). |
+| `requests` | integer | Total requests attributed to this user. |
+| `blocked` | integer | Blocked request count. |
+| `cached` | integer | Cache hit count. |
+| `input_tokens` | integer | Total input tokens. |
+| `output_tokens` | integer | Total output tokens. |
+| `cost_usd` | number | Total cost in USD. |
+| `saved_cost_usd` | number | Cost saved by cache hits. |
+| `avg_latency_ms` | number | Average end-to-end latency in milliseconds. |
+| `errors` | integer | Requests that received an HTTP 4xx or 5xx from the upstream provider. |
+
+`by_user` only includes requests made with auth tokens that have a `user_id` set. Anonymous token requests are not included. Up to 50 users are returned, ordered by cost descending.
+
+### Example response
+
+```json
+{
+  "percentiles": { "p50": 420, "p95": 1840, "p99": 3210 },
   "top_models": [
-    {
-      "model": "gpt-4o",
-      "provider": "openai",
-      "requests": 842,
-      "cost_usd": 3.14,
-      "avg_latency_ms": 680
-    }
+    { "model": "gpt-4o", "provider": "openai", "requests": 842, "cost_usd": 3.14, "avg_latency_ms": 680 }
   ],
   "by_tenant": [
     {
-      "tenant_id": "ten_abc123",
-      "tenant": "myapp",
-      "requests": 1423,
-      "input_tokens": 1840200,
-      "output_tokens": 312400,
-      "cost_usd": 9.84
+      "tenant_id": "ten_abc123", "tenant": "myapp",
+      "requests": 1423, "blocked": 14, "cached": 82,
+      "input_tokens": 1840200, "output_tokens": 312400,
+      "cost_usd": 9.84, "saved_cost_usd": 0.41,
+      "avg_latency_ms": 820, "errors": 3
+    }
+  ],
+  "by_gateway": [
+    {
+      "gateway_id": "gw_xyz789", "gateway": "prod", "tenant": "myapp",
+      "requests": 1423, "blocked": 14, "cached": 82,
+      "input_tokens": 1840200, "output_tokens": 312400,
+      "cost_usd": 9.84, "saved_cost_usd": 0.41,
+      "avg_latency_ms": 820, "errors": 3
+    }
+  ],
+  "by_user": [
+    {
+      "user_id": "usr_alice",
+      "requests": 341, "blocked": 2, "cached": 18,
+      "input_tokens": 440200, "output_tokens": 74800,
+      "cost_usd": 2.31, "saved_cost_usd": 0.09,
+      "avg_latency_ms": 790, "errors": 1
     }
   ]
 }
 ```
-
-Latency percentiles cover only non-blocked requests. Up to 10 models are returned in `top_models`, ordered by request count descending.
 
 ---
 

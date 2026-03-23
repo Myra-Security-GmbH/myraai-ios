@@ -12,23 +12,23 @@ flowchart TD
     Client --> A1
 
     subgraph Access ["Access phase — before body is read"]
-        A1[Authenticate] --> A2[Rate limit] --> A3[IP allowlist]
+        A1[Authenticate] --> A2[Rate limit] --> A3[Quota check] --> A4[IP allowlist]
     end
 
-    A3 --> B1
+    A4 --> B1
 
     subgraph Content ["Content phase — body available"]
         B1[Cache check] --> B2[Guardrails — request]
         B2 --> B3[Transform & routing]
         B3 --> B4[Provider call]
         B4 --> B5[Guardrails — response]
-        B5 --> B6[Cost · cache store · send response]
+        B5 --> B6["Cost · cache store<br/>send response"]
     end
 
     B6 --> L1
 
     subgraph Log ["Log phase — after response sent"]
-        L1[Structured request log · Prometheus metrics]
+        L1["Structured log<br/>Prometheus metrics"]
     end
 
     L1 --> Response([Consumer Response])
@@ -52,11 +52,15 @@ Returns `401 UNAUTHORIZED` if no valid token is found, `403 FORBIDDEN` if the to
 
 ### Rate limiting
 
-Enforces the sliding-window request limit configured on the gateway or per-token. Returns `429 RATE_LIMITED` with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers.
+Enforces the sliding-window request limit configured on the gateway or per-token. Returns `429 rate_limited` with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `Retry-After` headers. Both gateway-level and per-token limits are checked independently.
+
+### Quota check
+
+Checks per-token, per-tenant, and per-gateway spend budgets against the `spend_ledger`. Returns `429 quota_exceeded` with an actionable message if any budget is exhausted.
 
 ### IP allowlist
 
-Checks the client IP against the gateway's `ip_allowlist` CIDR list. An empty list allows all traffic. Returns `403 FORBIDDEN` on mismatch.
+Checks the client IP against the gateway's `ip_allowlist` CIDR list. An empty list allows all traffic. Returns `403 forbidden` on mismatch.
 
 ---
 

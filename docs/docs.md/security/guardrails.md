@@ -4,6 +4,8 @@ AI Gateway evaluates every request and response through a configurable **guardra
 
 ---
 
+![Guardrails builder](../assets/screenshots/guardrails-builder.png)
+
 ## Guardrail Tiers
 
 Guardrails are grouped into two tiers based on where they execute and how fast they run.
@@ -90,39 +92,44 @@ Tier 2 guardrails make an HTTP call to an external sidecar service. If that serv
 
 ### Using the admin UI
 
-Guardrails are configured inside the gateway create and edit dialogs using the visual **Guardrail Builder**.
+Guardrails are configured using the visual **Guardrail Builder**, which appears in two places:
 
-**To open the Guardrail Builder:**
-
-1. Open **Gateways** in the left sidebar.
-2. Click **Edit** on an existing gateway, or click **New Gateway** to create one.
-3. Scroll to the **Guardrails** section at the bottom of the dialog.
+- **Existing gateway** — open the gateway detail page (click **Open →** on the gateway row), then scroll down to the **Guardrails** card.
+- **New gateway** — the Guardrail Builder is embedded at the bottom of the **New Gateway** modal.
 
 **To add a guardrail:**
 
-1. Click **Add Guardrail** and select a type from the dropdown: Regex, Keyword, NLP PII Detector, Prompt Guard, or PII Protector.
-2. Fill in the fields for that guardrail type (see the individual guardrail pages for field details).
-3. Set the **Action** — what the gateway does when a match is found:
-   - **Block** — deny the request immediately
-   - **Scrub** — replace matched content with a placeholder (not available on Keyword or Prompt Guard)
-   - **Flag** — record the match in the log without blocking
-4. Set the **Target** — which traffic direction to inspect:
-   - **Request** — outbound prompt (default)
-   - **Response** — inbound model reply
-   - **Both** — inspect both directions
-5. Click **Save**.
+Click the type button for the guardrail you want to add — there is one button per type:
+
+- `+ Regex / Pattern` — named pattern library and custom regex
+- `+ Keyword` — exact string matching
+- `+ Presidio (NLP)` — NLP-based PII detection
+- `+ Prompt Guard` — semantic safety classification (Llama Guard 3)
+- `+ PII Protector` — reversible PII tokenization
+
+After clicking, a collapsed guardrail card appears at the bottom of the list. Click the card to expand it and configure:
+
+- **Name** — human-readable label for this guardrail instance
+- **Action** — what happens on a match: `block`, `scrub` (not available on Keyword or Prompt Guard), or `flag`
+- **Target** — which direction to inspect: `request` (default), `response`, or `both`
+- Type-specific fields (patterns, keywords, entities, etc.)
+
+**To save:**
+
+- On the detail page: click **Save Guardrails** in the Guardrails card header.
+- In the New Gateway modal: complete the rest of the form and click **Create Gateway**.
 
 **To reorder guardrails:**
 
-Use the up/down arrows next to each guardrail. Order matters: Tier 1 guardrails always run before Tier 2, but within the same tier the list order is the execution order.
+Use the **▲▼** arrows on the left side of each guardrail card. Order matters within a tier — Tier 1 always runs before Tier 2, but within the same tier execution follows list order.
 
 **To view the execution plan:**
 
-Click **Execution Plan** to see a read-only summary of the full pipeline — which tier each guardrail is in, what phase it runs in, and what mode it uses. Use this to verify ordering before saving.
+The **Execution plan** table appears automatically below the guardrail list whenever one or more guardrails are configured. It shows Tier, Name, Phase (→ request / ← response / ⇄ both), and Mode for each guardrail in execution order.
 
 **To remove a guardrail:**
 
-Click the delete icon on the guardrail row.
+Click the **×** button on the right side of the guardrail card header.
 
 ### API
 
@@ -214,9 +221,37 @@ Every guardrail that runs produces structured output. The following fields are s
 |---|---|---|
 | [`regex`](guardrails/regex.md) | 1 | In-process regex and named pattern matching |
 | [`keyword`](guardrails/keyword.md) | 1 | In-process exact keyword matching |
+| [`jailbreak`](guardrails/keyword.md#jailbreak-and-prompt-injection-detection) | 1 | Pre-configured jailbreak and prompt-injection detector — zero configuration required |
 | [`presidio`](guardrails/presidio.md) | 2 | NLP-based PII detection — hosted within Myra's infrastructure |
 | [`prompt_guard`](guardrails/prompt-guard.md) | 2 | Safety classification via Llama Guard 3 sidecar |
 | [`pii_protector`](guardrails/pii-protector.md) | 2 | Reversible PII tokenization — real values restored in response |
+
+---
+
+## Jailbreak and Prompt-Injection Detection
+
+AI Gateway ships a dedicated `jailbreak` guardrail type that works with zero configuration. It is a Tier 1 (in-process, sub-millisecond) detector pre-loaded with 18 known attack phrases covering instruction-override, persona jailbreaks, bypass/override commands, and fake system-message injection.
+
+```json
+{
+  "type": "jailbreak",
+  "name": "jailbreak-check",
+  "action": "flag"
+}
+```
+
+That is the complete configuration needed. The Guardrail Builder's **+ Jailbreak** button creates this config and displays the active phrase list.
+
+| Layer | Guardrail | What it catches | Latency |
+|---|---|---|---|
+| 1 | `jailbreak` | Literal jailbreak phrases (18 built-in, customisable) | Sub-millisecond |
+| 2 | `prompt_guard` | Semantically unsafe requests across 14 policy categories | ~10–50 ms |
+
+**Customising the phrase list:** When `keywords` is set to a non-empty array, it **replaces** the 18 built-ins entirely. Leave `keywords` empty (or omit it) to use the defaults.
+
+**Limitations:** The `jailbreak` guardrail catches only **literal, unmodified** phrases. Creative rephrasing, character insertion, encoding, or indirect prompt injection embedded in retrieved documents will not be caught. For semantic coverage, layer a `prompt_guard` guardrail on top.
+
+See [Keyword Guardrail — Jailbreak Detection](guardrails/keyword.md#jailbreak-and-prompt-injection-detection) for the full phrase list.
 
 ---
 
