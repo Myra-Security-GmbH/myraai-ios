@@ -2,6 +2,8 @@
 
 The Playground lets you send prompts to one or more models simultaneously and compare responses side-by-side — without writing any code.
 
+![Playground](../assets/screenshots/playground-layout.png)
+
 ---
 
 ## Multi-panel comparison

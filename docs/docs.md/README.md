@@ -47,6 +47,8 @@
 - [Routing Rules](routing/routing-rules.md)
 - [Compat Endpoint](routing/compat-endpoint.md)
 - [Fallback Chain](routing/fallback.md)
+- [Load Balancing](routing/load-balancing.md)
+- [Circuit Breaker](routing/circuit-breaker.md)
 
 ### Providers
 
@@ -63,9 +65,8 @@
 
 - [Logging](observability/logging.md)
 - [Dashboard](observability/dashboard.md)
-
-### Observability
-
+- [Cost Analytics](observability/analytics.md)
+- [Request Tracing](observability/tracing.md)
 - [Playground](observability/playground.md)
 
 ### API Reference
@@ -76,6 +77,7 @@
 - [Routing Rules](api-reference/routing-rules.md)
 - [Stats](api-reference/stats.md)
 - [Logs](api-reference/logs.md)
+- [Traces](api-reference/traces.md)
 - [Models & Pricing](api-reference/models.md)
 - [Error Codes](api-reference/error-codes.md)
 
@@ -84,3 +86,4 @@
 - [Config Reference](reference/config-reference.md)
 - [Changelog](reference/changelog.md)
 - [Glossary](reference/glossary.md)
+- [Topic Map](reference/topic-map.md)

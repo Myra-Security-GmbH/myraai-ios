@@ -1,9 +1,8 @@
 site_name: AI Gateway by Myra Security — Documentation
 site_description: Official documentation for AI Gateway by Myra Security — multi-tenant AI proxy for enterprise API management.
-site_author: AI Gateway
+site_author: Myra Security GmbH
 copyright: >
-  AI Gateway · Open Source ·
-  <a href="https://github.com/youorg/ai-gateway" target="_blank">GitHub</a>
+  AI Gateway by Myra Security GmbH · Proprietary
 
 docs_dir: docs.md
 site_dir: out
@@ -31,6 +30,10 @@ theme:
 
 extra_css:
   - stylesheets/brand.css
+  - stylesheets/print.css
+
+extra_javascript:
+  - javascripts/mermaid-init.js
 
 markdown_extensions:
   - admonition
@@ -49,6 +52,18 @@ markdown_extensions:
 
 plugins:
   - search
+  - print-site:
+      add_to_navigation: false
+      print_page_title: "AI Gateway by Myra Security — Full Documentation"
+      add_full_urls: false
+      enumerate_headings: false
+      enumerate_figures: false
+      add_table_of_contents: true
+      toc_title: "Contents"
+      toc_depth: 2
+      add_cover_page: true
+      cover_page_template: ""
+      path_to_pdf: "ai-gateway-docs.pdf"
 
 nav:
   - Home: README.md
@@ -95,6 +110,8 @@ nav:
   - Observability:
     - observability/logging.md
     - observability/dashboard.md
+    - observability/analytics.md
+    - observability/tracing.md
     - observability/playground.md
     - features/web-search.md
   - API Reference:
@@ -104,6 +121,7 @@ nav:
     - api-reference/routing-rules.md
     - api-reference/stats.md
     - api-reference/logs.md
+    - api-reference/traces.md
     - api-reference/models.md
     - api-reference/error-codes.md
   - Reference:

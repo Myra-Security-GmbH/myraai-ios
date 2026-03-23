@@ -78,6 +78,8 @@ Browse all documentation topics by category.
 
     - [Request Logging](../observability/logging.md)
     - [Admin Dashboard](../observability/dashboard.md)
+    - [Cost Analytics](../observability/analytics.md)
+    - [Request Tracing](../observability/tracing.md)
     - [Playground](../observability/playground.md)
     - [Web Search](../features/web-search.md)
 
@@ -91,6 +93,7 @@ Browse all documentation topics by category.
     - [Routing Rules API](../api-reference/routing-rules.md)
     - [Stats API](../api-reference/stats.md)
     - [Logs API](../api-reference/logs.md)
+    - [Traces API](../api-reference/traces.md)
     - [Models & Pricing API](../api-reference/models.md)
     - [Error Codes](../api-reference/error-codes.md)
 

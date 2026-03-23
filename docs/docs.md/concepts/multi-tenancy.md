@@ -15,14 +15,16 @@ AI Gateway can serve many tenants and gateways from a single process, with hard 
 ```mermaid
 graph TD
     T[Tenant]
-    T --> G["Gateway<br/>config · provider keys · auth tokens · routing rules"]
-    T --> U[User\nrole: admin · member · viewer]
+    T --> G["Gateway<br/>config · provider keys<br/>auth tokens · routing rules"]
+    T --> U["User<br/>role: admin · member · viewer"]
     U --> GA[per-gateway access grant]
 ```
 
 A **Tenant** is the top-level billing and isolation boundary. Each tenant can have multiple **Gateways** — each gateway is an independent policy domain with its own config, keys, tokens, and rules.
 
 **Users** belong to a tenant and are granted per-gateway access. Their role (`admin`, `member`, or `viewer`) determines what they can do across all gateways in the tenant.
+
+![Tenants list](../assets/screenshots/tenants-list.png)
 
 ---
 

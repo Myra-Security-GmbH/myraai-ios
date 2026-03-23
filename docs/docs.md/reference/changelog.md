@@ -4,6 +4,44 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ---
 
+## Analytics Dashboard
+
+**New: Analytics tabs** — The analytics view now breaks down activity across five tabs: By Tenant, By Gateway, By Provider, By Model, and By User. Each tab has a filter bar for searching by name or ID.
+
+**New: Overview chart** — A 30-day cost and request chart appears above the analytics tabs. Cost is shown as bars (left axis) and request volume as a line (right axis).
+
+**New: Latency percentile strip** — p50, p95, and p99 latency chips are shown below the overview chart for the selected analytics window.
+
+**New: Expanded hero cards** — The dashboard now shows six cards: Total Spend, Cache Savings, Total Requests, Error Rate, Top Spender, and Budget Warnings (previously three cards).
+
+**New: By Provider tab** — Provider-level breakdown aggregated client-side from top-model data, showing request share, cost, model count, and average latency per provider.
+
+**New: By User tab** — Per-user breakdown (up to 50 users) showing cost, cache rate, error rate, blocked count, and average latency. Only requests with a `user_id` on the auth token are included.
+
+**New: Error rate** — By Tenant and By Gateway tables now show an Error% column counting upstream 4xx/5xx responses per entity.
+
+---
+
+## Tracing
+
+**New: Gateway request tracing** — Gateways can now record step-by-step execution traces for inference requests. Enable with `"tracing": {"enabled": true}` in the gateway config. Steps include request normalisation, routing decisions, guardrail results, upstream calls, and response delivery. See [Request Tracing](../observability/tracing.md).
+
+**New: Tracing config UI** — The gateway Config tab includes a Tracing section to enable tracing and optionally capture request bodies (`include_bodies`).
+
+**New: Traces API** — `GET /gateways/{id}/traces` lists recent traces for a gateway. `GET /traces/{id}` returns the full step list for any trace. See [Traces API](../api-reference/traces.md).
+
+---
+
+## Budgets & Quota
+
+**New: Persistent spend ledger** — Spend is now tracked in a SQLite `spend_ledger` table rather than shared-dict counters. Spend survives process restarts and worker crashes.
+
+**New: `total` budget period** — A new `"total"` period accumulates spend over the lifetime of the budget without ever auto-resetting. Useful for one-time allowances and trial accounts. Valid period values are now `"daily"`, `"monthly"`, and `"total"` (`"weekly"` is not a valid value).
+
+**New: Actionable QUOTA_EXCEEDED messages** — When a budget is exhausted, the 429 response now includes the configured budget, the current spend, and the exact API endpoint needed to either increase the budget or reset spend for the current period.
+
+---
+
 ## Observability
 
 **New: Timeseries stats** — Time-bucketed request counts, block counts, and cost are now available via the Stats API. Supports five bucket sizes (`5m`, `15m`, `30m`, `1h`, `6h`, `1d`) with up to 168 buckets per query. See [Stats API](../api-reference/stats.md).

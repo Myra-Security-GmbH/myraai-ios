@@ -13,6 +13,8 @@ Log in to the admin UI at `https://<your-gateway-host>/admin` using the credenti
 3. Click **Gateways** in the sidebar, then **New Gateway**.
 4. Select your new tenant, enter a slug (e.g. `production`), and save.
 
+![Gateway list after selecting a tenant](../assets/screenshots/gateway-list.png)
+
 !!! note "Auth for this quick start"
     By default, gateways require an auth token on every inference request. To skip that for now, open the gateway's **Config** tab and set **Auth Required** to off. Re-enable it before going to production.
 
@@ -23,6 +25,8 @@ Log in to the admin UI at `https://<your-gateway-host>/admin` using the credenti
 1. In **Gateways**, click your new gateway.
 2. Open the **Keys** tab.
 3. Click **Add Key**, select a provider (e.g. `openai`), paste your API key, and save.
+
+![Gateway detail — provider keys, auth tokens, and routing rules](../assets/screenshots/gateway-detail.png)
 
 The key is encrypted at rest immediately. The plaintext is never stored.
 

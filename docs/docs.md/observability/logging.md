@@ -2,6 +2,8 @@
 
 The request log is your primary tool for understanding what your gateway is doing. Every inference request produces a log entry with the provider used, token counts, cost, latency, cache status, and (optionally) the full prompt and response text. You can view logs in real time in the admin UI under **Logs**, or query them programmatically via the API.
 
+![Request log table](../assets/screenshots/logs-table.png)
+
 Logging happens after the response is sent — it does not add latency to the request path.
 
 ---

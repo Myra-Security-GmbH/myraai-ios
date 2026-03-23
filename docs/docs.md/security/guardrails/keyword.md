@@ -80,6 +80,55 @@ Records a log entry whenever the model response contains an internal codename, w
 }
 ```
 
+### Jailbreak and prompt-injection detection
+
+The keyword guardrail can catch the most common, literal jailbreak and prompt-injection attempts with sub-millisecond latency and no sidecar dependency. The recommended action is `flag` rather than `block` because some phrases (e.g. `"jailbreak"` in a device support chat) occur in legitimate contexts. Review flagged traffic before switching to `block`.
+
+Set `whole_word: false` so inflected forms are also matched — for example `"bypassing your restrictions"` matches the phrase `"bypass your restrictions"`.
+
+```json
+{
+  "type": "keyword",
+  "name": "jailbreak-flag",
+  "action": "flag",
+  "target": "request",
+  "case_sensitive": false,
+  "whole_word": false,
+  "keywords": [
+    "ignore previous instructions",
+    "ignore all instructions",
+    "ignore your instructions",
+    "disregard previous instructions",
+    "disregard your instructions",
+    "forget your instructions",
+    "DAN mode",
+    "do anything now",
+    "jailbreak",
+    "developer mode",
+    "unrestricted mode",
+    "your true self",
+    "bypass your guidelines",
+    "bypass your restrictions",
+    "override your guidelines",
+    "override your restrictions",
+    "prompt injection",
+    "[SYSTEM]"
+  ]
+}
+```
+
+The Guardrail Builder includes a **Jailbreak (flag)** preset button that populates this configuration automatically.
+
+!!! warning "Limitations of keyword-based jailbreak detection"
+    Keyword matching catches only **literal, unmodified phrases**. Motivated users can bypass it by:
+
+    - Rephrasing: *"Please set aside your earlier guidance"*
+    - Character insertion: *"ignore prev,ious instructions"*
+    - Language switching or encoding
+    - Prompt injection embedded in retrieved documents
+
+    For coverage beyond literal phrases, combine this guardrail with [Prompt Guard](prompt-guard.md) (Llama Guard 3), which performs semantic classification of request content.
+
 !!! note "For pattern-based detection, use a different guardrail"
     The keyword guardrail only supports exact string matching. For detecting structured sensitive data such as email addresses, credit card numbers, or PII categories, use the [Regex guardrail](regex.md) or [NLP PII Detector](presidio.md) instead.
 
