@@ -1,0 +1,417 @@
+/* ============================================================
+   AI Gateway — print / PDF stylesheet
+   Used by WeasyPrint via mkdocs-print-site-plugin.
+   @page rules must be top-level (WeasyPrint ignores them inside @media).
+   ============================================================ */
+
+/* ── Page setup ────────────────────────────────────────────── */
+@page {
+  size: A4 portrait;
+  margin: 23mm 20mm 26mm 20mm;
+
+  @top-left {
+    content: "AI Gateway by Myra Security";
+    font-family: system-ui, sans-serif;
+    font-size: 8pt;
+    color: #888;
+  }
+  @top-right {
+    content: "Documentation";
+    font-family: system-ui, sans-serif;
+    font-size: 8pt;
+    color: #888;
+  }
+  @bottom-center {
+    content: counter(page);
+    font-family: system-ui, sans-serif;
+    font-size: 8pt;
+    color: #888;
+  }
+}
+
+/* Cover page: no header/footer, no page number */
+@page :first {
+  margin: 30mm 20mm 28mm 20mm;
+  @top-left    { content: ""; }
+  @top-right   { content: ""; }
+  @bottom-center { content: ""; }
+}
+
+@media print {
+
+  /* ── Hide web-only chrome ──────────────────────────────── */
+  .md-header,
+  .md-footer,
+  .md-sidebar,
+  .md-tabs,
+  .md-search,
+  .md-top,
+  .md-content__button,
+  .headerlink,
+  [data-clipboard-text],
+  .md-typeset .copy-button {
+    display: none !important;
+  }
+
+  /* ── Body & base typography ────────────────────────────── */
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 10pt;
+    line-height: 1.6;
+    color: #1a1a1a;
+    background: #fff;
+  }
+
+  .md-content {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* ── Paragraphs ────────────────────────────────────────── */
+  p {
+    margin-top: 0;
+    margin-bottom: 6pt;
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* ── Headings ──────────────────────────────────────────── */
+
+  /* H1 — each doc page starts on a fresh sheet */
+  h1 {
+    font-size: 20pt;
+    font-weight: 700;
+    color: #002b49;
+    border-bottom: 2pt solid #002b49;
+    padding-bottom: 5pt;
+    margin-top: 0;
+    margin-bottom: 14pt;
+    page-break-before: always;
+    page-break-after: avoid;
+  }
+
+  /* Only the cover page h1 must not force a break */
+  #print-site-cover-page h1 {
+    page-break-before: avoid;
+  }
+
+  /* Nav section label headings ("Getting Started", "Core Concepts" …) are
+     MkDocs nav group labels with no body.  They add no value in print because
+     each content page immediately below has its own descriptive h1.
+     Hiding them eliminates near-blank divider pages. */
+  .md-section > h1 {
+    display: none !important;
+  }
+
+  /* H2 — major section within a page */
+  h2 {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #002b49;
+    margin-top: 22pt;
+    margin-bottom: 7pt;
+    padding-top: 9pt;
+    border-top: 0.75pt solid #ccdde8;
+    page-break-after: avoid;
+  }
+
+  /* Remove border-top from the very first h2 after an h1 */
+  h1 + h2,
+  h1 + p + h2,
+  h1 + .admonition + h2 {
+    border-top: none;
+    padding-top: 0;
+    margin-top: 12pt;
+  }
+
+  /* H3 — subsection */
+  h3 {
+    font-size: 11.5pt;
+    font-weight: 700;
+    color: #003d6b;
+    margin-top: 14pt;
+    margin-bottom: 5pt;
+    page-break-after: avoid;
+  }
+
+  /* H4 / H5 / H6 */
+  h4, h5, h6 {
+    font-size: 10pt;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-top: 11pt;
+    margin-bottom: 3pt;
+    page-break-after: avoid;
+  }
+
+  /* ── Links ─────────────────────────────────────────────── */
+  a {
+    color: #0060a0;
+    text-decoration: none;
+  }
+
+  /* ── Inline code ───────────────────────────────────────── */
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 8.5pt;
+    background: #eef5f9;
+    color: #06243a;
+    padding: 1.5pt 4pt;
+    border-radius: 2pt;
+    border: 0.5pt solid #d0e4ef;
+  }
+
+  /* ── Code blocks ───────────────────────────────────────── */
+  pre {
+    background: #f4f8fb;
+    border: 1pt solid #c8dde9;
+    border-left: 3pt solid #2ad9ff;
+    border-radius: 0 4pt 4pt 0;
+    padding: 8pt 10pt;
+    margin: 8pt 0 11pt;
+    font-size: 8pt;
+    line-height: 1.5;
+    overflow: visible;
+    white-space: pre-wrap;
+    word-break: break-all;
+    page-break-inside: avoid;
+  }
+
+  pre code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+    border: none;
+    color: inherit;
+  }
+
+  /* ── Lists ─────────────────────────────────────────────── */
+  ul, ol {
+    margin-top: 3pt;
+    margin-bottom: 8pt;
+    padding-left: 16pt;
+    page-break-inside: auto;
+  }
+
+  li {
+    margin-bottom: 3pt;
+    page-break-inside: avoid;
+    orphans: 3;
+    widows: 3;
+  }
+
+  li > ul,
+  li > ol {
+    margin-top: 2pt;
+    margin-bottom: 2pt;
+  }
+
+  /* ── Tables ─────────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    line-height: 1.45;
+    page-break-inside: auto;
+    margin: 8pt 0 12pt;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  th {
+    background: #002b49 !important;
+    color: #fff !important;
+    padding: 5pt 9pt;
+    text-align: left;
+    font-weight: 600;
+    font-size: 8.5pt;
+  }
+
+  td {
+    padding: 5pt 9pt;
+    border-bottom: 0.5pt solid #dde8ee;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background: #f4f8fb;
+  }
+
+  /* ── Admonitions (note / warning / tip …) ─────────────── */
+  .admonition,
+  details {
+    border-left: 3pt solid #2ad9ff;
+    background: #f5fdff;
+    padding: 7pt 10pt;
+    margin: 9pt 0 11pt;
+    page-break-inside: avoid;
+    border-radius: 0 4pt 4pt 0;
+  }
+
+  .admonition.warning,
+  details.warning {
+    border-color: #e09600;
+    background: #fffbf0;
+  }
+
+  .admonition.danger,
+  .admonition.error {
+    border-color: #c0392b;
+    background: #fff5f5;
+  }
+
+  .admonition.tip,
+  .admonition.success {
+    border-color: #27ae60;
+    background: #f0fff4;
+  }
+
+  .admonition-title,
+  summary {
+    font-weight: 700;
+    font-size: 9pt;
+    margin-bottom: 5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #002b49;
+  }
+
+  /* ── Images / screenshots ──────────────────────────────── */
+  img {
+    max-width: 100%;
+    height: auto;
+    page-break-inside: avoid;
+    display: block;
+    border: 0.75pt solid #d0dde6;
+    border-radius: 4pt;
+    margin: 8pt auto 11pt;
+    box-shadow: none;
+  }
+
+  /* ── Mermaid diagrams ───────────────────────────────────── */
+  .mermaid,
+  .mermaid-diagram {
+    page-break-inside: avoid;
+    margin: 10pt 0 14pt;
+    text-align: center;
+  }
+
+  .mermaid-diagram svg {
+    max-width: 100%;
+    max-height: 210mm;   /* never taller than the A4 content area */
+    width: auto;
+    height: auto;
+    display: inline-block;
+  }
+
+  /* ── Cover page ────────────────────────────────────────── */
+  #print-site-cover-page {
+    min-height: 180mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 20mm 0 10mm;
+  }
+
+  #print-site-cover-page h1 {
+    font-size: 26pt;
+    border-bottom-width: 3pt;
+    margin-bottom: 28pt;
+    page-break-before: avoid;
+  }
+
+  #print-site-cover-page table {
+    font-size: 10pt;
+    margin-top: 0;
+  }
+
+  #print-site-cover-page td {
+    padding: 5pt 10pt;
+  }
+
+  /* ── Table of contents ─────────────────────────────────── */
+  .print-site-toc {
+    margin-top: 16pt;
+    padding-left: 0;
+  }
+
+  .print-site-toc > li {
+    margin-bottom: 8pt;
+    font-size: 10pt;
+    list-style: none;
+  }
+
+  .print-site-toc > li > strong {
+    display: block;
+    font-size: 9pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #002b49;
+    margin-bottom: 3pt;
+  }
+
+  .print-site-toc > li > ul {
+    padding-left: 12pt;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .print-site-toc li {
+    margin-bottom: 2pt;
+    font-size: 10pt;
+  }
+
+  .print-site-toc a {
+    color: #0060a0;
+    text-decoration: none;
+  }
+
+  /* ── Horizontal rules ───────────────────────────────────── */
+  hr {
+    border: none;
+    border-top: 0.75pt solid #d0dde6;
+    margin: 18pt 0;
+  }
+
+  /* ── Blockquotes ────────────────────────────────────────── */
+  blockquote {
+    border-left: 3pt solid #b0c8d8;
+    margin: 10pt 0 14pt 0;
+    padding: 4pt 12pt;
+    color: #445;
+    font-style: italic;
+  }
+
+  /* ── Pygments syntax highlighting ───────────────────────── */
+  .highlight .k,  .highlight .kd, .highlight .kn,
+  .highlight .kp, .highlight .kr, .highlight .kt,
+  .highlight .kc { color: #005f87; font-weight: 600; }
+
+  .highlight .s,  .highlight .s1, .highlight .s2,
+  .highlight .sa, .highlight .sb, .highlight .sc,
+  .highlight .se, .highlight .si, .highlight .ss { color: #1a7f3c; }
+
+  .highlight .c,  .highlight .cm, .highlight .c1,
+  .highlight .cs  { color: #6a9fb5; font-style: italic; }
+
+  .highlight .m,  .highlight .mi, .highlight .mf,
+  .highlight .mh, .highlight .mo { color: #a05000; }
+
+  .highlight .n,  .highlight .nx { color: #062873; }
+  .highlight .na, .highlight .nb { color: #003d7a; }
+  .highlight .nc  { color: #005f87; font-weight: 600; }
+  .highlight .nd  { color: #7c3aed; }
+  .highlight .nf  { color: #003d7a; }
+  .highlight .nt  { color: #005f87; }
+  .highlight .nv, .highlight .ni { color: #19177c; }
+
+  .highlight .o   { color: #555; }
+  .highlight .p   { color: #1a1a1a; }
+  .highlight .w   { }
+  .highlight .err { color: #a40000; background: #fce; }
+
+}
