@@ -75,8 +75,11 @@ def analyze():
     language = body.get("language", "en")
     entities = body.get("entities") or None
     score_threshold = body.get("score_threshold", 0.35)
+    allow_list = body.get("allow_list") or None
+    allow_list_match = body.get("allow_list_match") or "exact"
     results = engine.analyze(text=text, language=language,
-                             entities=entities, score_threshold=score_threshold)
+                             entities=entities, score_threshold=score_threshold,
+                             allow_list=allow_list, allow_list_match=allow_list_match)
     response = jsonify([r.to_dict() for r in results])
     # Break reference cycles in spaCy Doc objects created during this request
     # so CuPy can reclaim their GPU tensors back into the pool's free list.

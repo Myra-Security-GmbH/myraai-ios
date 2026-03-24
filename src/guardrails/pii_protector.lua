@@ -73,10 +73,12 @@ local function call_analyzer(text, detector)
     local read_ms  = detector.timeout_ms or 15000
 
     local payload = json.encode({
-        text            = text,
-        language        = detector.language or DEFAULT_LANGUAGE,
-        entities        = detector.entities,
-        score_threshold = detector.score_threshold or DEFAULT_SCORE_THRESHOLD,
+        text             = text,
+        language         = detector.language or DEFAULT_LANGUAGE,
+        entities         = detector.entities,
+        score_threshold  = detector.score_threshold or DEFAULT_SCORE_THRESHOLD,
+        allow_list       = detector.allow_list,
+        allow_list_match = detector.allow_list_match,
     })
 
     local status, _, body, err = http_util.request({
@@ -101,6 +103,79 @@ local function call_analyzer(text, detector)
         return nil, "analyzer parse"
     end
     return result
+end
+
+-- ---------------------------------------------------------------------------
+-- build_exclusion_ranges: find the byte ranges occupied by system/assistant
+-- message content in the raw JSON body so that entities detected within those
+-- ranges can be dropped before tokenization.
+--
+-- Rationale: system and assistant messages are operator/model-controlled text,
+-- not user-supplied data.  Tokenizing PII in a system prompt corrupts the
+-- model's instructions (e.g. the example email in a "Co-Authored-By" git
+-- commit template gets replaced with [MYRA-REDACT-…]).  Only user messages
+-- should be scanned for PII.
+--
+-- Implementation: parse the request JSON, extract each non-user message's
+-- content, and find its literal byte position in the raw body with a plain
+-- string search.  This works correctly for ASCII PII (email, phone, SSN).
+-- Non-ASCII content is skipped gracefully — the search will simply fail to
+-- match and the range is not added, which is safe (we might over-tokenize a
+-- system prompt with non-ASCII PII, but that is the existing behaviour).
+--
+-- Returns an array of {s=start_byte_0based, e=end_byte_0based} intervals.
+-- ---------------------------------------------------------------------------
+local SKIP_ROLES = { system = true, assistant = true }
+
+local function build_exclusion_ranges(raw_body)
+    local ok, parsed = pcall(json.decode, raw_body)
+    if not ok or type(parsed) ~= "table" then return {} end
+
+    local msgs = parsed.messages
+    if type(msgs) ~= "table" then return {} end
+
+    local ranges   = {}
+    local search_from = 1  -- advance cursor so equal substrings in later roles
+                           -- don't shadow earlier positions
+
+    for _, msg in ipairs(msgs) do
+        if SKIP_ROLES[msg.role] then
+            local content = msg.content
+            local texts   = {}
+
+            if type(content) == "string" then
+                texts[1] = content
+            elseif type(content) == "table" then
+                for _, part in ipairs(content) do
+                    if type(part) == "table" and part.type == "text"
+                       and type(part.text) == "string" then
+                        texts[#texts + 1] = part.text
+                    end
+                end
+            end
+
+            for _, t in ipairs(texts) do
+                if #t > 0 then
+                    local s = raw_body:find(t, search_from, true)
+                    if s then
+                        ranges[#ranges + 1] = { s = s - 1, e = s - 1 + #t }
+                        search_from = s + #t
+                    end
+                end
+            end
+        end
+    end
+    return ranges
+end
+
+-- Returns true when the entity span [e.start, e.end) is fully contained
+-- within any of the exclusion ranges.
+local function in_exclusion_ranges(entity, ranges)
+    local es, ee = entity.start, entity["end"]
+    for _, r in ipairs(ranges) do
+        if es >= r.s and ee <= r.e then return true end
+    end
+    return false
 end
 
 -- ---------------------------------------------------------------------------
@@ -399,6 +474,28 @@ function M.run(ctx, detector, phase)
     -- Apply per-entity score floors (drops high-FP entities like PERSON/LOCATION
     -- unless they exceed the higher threshold or the user explicitly configures them).
     entities = apply_entity_thresholds(entities, detector)
+
+    if #entities == 0 then
+        return { verdict = "pass" }
+    end
+
+    -- Drop entities whose spans fall entirely within system/assistant message
+    -- content.  System prompts are operator-controlled; assistant turns are
+    -- model-generated.  Neither is user-supplied PII, and tokenizing them
+    -- corrupts the model's own instructions.
+    -- Opt-out: set skip_system_messages = false in the detector config.
+    if detector.skip_system_messages ~= false then
+        local excl = build_exclusion_ranges(text)
+        if #excl > 0 then
+            local filtered = {}
+            for _, e in ipairs(entities) do
+                if not in_exclusion_ranges(e, excl) then
+                    filtered[#filtered + 1] = e
+                end
+            end
+            entities = filtered
+        end
+    end
 
     if #entities == 0 then
         return { verdict = "pass" }

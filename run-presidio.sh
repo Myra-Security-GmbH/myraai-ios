@@ -78,6 +78,7 @@ start_analyzer() {
         --cap-drop all \
         --security-opt no-new-privileges:true \
         -p "127.0.0.1:${ANALYZER_PORT}:3000" \
+        -v "$(pwd)/config/presidio_entrypoint.py:/entrypoint.py:ro" \
         "$ANALYZER_IMAGE"
     log "Analyzer started."
     wait_ready "$ANALYZER_CONTAINER" "$ANALYZER_PORT"
