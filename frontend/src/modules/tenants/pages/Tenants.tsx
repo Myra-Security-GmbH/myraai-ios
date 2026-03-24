@@ -4,6 +4,7 @@ import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { Tenant, Gateway, BudgetPeriod } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
+import { fmtCost } from "src/common/utils/format";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -170,7 +171,7 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
             <div className={s["stat-label"]}>Budget Limit</div>
             <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>
               {tenant.budget_usd != null
-                ? <>{`$${tenant.budget_usd.toFixed(2)}`} <span style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>/ {tenant.budget_period ?? "monthly"}</span></>
+                ? <>{fmtCost(tenant.budget_usd)} <span style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>/ {tenant.budget_period ?? "monthly"}</span></>
                 : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}
             </div>
           </div>
@@ -227,7 +228,7 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
                         {g.config.auth_required !== false ? "required" : "open"}
                       </span>
                     </td>
-                    <td>{g.config.budget_usd != null ? `$${g.config.budget_usd}` : "—"}</td>
+                    <td>{fmtCost(g.config.budget_usd)}</td>
                     <td>{g.config.cache_ttl ?? 0}s</td>
                     <td className={s.mono}>{fmtDate(g.created_at)}</td>
                     <td>
@@ -334,7 +335,7 @@ export default function Tenants() {
                       {t.plan}
                     </span>
                   </td>
-                  <td>{t.budget_usd != null ? `$${t.budget_usd.toFixed(2)}` : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}</td>
+                  <td>{t.budget_usd != null ? fmtCost(t.budget_usd) : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}</td>
                   <td className={s.mono}>{fmtDate(t.created_at)}</td>
                   <td>
                     <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/tenants/${t.id}`); }}>

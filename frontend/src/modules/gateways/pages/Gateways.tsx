@@ -5,6 +5,7 @@ import { api } from "src/api/client";
 import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig, GatewayGuardrailStats, GuardrailEvent, CircuitBreakerStatus, CircuitBreakerConfig, LoadBalanceConfig, WebhookConfig, WebhookEvent, BudgetPeriod, SiemType, SiemEvent } from "src/api/types";
 import { GuardrailBuilder } from "src/modules/guardrails/GuardrailBuilder";
 import { fmtDate, fmtDateTime } from "src/common/utils/date";
+import { fmtNumber, fmtCost, fmtMs, fmtSec } from "src/common/utils/format";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -1083,7 +1084,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
         <div className={s["stats-grid"]}>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Budget</div>
-            <div className={s["stat-value"]}>{cfg.budget_usd != null ? `$${cfg.budget_usd}` : "—"}</div>
+            <div className={s["stat-value"]}>{fmtCost(cfg.budget_usd)}</div>
             {cfg.budget_usd != null && (
               <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} style={{ marginTop: 6 }} onClick={resetBudget} disabled={budgetResetting}>
                 {budgetResetting ? "…" : "Reset Spend"}
@@ -1092,7 +1093,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Cache TTL</div>
-            <div className={s["stat-value"]}>{cfg.cache_ttl ?? 0}s</div>
+            <div className={s["stat-value"]}>{fmtSec(cfg.cache_ttl ?? 0)}</div>
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Retries</div>
@@ -1100,7 +1101,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Timeout</div>
-            <div className={s["stat-value"]}>{cfg.timeout_ms ?? 120000}ms</div>
+            <div className={s["stat-value"]}>{fmtMs(cfg.timeout_ms ?? 120000)}</div>
           </div>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Auth</div>
@@ -1109,7 +1110,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Rate Limit</div>
             <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>
-              {cfg.rate_limit ? `${cfg.rate_limit.requests}/${cfg.rate_limit.window_sec}s` : "—"}
+              {cfg.rate_limit ? `${fmtNumber(cfg.rate_limit.requests)}/${cfg.rate_limit.window_sec}s` : "—"}
             </div>
           </div>
           <div className={s["stat-card"]}>
@@ -1190,10 +1191,10 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
                     <td><span className={s.code}>{t.label ?? <span style={{ color: "var(--text-secondary)" }}>—</span>}</span></td>
                     <td className={s.mono} style={{ fontSize: 11 }}>{t.token_hash.slice(0, 16)}…</td>
                     <td style={{ fontSize: 12 }}>
-                      {t.rate_limit ? `${t.rate_limit.requests}/${t.rate_limit.window_sec}s` : <span style={{ color: "var(--text-secondary)" }}>—</span>}
+                      {t.rate_limit ? `${fmtNumber(t.rate_limit.requests)}/${t.rate_limit.window_sec}s` : <span style={{ color: "var(--text-secondary)" }}>—</span>}
                     </td>
                     <td style={{ fontSize: 12 }}>
-                      {t.budget_usd != null ? `$${t.budget_usd}` : <span style={{ color: "var(--text-secondary)" }}>—</span>}
+                      {t.budget_usd != null ? fmtCost(t.budget_usd) : <span style={{ color: "var(--text-secondary)" }}>—</span>}
                     </td>
                     <td>{t.expires_at ? fmtDateTime(t.expires_at) : <span style={{ color: "var(--text-secondary)" }}>never</span>}</td>
                     <td className={s.mono}>{fmtDate(t.created_at)}</td>
@@ -1224,13 +1225,13 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
         {guardrailStats && (guardrailStats.blocked > 0 || guardrailStats.scrubbed > 0 || guardrailStats.flagged > 0 || guardrailStats.avg_guardrail_ms > 0) && (
           <div style={{ display: "flex", gap: 16, padding: "8px 0 12px", fontSize: 13, color: "var(--text-secondary)" }}>
             {guardrailStats.blocked > 0 && (
-              <span><span className={`${s.badge} ${s["badge--error"]}`}>{guardrailStats.blocked} blocked</span></span>
+              <span><span className={`${s.badge} ${s["badge--error"]}`}>{fmtNumber(guardrailStats.blocked)} blocked</span></span>
             )}
             {guardrailStats.scrubbed > 0 && (
-              <span><span className={`${s.badge} ${s["badge--warning"]}`}>{guardrailStats.scrubbed} scrubbed</span></span>
+              <span><span className={`${s.badge} ${s["badge--warning"]}`}>{fmtNumber(guardrailStats.scrubbed)} scrubbed</span></span>
             )}
             {guardrailStats.flagged > 0 && (
-              <span><span className={`${s.badge} ${s["badge--neutral"]}`}>{guardrailStats.flagged} flagged</span></span>
+              <span><span className={`${s.badge} ${s["badge--neutral"]}`}>{fmtNumber(guardrailStats.flagged)} flagged</span></span>
             )}
             {guardrailStats.avg_guardrail_ms > 0 && (
               <span style={{ marginLeft: "auto" }}>avg {guardrailStats.avg_guardrail_ms} ms guardrail latency · last 24h</span>
@@ -1397,7 +1398,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
                           {info.state}
                         </span>
                       </td>
-                      <td>{info.failures}</td>
+                      <td>{fmtNumber(info.failures)}</td>
                       <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
                         {info.opened_at
                           ? new Date(info.opened_at * 1000).toLocaleTimeString()
@@ -1410,8 +1411,8 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
             </div>
           )}
           <p className={s["form-hint"]} style={{ padding: "8px 16px" }}>
-            Threshold: {gw.config.circuit_breaker.failure_threshold ?? 5} failures in {gw.config.circuit_breaker.window_sec ?? 60}s ·
-            Cooldown: {gw.config.circuit_breaker.cooldown_ms ?? 30000}ms
+            Threshold: {fmtNumber(gw.config.circuit_breaker.failure_threshold ?? 5)} failures in {gw.config.circuit_breaker.window_sec ?? 60}s ·
+            Cooldown: {fmtMs(gw.config.circuit_breaker.cooldown_ms ?? 30000)}
           </p>
         </div>
       )}
@@ -1543,10 +1544,10 @@ export default function Gateways() {
                         {g.config.auth_required !== false ? "required" : "open"}
                       </span>
                     </td>
-                    <td>{g.config.budget_usd != null ? `$${g.config.budget_usd}` : "—"}</td>
-                    <td>{g.config.cache_ttl ?? 0}s</td>
+                    <td>{fmtCost(g.config.budget_usd)}</td>
+                    <td>{fmtSec(g.config.cache_ttl ?? 0)}</td>
                     <td style={{ fontSize: 12 }}>
-                      {g.config.rate_limit ? `${g.config.rate_limit.requests}/${g.config.rate_limit.window_sec}s` : "—"}
+                      {g.config.rate_limit ? `${fmtNumber(g.config.rate_limit.requests)}/${g.config.rate_limit.window_sec}s` : "—"}
                     </td>
                     <td>
                       {(Array.isArray(g.config.guardrails) ? g.config.guardrails : ((g.config as any).detectors ?? [])).length > 0 ? (
