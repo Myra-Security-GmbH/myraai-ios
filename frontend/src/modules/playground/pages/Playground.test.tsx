@@ -1217,7 +1217,7 @@ function setupWebSearchMocks(opts: {
     if (urlStr.includes("/anthropic/v1/messages") && body && !body.stream) {
       return makeAnthropicToolUseResponse(opts.toolId, opts.searchQuery);
     }
-    if (urlStr.includes("/playground/search")) {
+    if (urlStr.includes("/admin/v1/playground/search")) {
       return new Response(
         JSON.stringify({ results: [{ title: "Result", url: "https://x.com", snippet: "snippet" }], query: opts.searchQuery }),
         { status: 200, headers: { "Content-Type": "application/json" } }
@@ -1323,7 +1323,7 @@ describe("Playground — web search", () => {
           usage: { input_tokens: 60, output_tokens: 30 },
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
-      if (urlStr.includes("/playground/search")) {
+      if (urlStr.includes("/admin/v1/playground/search")) {
         const q = new URL(urlStr, "http://x").searchParams.get("q") ?? "";
         searchQueries.push(q);
         return new Response(JSON.stringify({ results: [], query: q }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -1415,7 +1415,7 @@ describe("Playground — web search", () => {
         leg1Body = body;
         return makeAnthropicToolUseResponse(TOOL_ID, "ai news");
       }
-      if (urlStr.includes("/playground/search")) {
+      if (urlStr.includes("/admin/v1/playground/search")) {
         return new Response(JSON.stringify({ results: [], query: "ai news" }), { status: 200 });
       }
       if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
@@ -1459,7 +1459,7 @@ describe("Playground — web search", () => {
         leg1Body = body;
         return makeAnthropicToolUseResponse(TOOL_ID, "ai news");
       }
-      if (urlStr.includes("/playground/search")) {
+      if (urlStr.includes("/admin/v1/playground/search")) {
         return new Response(JSON.stringify({ results: [], query: "ai news" }), { status: 200 });
       }
       if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
@@ -1716,5 +1716,367 @@ describe("Playground — web search", () => {
     expect(capturedUrl).toContain("/compat/chat/completions");
     expect(capturedBody?.tools).toBeUndefined();
     expect(capturedUrl).not.toContain("/anthropic/v1/messages");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Web search — URL contracts and resilience
+//
+// These tests exist to prevent a specific regression: the search fetch was
+// previously called at /playground/search (missing the /admin/v1 prefix).
+// Vite's SPA dev server returned its index.html (status 200) for that path,
+// making searchRes.ok === true and causing searchRes.json() to throw
+// "SyntaxError: Unexpected token '<', '<!doctype '..." — crashing the run.
+//
+// Rules enforced here:
+//   1. The search URL must always begin with /admin/v1/playground/search.
+//   2. A non-JSON body (HTML, plain text) must never crash the agentic loop.
+//   3. A non-OK search response must produce empty tool_results, not an error.
+// ---------------------------------------------------------------------------
+
+const CLAUDE_OPUS_45: ModelPrice = {
+  provider: "anthropic",
+  model: "claude-opus-4-5",
+  input_per_1k: 0.015,
+  output_per_1k: 0.075,
+  cache_write_per_1k: null,
+  cache_read_per_1k: null,
+  updated_at: "2024-01-01T00:00:00Z",
+};
+
+/** Resolve once the Run button click has triggered at least one fetch call. */
+async function runWithModel(modelName: string) {
+  const pickerBtn = screen
+    .getAllByRole("button")
+    .find((b) => b.textContent?.includes("Select model"))!;
+  await userEvent.click(pickerBtn);
+  await waitFor(() =>
+    expect(screen.getByRole("option", { name: modelName })).toBeInTheDocument()
+  );
+  await userEvent.click(screen.getByRole("option", { name: modelName }));
+  await userEvent.click(screen.getByRole("button", { name: "Web Search" }));
+  await userEvent.type(screen.getByLabelText("User message"), "test query");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Run" })).not.toBeDisabled()
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Run" }));
+}
+
+describe("Playground — web search URL contracts and resilience", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it("search fetch URL must include /admin/v1 prefix — bare /playground/search must never be called", async () => {
+    // This test will FAIL if the URL reverts to /playground/search (without /admin/v1).
+    // The mock returns 404 for the bare path and 200 only for the correct prefixed path,
+    // so if the wrong URL is used the run will show an error instead of a final answer.
+    const searchUrls: string[] = [];
+
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve([...MODELS, CLAUDE_MODEL]);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      const urlStr = String(url);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+      if (urlStr.includes("/anthropic/v1/messages") && body && !body.stream) {
+        return makeAnthropicToolUseResponse("toolu_url_001", "test query");
+      }
+      if (urlStr.includes("/admin/v1/playground/search")) {
+        searchUrls.push(urlStr);
+        return new Response(
+          JSON.stringify({ results: [{ title: "T", url: "https://x.com", snippet: "s" }] }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      // Explicitly fail the bare path — if this branch is hit the test will not see a
+      // final answer and will time out / show an error panel.
+      if (urlStr.includes("/playground/search") && !urlStr.includes("/admin/v1")) {
+        return new Response("Not found", { status: 404 });
+      }
+      if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
+        return makeAnthropicSseResponse("final answer");
+      }
+      return new Response("", { status: 404 });
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    await runWithModel("claude-haiku-4-5");
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Response").textContent).toContain("final answer")
+    );
+
+    // Every captured search URL must carry the /admin/v1 prefix
+    expect(searchUrls.length).toBeGreaterThan(0);
+    for (const u of searchUrls) {
+      expect(u).toMatch(/\/admin\/v1\/playground\/search/);
+    }
+  });
+
+  it("search query string is URL-encoded (spaces and special chars)", async () => {
+    const searchUrls: string[] = [];
+
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve([...MODELS, CLAUDE_MODEL]);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      const urlStr = String(url);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+      if (urlStr.includes("/anthropic/v1/messages") && body && !body.stream) {
+        return makeAnthropicToolUseResponse("toolu_enc_001", "hello world & more");
+      }
+      if (urlStr.includes("/admin/v1/playground/search")) {
+        searchUrls.push(urlStr);
+        return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      }
+      if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
+        return makeAnthropicSseResponse("encoded answer");
+      }
+      return new Response("", { status: 404 });
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    await runWithModel("claude-haiku-4-5");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Response").textContent).toContain("encoded answer")
+    );
+
+    expect(searchUrls.length).toBeGreaterThan(0);
+    // Query must be URL-encoded — raw spaces/ampersands must not appear unencoded
+    const searchUrl = searchUrls[0];
+    expect(searchUrl).toContain("?q=");
+    expect(searchUrl).not.toMatch(/\?q=[^&]*\s/); // no literal space in query param
+  });
+
+  it("search response: status 200 with HTML body falls back to empty results — leg 2 still produces an answer (not SyntaxError)", async () => {
+    // Regression: before the /admin/v1 fix, Vite's SPA fallback returned status 200
+    // with <!doctype html> for /playground/search. json() threw SyntaxError and the
+    // panel displayed "SyntaxError: Unexpected token '<'..." instead of an answer.
+    // After adding .catch(() => ({results:[]})), the run must complete even if json()
+    // throws for any reason (wrong content-type, proxy HTML error page, etc.).
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve([...MODELS, CLAUDE_MODEL]);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      const urlStr = String(url);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+      if (urlStr.includes("/anthropic/v1/messages") && body && !body.stream) {
+        return makeAnthropicToolUseResponse("toolu_html_001", "test");
+      }
+      if (urlStr.includes("/admin/v1/playground/search")) {
+        // Simulate what a misconfigured proxy / SPA fallback returns: HTML at status 200
+        return new Response(
+          "<!doctype html><html><body>Not found</body></html>",
+          { status: 200, headers: { "Content-Type": "text/html" } }
+        );
+      }
+      if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
+        return makeAnthropicSseResponse("answer despite bad search");
+      }
+      return new Response("", { status: 404 });
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    await runWithModel("claude-haiku-4-5");
+
+    // Must show a final answer — NOT a SyntaxError
+    await waitFor(() =>
+      expect(screen.getByLabelText("Response").textContent).toContain("answer despite bad search")
+    );
+    expect(screen.getByLabelText("Response").textContent).not.toMatch(/SyntaxError/i);
+  });
+
+  it("search response: status 500 — leg 2 still produces an answer", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve([...MODELS, CLAUDE_MODEL]);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      const urlStr = String(url);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+      if (urlStr.includes("/anthropic/v1/messages") && body && !body.stream) {
+        return makeAnthropicToolUseResponse("toolu_500_001", "test");
+      }
+      if (urlStr.includes("/admin/v1/playground/search")) {
+        return new Response("Internal Server Error", { status: 500 });
+      }
+      if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
+        return makeAnthropicSseResponse("answer after 500 search");
+      }
+      return new Response("", { status: 404 });
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    await runWithModel("claude-haiku-4-5");
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Response").textContent).toContain("answer after 500 search")
+    );
+  });
+
+  it("search response: status 404 — leg 2 still produces an answer", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve([...MODELS, CLAUDE_MODEL]);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      const urlStr = String(url);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+      if (urlStr.includes("/anthropic/v1/messages") && body && !body.stream) {
+        return makeAnthropicToolUseResponse("toolu_404_001", "test");
+      }
+      if (urlStr.includes("/admin/v1/playground/search")) {
+        return new Response("Not Found", { status: 404 });
+      }
+      if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
+        return makeAnthropicSseResponse("answer after 404 search");
+      }
+      return new Response("", { status: 404 });
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    await runWithModel("claude-haiku-4-5");
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Response").textContent).toContain("answer after 404 search")
+    );
+  });
+
+  it("claude-opus-4-5 uses the native Anthropic two-leg path (not compat endpoint)", async () => {
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve([...MODELS, CLAUDE_OPUS_45]);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    const calledUrls: string[] = [];
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      const urlStr = String(url);
+      calledUrls.push(urlStr);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+      if (urlStr.includes("/anthropic/v1/messages") && body && !body.stream) {
+        return makeAnthropicToolUseResponse("toolu_opus45_001", "opus search");
+      }
+      if (urlStr.includes("/admin/v1/playground/search")) {
+        return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      }
+      if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
+        return makeAnthropicSseResponse("opus-4-5 answer");
+      }
+      return new Response("", { status: 404 });
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    await runWithModel("claude-opus-4-5");
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Response").textContent).toContain("opus-4-5 answer")
+    );
+
+    // Must have used native Anthropic endpoint, never the compat endpoint
+    expect(calledUrls.some((u) => u.includes("/anthropic/v1/messages"))).toBe(true);
+    expect(calledUrls.every((u) => !u.includes("/compat/chat/completions"))).toBe(true);
+    // Search must also have gone to the correct admin path
+    expect(calledUrls.some((u) => u.includes("/admin/v1/playground/search"))).toBe(true);
+  });
+
+  it("leg 2 tool_result has empty content array when search returned no results", async () => {
+    let leg2Body: any = null;
+
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve([...MODELS, CLAUDE_MODEL]);
+      if (path === "/providers") return Promise.resolve(PROVIDER_META);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      if (path === "/gateways/gw1/keys") return Promise.resolve(GW_KEYS);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      const urlStr = String(url);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+      if (urlStr.includes("/anthropic/v1/messages") && body && !body.stream) {
+        return makeAnthropicToolUseResponse("toolu_empty_001", "test");
+      }
+      if (urlStr.includes("/admin/v1/playground/search")) {
+        // Return 404 — fallback to empty results
+        return new Response("", { status: 404 });
+      }
+      if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
+        leg2Body = body;
+        return makeAnthropicSseResponse("answer with empty results");
+      }
+      return new Response("", { status: 404 });
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    await runWithModel("claude-haiku-4-5");
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Response").textContent).toContain("answer with empty results")
+    );
+
+    // Leg 2 must still include a tool_result block (even if content is empty/[])
+    // so the Anthropic API doesn't reject the request with "tool_use ids without tool_result"
+    const lastUser = [...leg2Body.messages].reverse().find((m: any) => m.role === "user");
+    const toolResults = Array.isArray(lastUser?.content)
+      ? lastUser.content.filter((b: any) => b.type === "tool_result")
+      : [];
+    expect(toolResults).toHaveLength(1);
+    expect(toolResults[0].tool_use_id).toBe("toolu_empty_001");
   });
 });

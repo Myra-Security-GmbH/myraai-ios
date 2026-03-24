@@ -222,7 +222,7 @@ describe("Gateways — detail view", () => {
     await waitFor(() => expect(screen.getByText(/\$50/)).toBeInTheDocument()); // budget
     expect(screen.getByText("300s")).toBeInTheDocument();  // cache ttl
     expect(screen.getByText("2")).toBeInTheDocument();     // retries
-    expect(screen.getByText("120000ms")).toBeInTheDocument();
+    expect(screen.getByText("120,000 ms")).toBeInTheDocument();
     expect(screen.getByText("required")).toBeInTheDocument();
   });
 
