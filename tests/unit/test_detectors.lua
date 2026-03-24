@@ -1,6 +1,7 @@
 -- tests/unit/test_detectors.lua — unit tests for the detector pipeline
 -- Run with: resty tests/runner.lua tests/unit/test_detectors.lua
 --       or: busted tests/unit/test_detectors.lua
+-- lua5.1-compatible (no OpenResty C extensions required)
 
 package.path = "/home/sas/work/ai-gateway/src/?.lua;" ..
                "/home/sas/work/ai-gateway/src/?/init.lua;" ..
@@ -895,6 +896,113 @@ describe("jailbreak detector", function()
         assert.equal("pass", result)
         assert.is_true(#ctx.log_fields.detectors_fired > 0)
         assert.equal("jb-flag", ctx.log_fields.detectors_fired[1])
+    end)
+
+end)
+
+-- ---------------------------------------------------------------------------
+-- Orchestrator error-path and entities coverage (Tier A)
+-- ---------------------------------------------------------------------------
+describe("orchestrator error-path and entities", function()
+
+    -- Inject a module that always errors into package.loaded so the orchestrator
+    -- can find it by its MODULES key without touching the filesystem.
+    local function inject_error_module(name)
+        package.loaded["guardrails." .. name] = {
+            run = function() error("simulated detector failure") end,
+        }
+    end
+
+    local function inject_result_module(name, result)
+        package.loaded["guardrails." .. name] = {
+            run = function() return result end,
+        }
+    end
+
+    after_each(function()
+        -- Restore real modules so other tests aren't affected.
+        package.loaded["guardrails.keyword"]  = keyword_det
+        package.loaded["guardrails.jailbreak"] = jailbreak_det
+        package.loaded["guardrails.regex"]    = regex_det
+    end)
+
+    it("pcall error with fail_open (default) logs and continues — returns pass", function()
+        inject_error_module("keyword")
+        local ctx = make_req_ctx("hello", {
+            { type = "keyword", name = "bad-det", action = "block",
+              keywords = {"hello"}, target = "request" },
+        })
+        local result = orch.run_phase(ctx, "request")
+        assert.equal("pass", result)
+        assert.is_nil(ctx.log_fields.blocked_by)
+    end)
+
+    it("pcall error with fail_open=false blocks and sets blocked_by/block_reason", function()
+        inject_error_module("keyword")
+        local ctx = make_req_ctx("hello", {
+            { type = "keyword", name = "strict-det", action = "block",
+              keywords = {"hello"}, target = "request", fail_open = false },
+        })
+        local result = orch.run_phase(ctx, "request")
+        assert.equal("block", result)
+        assert.equal("strict-det", ctx.log_fields.blocked_by)
+        assert.equal("detector_error", ctx.log_fields.block_reason)
+    end)
+
+    it("block result with entities field sets block_entities on log_fields", function()
+        inject_result_module("keyword", {
+            verdict = "block", pattern = "EMAIL", entities = { "EMAIL", "PHONE" }
+        })
+        local ctx = make_req_ctx("test@example.com", {
+            { type = "keyword", name = "ent-det", action = "block",
+              keywords = {"@"}, target = "request" },
+        })
+        local result = orch.run_phase(ctx, "request")
+        assert.equal("block", result)
+        assert.not_nil(ctx.log_fields.block_entities)
+        assert.equal("EMAIL", ctx.log_fields.block_entities[1])
+        assert.equal("PHONE", ctx.log_fields.block_entities[2])
+    end)
+
+    it("scrub result with entities field sets scrub_entities on log_fields", function()
+        inject_result_module("keyword", {
+            verdict = "scrubbed", pattern = "EMAIL", entities = { "EMAIL" }
+        })
+        local ctx = make_req_ctx("test@example.com", {
+            { type = "keyword", name = "scrub-det", action = "scrub",
+              keywords = {"@"}, target = "request" },
+        })
+        local result = orch.run_phase(ctx, "request")
+        assert.equal("pass", result)
+        assert.not_nil(ctx.log_fields.scrub_entities)
+        assert.equal("EMAIL", ctx.log_fields.scrub_entities[1])
+    end)
+
+end)
+
+-- ---------------------------------------------------------------------------
+-- Regex flag action on cc / routing_number (Tier A)
+-- ---------------------------------------------------------------------------
+describe("regex detector — flag action on checksum-gated patterns", function()
+
+    it("flag action on a valid credit card returns verdict='flagged'", function()
+        -- 4111111111111111 is a canonical valid Luhn Visa test number.
+        local ctx = make_req_ctx("card: 4111111111111111", nil)
+        local det = { type = "regex", name = "flag-cc", action = "flag",
+                      patterns = { "cc" } }
+        local result = regex_det.run(ctx, det, "request")
+        assert.equal("flagged", result.verdict)
+        assert.equal("cc", result.pattern)
+    end)
+
+    it("flag action on a valid routing number returns verdict='flagged'", function()
+        -- 021000021 is a valid ABA routing number (JPMorgan Chase).
+        local ctx = make_req_ctx("routing: 021000021", nil)
+        local det = { type = "regex", name = "flag-rt", action = "flag",
+                      patterns = { "routing_number" } }
+        local result = regex_det.run(ctx, det, "request")
+        assert.equal("flagged", result.verdict)
+        assert.equal("routing_number", result.pattern)
     end)
 
 end)
