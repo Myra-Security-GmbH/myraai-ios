@@ -11,6 +11,13 @@ export default defineConfig({
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html"],
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/main.tsx", "src/setupTests.ts"],
+      reportsDirectory: "./coverage",
+    },
   },
   server: {
     port: 5173,

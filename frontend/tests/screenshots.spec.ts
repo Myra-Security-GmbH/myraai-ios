@@ -202,3 +202,63 @@ test("logs-table", async ({ page }) => {
   await waitReady(page);
   await page.screenshot(snap("logs-table.png"));
 });
+
+// ---------------------------------------------------------------------------
+// 11–16. Guardrail type expanded cards
+// Each test: opens the first gateway → clicks the "+ Type" add button →
+// expands the newly added card → screenshots just that region.
+// ---------------------------------------------------------------------------
+
+const GUARDRAIL_TYPES: Array<{ label: string; slug: string }> = [
+  { label: "Regex / Pattern", slug: "regex" },
+  { label: "Keyword",         slug: "keyword" },
+  { label: "Jailbreak",       slug: "jailbreak" },
+  { label: "Presidio (NLP)",  slug: "presidio" },
+  { label: "Prompt Guard",    slug: "prompt_guard" },
+  { label: "PII Protector",   slug: "pii_protector" },
+];
+
+for (const { label, slug } of GUARDRAIL_TYPES) {
+  test(`guardrail-${slug}`, async ({ page }) => {
+    await page.goto("/gateways");
+    await waitReady(page);
+
+    const opened = await openFirstGateway(page);
+    if (!opened) {
+      // No live data — just screenshot the gateways page as fallback
+      await page.screenshot(snap(`guardrail-${slug}.png`));
+      return;
+    }
+
+    // Scroll to the Save Guardrails button so the entire builder is visible
+    const saveBtn = page.getByRole("button", { name: /Save Guardrails/i });
+    if (await saveBtn.isVisible().catch(() => false)) {
+      await saveBtn.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(200);
+    }
+
+    // Click the add button for this guardrail type
+    const addBtn = page.getByRole("button", { name: new RegExp(`\\+ ${label.replace(/[()]/g, "\\$&")}`, "i") });
+    if (!await addBtn.isVisible().catch(() => false)) {
+      await page.screenshot(snap(`guardrail-${slug}.png`));
+      return;
+    }
+    await addBtn.click();
+    await page.waitForTimeout(300);
+
+    // Expand the newly added card (last card in the list) by clicking its header
+    const cards = page.locator("[data-testid='detector-card']");
+    const count = await cards.count();
+    if (count > 0) {
+      const lastCard = cards.nth(count - 1);
+      await lastCard.click(); // click header to expand
+      await page.waitForTimeout(300);
+      await lastCard.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(200);
+      // Screenshot just the expanded card for focus
+      await lastCard.screenshot({ path: path.join(OUT, `guardrail-${slug}.png`), animations: "disabled" });
+    } else {
+      await page.screenshot(snap(`guardrail-${slug}.png`));
+    }
+  });
+}

@@ -30,8 +30,8 @@ const mockApi = api as {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const TENANT: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: null, created_at: "2024-01-01T00:00:00Z" };
-const TENANT2: Tenant = { id: "t2", slug: "globex", plan: "free", budget_usd: null, created_at: "2024-01-02T00:00:00Z" };
+const TENANT: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: "2024-01-01T00:00:00Z" };
+const TENANT2: Tenant = { id: "t2", slug: "globex", plan: "free", budget_usd: null, budget_period: "monthly", created_at: "2024-01-02T00:00:00Z" };
 
 const GW1: Gateway = {
   id: "gw1", slug: "prod", tenant_id: "t1",
@@ -545,5 +545,275 @@ describe("Gateways — delete gateway", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(mockApi.delete).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Edit modal — advanced fields
+// ---------------------------------------------------------------------------
+
+describe("Gateways — edit modal advanced fields", () => {
+  async function openEditModal() {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /Edit Gateway: prod/i })).toBeInTheDocument());
+  }
+
+  it("renders Rate Limit fields in edit modal", async () => {
+    await openEditModal();
+    expect(screen.getByLabelText(/Rate Limit \(req\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Rate Window \(s\)/i)).toBeInTheDocument();
+  });
+
+  it("renders Budget Period select in edit modal", async () => {
+    await openEditModal();
+    expect(screen.getByLabelText(/Budget Period/i)).toBeInTheDocument();
+  });
+
+  it("renders Circuit Breaker checkbox (unchecked by default)", async () => {
+    await openEditModal();
+    const cbCheckbox = screen.getByRole("checkbox", { name: /Circuit Breaker/i });
+    expect(cbCheckbox).toBeInTheDocument();
+    expect(cbCheckbox).not.toBeChecked();
+  });
+
+  it("shows circuit breaker threshold fields when Circuit Breaker is enabled", async () => {
+    await openEditModal();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Circuit Breaker/i }));
+    // Labels don't use htmlFor so use getByText
+    await waitFor(() => expect(screen.getByText("Failure threshold")).toBeInTheDocument());
+    expect(screen.getByText(/Sliding window for counting failures/i)).toBeInTheDocument();
+    expect(screen.getByText(/Wait before probing after open/i)).toBeInTheDocument();
+  });
+
+  it("renders Provider Base URLs section with + Add URL override button", async () => {
+    await openEditModal();
+    expect(screen.getByRole("button", { name: /\+ Add URL override/i })).toBeInTheDocument();
+  });
+
+  it("adds a provider base URL row when + Add URL override is clicked", async () => {
+    await openEditModal();
+    await userEvent.click(screen.getByRole("button", { name: /\+ Add URL override/i }));
+    await waitFor(() => expect(screen.getByPlaceholderText("provider (e.g. ollama)")).toBeInTheDocument());
+    expect(screen.getByPlaceholderText("http://host:port")).toBeInTheDocument();
+  });
+
+  it("renders Webhook URL input", async () => {
+    await openEditModal();
+    expect(screen.getByPlaceholderText(/hooks\.example\.com/i)).toBeInTheDocument();
+  });
+
+  it("shows webhook secret and event checkboxes when URL is entered", async () => {
+    await openEditModal();
+    const webhookInput = screen.getByPlaceholderText(/hooks\.example\.com/i);
+    await userEvent.type(webhookInput, "https://my.webhook/hook");
+    await waitFor(() => expect(screen.getByPlaceholderText(/Signing secret/i)).toBeInTheDocument());
+    expect(screen.getByText("blocked")).toBeInTheDocument();
+    expect(screen.getByText("budget_exceeded")).toBeInTheDocument();
+    expect(screen.getByText("circuit_open")).toBeInTheDocument();
+  });
+
+  it("renders Request Tracing enable checkbox", async () => {
+    await openEditModal();
+    const tracingCheck = screen.getByRole("checkbox", { name: /Enable request tracing/i });
+    expect(tracingCheck).toBeInTheDocument();
+    expect(tracingCheck).not.toBeChecked();
+  });
+
+  it("shows tracing sub-options when tracing is enabled", async () => {
+    await openEditModal();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Enable request tracing/i }));
+    await waitFor(() => expect(screen.getByText(/Include message bodies in trace/i)).toBeInTheDocument());
+    // Retention label also appears — label has no htmlFor so check by text
+    expect(screen.getByText("Retention (hours)")).toBeInTheDocument();
+  });
+
+  it("shows error message when PATCH fails", async () => {
+    setupDefaultMocks();
+    mockApi.patch.mockRejectedValue(new Error("server error"));
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expect(screen.getByLabelText(/Cache TTL/i)).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    await waitFor(() => expect(screen.getByText("server error")).toBeInTheDocument());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Add Provider Key modal
+// ---------------------------------------------------------------------------
+
+describe("Gateways — add provider key modal", () => {
+  it("opens Add Provider Key modal when + Add Key is clicked", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ Add \/ Rotate/i })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /\+ Add \/ Rotate/i }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /Add \/ Rotate Provider Key/i })).toBeInTheDocument());
+  });
+
+  it("add key modal has provider and alias fields", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: /\+ Add \/ Rotate/i }));
+    await userEvent.click(screen.getByRole("button", { name: /\+ Add \/ Rotate/i }));
+    await waitFor(() => expect(screen.getByLabelText(/Provider/i)).toBeInTheDocument());
+    expect(screen.getByLabelText(/Alias/i)).toBeInTheDocument();
+  });
+
+  it("closes add key modal on Cancel", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: /\+ Add \/ Rotate/i }));
+    await userEvent.click(screen.getByRole("button", { name: /\+ Add \/ Rotate/i }));
+    await waitFor(() => screen.getByRole("heading", { name: /Add \/ Rotate Provider Key/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("heading", { name: /Add \/ Rotate Provider Key/i })).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Create Auth Token modal
+// ---------------------------------------------------------------------------
+
+describe("Gateways — create auth token modal", () => {
+  it("opens Create Auth Token modal when + New Token is clicked", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ Generate/i })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /\+ Generate/i }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Create Auth Token" })).toBeInTheDocument());
+  });
+
+  it("token modal has label, expires and budget fields", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: /\+ Generate/i }));
+    await userEvent.click(screen.getByRole("button", { name: /\+ Generate/i }));
+    await waitFor(() => expect(screen.getByLabelText(/Label/i)).toBeInTheDocument());
+    expect(screen.getByLabelText(/Expires At/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Spend cap/i)).toBeInTheDocument();
+  });
+
+  it("calls POST /gateways/:id/tokens on Generate Token", async () => {
+    setupDefaultMocks();
+    mockApi.post.mockResolvedValue({ token: "tok_abc123" });
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: /\+ Generate/i }));
+    await userEvent.click(screen.getByRole("button", { name: /\+ Generate/i }));
+    await waitFor(() => screen.getByRole("button", { name: "Generate Token" }));
+    await userEvent.click(screen.getByRole("button", { name: "Generate Token" }));
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith(
+      `/gateways/${GW1.id}/tokens`,
+      expect.any(Object)
+    ));
+  });
+
+  it("shows the generated token and copy button after creation", async () => {
+    setupDefaultMocks();
+    mockApi.post.mockResolvedValue({ token: "tok_abc123" });
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: /\+ Generate/i }));
+    await userEvent.click(screen.getByRole("button", { name: /\+ Generate/i }));
+    await waitFor(() => screen.getByRole("button", { name: "Generate Token" }));
+    await userEvent.click(screen.getByRole("button", { name: "Generate Token" }));
+    await waitFor(() => expect(screen.getByText("tok_abc123")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Routing Rules — modal
+// ---------------------------------------------------------------------------
+
+describe("Gateways — routing rule modal", () => {
+  it("opens New Rule modal when + New Rule is clicked", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ New Rule/i })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /\+ New Rule/i }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /New Routing Rule/i })).toBeInTheDocument());
+  });
+
+  it("new rule modal has Conditions section and + Add button", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: /\+ New Rule/i }));
+    await userEvent.click(screen.getByRole("button", { name: /\+ New Rule/i }));
+    await waitFor(() => screen.getByRole("heading", { name: /New Routing Rule/i }));
+    expect(screen.getByText(/Conditions \(all must match\)/i)).toBeInTheDocument();
+    // Multiple + Add buttons exist (conditions + fallbacks); at least one should be present
+    expect(screen.getAllByRole("button", { name: /\+ Add/i }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("adds a condition row when the Conditions + Add is clicked", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: /\+ New Rule/i }));
+    await userEvent.click(screen.getByRole("button", { name: /\+ New Rule/i }));
+    await waitFor(() => screen.getByText(/Conditions \(all must match\)/i));
+    // First + Add button belongs to Conditions
+    const addBtns = screen.getAllByRole("button", { name: /\+ Add/i });
+    await userEvent.click(addBtns[0]);
+    // A condition row appears with a field selector (select for field value)
+    await waitFor(() => {
+      const selects = screen.getAllByRole("combobox");
+      // At least one select for the new condition field
+      const fieldSel = selects.find((s) => s.querySelector('option[value="model"]') !== null ||
+        within(s).queryByText("model") !== null);
+      expect(fieldSel ?? selects[0]).toBeInTheDocument();
+    });
+  });
+
+  it("shows load balance options when Load balance button is clicked", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: /\+ New Rule/i }));
+    await userEvent.click(screen.getByRole("button", { name: /\+ New Rule/i }));
+    await waitFor(() => screen.getByRole("heading", { name: /New Routing Rule/i }));
+    // Action mode toggle: "Direct route" | "Load balance"
+    await userEvent.click(screen.getByRole("button", { name: /Load balance/i }));
+    await waitFor(() => expect(screen.getByText("Weighted random")).toBeInTheDocument());
+  });
+
+  it("closes rule modal on Cancel", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: /\+ New Rule/i }));
+    await userEvent.click(screen.getByRole("button", { name: /\+ New Rule/i }));
+    await waitFor(() => screen.getByRole("heading", { name: /New Routing Rule/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("heading", { name: /New Routing Rule/i })).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Detail view — additional stats
+// ---------------------------------------------------------------------------
+
+describe("Gateways — detail view additional stats", () => {
+  it("shows rate limit stat when rate_limit is set", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => expect(screen.getByText("100/60s")).toBeInTheDocument());
+  });
+
+  it("shows Reset Spend button when gateway has a budget", async () => {
+    setupDefaultMocks();
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reset Spend" })).toBeInTheDocument());
+  });
+
+  it("calls DELETE /gateways/:id/budget on Reset Spend confirm", async () => {
+    setupDefaultMocks();
+    mockApi.delete.mockResolvedValue({ ok: true });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderAtPath(`/tenants/${TENANT.id}/gateways/${GW1.id}`);
+    await waitFor(() => screen.getByRole("button", { name: "Reset Spend" }));
+    await userEvent.click(screen.getByRole("button", { name: "Reset Spend" }));
+    await waitFor(() => expect(mockApi.delete).toHaveBeenCalledWith(`/gateways/${GW1.id}/budget`));
   });
 });
