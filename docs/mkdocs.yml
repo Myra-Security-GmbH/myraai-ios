@@ -82,6 +82,7 @@ nav:
     - configuration/gateway-config.md
     - configuration/rate-limiting.md
     - configuration/budgets.md
+    - configuration/siem.md
   - Security:
     - security/authentication.md
     - security/byok.md

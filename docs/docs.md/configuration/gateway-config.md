@@ -1,16 +1,22 @@
-# Gateway Configuration
+# Gateway configuration
 
 Every gateway has a `config` object that controls caching, timeouts, security, routing, and provider-specific settings.
 
-## Using the admin UI
+## Configuring the gateway via the admin UI
 
-1. Open **Gateways** in the left sidebar and click the gateway you want to configure.
-2. Open the **Config** tab.
-3. Edit any field and click **Save**. Only the fields you change are updated — other settings are unaffected.
+1. Click on **Gateways** in the left sidebar.
+   ↳ The **Gateways** view opens.
+2. Click on the gateway you want to configure.
+   ↳ The gateway detail view opens.
+3. Open the **Config** tab.
+   ↳ The configuration form opens.
+4. Edit the fields you want to change.
+5. To save the configuration, click on the **Save** button.
+   ↳ The updated configuration is applied to the gateway. Only the fields you changed are updated — other settings are unaffected.
 
 ![Gateway configuration editor](../assets/screenshots/gateway-edit-modal.png)
 
-## Config fields reference
+## Configuration fields reference
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -31,7 +37,7 @@ Every gateway has a `config` object that controls caching, timeouts, security, r
 | `vertex_region` | string | `"us-central1"` | Google Cloud region for Vertex AI. |
 | `provider_base_urls` | object | `{}` | Map of `provider → base URL` for overriding default provider endpoints. |
 
-## Full default config
+## Full default configuration
 
 ```json
 {
@@ -54,7 +60,7 @@ Every gateway has a `config` object that controls caching, timeouts, security, r
 }
 ```
 
-## Provider Base URLs
+## Provider base URLs
 
 The `provider_base_urls` field lets you override the default upstream endpoint for any provider on a per-gateway basis. This is useful for:
 
@@ -62,15 +68,25 @@ The `provider_base_urls` field lets you override the default upstream endpoint f
 - **Private deployments** — route to an on-premises or VPC-hosted model server
 - **Custom proxies** — send traffic through an intermediary before it reaches the provider
 
-### In the admin UI
+### Configuring provider base URLs via the admin UI
 
-1. Open **Gateways** and click the gateway.
-2. Open the **Config** tab.
-3. Scroll to **Provider Base URLs** and click **Add**.
-4. Enter the provider name (e.g. `ollama`) and the base URL (e.g. `http://192.168.1.50:11434`).
-5. Click **Save**.
+1. Click on **Gateways** in the left sidebar.
+   ↳ The **Gateways** view opens.
+2. Click on the gateway.
+   ↳ The gateway detail view opens.
+3. Open the **Config** tab.
+   ↳ The configuration form opens.
+4. Scroll to the **Provider base URLs** section.
+5. Click on the **Add** button.
+   ↳ A new row appears in the provider base URLs table.
+6. Enter the provider name in the **Provider** text field. For example: `ollama`.
+7. Enter the base URL in the **Base URL** text field. For example: `http://192.168.1.50:11434`.
+8. To save the provider base URL, click on the **Save** button.
+   ↳ The provider base URL appears in the list. The gateway uses this URL for all requests to that provider.
 
-### Format
+To remove an override, delete the entry and click on **Save**.
+
+### URL format
 
 The value must be a bare `protocol://host:port` with no trailing slash or path. The gateway appends the provider's standard request path automatically.
 
@@ -83,11 +99,11 @@ The value must be a bare `protocol://host:port` with no trailing slash or path. 
 | `openai` | `https://proxy.internal/openai` | Corporate proxy in front of the OpenAI API |
 | `anthropic` | `http://localhost:4010` | Local mock server for integration tests |
 
-Any of the 21 supported providers can be overridden. To remove an override, delete the entry and save.
+Any of the 21 supported providers can be overridden.
 
 ## Per-request header overrides
 
-Certain behaviors can be overridden on individual requests without changing the gateway config.
+Certain behaviours can be overridden on individual requests without changing the gateway config.
 
 | Header | Type | Description |
 |---|---|---|

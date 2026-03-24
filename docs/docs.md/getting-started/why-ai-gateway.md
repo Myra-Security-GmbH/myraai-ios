@@ -4,7 +4,7 @@ Large organisations move fast when adopting AI — and often discover too late t
 
 ---
 
-## Use US AI providers without exposing sensitive data to them
+## EU data sovereignty with US AI providers
 
 The most capable AI models in the world — OpenAI, Anthropic, Google Gemini, AWS Bedrock — are operated by US companies, subject to US law, and hosted in US data centres. For European enterprises and government bodies, sending sensitive data directly to those providers raises serious questions under GDPR and sector-specific regulations: Who can access that data? Under what legal framework? With what oversight?
 
@@ -14,7 +14,7 @@ More importantly, the content inspection and PII detection engines that power gu
 
 This matters because:
 
-- PII, financial data, or regulated content in a prompt can be detected and redacted or tokenized before the request leaves the EU. The US provider receives a sanitised or tokenised body; the original values are restored in the response on the way back.
+- PII, financial data, or regulated content in a prompt can be detected and redacted or tokenised before the request leaves the EU. The US provider receives a sanitised or tokenised body; the original values are restored in the response on the way back.
 - Security teams can configure `fail_open: false` on any guardrail so that an inspection failure blocks the request rather than allowing uninspected data to reach a US provider.
 - Payload logging can be disabled globally or per-request via a single header, ensuring request and response bodies are not persisted even within Myra's infrastructure for the most sensitive workloads.
 - The audit trail — what was sent, what was detected, what was blocked — is recorded within the EU environment and accessible to your compliance team.
@@ -23,7 +23,7 @@ In practical terms: your teams get access to the best AI models available, and y
 
 ---
 
-## Layered content security that starts at sub-millisecond latency
+## Layered content security at sub-millisecond latency
 
 A single guardrail is not a security posture. AI Gateway enforces a **two-tier pipeline** that applies fast, in-process checks before anything reaches a network-bound service.
 
@@ -37,7 +37,7 @@ A single guardrail is not a security posture. AI Gateway enforces a **two-tier p
 
 - **NLP PII Detector** (Presidio) identifies 50+ entity types with confidence scoring. High false-positive entity types (names, locations, dates) automatically have their confidence threshold raised so that blocking and scrubbing decisions are accurate.
 - **Prompt Guard** (Llama Guard 3) performs semantic safety classification across 14 policy categories including violence, self-harm, CBRN, and child safety content — catching rephrased attacks that literal keyword matching cannot reach.
-- **PII Protector** tokenizes PII reversibly: the AI provider receives a token placeholder, and the original value is restored in the response before it reaches the client. The model never processes real PII yet can still respond coherently.
+- **PII Protector** tokenises PII reversibly: the AI provider receives a token placeholder, and the original value is restored in the response before it reaches the client. The model never processes real PII yet can still respond coherently.
 
 Each guardrail in the pipeline can independently `block` (terminate the request), `scrub` (redact and continue), or `flag` (log and continue). A `block` verdict stops the pipeline immediately — no subsequent guardrails run. This means your cheapest checks always run first, and expensive ML calls are made only when necessary.
 
@@ -108,7 +108,7 @@ An administrator scoped to one tenant cannot see another tenant's data, spend, o
 | Concern | How AI Gateway addresses it |
 |---|---|
 | EU data sovereignty | Certified EU infrastructure sits between your org and US providers; PII scrubbed/tokenised before crossing the boundary |
-| PII and sensitive data | Detection, tokenization (reversible), and scrubbing — all in-flight |
+| PII and sensitive data | Detection, tokenisation (reversible), and scrubbing — all in-flight |
 | Jailbreaks and prompt injection | Zero-config Tier 1 detection + semantic Llama Guard 3 classification |
 | Uncontrolled AI spend | Three-tier budget hierarchy with automatic resets and real-time attribution |
 | Provider lock-in | 21 providers behind one API; fallback, load balancing, circuit breaker |

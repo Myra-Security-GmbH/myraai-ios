@@ -9,8 +9,8 @@ Browse all documentation topics by category.
     ---
 
     - [Why AI Gateway](../getting-started/why-ai-gateway.md)
-    - [What is AI Gateway by Myra Security?](../getting-started/what-is-ai-gateway.md)
-    - [Quick Start](../getting-started/quick-start.md)
+    - [AI Gateway by Myra Security](../getting-started/what-is-ai-gateway.md)
+    - [Quick start](../getting-started/quick-start.md)
     - [Getting Access](../getting-started/installation.md)
 
 -   **Core Concepts**
@@ -27,9 +27,10 @@ Browse all documentation topics by category.
 
     ---
 
-    - [Gateway Configuration](../configuration/gateway-config.md)
-    - [Rate Limiting](../configuration/rate-limiting.md)
-    - [Budget & Quota Enforcement](../configuration/budgets.md)
+    - [Gateway configuration](../configuration/gateway-config.md)
+    - [Rate limiting](../configuration/rate-limiting.md)
+    - [Budget and quota enforcement](../configuration/budgets.md)
+    - [SIEM Integration](../configuration/siem.md)
 
 -   **Security**
 

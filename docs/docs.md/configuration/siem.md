@@ -20,7 +20,7 @@ Typical SIEM use cases:
 
 ---
 
-## Supported Backends
+## Supported backends
 
 | Type | Protocol | Auth | Best for |
 |---|---|---|---|
@@ -78,7 +78,7 @@ To fall back to the tenant default, remove the `siem` key from the gateway confi
 
 ---
 
-## Configuration Reference
+## Configuration reference
 
 ### Common fields
 
@@ -126,7 +126,7 @@ to receive events. Vector can then fan out to any sink (Loki, Datadog, S3, Kafka
 
 ---
 
-## Event Filter
+## Event filter
 
 The `events` array controls which request records are forwarded. Values can be combined.
 
@@ -150,7 +150,7 @@ The `events` array controls which request records are forwarded. Values can be c
 
 ---
 
-## Event Payload
+## Event payload
 
 ### HTTP backends (Splunk, Elasticsearch, Vector)
 
@@ -212,7 +212,7 @@ RFC 5424 format wraps the raw JSON fields in a syslog envelope.
 
 ---
 
-## Per-Backend Examples
+## Per-backend examples
 
 ### Splunk HEC
 
@@ -304,25 +304,27 @@ endpoint = "http://loki:3100"
 
 ---
 
-## Admin UI
+## Configuring SIEM via the admin UI
 
-1. Open a **Gateway** detail page and click **Edit**.
-2. Scroll to the **SIEM Integration** section.
-3. Select a backend from the **type** dropdown.
-4. Check the events you want forwarded.
-5. Fill in the backend-specific fields (URL, token, host/port, etc.).
-6. Click **Save**.
+1. Click on a gateway in the **Gateways** view.
+   ↳ The gateway detail view opens.
+2. Click on the **Edit** button.
+   ↳ The gateway edit dialog opens.
+3. Scroll to the **SIEM Integration** section.
+4. Select a backend type from the **Type** drop-down list.
+5. Select the events you want forwarded in the **Events** section.
+6. Enter the backend-specific fields (URL, token, host/port).
+7. To save the SIEM configuration, click on the **Save** button.
+   ↳ The gateway forwards matching events to the configured SIEM backend.
 
-To disable SIEM for a gateway, set the dropdown back to **— disabled —** and save. The
-gateway will fall back to the tenant-level SIEM config (if any).
+To disable SIEM for a gateway, set the **Type** drop-down list back to **— disabled —** and click on **Save**. The gateway falls back to the tenant-level SIEM config (if any).
 
 To configure a tenant-level default, use the API (`PATCH /admin/v1/tenants/{id}` with a
-`"siem"` key). The Admin UI tenant editor does not currently expose a SIEM section.
+`"siem"` key). The admin UI tenant editor does not currently expose a SIEM section.
 
 ---
 
-## See Also
+## See also
 
-- [Webhooks](../routing/webhooks.md) — event-driven HTTP callbacks for blocked/budget/circuit events
 - [Guardrails](../security/guardrails.md) — configure the detector pipeline
 - [Logs API](../api-reference/logs.md) — query request logs via REST

@@ -1,4 +1,4 @@
-# Budget & Quota Enforcement
+# Budget and quota enforcement
 
 The gateway tracks cumulative spend per token, per tenant, and per gateway, and blocks requests once a configured budget is exhausted. Budgets are useful for hard cost caps on individual clients, tenants, or entire gateways.
 
@@ -85,25 +85,37 @@ When a budget is exhausted, the gateway returns `HTTP 429` with an actionable me
 
 The message always includes the configured budget, the current spend, and the two corrective actions: increase the budget or reset spend for the current period.
 
-## Using the admin UI
+## Configuring budgets via the admin UI
 
-### Set a gateway budget
+### Setting a gateway budget
 
-1. Open **Gateways** and click the gateway.
-2. Open the **Config** tab.
-3. Set the **Budget (USD)** field to your desired monthly cap.
-4. Click **Save**.
+1. Click on **Gateways** in the left sidebar.
+   ↳ The **Gateways** view opens.
+2. Click on the gateway.
+   ↳ The gateway detail view opens.
+3. Open the **Config** tab.
+   ↳ The configuration form opens.
+4. Enter the spend cap in the **Budget (USD)** text field.
+5. To save the budget, click on the **Save** button.
+   ↳ The gateway budget is applied to all requests through the gateway.
 
-### Set a per-token budget
+### Setting a per-token budget
 
-Set the budget when creating or editing a token in the **Users** module — enter the spend cap in the **Budget (USD)** field.
+1. Click on **Users** in the left sidebar.
+   ↳ The **Users** view opens.
+2. Click on the user.
+   ↳ The user detail view opens.
+3. Create or edit a token.
+4. Enter the spend cap in the **Budget (USD)** text field.
+5. To save the token budget, click on the **Save** button.
+   ↳ The budget is applied to all requests authenticated with that token.
 
-### Reset a budget
+### Resetting a budget
 
-To clear accumulated spend so requests can flow again, use the **Reset Budget** action:
+To clear accumulated spend so requests can flow again, use the **Reset budget** action:
 
-- **Gateway budget**: In the **Config** tab, use the **Reset Budget** button.
-- **User token budgets**: In the **Users** module, use the **Reset Budget** action on the user.
+- **Gateway budget**: In the **Config** tab, use the **Reset budget** button.
+- **User token budgets**: In the **Users** module, use the **Reset budget** action on the user.
 
 !!! warning
     Budget resets are immediate and irreversible. There is no confirmation step. Automate resets with care — for example, a monthly scheduled task that resets at the start of each billing period.

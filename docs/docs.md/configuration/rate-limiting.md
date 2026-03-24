@@ -1,4 +1,4 @@
-# Rate Limiting
+# Rate limiting
 
 The gateway enforces rate limits using a sliding-window dual-bucket algorithm. Limits can be set at the gateway level (applied to all traffic) and per token (applied to an individual caller).
 
@@ -19,14 +19,18 @@ Rate limiting is enforced before any upstream call is made, so blocked requests 
 
 The gateway-level rate limit applies to the aggregate of all requests through the gateway.
 
-**In the admin UI:**
+1. Click on **Gateways** in the left sidebar.
+   ↳ The **Gateways** view opens.
+2. Click on the gateway.
+   ↳ The gateway detail view opens.
+3. Open the **Config** tab.
+   ↳ The configuration form opens.
+4. Enter the maximum number of requests in the **Requests** text field.
+5. Enter the window duration in seconds in the **Window** text field.
+6. To save the rate limit, click on the **Save** button.
+   ↳ The rate limit is applied to all requests through the gateway.
 
-1. Open **Gateways** and click the gateway.
-2. Open the **Config** tab.
-3. Set the **Rate Limit** fields: requests per window and window duration in seconds.
-4. Click **Save**.
-
-To remove the gateway-level limit, clear the Rate Limit field and save.
+To remove the gateway-level limit, clear the **Rate limit** fields and click on **Save**.
 
 | Field | Type | Description |
 |---|---|---|
@@ -37,11 +41,16 @@ To remove the gateway-level limit, clear the Rate Limit field and save.
 
 A rate limit can be attached to an individual auth token. This limit applies only to requests authenticated with that specific token.
 
-**In the admin UI:**
-
-1. Open **Users** and select the user.
-2. Click **New Token** (or edit an existing token if your UI supports it).
-3. Fill in the **Rate Limit** fields for that token.
+1. Click on **Users** in the left sidebar.
+   ↳ The **Users** view opens.
+2. Click on the user.
+   ↳ The user detail view opens.
+3. Click on the **New Token** button.
+   ↳ The **New Token** dialog opens.
+4. Enter the maximum number of requests in the **Requests** text field.
+5. Enter the window duration in seconds in the **Window** text field.
+6. To save the token, click on the **Save** button.
+   ↳ The new token appears in the token list with the configured rate limit.
 
 !!! note
     Per-token limits are evaluated independently from the gateway-level limit. A request can be blocked by the gateway-level limit even if the token's own limit has not been reached, and vice versa.

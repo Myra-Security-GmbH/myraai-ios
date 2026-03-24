@@ -1,4 +1,4 @@
-# Quick Start
+# Quick start
 
 This guide takes you from first login to a working inference request in four steps.
 
@@ -6,33 +6,51 @@ Log in to the admin UI at `https://<your-gateway-host>/admin` using the credenti
 
 ---
 
-## Step 1 — Create a tenant and gateway
+## Creating a tenant and gateway
 
-1. In the left sidebar, click **Tenants**.
-2. Click **New Tenant**, enter a slug (e.g. `myapp`), and save.
-3. Click **Gateways** in the sidebar, then **New Gateway**.
-4. Select your new tenant, enter a slug (e.g. `production`), and save.
+1. Click on **Tenants** in the left sidebar.
+   ↳ The **Tenants** view opens.
+2. Click on the **New Tenant** button.
+   ↳ The **New Tenant** dialog opens.
+3. Enter a slug in the **Slug** text field. For example: `myapp`.
+4. To save the new tenant, click on the **Save** button.
+   ↳ The new tenant appears in the tenant list.
+5. Click on **Gateways** in the left sidebar.
+   ↳ The **Gateways** view opens.
+6. Click on the **New Gateway** button.
+   ↳ The **New Gateway** dialog opens.
+7. Select your new tenant from the **Tenant** drop-down list.
+8. Enter a slug in the **Slug** text field. For example: `production`.
+9. To save the new gateway, click on the **Save** button.
+   ↳ The new gateway appears in the gateway list.
 
 ![Gateway list after selecting a tenant](../assets/screenshots/gateway-list.png)
 
-!!! note "Auth for this quick start"
-    By default, gateways require an auth token on every inference request. To skip that for now, open the gateway's **Config** tab and set **Auth Required** to off. Re-enable it before going to production.
+!!! note "Authentication for this quick start"
+    By default, gateways require an auth token on every inference request. To skip that for now, open the gateway's **Config** tab and set the **Auth Required** toggle to off. Re-enable it before going to production.
 
 ---
 
-## Step 2 — Store a provider key
+## Storing a provider key
 
-1. In **Gateways**, click your new gateway.
-2. Open the **Keys** tab.
-3. Click **Add Key**, select a provider (e.g. `openai`), paste your API key, and save.
+1. Click on **Gateways** in the left sidebar.
+   ↳ The **Gateways** view opens.
+2. Click on the gateway you created.
+   ↳ The gateway detail view opens.
+3. Open the **Keys** tab.
+   ↳ The provider keys list opens.
+4. Click on the **Add Key** button.
+   ↳ The **Add Key** dialog opens.
+5. Select a provider from the **Provider** drop-down list. For example: `openai`.
+6. Paste your API key into the **API Key** text field.
+7. To save the key, click on the **Save** button.
+   ↳ The new provider key appears in the keys list. The key is encrypted at rest immediately. The plaintext is never stored.
 
 ![Gateway detail — provider keys, auth tokens, and routing rules](../assets/screenshots/gateway-detail.png)
 
-The key is encrypted at rest immediately. The plaintext is never stored.
-
 ---
 
-## Step 3 — Make your first request
+## Making your first request
 
 ### Provider-native endpoint
 
@@ -74,9 +92,10 @@ A successful response looks like:
 
 ---
 
-## Step 4 — Check the request log
+## Checking the request log
 
-In the left sidebar, click **Logs**. Your request appears at the top of the list with provider, model, token count, cost, and latency.
+1. Click on **Logs** in the left sidebar.
+   ↳ The **Logs** view opens. Your request appears at the top of the list with provider, model, token count, cost, and latency.
 
 ---
 

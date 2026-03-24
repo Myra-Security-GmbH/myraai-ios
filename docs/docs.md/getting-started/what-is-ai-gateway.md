@@ -1,4 +1,4 @@
-# What is AI Gateway by Myra Security?
+# AI Gateway by Myra Security
 
 AI Gateway is a multi-tenant reverse proxy built upon the Global Myra Security CDN. It sits between your applications and upstream AI provider APIs, enforcing policy, managing credentials, and recording every request — all in-process with no external sidecar required.
 
@@ -21,7 +21,7 @@ AI Gateway is a multi-tenant reverse proxy built upon the Global Myra Security C
 
 ## Use cases
 
-**Centralized API key management**
+**Centralised API key management**
 Store all provider API keys in one encrypted vault. Applications never touch raw provider credentials — they authenticate to the gateway with a scoped token.
 
 **Cost control and attribution**
