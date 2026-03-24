@@ -515,6 +515,38 @@ function M.run(ctx, detector, phase)
         return { verdict = "pass" }
     end
 
+    -- Guard: tokenization must not produce invalid JSON escape sequences.
+    -- Presidio returns codepoint offsets into the raw JSON body which includes
+    -- \uXXXX escape sequences.  If a span boundary lands inside such an escape
+    -- (e.g. at the 'u' of \u0040), tokenize_spans splits it, producing output
+    -- like \[MYRA-REDACT-...] — an invalid JSON escape that Anthropic's strict
+    -- parser rejects with "invalid escaped character in string".
+    -- Fail open: skip tokenization if the result contains any invalid escape.
+    do
+        local pos = 1
+        local bad = false
+        while pos <= #tokenized do
+            local bs = tokenized:find("\\", pos, true)
+            if not bs then break end
+            local nc = tokenized:sub(bs + 1, bs + 1)
+            -- Valid JSON escape chars: " \ / b f n r t u
+            if nc ~= '"'  and nc ~= '\\'  and nc ~= '/'
+            and nc ~= 'b' and nc ~= 'f'   and nc ~= 'n'
+            and nc ~= 'r' and nc ~= 't'   and nc ~= 'u'
+            and nc ~= ''  then
+                bad = true
+                break
+            end
+            pos = bs + 2
+        end
+        if bad then
+            ngx.log(ngx.WARN, "pii_protector: tokenization introduced invalid JSON escape",
+                    " — skipping tokenization to preserve request integrity",
+                    " name=", detector.name or "?")
+            return { verdict = "pass" }
+        end
+    end
+
     -- Step 4: persist and update body.
     -- The orchestrator calls ngx.req.set_body_data(ctx.raw_request_body) for us
     -- after we return verdict="scrubbed".

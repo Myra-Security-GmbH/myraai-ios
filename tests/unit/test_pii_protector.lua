@@ -633,7 +633,77 @@ describe("pii_protector allow_list passthrough", function()
 end)
 
 -- ============================================================================
--- 9. Orchestrator integration
+-- 9. JSON escape integrity guard
+-- ============================================================================
+describe("pii_protector JSON escape integrity guard", function()
+
+    -- Regression test: pii_protector sends the raw JSON body to Presidio, so
+    -- Presidio's codepoint offsets are relative to the raw bytes including any
+    -- \uXXXX escape sequences.  If a span boundary lands inside an escape (e.g.
+    -- at the 'u' of \u0040), tokenize_spans would produce \[TOKEN] — an invalid
+    -- JSON escape.  The guard must detect this and fall back to "pass".
+
+    it("returns pass when a Presidio span starts inside a \\uXXXX escape", function()
+        -- Body: raw JSON containing \u0040 (JSON-escape for @) inside a string.
+        local body = '{"messages":[{"role":"user","content":"test\\u0040phone"}]}'
+
+        -- Find the 1-based position of '\' in \u0040 inside the body.
+        local backslash_1 = body:find("\\u0040", 1, true)
+        assert.not_nil(backslash_1, "test body must contain \\u0040")
+
+        -- The 'u' is immediately after '\'.  In 0-based codepoint terms (what
+        -- Presidio returns), the 'u' is at backslash_1 + 1 - 1 = backslash_1.
+        local u_pos_0based = backslash_1  -- 0-based: 'u' follows '\' at 1-based (backslash_1+1)
+
+        -- Simulate Presidio detecting a phone starting at 'u' (inside the escape).
+        local span_end = u_pos_0based + 9  -- covers "u0040phon"
+        local spans = {{ entity_type = "PHONE_NUMBER",
+                         start = u_pos_0based, ["end"] = span_end, score = 0.9 }}
+
+        install_http_mock(spans)
+        local d   = reload()
+        local ctx = req_ctx(body)
+        local r   = d.run(ctx, DET, "request")
+
+        -- Guard: tokenization would have produced \[TOKEN] (invalid JSON escape).
+        -- pii_protector must fall back to pass rather than forward corrupted JSON.
+        assert.equal("pass", r.verdict,
+            "must return pass when tokenization would corrupt a JSON escape")
+        assert.equal(body, ctx.raw_request_body,
+            "raw_request_body must be unchanged")
+        assert.is_nil(ctx.pii_token_map,
+            "pii_token_map must not be set when guard fires")
+    end)
+
+    it("still tokenizes PII that does not touch any \\uXXXX escape", function()
+        -- Body with unicode escape elsewhere but PII clearly separated from it.
+        -- \u0040 appears before the email; the EMAIL span starts well after it.
+        local body = '{"messages":[{"role":"user","content":"note\\u0040: email alice@example.com"}]}'
+
+        -- Find the actual byte position of "alice" in the raw body.
+        local alice_1 = body:find("alice@example.com", 1, true)
+        assert.not_nil(alice_1, "test body must contain the email")
+        local alice_0 = alice_1 - 1  -- convert to 0-based for Presidio
+
+        local spans = {{ entity_type = "EMAIL_ADDRESS",
+                         start = alice_0, ["end"] = alice_0 + 17, score = 0.95 }}
+
+        install_http_mock(spans)
+        local d   = reload()
+        local ctx = req_ctx(body)
+        local r   = d.run(ctx, DET, "request")
+
+        -- PII is safely outside the escape; tokenization should succeed.
+        assert.equal("scrubbed", r.verdict,
+            "PII safely outside \\uXXXX escape must still be tokenized")
+        assert.is_nil(ctx.raw_request_body:find("alice@example.com", 1, true),
+            "original email must be absent after tokenization")
+    end)
+
+end)
+
+-- ============================================================================
+-- 10. Orchestrator integration
 -- ============================================================================
 describe("orchestrator recognises pii_protector type", function()
 
