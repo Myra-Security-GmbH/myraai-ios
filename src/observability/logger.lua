@@ -105,6 +105,13 @@ function M.emit(ctx)
             }, { gateway_id = ctx.gateway_id, tenant_id = ctx.tenant_id })
         end
     end
+
+    -- Stream to SIEM (gateway.config.siem overrides tenant-level siem, already merged)
+    local siem_cfg = ctx.gateway_config and ctx.gateway_config.siem
+    if siem_cfg then
+        local ok, siem = pcall(require, "observability.siem")
+        if ok then siem.emit(siem_cfg, fields) end
+    end
 end
 
 return M

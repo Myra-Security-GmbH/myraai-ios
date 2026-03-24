@@ -13,6 +13,13 @@ import { test, Page } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
+// Use a wider viewport and 2× device scale for all screenshots in this file
+// so text is crisp and cards that are rendered at full width remain readable.
+test.use({
+  viewport: { width: 1440, height: 900 },
+  deviceScaleFactor: 2,
+});
+
 // ---------------------------------------------------------------------------
 // Output directory
 // ---------------------------------------------------------------------------
@@ -124,7 +131,14 @@ test("gateway-edit-modal", async ({ page }) => {
     const editBtn = page.getByRole("button", { name: /^Edit$/i }).first();
     if (await editBtn.isVisible().catch(() => false)) {
       await editBtn.click();
-      await page.waitForTimeout(400);
+      await page.waitForTimeout(500);
+      // Screenshot just the modal dialog so the background page doesn't shrink
+      // the modal into a tiny thumbnail.
+      const modal = page.locator("[role='dialog']").first();
+      if (await modal.isVisible().catch(() => false)) {
+        await modal.screenshot({ path: path.join(OUT, "gateway-edit-modal.png"), animations: "disabled" });
+        return;
+      }
     }
   }
   await page.screenshot(snap("gateway-edit-modal.png"));

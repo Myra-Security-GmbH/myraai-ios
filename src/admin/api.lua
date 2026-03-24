@@ -136,20 +136,27 @@ end)
 -- Tenant routes
 -- ---------------------------------------------------------------------------
 route("GET", "^/admin/v1/tenants$", function()
-    send(200, storage.list_tenants())
+    local rows = storage.list_tenants()
+    for _, r in ipairs(rows) do
+        r.siem = r.siem_config and json.decode(r.siem_config) or nil
+        r.siem_config = nil
+    end
+    send(200, rows)
 end)
 
 route("POST", "^/admin/v1/tenants$", function()
     local b = read_body()
     if not b or not b.slug then return send(400, { error = "slug required" }) end
-    local id = storage.upsert_tenant(b.slug, b.plan, b.budget_usd, b.budget_period)
+    local siem_json = b.siem and json.encode(b.siem) or nil
+    local id = storage.upsert_tenant(b.slug, b.plan, b.budget_usd, b.budget_period, siem_json)
     send(201, { id = id, slug = b.slug })
 end)
 
 route("PATCH", "^/admin/v1/tenants/([^/]+)$", function(tenant_id)
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
-    local err = storage.update_tenant(tenant_id, b.plan, b.budget_usd, b.budget_period)
+    local siem_json = (type(b.siem) == "table") and json.encode(b.siem) or nil
+    local err = storage.update_tenant(tenant_id, b.plan, b.budget_usd, b.budget_period, siem_json)
     if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)

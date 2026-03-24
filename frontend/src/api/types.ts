@@ -7,12 +7,36 @@ export interface SpendRecord {
   updated_at: number;
 }
 
+// ---------------------------------------------------------------------------
+// SIEM connector types
+// ---------------------------------------------------------------------------
+
+export type SiemType = "splunk_hec" | "elasticsearch" | "vector" | "syslog";
+export type SiemEvent = "blocked" | "guardrail" | "scrubbed" | "all";
+
+export interface SiemConfig {
+  type: SiemType;
+  events?: SiemEvent[];
+  // HTTP backends (splunk_hec, elasticsearch, vector)
+  url?: string;
+  token?: string;         // Splunk HEC only
+  index?: string;         // Splunk HEC + Elasticsearch
+  username?: string;      // Elasticsearch basic auth
+  password?: string;      // Elasticsearch basic auth
+  // Syslog backend
+  host?: string;
+  port?: number;
+  protocol?: "udp" | "tcp";
+  format?: "cef" | "rfc5424";
+}
+
 export interface Tenant {
   id: string;
   slug: string;
   plan: string;
   budget_usd: number | null;
   budget_period: BudgetPeriod;
+  siem?: SiemConfig;
   created_at: string;
 }
 
@@ -147,6 +171,7 @@ export interface GatewayConfig {
   rate_limit?: { requests: number; window_sec: number };
   circuit_breaker?: CircuitBreakerConfig;
   webhooks?: WebhookConfig;
+  siem?: SiemConfig;
   guardrails?: DetectorConfig[];
   /** @deprecated Use `guardrails`. Accepted for backwards compatibility with configs saved before the rename. */
   detectors?: DetectorConfig[];

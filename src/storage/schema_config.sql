@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS tenant (
     plan          TEXT NOT NULL DEFAULT 'free',
     budget_usd    REAL,
     budget_period TEXT NOT NULL DEFAULT 'monthly',    -- 'monthly' | 'daily' | 'total'
+    siem_config   TEXT,                              -- JSON {type, url, token, ...} or NULL
     deleted_at    INTEGER,                            -- Unix seconds, NULL = active
     created_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
 );

@@ -126,6 +126,12 @@ local function migrate_columns(cfg)
     if not pgt_cols.source then
         cfg_db2:exec("ALTER TABLE playground_trace ADD COLUMN source TEXT NOT NULL DEFAULT 'playground'")
     end
+    -- SIEM config column on tenant (idempotent)
+    local tcols = {}
+    for row in cfg_db2:nrows("PRAGMA table_info(tenant)") do tcols[row.name] = true end
+    if not tcols.siem_config then
+        cfg_db2:exec("ALTER TABLE tenant ADD COLUMN siem_config TEXT")
+    end
     -- Audit log table (idempotent)
     cfg_db2:exec([[
         CREATE TABLE IF NOT EXISTS audit_log (
@@ -504,7 +510,8 @@ function M.get_gateway(tenant_slug, gateway_slug)
     local row, err = query_one(cfg_db(), [[
         SELECT t.id AS tenant_id, g.id AS gateway_id, g.config,
                t.budget_usd AS tenant_budget_usd,
-               t.budget_period AS tenant_budget_period
+               t.budget_period AS tenant_budget_period,
+               t.siem_config AS tenant_siem_config
         FROM   gateway g
         JOIN   tenant  t ON t.id = g.tenant_id
         WHERE  t.slug = ? AND g.slug = ? AND t.deleted_at IS NULL
@@ -519,6 +526,10 @@ function M.get_gateway(tenant_slug, gateway_slug)
     config.gateway_id           = row.gateway_id
     config.tenant_budget_usd    = row.tenant_budget_usd     -- nil when uncapped
     config.tenant_budget_period = row.tenant_budget_period or "monthly"
+    -- Apply tenant-level SIEM config as fallback (gateway.config.siem takes priority)
+    if not config.siem and row.tenant_siem_config then
+        config.siem = json.decode(row.tenant_siem_config)
+    end
     return config
 end
 
@@ -632,19 +643,20 @@ local function decode_detectors(row)
     end
 end
 
-function M.upsert_tenant(slug, plan, budget_usd, budget_period)
+function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config)
     local id = uuid()
     exec_one(cfg_db(), [[
-        INSERT OR IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period) VALUES (?,?,?,?,?)
-    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly")
+        INSERT OR IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config) VALUES (?,?,?,?,?,?)
+    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config)
     local row = query_one(cfg_db(), "SELECT id FROM tenant WHERE slug = ?", slug)
     return row and row.id
 end
 
-function M.update_tenant(id, plan, budget_usd, budget_period)
+function M.update_tenant(id, plan, budget_usd, budget_period, siem_config)
     return exec_one(cfg_db(), [[
-        UPDATE tenant SET plan = ?, budget_usd = ?, budget_period = COALESCE(?, budget_period) WHERE id = ?
-    ]], plan, budget_usd, budget_period, id)
+        UPDATE tenant SET plan = ?, budget_usd = ?, budget_period = COALESCE(?, budget_period),
+               siem_config = ? WHERE id = ?
+    ]], plan, budget_usd, budget_period, siem_config, id)
 end
 
 function M.delete_tenant(id)
@@ -733,7 +745,7 @@ end
 
 function M.list_tenants()
     return query_all(cfg_db(), [[
-        SELECT id, slug, plan, budget_usd, budget_period,
+        SELECT id, slug, plan, budget_usd, budget_period, siem_config,
                strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
         FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
     ]]) or {}

@@ -16,9 +16,14 @@ info:
     users, and view logs and statistics. The Admin API is typically only
     accessible from within your private network.
 
-    All error responses follow the structure:
+    Inference API errors follow the structure:
     ```json
     { "error": { "code": "ERROR_CODE", "message": "Human-readable detail" } }
+    ```
+
+    Admin API errors use a simpler flat structure:
+    ```json
+    { "error": "Human-readable message" }
     ```
 
 servers:
@@ -95,6 +100,18 @@ components:
           type: boolean
           example: true
 
+    AdminError:
+      type: object
+      description: |
+        Error response shape used by all Admin API endpoints. Intentionally simpler
+        than the inference API error — the admin API is only consumed by the admin UI
+        and operator tooling where a structured code field is not needed.
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: slug required
+
     RateLimit:
       type: object
       required: [requests, window_sec]
@@ -148,6 +165,12 @@ components:
           type: [number, "null"]
           description: Tenant-level spend cap in USD. null disables the cap.
           example: null
+        budget_period:
+          type: [string, "null"]
+          description: |
+            Budget reset period. One of `daily`, `weekly`, `monthly`. null means the cap never resets.
+          enum: [daily, weekly, monthly, null]
+          example: monthly
 
     TenantUpdate:
       type: object
@@ -158,6 +181,11 @@ components:
         budget_usd:
           type: [number, "null"]
           example: 1000.00
+        budget_period:
+          type: [string, "null"]
+          description: Budget reset period. One of `daily`, `weekly`, `monthly`. null means the cap never resets.
+          enum: [daily, weekly, monthly, null]
+          example: monthly
 
     # ── Gateways ─────────────────────────────────────────────────────────────
 
@@ -1210,7 +1238,7 @@ paths:
                   slug:
                     type: string
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
 
   /admin/v1/tenants/{tenant_id}:
     patch:
@@ -1229,7 +1257,7 @@ paths:
         "200":
           $ref: "#/components/responses/Ok"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
     delete:
       operationId: deleteTenant
       summary: Delete a tenant
@@ -1287,7 +1315,7 @@ paths:
                   slug:
                     type: string
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
 
   /admin/v1/gateways/{gateway_id}:
     get:
@@ -1304,7 +1332,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Gateway"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/AdminNotFound"
     patch:
       operationId: updateGateway
       summary: Update gateway config
@@ -1324,9 +1352,9 @@ paths:
         "200":
           $ref: "#/components/responses/Ok"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/AdminNotFound"
     delete:
       operationId: deleteGateway
       summary: Delete a gateway
@@ -1401,7 +1429,7 @@ paths:
                   alias:
                     type: string
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
 
   /admin/v1/gateways/{gateway_id}/keys/{provider}/{alias}:
     delete:
@@ -1470,7 +1498,7 @@ paths:
                   id:
                     type: string
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
 
   /admin/v1/gateways/{gateway_id}/rules/{rule_id}:
     patch:
@@ -1490,7 +1518,7 @@ paths:
         "200":
           $ref: "#/components/responses/Ok"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
     delete:
       operationId: deleteRoutingRule
       summary: Delete a routing rule
@@ -1652,7 +1680,7 @@ paths:
                   email:
                     type: string
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
 
   /admin/v1/users/{user_id}:
     patch:
@@ -1671,7 +1699,7 @@ paths:
         "200":
           $ref: "#/components/responses/Ok"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
     delete:
       operationId: deleteUser
       summary: Delete a user
@@ -1752,6 +1780,12 @@ paths:
       summary: Get aggregated request statistics
       description: Returns request counts, token usage, cost, and latency across several time windows, plus a per-tenant breakdown and recent log entries.
       tags: [Stats]
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+          description: Filter statistics to a single tenant UUID.
       responses:
         "200":
           description: Statistics snapshot.
@@ -1813,6 +1847,11 @@ paths:
           schema:
             type: integer
           description: End of the time range as a Unix timestamp in seconds. Defaults to now.
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+          description: Filter to a single tenant UUID. When present only that tenant's requests are included in each bucket.
       responses:
         "200":
           description: Array of time-bucketed data points.
@@ -1847,6 +1886,24 @@ paths:
           schema:
             type: string
           description: Filter by provider name (e.g. openai, anthropic).
+        - name: model
+          in: query
+          schema:
+            type: string
+          description: Filter by model name.
+          example: gpt-4o
+        - name: status
+          in: query
+          schema:
+            type: integer
+          description: Filter by HTTP status code returned to the client (e.g. 200, 400, 429).
+          example: 200
+        - name: blocked
+          in: query
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: When `true`, return only blocked requests. When `false`, return only non-blocked requests.
         - name: since
           in: query
           schema:
@@ -1903,7 +1960,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/LogEntry"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/AdminNotFound"
 
   # ── Models ─────────────────────────────────────────────────────────────────────
 
@@ -1987,7 +2044,7 @@ paths:
         "200":
           $ref: "#/components/responses/Ok"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/AdminBadRequest"
 
   /admin/v1/model-prices/{provider}/{model}:
     delete:
@@ -2059,6 +2116,492 @@ paths:
                     type: array
                     items:
                       type: object
+
+  # ── Stats: analytics depth ────────────────────────────────────────────────
+
+  /admin/v1/stats/analytics:
+    get:
+      operationId: getAnalyticsDepth
+      summary: Get latency percentiles and top models
+      description: |
+        Returns latency percentiles (p50/p95/p99) and top models ranked by request
+        volume across all gateways.
+      tags: [Stats]
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: integer
+          description: Return data for requests at or after this Unix millisecond timestamp.
+      responses:
+        "200":
+          description: Analytics depth data.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  # ── Spend history ─────────────────────────────────────────────────────────
+
+  /admin/v1/gateways/{gateway_id}/spend:
+    get:
+      operationId: getGatewaySpend
+      summary: Get gateway spend history
+      description: Returns the spend history for a gateway across budget periods, with each row converted to USD.
+      tags: [Gateways]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 12
+          description: Maximum number of historical periods to return.
+      responses:
+        "200":
+          description: Spend history rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    period:
+                      type: string
+                    amount_usd:
+                      type: number
+                    amount_micro:
+                      type: integer
+
+  /admin/v1/tenants/{tenant_id}/spend:
+    get:
+      operationId: getTenantSpend
+      summary: Get tenant spend history
+      description: Returns the spend history for a tenant across budget periods, with each row converted to USD.
+      tags: [Tenants]
+      parameters:
+        - $ref: "#/components/parameters/tenantId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 12
+          description: Maximum number of historical periods to return.
+      responses:
+        "200":
+          description: Spend history rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    period:
+                      type: string
+                    amount_usd:
+                      type: number
+                    amount_micro:
+                      type: integer
+
+  /admin/v1/tenants/{tenant_id}/analytics:
+    get:
+      operationId: getTenantAnalytics
+      summary: Get per-tenant analytics
+      description: |
+        Returns a time-series of request metrics and the top models by request volume
+        for a specific tenant. Suitable for the analytics detail panel.
+      tags: [Tenants]
+      parameters:
+        - $ref: "#/components/parameters/tenantId"
+        - name: since
+          in: query
+          schema:
+            type: integer
+          description: Return data for requests at or after this Unix millisecond timestamp.
+        - name: bucket
+          in: query
+          schema:
+            type: string
+            enum: [5m, 15m, 30m, 1h, 6h, 1d]
+            default: 1d
+          description: Bucket size for the time-series.
+        - name: n
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 30
+          description: Number of time-series buckets to return.
+      responses:
+        "200":
+          description: Tenant analytics data.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timeseries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TimeseriesPoint"
+                  top_models:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        model:
+                          type: string
+                        provider:
+                          type: string
+                        requests:
+                          type: integer
+
+  # ── Circuit breaker status ────────────────────────────────────────────────
+
+  /admin/v1/gateways/{gateway_id}/circuit-breaker:
+    get:
+      operationId: getCircuitBreakerStatus
+      summary: Get circuit breaker status for a gateway
+      description: |
+        Returns the current circuit breaker state for each provider that has been
+        seen by this gateway. Each entry includes state (`closed`, `open`, or `half-open`),
+        failure count, and the timestamp when the circuit opened (if applicable).
+      tags: [Gateways]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+      responses:
+        "200":
+          description: Circuit breaker state per provider.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    state:
+                      type: string
+                      enum: [closed, open, half-open]
+                    failures:
+                      type: integer
+                    opened_at:
+                      type: integer
+                      description: Unix timestamp when the circuit opened (only present when state is `open`).
+
+  # ── Traces ────────────────────────────────────────────────────────────────
+
+  /admin/v1/gateways/{gateway_id}/traces:
+    get:
+      operationId: listGatewayTraces
+      summary: List recent request traces for a gateway
+      description: Returns recent gateway-level request trace summaries (newest first).
+      tags: [Gateways]
+      parameters:
+        - $ref: "#/components/parameters/gatewayId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+          description: Maximum number of traces to return.
+      responses:
+        "200":
+          description: List of trace summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /admin/v1/traces/{trace_id}:
+    get:
+      operationId: getTrace
+      summary: Get a trace by ID
+      description: Fetches a single trace (gateway or playground) with all its steps. Step `data` fields are decoded from JSON.
+      tags: [Gateways]
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: trc_abc123
+      responses:
+        "200":
+          description: Trace with steps.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trace:
+                    type: object
+                  steps:
+                    type: array
+                    items:
+                      type: object
+        "404":
+          $ref: "#/components/responses/AdminNotFound"
+
+  # ── Playground ────────────────────────────────────────────────────────────
+
+  /admin/v1/playground/token:
+    post:
+      operationId: createPlaygroundToken
+      summary: Create a short-lived playground token
+      description: |
+        Issues a temporary gateway auth token scoped to `["playground"]` with a
+        10-minute TTL. Returns the raw token, its expiry, and the tenant/gateway
+        slugs needed to construct the compat URL. Expired playground tokens for the
+        requested gateway are cleaned up on each call.
+      tags: [Auth Tokens]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gateway_id]
+              properties:
+                gateway_id:
+                  type: string
+                  description: Gateway to issue the token for.
+                  example: gw_xyz789
+      responses:
+        "201":
+          description: Playground token created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: Plaintext token. Valid for 10 minutes.
+                  expires_at:
+                    type: string
+                    format: date-time
+                    description: ISO 8601 expiry timestamp.
+                  tenant_slug:
+                    type: string
+                  gateway_slug:
+                    type: string
+        "400":
+          $ref: "#/components/responses/AdminBadRequest"
+        "404":
+          $ref: "#/components/responses/AdminNotFound"
+
+  /admin/v1/playground/search:
+    get:
+      operationId: playgroundSearch
+      summary: Proxy a web search for the playground
+      description: |
+        Proxies a query to the Brave Search API and returns the top 5 organic results.
+        Intended for use by the playground UI's web-search feature.
+      tags: [Gateways]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query string.
+          example: "latest Claude models"
+      responses:
+        "200":
+          description: Search results.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query:
+                    type: string
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        url:
+                          type: string
+                        snippet:
+                          type: string
+        "400":
+          $ref: "#/components/responses/AdminBadRequest"
+        "502":
+          description: Brave Search API request failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminError"
+
+  /admin/v1/playground/trace/{trace_id}:
+    get:
+      operationId: getPlaygroundTrace
+      summary: Get a playground trace by ID
+      description: |
+        Fetches a playground trace with all its steps. Step `data` fields are
+        decoded from JSON. This endpoint is an alias for `GET /admin/v1/traces/{trace_id}`
+        retained for backwards compatibility.
+      tags: [Gateways]
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: trc_abc123
+      responses:
+        "200":
+          description: Trace with steps.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trace:
+                    type: object
+                  steps:
+                    type: array
+                    items:
+                      type: object
+        "404":
+          $ref: "#/components/responses/AdminNotFound"
+
+  # ── Client errors ─────────────────────────────────────────────────────────
+
+  /admin/v1/client-errors:
+    post:
+      operationId: reportClientError
+      summary: Report a client-side error
+      description: |
+        Accepts a JavaScript error report from the admin UI. The message is
+        truncated to 2,000 characters and the stack trace to 8,000 characters.
+      tags: [Gateways]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                id:
+                  type: string
+                  description: Optional client-generated UUID for the error report.
+                message:
+                  type: string
+                  description: Error message (truncated to 2,000 chars server-side).
+                stack:
+                  type: [string, "null"]
+                  description: Stack trace (truncated to 8,000 chars server-side).
+                url:
+                  type: [string, "null"]
+                  description: Page URL where the error occurred.
+                user_agent:
+                  type: [string, "null"]
+                  description: Client user-agent string.
+                ts:
+                  type: integer
+                  description: Event timestamp as Unix milliseconds. Defaults to server time.
+      responses:
+        "201":
+          description: Error report recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/AdminBadRequest"
+    get:
+      operationId: listClientErrors
+      summary: List recorded client errors
+      description: Returns client-side error reports in reverse-chronological order.
+      tags: [Gateways]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: Maximum number of records to return.
+      responses:
+        "200":
+          description: List of client error records.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    message:
+                      type: string
+                    stack:
+                      type: [string, "null"]
+                    url:
+                      type: [string, "null"]
+                    user_agent:
+                      type: [string, "null"]
+                    ts:
+                      type: integer
+
+  # ── Audit log ─────────────────────────────────────────────────────────────
+
+  /admin/v1/audit-log:
+    get:
+      operationId: listAuditLog
+      summary: List admin API audit log entries
+      description: |
+        Returns a log of all mutating Admin API requests (POST, PATCH, DELETE) in
+        reverse-chronological order. Each entry records the caller IP, HTTP method,
+        path, and response status.
+      tags: [Gateways]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: Maximum number of entries to return.
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Number of entries to skip (for pagination).
+      responses:
+        "200":
+          description: Audit log entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    actor_ip:
+                      type: string
+                    method:
+                      type: string
+                    path:
+                      type: string
+                    status:
+                      type: integer
+                    ts:
+                      type: integer
+                      description: Unix millisecond timestamp.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Reusable parameters and responses
@@ -2188,6 +2731,20 @@ paths:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+
+    AdminBadRequest:
+      description: Invalid request body or missing required field (Admin API).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AdminError"
+
+    AdminNotFound:
+      description: Resource not found (Admin API).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AdminError"
 
     Unauthorized:
       description: Missing or invalid auth token.

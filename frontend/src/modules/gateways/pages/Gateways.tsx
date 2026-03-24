@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
-import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig, GatewayGuardrailStats, GuardrailEvent, CircuitBreakerStatus, CircuitBreakerConfig, LoadBalanceConfig, WebhookConfig, WebhookEvent, BudgetPeriod } from "src/api/types";
+import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorConfig, GatewayGuardrailStats, GuardrailEvent, CircuitBreakerStatus, CircuitBreakerConfig, LoadBalanceConfig, WebhookConfig, WebhookEvent, BudgetPeriod, SiemType, SiemEvent } from "src/api/types";
 import { GuardrailBuilder } from "src/modules/guardrails/GuardrailBuilder";
 import { fmtDate, fmtDateTime } from "src/common/utils/date";
 import s from "src/common/components/layout/Layout.module.scss";
@@ -124,6 +124,17 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
   const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>(
     cfg.webhooks?.events ?? ["blocked", "budget_exceeded", "circuit_open"]
   );
+  const [siemType, setSiemType] = useState<SiemType | "">(cfg.siem?.type ?? "");
+  const [siemEvents, setSiemEvents] = useState<SiemEvent[]>(cfg.siem?.events ?? ["blocked"]);
+  const [siemUrl, setSiemUrl] = useState(cfg.siem?.url ?? "");
+  const [siemToken, setSiemToken] = useState(cfg.siem?.token ?? "");
+  const [siemIndex, setSiemIndex] = useState(cfg.siem?.index ?? "");
+  const [siemUsername, setSiemUsername] = useState(cfg.siem?.username ?? "");
+  const [siemPassword, setSiemPassword] = useState(cfg.siem?.password ?? "");
+  const [siemHost, setSiemHost] = useState(cfg.siem?.host ?? "");
+  const [siemPort, setSiemPort] = useState(String(cfg.siem?.port ?? "514"));
+  const [siemProtocol, setSiemProtocol] = useState<"udp" | "tcp">(cfg.siem?.protocol ?? "udp");
+  const [siemFormat, setSiemFormat] = useState<"cef" | "rfc5424">(cfg.siem?.format ?? "cef");
   const tracingCfg = (cfg as any).tracing;
   const [tracingEnabled, setTracingEnabled] = useState<boolean>(tracingCfg?.enabled ?? false);
   const [tracingBodies, setTracingBodies] = useState<boolean>(tracingCfg?.include_bodies ?? false);
@@ -167,6 +178,28 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
         };
       } else {
         newConfig.webhooks = null;
+      }
+      if (siemType) {
+        const siemCfg: any = { type: siemType, events: siemEvents.length > 0 ? siemEvents : ["blocked"] };
+        if (siemType === "splunk_hec") {
+          siemCfg.url = siemUrl.trim();
+          if (siemToken.trim()) siemCfg.token = siemToken.trim();
+          if (siemIndex.trim()) siemCfg.index = siemIndex.trim();
+        } else if (siemType === "elasticsearch") {
+          siemCfg.url = siemUrl.trim();
+          if (siemIndex.trim()) siemCfg.index = siemIndex.trim();
+          if (siemUsername.trim()) { siemCfg.username = siemUsername.trim(); siemCfg.password = siemPassword.trim(); }
+        } else if (siemType === "vector") {
+          siemCfg.url = siemUrl.trim();
+        } else if (siemType === "syslog") {
+          siemCfg.host = siemHost.trim();
+          siemCfg.port = parseInt(siemPort) || 514;
+          siemCfg.protocol = siemProtocol;
+          siemCfg.format = siemFormat;
+        }
+        newConfig.siem = siemCfg;
+      } else {
+        newConfig.siem = null;
       }
       if (tracingEnabled) {
         newConfig.tracing = {
@@ -352,6 +385,98 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
                     </label>
                   ))}
                 </div>
+              </>
+            )}
+          </div>
+          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          {/* SIEM */}
+          <div className={s["form-group"]}>
+            <label className={s["form-label"]}>SIEM Integration</label>
+            <p className={s["form-hint"]} style={{ marginBottom: 8 }}>
+              Stream security events to an external SIEM. Overrides any tenant-level SIEM config.
+            </p>
+            <select
+              className={s["form-input"]}
+              value={siemType}
+              onChange={(e) => setSiemType(e.target.value as SiemType | "")}
+              style={{ marginBottom: 8 }}
+            >
+              <option value="">— disabled —</option>
+              <option value="splunk_hec">Splunk HEC</option>
+              <option value="elasticsearch">Elasticsearch / OpenSearch</option>
+              <option value="vector">Vector</option>
+              <option value="syslog">Syslog / CEF</option>
+            </select>
+            {siemType && (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+                  <label className={s["form-label"]} style={{ fontSize: 12, marginBottom: 2 }}>Events to forward</label>
+                  {(["blocked", "guardrail", "scrubbed", "all"] as SiemEvent[]).map((ev) => (
+                    <label key={ev} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={siemEvents.includes(ev)}
+                        onChange={(e) => setSiemEvents((prev) =>
+                          e.target.checked ? [...prev, ev] : prev.filter((x) => x !== ev)
+                        )}
+                      />
+                      <span>{ev === "all" ? "all (every request)" : ev}</span>
+                    </label>
+                  ))}
+                </div>
+                {(siemType === "splunk_hec" || siemType === "elasticsearch" || siemType === "vector") && (
+                  <>
+                    <input className={s["form-input"]} placeholder="URL" value={siemUrl}
+                      onChange={(e) => setSiemUrl(e.target.value)} style={{ marginBottom: 8 }} />
+                    {siemType === "splunk_hec" && (
+                      <>
+                        <input className={s["form-input"]} placeholder="HEC Token" value={siemToken}
+                          onChange={(e) => setSiemToken(e.target.value)} style={{ marginBottom: 8 }} />
+                        <input className={s["form-input"]} placeholder="Index (optional)" value={siemIndex}
+                          onChange={(e) => setSiemIndex(e.target.value)} style={{ marginBottom: 8 }} />
+                      </>
+                    )}
+                    {siemType === "elasticsearch" && (
+                      <>
+                        <input className={s["form-input"]} placeholder="Index (e.g. aig-logs)" value={siemIndex}
+                          onChange={(e) => setSiemIndex(e.target.value)} style={{ marginBottom: 8 }} />
+                        <input className={s["form-input"]} placeholder="Username (optional)" value={siemUsername}
+                          onChange={(e) => setSiemUsername(e.target.value)} style={{ marginBottom: 8 }} />
+                        <input className={s["form-input"]} type="password" placeholder="Password" value={siemPassword}
+                          onChange={(e) => setSiemPassword(e.target.value)} style={{ marginBottom: 8 }} />
+                      </>
+                    )}
+                  </>
+                )}
+                {siemType === "syslog" && (
+                  <>
+                    <input className={s["form-input"]} placeholder="Host" value={siemHost}
+                      onChange={(e) => setSiemHost(e.target.value)} style={{ marginBottom: 8 }} />
+                    <div className={s["form-row"]} style={{ marginBottom: 8 }}>
+                      <div className={s["form-group"]} style={{ margin: 0 }}>
+                        <label className={s["form-label"]} style={{ fontSize: 12 }}>Port</label>
+                        <input className={s["form-input"]} type="number" min={1} max={65535} value={siemPort}
+                          onChange={(e) => setSiemPort(e.target.value)} />
+                      </div>
+                      <div className={s["form-group"]} style={{ margin: 0 }}>
+                        <label className={s["form-label"]} style={{ fontSize: 12 }}>Protocol</label>
+                        <select className={s["form-input"]} value={siemProtocol}
+                          onChange={(e) => setSiemProtocol(e.target.value as "udp" | "tcp")}>
+                          <option value="udp">UDP</option>
+                          <option value="tcp">TCP</option>
+                        </select>
+                      </div>
+                      <div className={s["form-group"]} style={{ margin: 0 }}>
+                        <label className={s["form-label"]} style={{ fontSize: 12 }}>Format</label>
+                        <select className={s["form-input"]} value={siemFormat}
+                          onChange={(e) => setSiemFormat(e.target.value as "cef" | "rfc5424")}>
+                          <option value="cef">CEF</option>
+                          <option value="rfc5424">RFC 5424</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
