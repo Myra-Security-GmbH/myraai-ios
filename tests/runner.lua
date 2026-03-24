@@ -2,6 +2,29 @@
 -- Usage: resty tests/runner.lua tests/integration/test_foo.lua
 --
 -- Supports: describe(), it(), before_each(), after_each(), assert.*
+--
+-- Coverage: set env COVERAGE=1 to collect luacov data.
+--   Requires luacov installed (luarocks install --local luacov).
+--   After the run:  luacov  →  luacov.report.out
+--   Scope filter:  .luacov config at project root (see docs).
+
+-- ---------------------------------------------------------------------------
+-- Optional luacov instrumentation (must happen before any require())
+-- ---------------------------------------------------------------------------
+-- Optional luacov coverage instrumentation.
+-- luacov must be on LUA_PATH before this runner is invoked:
+--   LUA_PATH="$(luarocks path --lr-path);;" lua5.1 tests/runner.lua ...
+-- or set COVERAGE=1 and let the Makefile / test script handle it.
+local _luacov_runner = nil
+if os.getenv("COVERAGE") == "1" then
+    local ok, lcov = pcall(require, "luacov")
+    if ok then
+        _luacov_runner = require("luacov.runner")
+        io.write("[coverage] luacov active — stats → luacov.stats.out\n")
+    else
+        io.write("[coverage] WARNING: luacov not found (set LUA_PATH to your luarocks tree)\n")
+    end
+end
 
 -- Suppress resty's global-write guard for test DSL globals
 local _orig_newindex = debug.getmetatable(_G) and debug.getmetatable(_G).__newindex
@@ -113,8 +136,10 @@ _G.assert = setmetatable({
     has_error = has_error,
 }, {
     __index = assert_mt,
-    __call  = function(_, cond, msg)
-        if not cond then error((msg or "assertion failed"), 2) end
+    __call  = function(_, cond, ...)
+        -- Mirror standard assert: raise on falsy, return all args on success.
+        if not cond then error((select(1, ...) or "assertion failed"), 2) end
+        return cond, ...
     end,
 })
 
@@ -195,6 +220,13 @@ end
 -- Summary
 -- ---------------------------------------------------------------------------
 io.write(string.format("\n%d tests: %d passed, %d failed\n", total, passed, failed))
+
+-- Flush coverage stats before exit (GC finalizer not reliable on all runtimes).
+if _luacov_runner then
+    _luacov_runner.save_stats()
+    io.write("[coverage] stats written → run `luacov` to generate report\n")
+end
+
 if #errors_list > 0 then
     io.write("\nFailed:\n")
     for _, e in ipairs(errors_list) do
