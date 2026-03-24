@@ -340,6 +340,7 @@ export interface GatewayStats {
 
 export interface UserStats {
   user_id: string;
+  tenant_id: string;
   requests: number;
   blocked: number;
   cached: number;

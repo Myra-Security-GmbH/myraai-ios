@@ -1347,7 +1347,7 @@ function M.get_analytics_depth(since_ms)
 
     -- Usage by authenticated user (user_id populated by auth middleware from token)
     local by_user = query_all(ldb, [[
-        SELECT r.user_id,
+        SELECT r.user_id, r.tenant_id,
                COUNT(*)                                                            AS requests,
                SUM(CASE WHEN r.blocked=1 OR r.scrub_applied=1 THEN 1 ELSE 0 END) AS blocked,
                SUM(CASE WHEN r.cached=1 THEN 1 ELSE 0 END)                        AS cached,
@@ -1359,7 +1359,7 @@ function M.get_analytics_depth(since_ms)
                SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
         FROM request_log r
         WHERE r.ts >= ? AND r.user_id IS NOT NULL
-        GROUP BY r.user_id ORDER BY cost_usd DESC
+        GROUP BY r.user_id, r.tenant_id ORDER BY cost_usd DESC
         LIMIT 50
     ]], from) or {}
 

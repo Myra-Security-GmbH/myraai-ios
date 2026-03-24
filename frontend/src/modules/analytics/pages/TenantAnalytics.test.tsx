@@ -87,6 +87,7 @@ const ANALYTICS: AnalyticsDepth = {
   by_user: [
     {
       user_id: "alice@example.com",
+      tenant_id: "t1",                          // acme
       requests: 300, blocked: 1, cached: 30,
       input_tokens: 400000, output_tokens: 100000,
       cost_usd: 5.40, saved_cost_usd: 0.21, avg_latency_ms: 600,
@@ -94,6 +95,7 @@ const ANALYTICS: AnalyticsDepth = {
     },
     {
       user_id: "bob@example.com",
+      tenant_id: "t2",                          // devteam
       requests: 100, blocked: 0, cached: 5,
       input_tokens: 150000, output_tokens: 40000,
       cost_usd: 1.80, saved_cost_usd: 0.05, avg_latency_ms: 750,
@@ -575,6 +577,114 @@ describe("TenantAnalytics — tab switching", () => {
     await userEvent.click(screen.getByRole("button", { name: "By Gateway" }));
     await userEvent.click(screen.getByRole("button", { name: "By Tenant" }));
     await waitFor(() => expect(screen.getByText("devteam")).toBeInTheDocument());
+  });
+
+  // ── Tenant-scoped user filtering ─────────────────────────────────────────
+  // Regression: by_user had no tenant_id field and filteredByUser never
+  // applied a tenant filter. Clicking "acme" in By Tenant then switching to
+  // By User showed ALL users globally (or nothing for tenants like "myratest"
+  // whose requests carried no user_id). These tests pin the contract that:
+  //   1. by_user rows include tenant_id from the backend
+  //   2. When a tenant row is selected, By User shows ONLY that tenant's users
+  //   3. Users from other tenants are excluded from the scoped view
+  //   4. Deselecting the tenant row restores the global view
+
+  it("By User tab shows only the selected tenant's users when a tenant row is clicked", async () => {
+    setupDefaultMocks();
+    renderPage();
+    // "acme" also appears in the Top Spender hero card — scope to the tenant
+    // breakdown table so we hit the row that has the setSelected onClick handler.
+    await waitFor(() => expect(screen.getByRole("button", { name: "By User" })).toBeInTheDocument());
+    await userEvent.click(within(screen.getAllByRole("table")[0]).getByText("acme"));
+
+    await userEvent.click(screen.getByRole("button", { name: "By User" }));
+
+    await waitFor(() => {
+      // alice belongs to t1 (acme) — must appear
+      expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+      // bob belongs to t2 (devteam) — must NOT appear when acme is selected
+      expect(screen.queryByText("bob@example.com")).not.toBeInTheDocument();
+    });
+  });
+
+  it("By User tab shows the other tenant's user when that tenant row is selected", async () => {
+    setupDefaultMocks();
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("button", { name: "By User" })).toBeInTheDocument());
+    await userEvent.click(within(screen.getAllByRole("table")[0]).getByText("devteam"));
+
+    await userEvent.click(screen.getByRole("button", { name: "By User" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("bob@example.com")).toBeInTheDocument();
+      expect(screen.queryByText("alice@example.com")).not.toBeInTheDocument();
+    });
+  });
+
+  it("By User tab shows all users globally when no tenant row is selected", async () => {
+    setupDefaultMocks();
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("button", { name: "By User" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "By User" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+      expect(screen.getByText("bob@example.com")).toBeInTheDocument();
+    });
+  });
+
+  it("deselecting a tenant row (clicking it again) restores the global By User view", async () => {
+    setupDefaultMocks();
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("button", { name: "By User" })).toBeInTheDocument());
+    // Select acme, then toggle off by clicking again.
+    // Scope to the tenant table to avoid hitting the Top Spender hero card.
+    await userEvent.click(within(screen.getAllByRole("table")[0]).getByText("acme"));
+    // After first click the detail panel opens; getAllByRole("table")[0] is still the tenant table.
+    await userEvent.click(within(screen.getAllByRole("table")[0]).getByText("acme"));
+
+    await userEvent.click(screen.getByRole("button", { name: "By User" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+      expect(screen.getByText("bob@example.com")).toBeInTheDocument();
+    });
+  });
+
+  it("By User tab shows empty state when selected tenant has no user-attributed requests", async () => {
+    // t2 (devteam) has by_tenant/by_gateway entries but its user (bob) is
+    // removed from by_user — simulates a tenant whose requests all used
+    // gateway-level tokens with no user_id set.
+    mockApi.get.mockImplementation((path: string) => {
+      if (path.startsWith("/stats/analytics")) return Promise.resolve({
+        ...ANALYTICS,
+        by_user: [
+          // Only alice from t1; t2 (devteam) has zero user-attributed requests
+          { user_id: "alice@example.com", tenant_id: "t1",
+            requests: 300, blocked: 1, cached: 30,
+            input_tokens: 400000, output_tokens: 100000,
+            cost_usd: 5.40, saved_cost_usd: 0.21, avg_latency_ms: 600, errors: 2 },
+        ],
+      });
+      if (path === "/tenants")                          return Promise.resolve([TENANT1, TENANT2]);
+      if (path === "/stats/timeseries?bucket=1d&n=30") return Promise.resolve(GLOBAL_TS);
+      if (path.includes("/analytics"))                  return Promise.resolve(DETAIL);
+      if (path.includes("/spend"))                      return Promise.resolve(SPEND);
+      return Promise.resolve([]);
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "By User" })).toBeInTheDocument());
+    await userEvent.click(within(screen.getAllByRole("table")[0]).getByText("devteam"));
+
+    await userEvent.click(screen.getByRole("button", { name: "By User" }));
+
+    await waitFor(() => {
+      // devteam has no user-attributed requests → empty state
+      expect(screen.getByText(/No data for this period/i)).toBeInTheDocument();
+      // alice (from acme, a different tenant) must NOT bleed in
+      expect(screen.queryByText("alice@example.com")).not.toBeInTheDocument();
+    });
   });
 });
 

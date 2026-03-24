@@ -388,7 +388,9 @@ export default function TenantAnalytics() {
   const filteredByGateway = ft ? byGateway.filter(r => r.gateway.toLowerCase().includes(ft) || (r.tenant ?? "").toLowerCase().includes(ft)) : byGateway;
   const filteredByProvider = ft ? byProvider.filter(r => r.provider.toLowerCase().includes(ft)) : byProvider;
   const filteredByModel   = ft ? byModel.filter(r => r.model.toLowerCase().includes(ft) || r.provider.toLowerCase().includes(ft)) : byModel;
-  const filteredByUser    = ft ? byUser.filter(r => r.user_id.toLowerCase().includes(ft)) : byUser;
+  const filteredByUser    = byUser
+    .filter(r => !selected || r.tenant_id === selected.tenant_id)
+    .filter(r => !ft      || r.user_id.toLowerCase().includes(ft));
 
   const activeFiltered = tab === "tenant" ? filteredByTenant.length
     : tab === "gateway"  ? filteredByGateway.length

@@ -52,7 +52,8 @@ local M = {}
 
 -- Convert JSON null (cjson.null userdata) to Lua nil so SQLite bindings work.
 local function nullable(v)
-    return (v == json.null) and nil or v
+    if v == json.null then return nil end
+    return v
 end
 
 local function send(status, body)
@@ -458,7 +459,7 @@ route("POST", "^/admin/v1/gateways/([^/]+)/tokens$", function(gateway_id)
     local rate_limit_json = b and b.rate_limit and b.rate_limit ~= json.null and json.encode(b.rate_limit) or nil
     local id, err = storage.insert_auth_token(gateway_id, hash,
         b and b.scopes or {}, b and nullable(b.expires_at),
-        nil, b and nullable(b.label), rate_limit_json, b and nullable(b.budget_usd))
+        b and nullable(b.user_id), b and nullable(b.label), rate_limit_json, b and nullable(b.budget_usd))
     if err then return send(500, { error = tostring(err) }) end
     send(201, { id = id, token = raw_token, gateway_id = gateway_id })
 end)

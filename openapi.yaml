@@ -466,6 +466,10 @@ components:
     AuthTokenCreate:
       type: object
       properties:
+        user_id:
+          type: [string, "null"]
+          description: Optional user to attribute requests made with this token. When set, the user_id is written to every request_log row, enabling per-user analytics.
+          example: usr_abc123
         label:
           type: [string, "null"]
           description: Human-readable name shown in the admin UI and logs.

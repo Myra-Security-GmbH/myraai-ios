@@ -732,3 +732,329 @@ describe("observability.logger user attribution", function()
         assert.is_nil(last_log)
     end)
 end)
+
+-- =========================================================================
+-- get_analytics_depth — user_id attribution pipeline (regression for By User tab)
+-- =========================================================================
+-- Regression: the by_user SQL never included tenant_id, so the "By User"
+-- analytics tab showed nothing when filtered to a specific tenant.
+-- These tests pin the contract that:
+--   1. request_log rows with user_id set appear in by_user
+--   2. each by_user row carries tenant_id (needed for frontend tenant scoping)
+--   3. rows with user_id IS NULL are excluded from by_user
+--   4. get_analytics_depth returns the correct by_user data end-to-end
+--   5. a user-attributed token round-trips: auth sets ctx.user_id, logger
+--      writes it to insert_log, get_analytics_depth surfaces it in by_user
+
+describe("get_analytics_depth — user_id attribution in by_user", function()
+    -- Fresh isolated DBs so this describe does not share state with earlier ones.
+    package.cpath = "/usr/lib/x86_64-linux-gnu/lua/5.1/?.so;" .. package.cpath
+    package.loaded["storage.sqlite"] = nil
+    package.loaded["storage"]        = nil
+
+    package.preload["utils.json"] = package.preload["utils.json"] or function()
+        local cjson = require("cjson.safe")
+        return { encode = cjson.encode, decode = cjson.decode }
+    end
+    package.preload["utils.uuid"] = package.preload["utils.uuid"] or function()
+        local n = 0
+        return { v4 = function() n = n + 1; return string.format("ua-uuid-%04d", n) end }
+    end
+
+    local sqlite3 = require("lsqlite3")
+    local cfg_path = "/tmp/test_ua_cfg.db"
+    local log_path = "/tmp/test_ua_log.db"
+    os.remove(cfg_path); os.remove(log_path)
+
+    local storage = require("storage.sqlite")
+    storage.migrate({ sqlite = { config_db = cfg_path, logs_db = log_path } })
+    storage.init   ({ sqlite = { config_db = cfg_path, logs_db = log_path } })
+
+    local ldb = sqlite3.open(log_path)
+    local seq = 0
+
+    local TENANT_1 = "t1111111-0000-0000-0000-000000000001"
+    local TENANT_2 = "t2222222-0000-0000-0000-000000000002"
+    local USER_A   = "ua-user-alice"
+    local USER_B   = "ua-user-bob"
+
+    local NOW_MS = math.floor(ngx.now()) * 1000   -- epoch ms
+
+    local function insert_req(tenant_id, user_id, cost)
+        seq = seq + 1
+        local ts = NOW_MS - 1000  -- 1 s ago, within the default 30d window
+        local sql = string.format([[
+            INSERT INTO request_log
+                (id, tenant_id, gateway_id, provider, model, status,
+                 cached, input_tokens, output_tokens,
+                 cache_creation_tokens, cache_read_tokens,
+                 cost_usd, latency_ms, ts,
+                 meta, blocked, upstream_attempts, request_size_bytes, scrub_applied
+                 %s)
+            VALUES ('ua-req-%04d','%s','g1','openai','gpt-4o',200,
+                    0,10,5,0,0,
+                    %.4f,100,%d,
+                    '{}',0,1,512,0
+                    %s)
+        ]],
+            user_id and ", user_id" or "",
+            seq, tenant_id,
+            cost or 0.001,
+            ts,
+            user_id and (", '" .. user_id .. "'") or ""
+        )
+        ldb:exec(sql)
+    end
+
+    it("by_user is empty when all requests have no user_id", function()
+        ldb:exec("DELETE FROM request_log")
+        insert_req(TENANT_1, nil, 0.001)
+        insert_req(TENANT_2, nil, 0.002)
+
+        local depth = storage.get_analytics_depth()
+        assert.not_nil(depth)
+        assert.equal(0, #depth.by_user,
+            "by_user must be empty when all request_log rows have user_id IS NULL")
+    end)
+
+    it("by_user contains a row when a request has user_id set", function()
+        ldb:exec("DELETE FROM request_log")
+        insert_req(TENANT_1, USER_A, 0.005)
+
+        local depth = storage.get_analytics_depth()
+        assert.equal(1, #depth.by_user)
+        assert.equal(USER_A, depth.by_user[1].user_id,
+            "by_user row must have correct user_id")
+    end)
+
+    it("by_user row includes tenant_id (regression: was missing, broke By User tab)", function()
+        ldb:exec("DELETE FROM request_log")
+        insert_req(TENANT_1, USER_A, 0.003)
+
+        local depth = storage.get_analytics_depth()
+        assert.equal(1, #depth.by_user)
+        assert.equal(TENANT_1, depth.by_user[1].tenant_id,
+            "by_user row MUST carry tenant_id for frontend tenant scoping")
+    end)
+
+    it("by_user excludes rows without user_id even when other users exist", function()
+        ldb:exec("DELETE FROM request_log")
+        insert_req(TENANT_1, USER_A, 0.001)   -- attributed
+        insert_req(TENANT_1, nil,    0.001)   -- NOT attributed — must be excluded
+        insert_req(TENANT_2, nil,    0.001)   -- NOT attributed — must be excluded
+
+        local depth = storage.get_analytics_depth()
+        assert.equal(1, #depth.by_user,
+            "anonymous requests must not appear in by_user")
+        assert.equal(USER_A, depth.by_user[1].user_id)
+    end)
+
+    it("by_user aggregates multiple requests from the same user correctly", function()
+        ldb:exec("DELETE FROM request_log")
+        insert_req(TENANT_1, USER_A, 0.002)
+        insert_req(TENANT_1, USER_A, 0.003)
+        insert_req(TENANT_1, USER_A, 0.005)
+
+        local depth = storage.get_analytics_depth()
+        assert.equal(1, #depth.by_user)
+        assert.equal(3,   depth.by_user[1].requests)
+        -- cost must be the rounded sum of 0.002+0.003+0.005 = 0.010
+        assert.is_true(depth.by_user[1].cost_usd >= 0.0099 and
+                        depth.by_user[1].cost_usd <= 0.0101,
+            "cost_usd mismatch: " .. tostring(depth.by_user[1].cost_usd))
+    end)
+
+    it("by_user keeps users from different tenants separate (tenant_id is part of GROUP BY)", function()
+        ldb:exec("DELETE FROM request_log")
+        insert_req(TENANT_1, USER_A, 0.010)
+        insert_req(TENANT_2, USER_B, 0.020)
+
+        local depth = storage.get_analytics_depth()
+        assert.equal(2, #depth.by_user)
+
+        -- Build a lookup table for easy assertions
+        local by_uid = {}
+        for _, row in ipairs(depth.by_user) do
+            by_uid[row.user_id] = row
+        end
+
+        assert.not_nil(by_uid[USER_A])
+        assert.equal(TENANT_1, by_uid[USER_A].tenant_id)
+        assert.not_nil(by_uid[USER_B])
+        assert.equal(TENANT_2, by_uid[USER_B].tenant_id)
+    end)
+
+    it("same user_id in two tenants produces two separate by_user rows", function()
+        -- Edge case: same user_id string appears in requests for two different
+        -- tenants (e.g. shared identity provider).  The GROUP BY must separate them.
+        ldb:exec("DELETE FROM request_log")
+        insert_req(TENANT_1, USER_A, 0.001)
+        insert_req(TENANT_2, USER_A, 0.002)   -- same user_id, different tenant
+
+        local depth = storage.get_analytics_depth()
+        assert.equal(2, #depth.by_user,
+            "same user_id across two tenants must appear as two separate rows")
+
+        local t1_row, t2_row
+        for _, row in ipairs(depth.by_user) do
+            if row.tenant_id == TENANT_1 then t1_row = row end
+            if row.tenant_id == TENANT_2 then t2_row = row end
+        end
+        assert.not_nil(t1_row, "TENANT_1 row missing")
+        assert.not_nil(t2_row, "TENANT_2 row missing")
+        assert.equal(USER_A, t1_row.user_id)
+        assert.equal(USER_A, t2_row.user_id)
+    end)
+
+    -- End-to-end pipeline: token with user_id → auth sets ctx.user_id →
+    -- logger.emit writes user_id to insert_log → get_analytics_depth surfaces it.
+    it("full pipeline: user-attributed token flows user_id into request_log via insert_log", function()
+        ldb:exec("DELETE FROM request_log")
+
+        -- Simulate what the auth middleware + logger do together:
+        -- auth.run sets ctx.user_id; logger.emit calls storage.insert_log(f)
+        -- where f.user_id = ctx.user_id.
+        local f = {
+            id                 = "ua-pipe-req-001",
+            tenant_id          = TENANT_1,
+            gateway_id         = "gw-pipe",
+            provider           = "openai",
+            model              = "gpt-4o",
+            status             = 200,
+            cached             = false,
+            input_tokens       = 100,
+            output_tokens      = 50,
+            cache_creation_tokens = 0,
+            cache_read_tokens  = 0,
+            cost_usd           = 0.007,
+            latency_ms         = 200,
+            ts                 = NOW_MS - 500,
+            meta               = {},
+            blocked            = false,
+            upstream_attempts  = 1,
+            request_size_bytes = 512,
+            scrub_applied      = false,
+            -- set by auth middleware → flows to logger → insert_log
+            user_id            = USER_A,
+            token_label        = "my-dev-token",
+        }
+        local err = storage.insert_log(f)
+        assert.is_nil(err, "insert_log must not return an error")
+
+        local depth = storage.get_analytics_depth()
+        assert.equal(1, #depth.by_user,
+            "by_user must contain one row after inserting a user-attributed request")
+        assert.equal(USER_A,   depth.by_user[1].user_id)
+        assert.equal(TENANT_1, depth.by_user[1].tenant_id)
+        assert.equal(1,        depth.by_user[1].requests)
+    end)
+end)
+
+-- =========================================================================
+-- admin/api.lua — POST /gateways/:id/tokens respects user_id in body
+-- =========================================================================
+-- Regression: the gateway token endpoint hardcoded nil for user_id, so tokens
+-- created via the UI or API gateway endpoint never got user attribution, making
+-- the By User analytics tab permanently empty for those users.
+-- The fix: pass b.user_id from the request body instead of nil.
+
+describe("admin/api POST /gateways/:id/tokens passes user_id from body", function()
+    local API_MODULES = {
+        "admin.api", "storage", "auth.byok", "utils.crypto",
+        "utils.json", "providers", "core.app_config",
+    }
+    local function clear_api()
+        for _, n in ipairs(API_MODULES) do
+            package.loaded[n]  = nil
+            package.preload[n] = nil
+        end
+    end
+
+    local function setup_api(captured)
+        clear_api()
+
+        package.preload["utils.json"] = function()
+            local cjson = require("cjson.safe")
+            return { encode = cjson.encode, decode = cjson.decode, null = cjson.null }
+        end
+        package.preload["utils.crypto"] = function()
+            return {
+                random_hex  = function(n) return string.rep("a", n * 2) end,
+                sha256_hex  = function(s) return "HASH:" .. s end,
+            }
+        end
+        package.preload["auth.byok"]   = function() return { get = function() return nil end } end
+        package.preload["providers"]   = function() return { list = function() return {} end } end
+        package.preload["core.app_config"] = function() return { get = function() return {} end } end
+
+        package.preload["storage"] = function()
+            return {
+                insert_auth_token = function(gw_id, hash, scopes, expires_at, user_id, label, rl, budget)
+                    captured.gateway_id = gw_id
+                    captured.user_id    = user_id
+                    captured.label      = label
+                    return "new-token-id", nil
+                end,
+                insert_audit_log = function() end,
+                -- stubs for routes that run at load time or list calls
+                list_auth_tokens = function() return {} end,
+            }
+        end
+
+        local response = {}
+        ngx.req.get_method    = function() return "POST" end
+        ngx.req.get_uri_args  = function() return {} end
+        ngx.req.read_body     = function() end
+        ngx.var.remote_addr   = "127.0.0.1"
+        ngx.print             = function(s) response.body = s end
+        ngx.exit              = function(s) error("ngx.exit:" .. tostring(s)) end
+
+        return require("admin.api"), response
+    end
+
+    it("user_id from body is stored on the token (not silently dropped)", function()
+        local captured = {}
+        local api = setup_api(captured)
+
+        local body_json = require("cjson.safe").encode({
+            user_id = "user-sascha", label = "my-laptop"
+        })
+        ngx.req.get_body_data = function() return body_json end
+        ngx.var.uri = "/admin/v1/gateways/gw-test/tokens"
+
+        api.handle()
+
+        assert.equal("user-sascha", captured.user_id,
+            "user_id from request body must be passed to insert_auth_token — "
+            .. "regression: endpoint previously hardcoded nil, breaking By User analytics")
+    end)
+
+    it("user_id absent from body results in nil (service token)", function()
+        local captured = {}
+        local api = setup_api(captured)
+
+        local body_json = require("cjson.safe").encode({ label = "ci-bot" })
+        ngx.req.get_body_data = function() return body_json end
+        ngx.var.uri = "/admin/v1/gateways/gw-test/tokens"
+
+        api.handle()
+
+        assert.is_nil(captured.user_id,
+            "omitting user_id from body must produce nil (service/gateway-level token)")
+    end)
+
+    it("explicit null user_id in body results in nil", function()
+        local captured = {}
+        local api, _ = setup_api(captured)
+
+        local cjson = require("cjson.safe")
+        local body_json = cjson.encode({ user_id = cjson.null, label = "svc" })
+        ngx.req.get_body_data = function() return body_json end
+        ngx.var.uri = "/admin/v1/gateways/gw-test/tokens"
+
+        api.handle()
+
+        assert.is_nil(captured.user_id,
+            "JSON null user_id must be normalised to nil by nullable()")
+    end)
+end)
