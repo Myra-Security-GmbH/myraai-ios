@@ -2,6 +2,8 @@
 
 The regex guardrail is a **Tier 1** (in-process, sub-millisecond) guardrail that scans request and response content against named pattern libraries or custom expressions. It is the recommended starting point for detecting structured sensitive data such as PII, payment card numbers, credentials, and healthcare identifiers.
 
+![Regex guardrail editor](../../assets/screenshots/guardrail-regex.png)
+
 ---
 
 ## Configuration Fields

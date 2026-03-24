@@ -50,7 +50,9 @@ When a budget is exhausted, the gateway returns `HTTP 429` with an actionable me
 {
   "error": {
     "code": "QUOTA_EXCEEDED",
-    "message": "Token budget $10.0000 exceeded (spent $10.0023). Adjust budget_usd on the auth token (PATCH /admin/v1/tokens/{id}) or reset spend (DELETE /admin/v1/tokens/{id}/budget)."
+    "message": "Token budget $10.0000 exceeded (spent $10.0023).\n
+      Adjust budget_usd on the auth token (PATCH /admin/v1/tokens/{id})\n
+      or reset spend (DELETE /admin/v1/tokens/{id}/budget)."
   }
 }
 ```
@@ -61,7 +63,9 @@ When a budget is exhausted, the gateway returns `HTTP 429` with an actionable me
 {
   "error": {
     "code": "QUOTA_EXCEEDED",
-    "message": "Tenant budget $50.0000 exceeded (spent $50.0041). Adjust budget_usd on the tenant (PATCH /admin/v1/tenants/{id}) or reset spend (DELETE /admin/v1/tenants/{id}/budget)."
+    "message": "Tenant budget $50.0000 exceeded (spent $50.0041).\n
+      Adjust budget_usd on the tenant (PATCH /admin/v1/tenants/{id})\n
+      or reset spend (DELETE /admin/v1/tenants/{id}/budget)."
   }
 }
 ```
@@ -72,7 +76,9 @@ When a budget is exhausted, the gateway returns `HTTP 429` with an actionable me
 {
   "error": {
     "code": "QUOTA_EXCEEDED",
-    "message": "Gateway budget $200.0000 exceeded (spent $200.0019). Adjust budget_usd in the gateway config (PATCH /admin/v1/gateways/{id}) or reset spend (DELETE /admin/v1/gateways/{id}/budget)."
+    "message": "Gateway budget $200.0000 exceeded (spent $200.0019).\n
+      Adjust budget_usd in the gateway config (PATCH /admin/v1/gateways/{id})\n
+      or reset spend (DELETE /admin/v1/gateways/{id}/budget)."
   }
 }
 ```

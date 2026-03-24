@@ -8,6 +8,7 @@ Browse all documentation topics by category.
 
     ---
 
+    - [Why AI Gateway](../getting-started/why-ai-gateway.md)
     - [What is AI Gateway by Myra Security?](../getting-started/what-is-ai-gateway.md)
     - [Quick Start](../getting-started/quick-start.md)
     - [Getting Access](../getting-started/installation.md)
@@ -45,6 +46,7 @@ Browse all documentation topics by category.
     - [Guardrail Pipeline Overview](../security/guardrails.md)
     - [Regex Guardrail](../security/guardrails/regex.md)
     - [Keyword Guardrail](../security/guardrails/keyword.md)
+    - [Jailbreak Guardrail](../security/guardrails/jailbreak.md)
     - [NLP PII Detector](../security/guardrails/presidio.md)
     - [Prompt Guard](../security/guardrails/prompt-guard.md)
     - [PII Protector](../security/guardrails/pii-protector.md)

@@ -1,6 +1,8 @@
 # NLP PII Detector
 
-The NLP PII Detector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that uses an NLP-based named entity recognition engine to detect and optionally anonymize personally identifiable information (PII) in request and response bodies. The detection engine runs as a locally hosted sidecar within the Myra infrastructure — data is never transmitted outside the Myra perimeter.
+The NLP PII Detector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that uses an NLP-based named entity recognition engine to detect and optionally anonymize personally identifiable information (PII) in request and response bodies. The detection engine runs as a locally hosted sidecar within Myra's certified infrastructure — data is never transmitted outside the Myra perimeter.
+
+![Presidio (NLP) guardrail editor](../../assets/screenshots/guardrail-presidio.png)
 
 ---
 

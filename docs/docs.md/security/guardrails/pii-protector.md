@@ -1,6 +1,8 @@
 # PII Protector
 
-PII Protector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that provides reversible PII tokenization. It detects PII in the request body using Presidio, replaces each detected value with an opaque token, forwards the tokenized request to the AI provider, and then restores the original values in the response before it reaches the client. The AI model never processes real PII.
+PII Protector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that provides reversible PII tokenization. It detects PII in the request body using Presidio — a locally hosted NLP engine running within Myra's certified infrastructure — replaces each detected value with an opaque token, forwards the tokenized request to the AI provider, and then restores the original values in the response before it reaches the client. The AI model never processes real PII, and the Presidio engine never transmits data outside the Myra perimeter.
+
+![PII Protector editor](../../assets/screenshots/guardrail-pii_protector.png)
 
 ---
 
@@ -107,7 +109,7 @@ The same original value appearing multiple times in a single request always maps
 
 **Deduplication:** if the same PII value appears multiple times in the request, all occurrences are replaced with the same token and all are restored identically in the response.
 
-**Overlapping spans:** when Presidio detects overlapping entity spans (for example, a phone number that also matches an IP address pattern), the span with the highest confidence score wins. The lower-confidence span is discarded.
+**Overlapping spans:** when Presidio detects overlapping entity spans (for example, a name inside an email address being detected as both `EMAIL` and `PERSON`, or a numeric string matching both `CREDIT_CARD` and `IBAN`), the span with the highest confidence score wins. The lower-confidence span is discarded.
 
 ---
 

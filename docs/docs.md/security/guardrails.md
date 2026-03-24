@@ -12,7 +12,7 @@ Guardrails are grouped into two tiers based on where they execute and how fast t
 
 | Tier | Guardrails | Execution | Latency |
 |---|---|---|---|
-| Tier 1 | `regex`, `keyword` | In-process | Sub-millisecond |
+| Tier 1 | `regex`, `keyword`, `jailbreak` | In-process | Sub-millisecond |
 | Tier 2 | `presidio`, `prompt_guard`, `pii_protector` | Sidecar HTTP call | Milliseconds |
 
 All Tier 1 guardrails run before any Tier 2 guardrail. Within the same tier, guardrails run in the order they appear in the `guardrails` array of the gateway configuration.
@@ -66,7 +66,7 @@ For streaming requests, the synthetic block message is delivered as SSE events u
 Matched content is replaced with a placeholder string before the body is forwarded. The default placeholder is `[REDACTED]`; the regex guardrail allows a custom value via `scrub_placeholder`.
 
 !!! warning "Scrub support by guardrail type"
-    The `keyword` and `prompt_guard` guardrails do not support `scrub`. If `action: "scrub"` is configured on those guardrails, the action is treated as `flag`.
+    The `keyword`, `jailbreak`, and `prompt_guard` guardrails do not support `scrub`. If `action: "scrub"` is configured on those guardrails, the action is treated as `flag`.
 
 ### `flag`
 
@@ -76,7 +76,7 @@ The match is recorded in the gateway log entry for the request. The body is not 
 
 ## Tier 2 Availability: `fail_open`
 
-Tier 2 guardrails make an HTTP call to an external sidecar service. If that service is unavailable, the `fail_open` setting controls what happens.
+Tier 2 guardrails make an HTTP call to a locally hosted sidecar service running within Myra's certified infrastructure. Prompt content never leaves the Myra perimeter. If the sidecar is unavailable, the `fail_open` setting controls what happens.
 
 | `fail_open` | Sidecar unavailable |
 |---|---|
@@ -103,14 +103,15 @@ Click the type button for the guardrail you want to add — there is one button 
 
 - `+ Regex / Pattern` — named pattern library and custom regex
 - `+ Keyword` — exact string matching
+- `+ Jailbreak` — zero-config detector pre-loaded with 18 known attack phrases
 - `+ Presidio (NLP)` — NLP-based PII detection
-- `+ Prompt Guard` — semantic safety classification (Llama Guard 3)
+- `+ Prompt Guard` — semantic safety classification (Llama Guard 3, locally hosted)
 - `+ PII Protector` — reversible PII tokenization
 
 After clicking, a collapsed guardrail card appears at the bottom of the list. Click the card to expand it and configure:
 
 - **Name** — human-readable label for this guardrail instance
-- **Action** — what happens on a match: `block`, `scrub` (not available on Keyword or Prompt Guard), or `flag`
+- **Action** — what happens on a match: `block`, `scrub` (not available on Keyword, Jailbreak, or Prompt Guard), or `flag`
 - **Target** — which direction to inspect: `request` (default), `response`, or `both`
 - Type-specific fields (patterns, keywords, entities, etc.)
 
@@ -221,37 +222,16 @@ Every guardrail that runs produces structured output. The following fields are s
 |---|---|---|
 | [`regex`](guardrails/regex.md) | 1 | In-process regex and named pattern matching |
 | [`keyword`](guardrails/keyword.md) | 1 | In-process exact keyword matching |
-| [`jailbreak`](guardrails/keyword.md#jailbreak-and-prompt-injection-detection) | 1 | Pre-configured jailbreak and prompt-injection detector — zero configuration required |
-| [`presidio`](guardrails/presidio.md) | 2 | NLP-based PII detection — hosted within Myra's infrastructure |
-| [`prompt_guard`](guardrails/prompt-guard.md) | 2 | Safety classification via Llama Guard 3 sidecar |
+| [`jailbreak`](guardrails/jailbreak.md) | 1 | Pre-configured jailbreak and prompt-injection detector — zero configuration required |
+| [`presidio`](guardrails/presidio.md) | 2 | NLP-based PII detection — locally hosted within Myra's certified infrastructure |
+| [`prompt_guard`](guardrails/prompt-guard.md) | 2 | Safety classification via Llama Guard 3 — locally hosted within Myra's certified infrastructure |
 | [`pii_protector`](guardrails/pii-protector.md) | 2 | Reversible PII tokenization — real values restored in response |
 
 ---
 
 ## Jailbreak and Prompt-Injection Detection
 
-AI Gateway ships a dedicated `jailbreak` guardrail type that works with zero configuration. It is a Tier 1 (in-process, sub-millisecond) detector pre-loaded with 18 known attack phrases covering instruction-override, persona jailbreaks, bypass/override commands, and fake system-message injection.
-
-```json
-{
-  "type": "jailbreak",
-  "name": "jailbreak-check",
-  "action": "flag"
-}
-```
-
-That is the complete configuration needed. The Guardrail Builder's **+ Jailbreak** button creates this config and displays the active phrase list.
-
-| Layer | Guardrail | What it catches | Latency |
-|---|---|---|---|
-| 1 | `jailbreak` | Literal jailbreak phrases (18 built-in, customisable) | Sub-millisecond |
-| 2 | `prompt_guard` | Semantically unsafe requests across 14 policy categories | ~10–50 ms |
-
-**Customising the phrase list:** When `keywords` is set to a non-empty array, it **replaces** the 18 built-ins entirely. Leave `keywords` empty (or omit it) to use the defaults.
-
-**Limitations:** The `jailbreak` guardrail catches only **literal, unmodified** phrases. Creative rephrasing, character insertion, encoding, or indirect prompt injection embedded in retrieved documents will not be caught. For semantic coverage, layer a `prompt_guard` guardrail on top.
-
-See [Keyword Guardrail — Jailbreak Detection](guardrails/keyword.md#jailbreak-and-prompt-injection-detection) for the full phrase list.
+AI Gateway ships a dedicated `jailbreak` guardrail type that works with zero configuration — add a single JSON object and detection begins immediately using 18 built-in attack phrases. See the **[Jailbreak Guardrail](guardrails/jailbreak.md)** page for full configuration reference, the complete phrase list, and layering guidance.
 
 ---
 
@@ -259,6 +239,7 @@ See [Keyword Guardrail — Jailbreak Detection](guardrails/keyword.md#jailbreak-
 
 - [Regex Guardrail](guardrails/regex.md)
 - [Keyword Guardrail](guardrails/keyword.md)
+- [Jailbreak Guardrail](guardrails/jailbreak.md)
 - [NLP PII Detector](guardrails/presidio.md)
 - [Prompt Guard](guardrails/prompt-guard.md)
 - [PII Protector](guardrails/pii-protector.md)

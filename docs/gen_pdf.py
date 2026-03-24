@@ -27,6 +27,7 @@ Strategy:
 
 import argparse
 import datetime
+import glob
 import html as html_module
 import os
 import re
@@ -35,10 +36,12 @@ import sys
 import tempfile
 import time
 
-HERE    = os.path.dirname(os.path.abspath(__file__))
-IN_HTML = os.path.join(HERE, "out", "print_page", "index.html")
-_ts     = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-OUT_PDF = os.path.join(HERE, "out", f"ai-gateway-docs-{_ts}.pdf")
+HERE     = os.path.dirname(os.path.abspath(__file__))
+IN_HTML  = os.path.join(HERE, "out", "print_page", "index.html")
+_now     = datetime.datetime.now()
+_ts      = _now.strftime("%Y%m%d-%H%M%S")
+_version = _now.strftime("%Y%m%d %H%M%S")
+OUT_PDF  = os.path.join(HERE, "out", f"ai-gateway-docs-{_ts}.pdf")
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +104,22 @@ def strip_nav_section_dividers(content: str) -> str:
     content = _MD_SECTION_RE.sub('', content)
     if before:
         print(f"  Stripped {before} empty nav-section divider(s) (md-section)")
+    return content
+
+
+# Matches the hand-written "Table of Contents" section on the index/home page.
+# In the PDF this duplicates the injected static ToC; we strip it here while
+# leaving the web docs unchanged.
+_INLINE_TOC_RE = re.compile(
+    r'<h2[^>]+id="index-table-of-contents"[^>]*>.*?(?=</section>)',
+    re.DOTALL | re.IGNORECASE,
+)
+
+def strip_inline_toc(content: str) -> str:
+    """Remove the hand-written ToC section from the index page."""
+    content, n = _INLINE_TOC_RE.subn('', content)
+    if n:
+        print(f"  Stripped inline Table of Contents from index page (duplicates injected ToC)")
     return content
 
 
@@ -381,12 +400,58 @@ def render_mermaid_diagrams(content: str) -> str:
     return "".join(parts)
 
 
-def build_standalone_html(content: str, css_path: str, base_url: str) -> str:
+def inject_version_into_cover(content: str, version: str) -> str:
+    """
+    Append a Version row to the cover-page table inside #print-site-cover-page.
+    Inserts <tr><td>Version</td><td>{version}</td></tr> before the first </table>
+    found within the cover section.
+    """
+    cover_marker = 'id="print-site-cover-page"'
+    cover_start = content.find(cover_marker)
+    if cover_start == -1:
+        print("  Warning: #print-site-cover-page not found — version row not added",
+              file=sys.stderr)
+        return content
+
+    table_end = content.find("</table>", cover_start)
+    if table_end == -1:
+        print("  Warning: </table> not found in cover page — version row not added",
+              file=sys.stderr)
+        return content
+
+    version_row = (
+        f'<tr><td>Version</td><td>{html_module.escape(version)}</td></tr>'
+    )
+    content = content[:table_end] + version_row + content[table_end:]
+    print(f"  Injected Version row into cover page table: {version}")
+    return content
+
+
+def build_standalone_html(content: str, css_path: str, base_url: str,
+                          version: str = "") -> str:
     """Wrap extracted content in minimal HTML referencing only print.css."""
+    version_css = ""
+    if version:
+        version_css = f"""
+  <style>
+    /* Version stamp in footer on all pages except the cover */
+    @page {{
+      @bottom-right {{
+        content: "v{version}";
+        font-size: 7pt;
+        color: #888;
+        font-family: system-ui, -apple-system, sans-serif;
+      }}
+    }}
+    @page :first {{
+      @bottom-right {{ content: none; }}
+    }}
+  </style>"""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="version" content="{version}">
   <title>AI Gateway by Myra Security — Documentation</title>
   <base href="{base_url}">
   <style>
@@ -394,7 +459,7 @@ def build_standalone_html(content: str, css_path: str, base_url: str) -> str:
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{ font-family: system-ui, -apple-system, sans-serif; }}
   </style>
-  <link rel="stylesheet" href="{css_path}">
+  <link rel="stylesheet" href="{css_path}">{version_css}
 </head>
 <body>
 {content}
@@ -443,6 +508,15 @@ def main():
     parser.add_argument("--out", default=OUT_PDF, help="Output PDF path")
     args = parser.parse_args()
 
+    # ── Delete previous PDF builds ───────────────────────────────────────────
+    old_pdfs = glob.glob(os.path.join(HERE, "out", "ai-gateway-docs-*.pdf"))
+    for old in old_pdfs:
+        try:
+            os.unlink(old)
+            print(f"  Deleted old PDF: {os.path.basename(old)}")
+        except OSError as e:
+            print(f"  Warning: could not delete {old}: {e}", file=sys.stderr)
+
     # ── Pre-flight checks ────────────────────────────────────────────────────
     try:
         import weasyprint
@@ -469,13 +543,15 @@ def main():
     content = strip_codelineno_anchors(content)
     content = inject_toc(content)
     content = strip_nav_section_dividers(content)
+    content = strip_inline_toc(content)
+    content = inject_version_into_cover(content, _version)
     content = render_mermaid_diagrams(content)
 
     # Base URL so WeasyPrint resolves relative image paths (../assets/screenshots/...)
     base_url = "file://" + os.path.join(HERE, "out", "print_page") + os.sep
     css_url  = "file://" + os.path.join(HERE, "out", "stylesheets", "print.css")
 
-    standalone = build_standalone_html(content, css_url, base_url)
+    standalone = build_standalone_html(content, css_url, base_url, version=_version)
 
     # ── Render ───────────────────────────────────────────────────────────────
     print(f"→ Output : {args.out}")

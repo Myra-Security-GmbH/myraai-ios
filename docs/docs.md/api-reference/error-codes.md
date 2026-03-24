@@ -48,7 +48,7 @@ In **non-streaming** mode, a guardrail block returns `HTTP 400` with the `guardr
 In **streaming** mode (`"stream": true`), the guardrail check runs before the provider call. When a block occurs the gateway returns `HTTP 200` with a synthetic SSE stream containing an error message chunk followed by `data: [DONE]`. This is necessary because some streaming clients do not gracefully handle a non-200 HTTP status on a streaming response.
 
 ```
-data: {"id":"...","object":"chat.completion.chunk","choices":[{"delta":{"content":"[Blocked: unsafe S1 — Violent Crimes]"},"finish_reason":"stop"}]}
+data: {"id":"...","choices":[{"delta":{"content":"[Blocked: S1]"},"finish_reason":"stop"}]}
 
 data: [DONE]
 ```
@@ -120,7 +120,9 @@ This error is returned only when all of the following are true:
 {
   "error": {
     "code": "quota_exceeded",
-    "message": "Gateway budget $200.0000 exceeded (spent $200.0019). Adjust budget_usd in the gateway config (PATCH /admin/v1/gateways/{id}) or reset spend (DELETE /admin/v1/gateways/{id}/budget)."
+    "message": "Gateway budget $200.0000 exceeded (spent $200.0019).\n
+      Adjust budget_usd in the gateway config (PATCH /admin/v1/gateways/{id})\n
+      or reset spend (DELETE /admin/v1/gateways/{id}/budget)."
   }
 }
 ```

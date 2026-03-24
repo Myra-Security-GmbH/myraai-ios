@@ -1,0 +1,118 @@
+# Why AI Gateway
+
+Large organisations move fast when adopting AI — and often discover too late that they have accumulated a tangle of direct provider API integrations with no visibility, no cost control, and no way to enforce policy consistently. AI Gateway by Myra Security is purpose-built to solve exactly those problems. This page explains the key advantages and why each one matters if you are responsible for AI operations, information security, or technology governance at a large enterprise or government body.
+
+---
+
+## Use US AI providers without exposing sensitive data to them
+
+The most capable AI models in the world — OpenAI, Anthropic, Google Gemini, AWS Bedrock — are operated by US companies, subject to US law, and hosted in US data centres. For European enterprises and government bodies, sending sensitive data directly to those providers raises serious questions under GDPR and sector-specific regulations: Who can access that data? Under what legal framework? With what oversight?
+
+AI Gateway resolves this by placing Myra Security's **certified EU infrastructure** between your organisation and every US AI provider. All requests and responses flow through Myra's network — a highly certified, EU-jurisdiction environment that operates under European data protection law. US providers receive only what you explicitly choose to send them after your policies have been applied.
+
+More importantly, the content inspection and PII detection engines that power guardrails such as the [NLP PII Detector](../security/guardrails/presidio.md), [Prompt Guard](../security/guardrails/prompt-guard.md), and [PII Protector](../security/guardrails/pii-protector.md) run as sidecars **within Myra's certified infrastructure**. Sensitive content is inspected, scrubbed, or tokenized *inside the EU trust boundary* — the US provider never sees it.
+
+This matters because:
+
+- PII, financial data, or regulated content in a prompt can be detected and redacted or tokenized before the request leaves the EU. The US provider receives a sanitised or tokenised body; the original values are restored in the response on the way back.
+- Security teams can configure `fail_open: false` on any guardrail so that an inspection failure blocks the request rather than allowing uninspected data to reach a US provider.
+- Payload logging can be disabled globally or per-request via a single header, ensuring request and response bodies are not persisted even within Myra's infrastructure for the most sensitive workloads.
+- The audit trail — what was sent, what was detected, what was blocked — is recorded within the EU environment and accessible to your compliance team.
+
+In practical terms: your teams get access to the best AI models available, and your data governance obligations are met because sensitive information is handled under EU jurisdiction and never reaches a US provider in its original form.
+
+---
+
+## Layered content security that starts at sub-millisecond latency
+
+A single guardrail is not a security posture. AI Gateway enforces a **two-tier pipeline** that applies fast, in-process checks before anything reaches a network-bound service.
+
+**Tier 1 — In-process, sub-millisecond:**
+
+- **Jailbreak detection** ships with 18 pre-configured attack phrases covering instruction-override attempts, persona jailbreaks, and fake system-message injection. It is operational with a single line of JSON — no phrase list to maintain.
+- **Keyword guardrail** performs exact-string matching for topic filtering, brand protection, or blocking known-bad strings with configurable case sensitivity and whole-word boundaries.
+- **Regex guardrail** supports named pattern libraries (PCI card numbers, HIPAA-structured fields, GDPR-structured fields, credentials) as well as custom Lua patterns, all evaluated in-process.
+
+**Tier 2 — Sidecar, milliseconds:**
+
+- **NLP PII Detector** (Presidio) identifies 50+ entity types with confidence scoring. High false-positive entity types (names, locations, dates) automatically have their confidence threshold raised so that blocking and scrubbing decisions are accurate.
+- **Prompt Guard** (Llama Guard 3) performs semantic safety classification across 14 policy categories including violence, self-harm, CBRN, and child safety content — catching rephrased attacks that literal keyword matching cannot reach.
+- **PII Protector** tokenizes PII reversibly: the AI provider receives a token placeholder, and the original value is restored in the response before it reaches the client. The model never processes real PII yet can still respond coherently.
+
+Each guardrail in the pipeline can independently `block` (terminate the request), `scrub` (redact and continue), or `flag` (log and continue). A `block` verdict stops the pipeline immediately — no subsequent guardrails run. This means your cheapest checks always run first, and expensive ML calls are made only when necessary.
+
+---
+
+## Complete financial governance across every team and project
+
+Ungoverned AI spend is one of the fastest-growing sources of unplanned cost in large organisations. AI Gateway enforces a **three-tier budget hierarchy** that gives finance and operations teams real control.
+
+| Level | Scope | Example |
+|---|---|---|
+| Per authentication token | Individual user or application | Limit a single contractor's app to $50/month |
+| Per tenant | Business unit or department | Cap the Legal team's total spend at $2,000/month |
+| Per gateway | Specific AI application | Restrict a customer-facing chatbot to $500/day |
+
+Budgets are enforced with automatic period resets — daily (UTC midnight), monthly (calendar month), or lifetime total. When a limit is reached, callers receive an HTTP 429 with an actionable error message that identifies exactly which budget was exhausted and the API call required to resolve it. No support ticket needed.
+
+Real-time spend is visible in the dashboard broken down by tenant, gateway, user, and model, alongside cache savings (requests served from cache rather than billed to a provider). Analytics include latency percentiles (p50, p95, p99) end-to-end and upstream separately, so cost and performance are visible in the same place.
+
+---
+
+## No lock-in across 21 AI providers
+
+Organisations that commit to a single AI provider today are making a bet on that provider's pricing, capability, and availability for years. AI Gateway abstracts the provider layer: **21 providers** — including OpenAI, Anthropic, Google Gemini, Azure OpenAI, AWS Bedrock, and on-premises models via Ollama — share a single OpenAI-compatible API surface. Switching providers or adding a second one requires no changes to client code.
+
+Beyond multi-provider access, routing gives you operational control:
+
+- **Fallback chains** automatically retry a failed request against secondary providers, so a provider outage does not reach your users.
+- **Load balancing** distributes traffic across multiple provider keys or endpoints by weight, enabling gradual migrations and cost arbitrage.
+- **Circuit breaker** tracks upstream error rates and stops forwarding traffic to a degraded provider automatically, protecting downstream users from cascading failures.
+- **Base URL overrides** redirect traffic for any provider to an internal proxy, a staging endpoint, or a private deployment — without changing client code.
+
+---
+
+## Audit-ready observability from day one
+
+When a security incident involves an AI system, the first question from auditors is: *what did the model receive, and what did it respond with?* AI Gateway captures a structured log record for every request, including:
+
+- Provider, model, tenant, gateway, and authenticated user
+- Request and response token counts and cost
+- End-to-end and upstream latency
+- Cache hit/miss status, retry count, and fallback flag
+- Every guardrail verdict: which detectors fired, what action was taken, and the specific matched content
+
+The full request trace — phase by phase, from request receipt through upstream call to response delivery — is available via the Traces API and visible in the Live Monitor. Latency is broken down at each phase so bottlenecks are immediately identifiable.
+
+All of this is available through both the admin dashboard and a structured REST API, so it feeds naturally into existing SIEM, BI, or cost management tooling.
+
+---
+
+## Multi-tenancy with genuine isolation
+
+AI Gateway is built around a **tenant → gateway** hierarchy designed for organisations where multiple teams, business units, or external customers share the same infrastructure without sharing visibility into each other's usage.
+
+Each tenant has its own:
+
+- Budget and spend tracking
+- Gateway configurations and guardrail policies
+- Authentication tokens and user attribution
+- Analytics and log views
+
+An administrator scoped to one tenant cannot see another tenant's data, spend, or requests. This makes AI Gateway suitable not only for internal shared services but also for organisations that deliver AI-enabled services to external clients from a single platform.
+
+---
+
+## Summary
+
+| Concern | How AI Gateway addresses it |
+|---|---|
+| EU data sovereignty | Certified EU infrastructure sits between your org and US providers; PII scrubbed/tokenised before crossing the boundary |
+| PII and sensitive data | Detection, tokenization (reversible), and scrubbing — all in-flight |
+| Jailbreaks and prompt injection | Zero-config Tier 1 detection + semantic Llama Guard 3 classification |
+| Uncontrolled AI spend | Three-tier budget hierarchy with automatic resets and real-time attribution |
+| Provider lock-in | 21 providers behind one API; fallback, load balancing, circuit breaker |
+| Audit and compliance | Structured request log with full guardrail decisions and per-phase trace |
+| Multi-team governance | Tenant isolation with independent budgets, policies, and visibility |
+
+For deployment options, prerequisites, and initial configuration, continue to [Installation](installation.md).

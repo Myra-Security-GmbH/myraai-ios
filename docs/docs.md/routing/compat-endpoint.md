@@ -105,11 +105,11 @@ If neither an exact nor a prefix match is found, the request is forwarded to **O
 All providers use different SSE formats for streaming responses. The compat endpoint normalizes all provider streams into the OpenAI chunk format:
 
 ```
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"delta":{"content":"Hello"},"index":0}]}
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"delta":{"content":"Hello"}}]}
 
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"delta":{"content":" world"},"index":0}]}
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"delta":{"content":" world"}}]}
 
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15},"choices":[{"delta":{},"finish_reason":"stop","index":0}]}
+data: {"id":"...","object":"chat.completion.chunk","usage":{...},"choices":[{"finish_reason":"stop"}]}
 
 data: [DONE]
 ```

@@ -1,6 +1,8 @@
 # Prompt Guard
 
-The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that uses Meta's Llama Guard 3 model to classify request and response content against 14 safety categories. It is designed to detect harmful, illegal, or policy-violating content that rule-based guardrails cannot cover.
+The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that uses Meta's Llama Guard 3 model to classify request and response content against 14 safety categories. It is designed to detect harmful, illegal, or policy-violating content that rule-based guardrails cannot cover. Llama Guard 3 runs as a locally hosted model within Myra's certified infrastructure — prompt content is never transmitted outside the Myra perimeter.
+
+![Prompt Guard editor](../../assets/screenshots/guardrail-prompt_guard.png)
 
 ---
 
@@ -67,7 +69,12 @@ This is most useful when your platform serves professionals who regularly ask qu
   "action": "block",
   "target": "request",
   "categories": ["S1", "S3", "S4", "S9", "S11", "S12", "S14"],
-  "context_prompt": "This platform serves security professionals, educators, and researchers. Users regularly ask educational questions about cybersecurity, malware, vulnerabilities, chemistry, history, and other professional topics as part of legitimate work. Classify a request as unsafe only when it is clearly seeking operational assistance for causing direct harm — not when it is asking how something works, its history, or how to defend against it."
+  "context_prompt": "This platform serves security professionals, educators, and researchers.\n
+    Users regularly ask educational questions about cybersecurity, malware, vulnerabilities,\n
+    chemistry, history, and other professional topics as part of legitimate work.\n
+    Classify a request as unsafe only when it is clearly seeking operational assistance\n
+    for causing direct harm — not when it is asking how something works, its history,\n
+    or how to defend against it."
 }
 ```
 
@@ -94,7 +101,7 @@ This is most useful when your platform serves professionals who regularly ask qu
     When a request is blocked, the gateway returns a synthetic assistant message identifying the triggering categories. For example:
 
     ```
-    Request blocked by content policy (safety-filter): S1 – Violent Crimes, S9 – Weapons of Mass Destruction (CBRN)
+    Request blocked by content policy (safety-filter): S1 – Violent Crimes, S9 – CBRN
     ```
 
     The guardrail `name` field value appears in the message, making it easy to correlate blocks with your guardrail configuration.
@@ -148,7 +155,9 @@ This is most useful when your platform serves professionals who regularly ask qu
   "action": "block",
   "target": "request",
   "categories": ["S1", "S3", "S4", "S9", "S11", "S12", "S14"],
-  "context_prompt": "This platform serves security professionals and researchers. Classify as unsafe only requests clearly seeking operational assistance for causing direct harm."
+  "context_prompt": "This platform serves security professionals and researchers.\n
+    Classify as unsafe only requests clearly seeking operational assistance\n
+    for causing direct harm."
 }
 ```
 

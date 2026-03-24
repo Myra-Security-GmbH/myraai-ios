@@ -336,38 +336,56 @@
   .print-site-toc {
     margin-top: 16pt;
     padding-left: 0;
-  }
-
-  .print-site-toc > li {
-    margin-bottom: 8pt;
-    font-size: 10pt;
     list-style: none;
   }
 
+  /* Section group container — block layout so <strong> stacks above <ul> */
+  .print-site-toc > li {
+    margin-bottom: 10pt;
+    list-style: none;
+  }
+
+  /* Section label ("Getting Started", "Configuration" …) */
   .print-site-toc > li > strong {
     display: block;
-    font-size: 9pt;
+    font-size: 8.5pt;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: #002b49;
     margin-bottom: 3pt;
+    padding-bottom: 1.5pt;
+    border-bottom: 0.5pt solid #ccdde8;
   }
 
+  /* Sub-list: no left indent so page numbers align with the section labels */
   .print-site-toc > li > ul {
-    padding-left: 12pt;
+    padding-left: 0;
     margin-top: 0;
     margin-bottom: 0;
+    list-style: none;
   }
 
-  .print-site-toc li {
+  /* Individual link rows — flex so the leader + page number fills the right */
+  .print-site-toc > li > ul > li {
+    display: flex;
+    align-items: baseline;
     margin-bottom: 2pt;
     font-size: 10pt;
+    list-style: none;
+    padding-left: 8pt;   /* visual indent on the text, not on the container */
   }
 
   .print-site-toc a {
     color: #0060a0;
     text-decoration: none;
+    flex: 1;
+  }
+
+  .print-site-toc a::after {
+    content: leader('.') target-counter(attr(href, url), page);
+    font-size: 9pt;
+    color: #555;
   }
 
   /* ── Horizontal rules ───────────────────────────────────── */

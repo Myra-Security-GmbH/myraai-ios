@@ -2,6 +2,8 @@
 
 The keyword guardrail is a **Tier 1** (in-process, sub-millisecond) guardrail that scans request and response content for exact string matches. It is suited for topic filtering, brand protection, and blocking known-bad strings where pattern-based matching is not required.
 
+![Keyword guardrail editor](../../assets/screenshots/guardrail-keyword.png)
+
 ---
 
 ## Configuration Fields
@@ -127,7 +129,7 @@ The Guardrail Builder includes a **Jailbreak (flag)** preset button that populat
     - Language switching or encoding
     - Prompt injection embedded in retrieved documents
 
-    For coverage beyond literal phrases, combine this guardrail with [Prompt Guard](prompt-guard.md) (Llama Guard 3), which performs semantic classification of request content.
+    For coverage beyond literal phrases, combine this guardrail with [Prompt Guard](prompt-guard.md) (Llama Guard 3), which performs semantic classification of request content. Llama Guard 3 runs locally within Myra's certified infrastructure — no prompt data leaves the Myra perimeter.
 
 !!! note "For pattern-based detection, use a different guardrail"
     The keyword guardrail only supports exact string matching. For detecting structured sensitive data such as email addresses, credit card numbers, or PII categories, use the [Regex guardrail](regex.md) or [NLP PII Detector](presidio.md) instead.
