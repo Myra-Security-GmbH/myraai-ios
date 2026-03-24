@@ -36,7 +36,8 @@ Consumer
 │              nginx / OpenResty           │
 │  ┌────────────────────────────────────┐  │
 │  │     Access phase middleware        │  │
-│  │  auth · rate-limit · IP allowlist  │  │
+│  │  auth · rate-limit · quota ·       │  │
+│  │  IP allowlist                      │  │
 │  ├────────────────────────────────────┤  │
 │  │     Content phase middleware       │  │
 │  │  cache · detectors · routing ·     │  │
@@ -117,17 +118,19 @@ src/
     cache_check.lua      # SHA-256 exact-match cache lookup
     cache_store.lua      # Persist non-streaming 200 responses to cache
     cost.lua             # Token counting + budget counter increment
-    detectors.lua        # Request-phase detector pipeline entry point
-    detectors_response.lua  # Response-phase detector pipeline entry point
+    guardrails.lua       # Request-phase guardrail pipeline entry point
+    guardrails_response.lua  # Response-phase guardrail pipeline entry point
     quota.lua            # Budget hard-stop enforcement
     upstream.lua         # Provider HTTP call with retry + fallback chain
 
-  detectors/
+  guardrails/
     orchestrator.lua     # Tier 1 → Tier 2 sequencing, action merging
     regex.lua            # Tier 1: in-process regex patterns (block/scrub/flag)
     keyword.lua          # Tier 1: exact keyword matching
+    jailbreak.lua        # Tier 1: zero-config jailbreak phrase detection
     presidio.lua         # Tier 2: Presidio sidecar (HTTP, NER-based PII detection)
-    llm_guard.lua        # Tier 2: Llama Guard 3 sidecar (prompt/response safety)
+    prompt_guard.lua     # Tier 2: Llama Guard 3 sidecar (prompt/response safety)
+    pii_protector.lua    # Tier 2: Presidio-backed tokenisation + response restoration
     patterns.lua         # Shared named pattern library (email, SSN, CC, JWT, …)
 
   observability/
@@ -136,12 +139,6 @@ src/
 
   routing/
     engine.lua           # Rule evaluator (condition → action)
-
-  security/
-    ip_allowlist.lua     # Per-gateway CIDR allowlist check
-
-  billing/
-    tracker.lua          # Budget counter logic
 
   auth/
     byok.lua             # Provider key encryption/decryption (AES-256-CBC)
@@ -189,27 +186,29 @@ tests/
     ├─ 1. request_id     Generate or forward X-Request-Id (UUID)
     ├─ 2. tenant         Resolve {tenant_slug}/{gateway_slug} → UUIDs; load gateway config
     ├─ 3. auth           Validate token (x-aig-token / Bearer / x-api-key)
-    │                    Enforce role (viewer → 403); load per-token rate/budget overrides
+    │                    Enforce role (viewer → 403); load per-token rate/budget config
     ├─ 4. rate_limit     Sliding-window check (dual-bucket approx in shared_dict)
-    ├─ 5. ip_allowlist   CIDR match against gateway config allowlist
+    ├─ 5. quota          Budget hard-stop: token → tenant → gateway spend caps
+    ├─ 6. ip_allowlist   CIDR match against gateway config allowlist
     │
     ▼  ── ngx.content phase ────────────────────────────────────
     │
-    ├─ 6.  cache_check      SHA-256(provider:model:canonical_body) → serve if HIT
-    ├─ 7.  detectors        Tier 1 (regex, keyword) → Tier 2 (presidio, llm_guard, pii_protector)
-    ├─ 8.  transform        Parse + normalize body; collect x-aig-meta-* headers
-    ├─ 9.  routing          Evaluate ordered routing rules → provider, model, fallbacks
-    ├─ 10. byok             Decrypt provider API key (cache 60 s in aig_byok dict)
-    ├─ 11. upstream         HTTP call to provider; retry on 5xx; walk fallback chain
+    ├─ 7.  cache_check      SHA-256(provider:model:canonical_body) → serve if HIT
+    ├─ 8.  guardrails       Tier 1 (regex, keyword, jailbreak) → Tier 2 (presidio, prompt_guard, pii_protector)
+    ├─ 9.  transform        Parse + normalize body; collect x-aig-meta-* headers
+    ├─ 10. routing          Evaluate ordered routing rules → provider, model, fallbacks
+    ├─ 11. byok             Decrypt provider API key (cache 60 s in aig_byok dict)
+    ├─ 12. upstream         HTTP call to provider; retry on 5xx; walk fallback chain
     │                       [streaming: emit usage chunk + [DONE] after stream]
-    ├─ 12. detectors_resp   Response-phase detector pipeline
-    ├─ 13. cost             Count tokens; compute cost_usd; increment budget counter
-    ├─ 14. cache_store      Persist response to cache (non-streaming, status 200)
+    ├─ 13. guardrails_resp  Response-phase guardrail pipeline
+    ├─ 14. send_response    Write buffered response body to client
+    ├─ 15. cost             Count tokens; compute cost_usd; increment budget counter
+    ├─ 16. cache_store      Persist response to cache (non-streaming, status 200)
     │
     ▼  ── ngx.log phase (best-effort, after response sent) ─────
     │
-    ├─ 18. logger           Write structured JSON to logs.db
-    └─ 19. metrics          Increment Prometheus counters in aig_metrics shared dict
+    ├─ 17. logger           Write structured JSON to logs.db
+    └─ 18. metrics          Increment Prometheus counters in aig_metrics shared dict
 
 [Consumer Response]
 ```
@@ -464,7 +463,7 @@ BYOK keys are re-fetched and decrypted each time the active provider changes dur
 
 Token accepted from (in priority order): `x-aig-token` → `Authorization: Bearer` → `x-api-key`.
 
-SHA-256 hash stored in DB; plaintext never persisted. Token carries optional per-token `rate_limit` and `budget_usd` overrides that take precedence over gateway-level config.
+SHA-256 hash stored in DB; plaintext never persisted. Token carries optional per-token `rate_limit` and `budget_usd` that are checked independently alongside gateway-level limits.
 
 ### BYOK key vault
 
@@ -491,9 +490,7 @@ Costs stored as micro-dollars (`cost * 1e6`) in the state backend. Checked pre-r
 
 ### Guardrails
 
-**Request:** Last user message sent to Llama Guard 3 HTTP service. Blocked categories S1–S14 returned as a synthetic 200 in the correct wire format (JSON or SSE depending on `stream`).
-
-**Response:** Regex patterns for `self_harm` and `violence` checked on the buffered response body (non-streaming only).
+Two-tier content safety pipeline running at both request and response phase. See §11 for full details. Blocked responses are returned as synthetic 200s in the correct wire format (JSON or SSE) so clients receive a valid-shaped response rather than a hard error.
 
 ### IP allowlist
 
@@ -501,21 +498,23 @@ CIDR-based allow list per gateway. Matching uses 32-bit integer masking via LuaJ
 
 ---
 
-## 11. Detector Pipeline
+## 11. Guardrail Pipeline
 
-Tiered detector pipeline. Runs at both request and response phase.
+Tiered content safety pipeline. Runs at both request and response phase.
 
 ```
 Tier 1 (in-process, ~microseconds):
-  regex    — named patterns + custom regex (block / scrub / flag)
-  keyword  — exact string match (block / flag)
+  regex         — named pattern sets + custom regex (block / scrub / flag)
+  keyword       — exact string match (block / flag)
+  jailbreak     — zero-config built-in jailbreak phrase list (block)
 
 Tier 2 (HTTP sidecar, ~milliseconds):
-  presidio  — Presidio Analyzer + Anonymizer for NER-based PII detection
-  llm_guard — Llama Guard 3 for prompt/response safety classification
+  presidio      — Presidio Analyzer + Anonymizer for NER-based PII detection
+  prompt_guard  — Llama Guard 3 for prompt/response safety classification (14 categories)
+  pii_protector — Presidio-backed tokenisation; restores real values in response
 ```
 
-The orchestrator runs all Tier 1 detectors first; Tier 2 detectors only run if Tier 1 passes. Within each tier, detectors run in configuration order. The most restrictive action (`block` > `scrub` > `flag`) wins when multiple detectors fire on the same request.
+The orchestrator (`src/guardrails/orchestrator.lua`) runs all Tier 1 detectors first; Tier 2 detectors only run if Tier 1 passes. Within each tier, detectors run in configuration order. The most restrictive action (`block` > `scrub` > `flag`) wins when multiple detectors fire on the same request.
 
 Synthetic blocked responses match the request wire format (OpenAI streaming, OpenAI non-streaming, or Anthropic) so clients receive a valid-shaped response rather than a hard error.
 
@@ -543,7 +542,9 @@ Payload logging can be disabled globally (`log_payloads: false` in gateway confi
 
 ### Stats API
 
-`GET /admin/v1/stats` returns aggregated `PeriodStats` for five windows: `last_min`, `hour`, `today`, `yesterday`, `last_7d`. Each window includes request count, blocked, cached, token totals, cost, and avg latencies. Also returns `by_tenant` (today, per-tenant) and `recent` / `recent_blocked` log entries.
+`GET /admin/v1/stats` returns aggregated `PeriodStats` for five windows: `last_min`, `hour`, `today`, `yesterday`, `last_7d`. Each window includes request count, blocked, cached, token totals, cost, and avg latencies. Also returns `by_tenant` summary (6 fields) and `recent` / `recent_blocked` log entries.
+
+`GET /admin/v1/stats/analytics?since=<unix_ms>` returns latency percentiles (p50/p95/p99), top 10 models by volume, and full per-tenant/per-gateway/per-user breakdowns. Used by the analytics dashboard.
 
 `GET /admin/v1/stats/timeseries` returns zero-filled time-bucketed data for sparklines:
 
@@ -552,6 +553,9 @@ Payload logging can be disabled globally (`log_payloads: false` in gateway confi
 | `bucket` | `5m`, `15m`, `30m`, `1h`, `6h`, `1d` | `1h` |
 | `n` | 1–168 buckets | 24 |
 | `until` | Unix seconds (end of window) | now |
+| `tenant_id` | UUID string | (all tenants) |
+
+`GET /admin/v1/tenants/{id}/analytics` returns per-tenant timeseries + top models, used by the cost analytics drilldown page.
 
 Buckets are aligned to bucket boundaries. Missing buckets are zero-filled in Lua before returning. SQLite integer division is enforced by embedding the bucket-size-in-ms as an integer literal in the SQL string (binding it as a Lua number causes SQLite to use REAL division, producing one row per request).
 
@@ -580,15 +584,15 @@ React 19 + TypeScript SPA built with Vite. Proxied through Vite dev server (`/ad
 
 | Module | Description |
 |---|---|
-| Dashboard | Hero cards (Requests, Cost, Blocked) with sparklines; timeframe switcher (Today/Yesterday/Last 7d/Last hour/Last minute) |
+| Dashboard | Hero cards (Requests, Cost, Guardrail Hits) with sparklines; timeframe switcher (Today/Yesterday/Last 7d/Last hour/Last minute) |
+| Analytics | Cost analytics with per-tenant drilldown, timeseries chart, and top-models table |
 | Tenants | Tenant CRUD |
 | Gateways | Gateway config, routing rules, BYOK keys |
 | Users | User management, role assignment, gateway access |
 | Logs | Request log viewer with provider/tenant/gateway filters |
 | Prices | Model price table management |
-| Detectors | Detector configuration builder (DetectorBuilder UI) |
-| Monitor | Real-time monitoring |
-| Settings | Gateway-level settings |
+| Guardrails | Guardrail configuration builder (GuardrailBuilder UI) |
+| Monitor | Real-time monitoring with optional tenant filter |
 | Playground | Interactive model comparison UI (see below) |
 
 ### Dashboard

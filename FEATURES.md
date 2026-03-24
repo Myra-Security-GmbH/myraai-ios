@@ -43,20 +43,21 @@ Requests flow through a fixed middleware chain in phase order:
 2. `tenant` — Resolve tenant/gateway/provider from URL path
 3. `auth` — Validate bearer token
 4. `rate_limit` — Sliding-window rate limit check
-5. `ip_allowlist` — CIDR allowlist enforcement
+5. `quota` — Budget hard-stop: per-token → per-tenant → per-gateway
+6. `ip_allowlist` — CIDR allowlist enforcement
 
 **Content phase** (body available):
 1. `cache_check` — SHA-256 exact-match lookup; serve immediately on hit
-2. `guardrails` — Guardrail pipeline: Tier 1 (regex, keyword) then Tier 2 (presidio, prompt_guard, pii_protector) on request
+2. `guardrails` — Guardrail pipeline: Tier 1 (regex, keyword, jailbreak) then Tier 2 (presidio, prompt_guard, pii_protector) on request
 3. `transform` — Parse and normalize request body
 4. `routing` — Rules engine (provider, model, fallback chain)
 5. `byok` — Decrypt and inject provider API key
 6. `web_search` — Optional: two-leg agentic search loop (Brave API)
 7. `upstream` — Call provider with retry + fallback
 8. `guardrails_response` — Guardrail pipeline scan on response
-9. `cost` — Token counting and budget increment
-10. `cache_store` — Persist non-streaming 200 responses
-11. `send_response` — Write buffered response body to client
+9. `send_response` — Write buffered response body to client
+10. `cost` — Token counting and budget increment
+11. `cache_store` — Persist non-streaming 200 responses
 
 **Log phase** (best-effort, after response sent):
 1. Structured JSON request log
@@ -521,10 +522,10 @@ The `ollama.think` config field controls whether the `think` parameter is inject
 
 ### Encryption
 
-- **Algorithm:** AES-256-GCM
+- **Algorithm:** AES-256-CBC + PKCS7 via OpenSSL (`resty.aes`)
 - **Key derivation:** SHA-256 of `AIG_MASTER_KEY` environment variable
-- **Nonce:** 96-bit random per encryption operation
-- **Storage format:** `base64(ciphertext)` + `base64(nonce)` stored separately
+- **IV:** 16-byte random per encryption operation
+- **Storage format:** `base64(iv):base64(ciphertext)` stored as a single field
 
 ### Key Lookup
 
@@ -764,8 +765,9 @@ All endpoints are under `/admin/v1/`.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/stats` | Aggregated usage statistics (last_min, hour, today, yesterday, last_7d; recent requests) |
-| GET | `/stats/timeseries` | Time-bucketed request/cost/blocked counts (params: `bucket` 5m/15m/30m/1h/6h/1d, `n` 1–168, `until` unix seconds) |
+| GET | `/stats/timeseries` | Time-bucketed request/cost/blocked counts (params: `bucket` 5m/15m/30m/1h/6h/1d, `n` 1–168, `until` unix seconds, `tenant_id`) |
 | GET | `/stats/analytics` | Latency percentiles (p50/p95/p99), top models by volume, and usage by tenant — all scoped to `?since=<unix_ms>` (default: last 24 h) |
+| GET | `/tenants/{id}/analytics` | Per-tenant timeseries + top models for the analytics drilldown page |
 | GET | `/logs` | Query request logs (filters: `tenant_id`, `gateway_id`, `provider`, `since`, `limit`, `offset`) |
 
 ### Playground
@@ -952,18 +954,18 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
 All errors return a JSON body:
 
 ```json
-{"error": {"code": "ERROR_CODE", "message": "Human-readable detail"}}
+{"error": {"code": "error_code", "message": "Human-readable detail"}}
 ```
 
 | Code | HTTP | Cause |
 |---|---|---|
-| `UNAUTHORIZED` | 401 | Missing or invalid token |
-| `FORBIDDEN` | 403 | Viewer role, or IP not in allowlist |
-| `TENANT_NOT_FOUND` | 404 | Unknown tenant or gateway slug |
-| `INVALID_REQUEST` | 400 | Malformed request or missing required fields |
-| `RATE_LIMITED` | 429 | Sliding-window limit exceeded |
-| `QUOTA_EXCEEDED` | 429 | Budget cap reached |
-| `GUARDRAIL_BLOCKED` | 400 | Guardrail pipeline blocked the request |
-| `PROVIDER_ERROR` | 502 | Upstream provider returned 5xx |
-| `ALL_PROVIDERS_FAILED` | 502 | All retry and fallback attempts exhausted |
-| `INTERNAL` | 500 | Gateway internal error |
+| `unauthorized` | 401 | Missing or invalid token |
+| `forbidden` | 403 | Viewer role, or IP not in allowlist |
+| `tenant_not_found` | 404 | Unknown tenant or gateway slug |
+| `invalid_request` | 400 | Malformed request or missing required fields |
+| `rate_limited` | 429 | Sliding-window limit exceeded |
+| `quota_exceeded` | 429 | Budget cap reached |
+| `guardrail_blocked` | 400 | Guardrail pipeline blocked the request |
+| `provider_error` | 502 | Upstream provider returned 5xx |
+| `all_providers_failed` | 502 | All retry and fallback attempts exhausted |
+| `internal` | 500 | Gateway internal error |
