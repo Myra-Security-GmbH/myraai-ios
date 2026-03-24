@@ -437,7 +437,203 @@ describe("pii_protector token format", function()
 end)
 
 -- ============================================================================
--- 7. Orchestrator integration
+-- 7. skip_system_messages — system/assistant content is not tokenized
+-- ============================================================================
+describe("pii_protector skip_system_messages", function()
+
+    -- Helper: build a minimal chat request body with a system message containing
+    -- a known email and a user message containing a different email.
+    -- "noreply@anthropic.com" appears in the system role; "alice@example.com"
+    -- appears in the user role.
+    --
+    -- The system content starts at byte 47 in this specific JSON string:
+    --   {"messages":[{"role":"system","content":"system noreply@anthropic.com"},
+    --                {"role":"user","content":"user alice@example.com"}]}
+    local SYSTEM_EMAIL = "noreply@anthropic.com"
+    local USER_EMAIL   = "alice@example.com"
+    local BODY = string.format(
+        '{"messages":[{"role":"system","content":"system %s"},{"role":"user","content":"user %s"}]}',
+        SYSTEM_EMAIL, USER_EMAIL
+    )
+
+    -- Presidio returns both emails as detected entities.  We work out their
+    -- offsets in BODY manually and return them from the mock.
+    local sys_start  = BODY:find(SYSTEM_EMAIL, 1, true) - 1  -- 0-based
+    local sys_end    = sys_start + #SYSTEM_EMAIL
+    local user_start = BODY:find(USER_EMAIL,   1, true) - 1
+    local user_end   = user_start + #USER_EMAIL
+
+    local BOTH_SPANS = {
+        { entity_type = "EMAIL_ADDRESS", start = sys_start,  ["end"] = sys_end,  score = 1.0 },
+        { entity_type = "EMAIL_ADDRESS", start = user_start, ["end"] = user_end, score = 1.0 },
+    }
+
+    it("system-message email is NOT tokenized, user-message email IS (default behaviour)", function()
+        install_http_mock(BOTH_SPANS)
+        local d   = reload()
+        local ctx = req_ctx(BODY)
+        local r   = d.run(ctx, DET, "request")
+
+        -- At least the user email triggered a scrub
+        assert.equal("scrubbed", r.verdict)
+
+        -- Original user email must be gone
+        assert.is_nil(ctx.raw_request_body:find(USER_EMAIL, 1, true),
+                      "user email must be tokenized")
+
+        -- System email must be preserved (not tokenized)
+        assert.not_nil(ctx.raw_request_body:find(SYSTEM_EMAIL, 1, true),
+                       "system email must NOT be tokenized")
+    end)
+
+    it("only one token entry created (system email excluded, user email tokenized)", function()
+        install_http_mock(BOTH_SPANS)
+        local d   = reload()
+        local ctx = req_ctx(BODY)
+        d.run(ctx, DET, "request")
+
+        local count = 0
+        for _ in pairs(ctx.pii_token_map) do count = count + 1 end
+        assert.equal(1, count, "only the user-role email should produce a token")
+    end)
+
+    it("skip_system_messages=false tokenizes both emails", function()
+        install_http_mock(BOTH_SPANS)
+        local d   = reload()
+        local ctx = req_ctx(BODY)
+        local det = { name = "pii-protect", timeout_ms = 100, fail_open = true,
+                      skip_system_messages = false }
+        d.run(ctx, det, "request")
+
+        assert.is_nil(ctx.raw_request_body:find(SYSTEM_EMAIL, 1, true),
+                      "system email must also be tokenized when skip_system_messages=false")
+        assert.is_nil(ctx.raw_request_body:find(USER_EMAIL, 1, true),
+                      "user email must be tokenized when skip_system_messages=false")
+
+        local count = 0
+        for _ in pairs(ctx.pii_token_map) do count = count + 1 end
+        assert.equal(2, count)
+    end)
+
+    it("returns pass when the only detected entity is in a system message", function()
+        -- Presidio returns only the system-message email
+        local sys_only = {
+            { entity_type = "EMAIL_ADDRESS", start = sys_start, ["end"] = sys_end, score = 1.0 },
+        }
+        install_http_mock(sys_only)
+        local d   = reload()
+        local ctx = req_ctx(BODY)
+        local r   = d.run(ctx, DET, "request")
+
+        assert.equal("pass", r.verdict)
+        assert.is_nil(ctx.pii_token_map)
+        assert.not_nil(ctx.raw_request_body:find(SYSTEM_EMAIL, 1, true),
+                       "system email must be untouched")
+    end)
+
+    it("assistant-role content is also excluded by default", function()
+        local assistant_email = "bot@service.internal"
+        local body2 = string.format(
+            '{"messages":[{"role":"assistant","content":"contact %s"},{"role":"user","content":"user %s"}]}',
+            assistant_email, USER_EMAIL
+        )
+        local a_start = body2:find(assistant_email, 1, true) - 1
+        local u_start = body2:find(USER_EMAIL, 1, true) - 1
+        local spans2  = {
+            { entity_type = "EMAIL_ADDRESS", start = a_start, ["end"] = a_start + #assistant_email, score = 1.0 },
+            { entity_type = "EMAIL_ADDRESS", start = u_start, ["end"] = u_start + #USER_EMAIL,      score = 1.0 },
+        }
+        install_http_mock(spans2)
+        local d   = reload()
+        local ctx = req_ctx(body2)
+        d.run(ctx, DET, "request")
+
+        assert.not_nil(ctx.raw_request_body:find(assistant_email, 1, true),
+                       "assistant email must NOT be tokenized")
+        assert.is_nil(ctx.raw_request_body:find(USER_EMAIL, 1, true),
+                      "user email must be tokenized")
+    end)
+
+end)
+
+-- ============================================================================
+-- 8. allow_list — passed through to Presidio request payload
+-- ============================================================================
+describe("pii_protector allow_list passthrough", function()
+
+    it("allow_list is included in the Presidio request payload", function()
+        local captured_payload
+
+        package.loaded["utils.http"]  = nil
+        package.preload["utils.http"] = function()
+            return {
+                request = function(opts)
+                    captured_payload = require("utils.json").decode(opts.body)
+                    return 200, {}, "[]", nil
+                end
+            }
+        end
+
+        local d   = reload()
+        local ctx = req_ctx("hello")
+        local det = { name = "pii-protect", fail_open = true,
+                      allow_list = { "noreply@anthropic.com", "bot@internal" } }
+        d.run(ctx, det, "request")
+
+        assert.not_nil(captured_payload)
+        assert.same({ "noreply@anthropic.com", "bot@internal" },
+                    captured_payload.allow_list,
+                    "allow_list must be forwarded to Presidio")
+    end)
+
+    it("allow_list_match is forwarded when set", function()
+        local captured_payload
+
+        package.loaded["utils.http"]  = nil
+        package.preload["utils.http"] = function()
+            return {
+                request = function(opts)
+                    captured_payload = require("utils.json").decode(opts.body)
+                    return 200, {}, "[]", nil
+                end
+            }
+        end
+
+        local d   = reload()
+        local ctx = req_ctx("hello")
+        local det = { name = "pii-protect", fail_open = true,
+                      allow_list = { "noreply@anthropic.com" },
+                      allow_list_match = "regex" }
+        d.run(ctx, det, "request")
+
+        assert.equal("regex", captured_payload.allow_list_match)
+    end)
+
+    it("allow_list absent from payload when not configured", function()
+        local captured_payload
+
+        package.loaded["utils.http"]  = nil
+        package.preload["utils.http"] = function()
+            return {
+                request = function(opts)
+                    captured_payload = require("utils.json").decode(opts.body)
+                    return 200, {}, "[]", nil
+                end
+            }
+        end
+
+        local d   = reload()
+        local ctx = req_ctx("hello")
+        d.run(ctx, DET, "request")  -- DET has no allow_list
+
+        assert.is_nil(captured_payload.allow_list,
+                      "allow_list must not be sent when not configured")
+    end)
+
+end)
+
+-- ============================================================================
+-- 9. Orchestrator integration
 -- ============================================================================
 describe("orchestrator recognises pii_protector type", function()
 
