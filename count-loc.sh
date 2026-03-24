@@ -59,7 +59,9 @@ LUA_SRC=$(collect   "$REPO/src"     -name '*.lua')
 LUA_TEST=$(collect  "$REPO/tests"   -name '*.lua')
 LUA_CFG=$(          find "$REPO/config" -maxdepth 1 -name '*.lua' 2>/dev/null | sort)
 
-TS_SRC=$(collect    "$REPO/frontend/src" \( -name '*.ts' -o -name '*.tsx' \) ! -name '*.d.ts' ! -name 'setupTests.ts' ! -name 'vite-env.d.ts')
+TS_SRC=$(collect    "$REPO/frontend/src" \( -name '*.ts' -o -name '*.tsx' \) ! -name '*.d.ts' ! -name 'setupTests.ts' ! -name 'vite-env.d.ts' ! -name '*.test.ts' ! -name '*.test.tsx')
+TS_UNIT_TEST=$(collect "$REPO/frontend/src" \( -name '*.test.ts' -o -name '*.test.tsx' \))
+TS_E2E_TEST=$(collect  "$REPO/frontend/tests" \( -name '*.spec.ts' -o -name '*.test.ts' \))
 SCSS_SRC=$(collect  "$REPO/frontend/src" -name '*.scss')
 
 PY_SRC=$( { collect "$REPO/config" -name '*.py'; collect "$REPO/tests" -name '*.py'; } | sort )
@@ -89,6 +91,10 @@ LUA_CFG_TOTAL=0
 [[ -n "$LUA_CFG" ]] && LUA_CFG_TOTAL=$(echo "$LUA_CFG" | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
 
 TS_TOTAL=$(echo "$TS_SRC"   | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
+TS_UNIT_TEST_TOTAL=0
+[[ -n "$TS_UNIT_TEST" ]] && TS_UNIT_TEST_TOTAL=$(echo "$TS_UNIT_TEST" | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
+TS_E2E_TEST_TOTAL=0
+[[ -n "$TS_E2E_TEST" ]]  && TS_E2E_TEST_TOTAL=$(echo "$TS_E2E_TEST"  | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
 SCSS_TOTAL=$(echo "$SCSS_SRC" | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
 
 PY_TOTAL=0
@@ -112,7 +118,11 @@ ROOT_MD_FILES=$(echo "$ROOT_MD" | grep -c '.' 2>/dev/null || true)
 
 LUA_SRC_FILES=$(echo "$LUA_SRC"   | grep -c '.' || true)
 LUA_TEST_FILES=$(echo "$LUA_TEST" | grep -c '.' || true)
-TS_FILES=$(echo "$TS_SRC"         | grep -c '.' || true)
+TS_FILES=$(echo "$TS_SRC"              | grep -c '.' || true)
+TS_UNIT_TEST_FILES=0
+[[ -n "$TS_UNIT_TEST" ]] && TS_UNIT_TEST_FILES=$(echo "$TS_UNIT_TEST" | grep -c '.' || true)
+TS_E2E_TEST_FILES=0
+[[ -n "$TS_E2E_TEST" ]]  && TS_E2E_TEST_FILES=$(echo "$TS_E2E_TEST"  | grep -c '.' || true)
 SCSS_FILES=$(echo "$SCSS_SRC"     | grep -c '.' || true)
 PY_FILES=0;   [[ -n "$PY_SRC" ]]   && PY_FILES=$(echo "$PY_SRC"   | grep -c '.' || true)
 CONF_FILES=0; [[ -n "$CONF_SRC" ]] && CONF_FILES=$(echo "$CONF_SRC" | grep -c '.' || true)
@@ -120,7 +130,7 @@ SQL_FILES=0;  [[ -n "$SQL_SRC" ]]  && SQL_FILES=$(echo "$SQL_SRC"  | grep -c '.'
 
 # ── totals ─────────────────────────────────────────────────────────────────────
 
-SRC_TOTAL=$(( LUA_SRC_TOTAL + LUA_TEST_TOTAL + LUA_CFG_TOTAL + TS_TOTAL + SCSS_TOTAL + PY_TOTAL + CONF_TOTAL + SQL_TOTAL ))
+SRC_TOTAL=$(( LUA_SRC_TOTAL + LUA_TEST_TOTAL + LUA_CFG_TOTAL + TS_TOTAL + TS_UNIT_TEST_TOTAL + TS_E2E_TEST_TOTAL + SCSS_TOTAL + PY_TOTAL + CONF_TOTAL + SQL_TOTAL ))
 GRAND_TOTAL=$(( SRC_TOTAL + DOC_TOTAL + ROOT_MD_TOTAL ))
 
 # ── output ─────────────────────────────────────────────────────────────────────
@@ -140,15 +150,18 @@ done
 printf "  %-36s %6d lines  ←\n" "  subtotal" "$LUA_SRC_TOTAL"
 echo ""
 
-echo "── Lua tests   ($LUA_TEST_FILES files) ─────────────────────────────────"
-row "  tests/" "$LUA_TEST_TOTAL"
-echo ""
-
 if [[ $LUA_CFG_TOTAL -gt 0 ]]; then
 echo "── Lua config  ──────────────────────────────────────────────────"
 row "  config/*.lua" "$LUA_CFG_TOTAL"
 echo ""
 fi
+
+echo "── Lua tests   ($LUA_TEST_FILES files) ─────────────────────────────────"
+row "  tests/" "$LUA_TEST_TOTAL"
+LUA_SRC_CFG=$(( LUA_SRC_TOTAL + LUA_CFG_TOTAL ))
+LUA_RATIO=$(awk "BEGIN {printf \"%.2f\", ($LUA_SRC_CFG == 0 ? 0 : $LUA_TEST_TOTAL / $LUA_SRC_CFG)}")
+printf "  %-36s %6s\n" "  tests / src+cfg ratio" "${LUA_RATIO}×"
+echo ""
 
 echo "── Frontend TypeScript/TSX  ($TS_FILES files) ──────────────────────────"
 row "  frontend/src/" "$TS_TOTAL"
@@ -156,6 +169,27 @@ echo ""
 
 echo "── Frontend SCSS  ($SCSS_FILES files) ──────────────────────────────────"
 row "  frontend/src/" "$SCSS_TOTAL"
+echo ""
+
+TS_TEST_TOTAL=$(( TS_UNIT_TEST_TOTAL + TS_E2E_TEST_TOTAL ))
+TS_TEST_FILES=$(( TS_UNIT_TEST_FILES + TS_E2E_TEST_FILES ))
+
+if [[ $TS_UNIT_TEST_TOTAL -gt 0 ]]; then
+echo "── Frontend TS unit tests  ($TS_UNIT_TEST_FILES files) ─────────────────────────"
+row "  frontend/src/**/*.test.*" "$TS_UNIT_TEST_TOTAL"
+echo ""
+fi
+
+if [[ $TS_E2E_TEST_TOTAL -gt 0 ]]; then
+echo "── Frontend TS e2e/Playwright  ($TS_E2E_TEST_FILES files) ──────────────────────"
+row "  frontend/tests/" "$TS_E2E_TEST_TOTAL"
+fi
+
+if [[ $TS_TEST_TOTAL -gt 0 ]]; then
+TS_SRC_SCSS=$(( TS_TOTAL + SCSS_TOTAL ))
+TS_RATIO=$(awk "BEGIN {printf \"%.2f\", ($TS_SRC_SCSS == 0 ? 0 : $TS_TEST_TOTAL / $TS_SRC_SCSS)}")
+printf "  %-36s %6s\n" "  tests / ts+scss ratio" "${TS_RATIO}×"
+fi
 echo ""
 
 if [[ $SQL_TOTAL -gt 0 ]]; then
@@ -194,10 +228,22 @@ if [[ $VERBOSE -eq 1 ]]; then
     echo "$LUA_SRC" | xargs wc -l 2>/dev/null | sort -rn | grep -v '^ *0 ' | grep -v total | \
         awk -v repo="$REPO/src/" '{sub(repo,"",$2); printf "  %5d  %s\n", $1, $2}'
     echo ""
-    echo "── Verbose: TypeScript/TSX files ────────────────────────────"
+    echo "── Verbose: TypeScript/TSX source files ─────────────────────"
     echo "$TS_SRC" | xargs wc -l 2>/dev/null | sort -rn | grep -v '^ *0 ' | grep -v total | \
         awk -v repo="$REPO/frontend/src/" '{sub(repo,"",$2); printf "  %5d  %s\n", $1, $2}'
     echo ""
+    if [[ -n "$TS_UNIT_TEST" ]]; then
+    echo "── Verbose: TypeScript unit test files ──────────────────────"
+    echo "$TS_UNIT_TEST" | xargs wc -l 2>/dev/null | sort -rn | grep -v '^ *0 ' | grep -v total | \
+        awk -v repo="$REPO/frontend/src/" '{sub(repo,"",$2); printf "  %5d  %s\n", $1, $2}'
+    echo ""
+    fi
+    if [[ -n "$TS_E2E_TEST" ]]; then
+    echo "── Verbose: TypeScript e2e/Playwright files ─────────────────"
+    echo "$TS_E2E_TEST" | xargs wc -l 2>/dev/null | sort -rn | grep -v '^ *0 ' | grep -v total | \
+        awk -v repo="$REPO/frontend/src/" '{sub(repo,"",$2); printf "  %5d  %s\n", $1, $2}'
+    echo ""
+    fi
     echo "── Verbose: documentation files ────────────────────────────"
     echo "$DOC_MD" | xargs wc -l 2>/dev/null | sort -rn | grep -v '^ *0 ' | grep -v total | \
         awk -v repo="$REPO/docs/docs.md/" '{sub(repo,"",$2); printf "  %5d  %s\n", $1, $2}'
