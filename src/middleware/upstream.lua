@@ -63,6 +63,11 @@ local function call_provider(ctx, provider_name, model, is_streaming)
         url = overrides[provider_name] .. path
     end
     local headers = provider_mod.build_headers(ctx, ctx.provider_api_key)
+    -- Forward W3C traceparent to upstream provider for end-to-end trace correlation
+    if ctx.otel_trace_id then
+        local ok, tracer = pcall(require, "observability.tracer")
+        if ok then headers["traceparent"] = tracer.traceparent(ctx) end
+    end
     local body    = provider_mod.build_request(ctx)
 
     ctx.provider = orig_provider

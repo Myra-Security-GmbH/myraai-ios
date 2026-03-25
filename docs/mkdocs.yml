@@ -95,6 +95,10 @@ nav:
     - security/guardrails/presidio.md
     - security/guardrails/prompt-guard.md
     - security/guardrails/pii-protector.md
+    - security/guardrails/json-schema.md
+    - security/guardrails/contains-code.md
+    - security/guardrails/gibberish.md
+    - security/guardrails/language.md
   - Routing:
     - routing/routing-rules.md
     - routing/compat-endpoint.md

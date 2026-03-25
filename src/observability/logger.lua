@@ -112,6 +112,13 @@ function M.emit(ctx)
         local ok, siem = pcall(require, "observability.siem")
         if ok then siem.emit(siem_cfg, fields) end
     end
+
+    -- Fire OTel span export asynchronously
+    local tracing = ctx.gateway_config and ctx.gateway_config.tracing
+    if tracing and tracing.otlp_endpoint then
+        local ok, tracer = pcall(require, "observability.tracer")
+        if ok then tracer.emit(ctx, tracing) end
+    end
 end
 
 return M
