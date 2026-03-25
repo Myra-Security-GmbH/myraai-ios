@@ -51,6 +51,10 @@ Browse all documentation topics by category.
     - [NLP PII Detector](../security/guardrails/presidio.md)
     - [Prompt Guard](../security/guardrails/prompt-guard.md)
     - [PII Protector](../security/guardrails/pii-protector.md)
+    - [JSON Schema Guardrail](../security/guardrails/json-schema.md)
+    - [Code Detection Guardrail](../security/guardrails/contains-code.md)
+    - [Gibberish Detector](../security/guardrails/gibberish.md)
+    - [Language Guardrail](../security/guardrails/language.md)
 
 -   **Routing**
 

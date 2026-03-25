@@ -12,7 +12,7 @@ Guardrails are grouped into two tiers based on where they execute and how fast t
 
 | Tier | Guardrails | Execution | Latency |
 |---|---|---|---|
-| Tier 1 | `regex`, `keyword`, `jailbreak` | In-process | Sub-millisecond |
+| Tier 1 | `regex`, `keyword`, `jailbreak`, `json_schema`, `contains_code`, `gibberish`, `language` | In-process | Sub-millisecond |
 | Tier 2 | `presidio`, `prompt_guard`, `pii_protector` | Sidecar HTTP call | Milliseconds |
 
 All Tier 1 guardrails run before any Tier 2 guardrail. Within the same tier, guardrails run in the order they appear in the `guardrails` array of the gateway configuration.
@@ -223,6 +223,10 @@ Every guardrail that runs produces structured output. The following fields are s
 | [`regex`](guardrails/regex.md) | 1 | In-process regex and named pattern matching |
 | [`keyword`](guardrails/keyword.md) | 1 | In-process exact keyword matching |
 | [`jailbreak`](guardrails/jailbreak.md) | 1 | Pre-configured jailbreak and prompt-injection detector — zero configuration required |
+| [`json_schema`](guardrails/json-schema.md) | 1 | Validates model responses against a declared JSON schema — enforces structured output |
+| [`contains_code`](guardrails/contains-code.md) | 1 | Detects source code in requests or responses — prevents SQL injection forwarding and monitors unexpected code generation |
+| [`gibberish`](guardrails/gibberish.md) | 1 | Detects low-quality or incoherent model responses using entropy and vocabulary heuristics |
+| [`language`](guardrails/language.md) | 1 | Detects the dominant writing system of request or response text — permits or blocks by script |
 | [`presidio`](guardrails/presidio.md) | 2 | NLP-based PII detection — locally hosted within Myra's certified infrastructure |
 | [`prompt_guard`](guardrails/prompt-guard.md) | 2 | Safety classification via Llama Guard 3 — locally hosted within Myra's certified infrastructure |
 | [`pii_protector`](guardrails/pii-protector.md) | 2 | Reversible PII tokenization — real values restored in response |
@@ -240,6 +244,10 @@ AI Gateway ships a dedicated `jailbreak` guardrail type that works with zero con
 - [Regex Guardrail](guardrails/regex.md)
 - [Keyword Guardrail](guardrails/keyword.md)
 - [Jailbreak Guardrail](guardrails/jailbreak.md)
+- [JSON Schema Guardrail](guardrails/json-schema.md)
+- [Code Detection Guardrail](guardrails/contains-code.md)
+- [Gibberish Detector](guardrails/gibberish.md)
+- [Language Guardrail](guardrails/language.md)
 - [NLP PII Detector](guardrails/presidio.md)
 - [Prompt Guard](guardrails/prompt-guard.md)
 - [PII Protector](guardrails/pii-protector.md)
