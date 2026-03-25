@@ -91,6 +91,88 @@ There is no per-request cache bypass header. To force a cache miss you must eith
 
 ---
 
+---
+
+## Semantic caching
+
+Exact-match caching only helps when two requests are byte-for-byte identical. **Semantic caching** catches near-identical prompts that differ in phrasing — for example, "What is the capital of France?" and "Tell me the capital city of France?" map to essentially the same response.
+
+When enabled, the gateway computes an embedding vector for each incoming prompt and compares it against stored embeddings using cosine similarity. If the best match exceeds the configured threshold, the stored response is returned immediately without calling the provider.
+
+### When to use semantic caching
+
+Semantic caching is most effective for:
+
+- **FAQ / support bots** — users rephrase the same small set of questions in slightly different ways
+- **Classification pipelines** — similar inputs should map to identical labels
+- **Content generation with stable topics** — "Write a short bio for Einstein" vs "Give me a brief biography of Albert Einstein"
+
+Not recommended for:
+
+- Conversational flows where context changes with every message
+- Prompts where small phrasing differences meaningfully change the correct answer
+- Low-latency requirements (embedding call adds ~50 ms per miss; see note below)
+
+### Configuration
+
+```json
+{
+  "semantic_cache": {
+    "enabled": true,
+    "threshold": 0.95,
+    "embedding_url": "https://api.openai.com/v1/embeddings",
+    "embedding_api_key": "sk-...",
+    "embedding_model": "text-embedding-3-small",
+    "max_candidates": 100,
+    "ttl": 86400
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Must be `true` to activate semantic caching |
+| `threshold` | number | `0.95` | Cosine similarity cutoff. Hits require similarity ≥ threshold |
+| `embedding_url` | string | — | OpenAI-compatible embeddings endpoint |
+| `embedding_api_key` | string | — | Bearer token for the embedding endpoint |
+| `embedding_model` | string | `text-embedding-3-small` | Embedding model name |
+| `max_candidates` | integer | `100` | Maximum stored embeddings to compare per query |
+| `ttl` | integer | `86400` | Seconds before a stored embedding expires |
+
+### Threshold guidance
+
+| Threshold | Behaviour |
+|---|---|
+| `0.97–1.00` | Very strict — only near-identical rephrasing hits |
+| `0.95` (default) | Balanced — catches common reformulations, avoids false positives |
+| `0.92–0.94` | Loose — higher hit rate; risk of semantically adjacent but distinct prompts sharing a cached response |
+
+### Embedding model choice
+
+Any OpenAI-compatible embeddings endpoint works:
+
+- **`text-embedding-3-small`** (OpenAI) — recommended; small, fast, 1536 dimensions
+- **`text-embedding-3-large`** (OpenAI) — higher quality; 3072 dimensions, more storage
+- **Ollama** (`http://ollama:11434/api/embeddings`) — fully on-premise; set `embedding_api_key` to empty string
+
+### How a hit is served
+
+On a semantic cache hit:
+
+1. The stored response body is returned immediately with HTTP 200
+2. The `X-AIG-Cache: SEMANTIC_HIT` response header is set
+3. The `X-AIG-Similarity: 0.97` header indicates the cosine similarity score
+4. The provider is not called
+
+### Latency note
+
+The embedding call adds approximately 50 ms on a cache **miss**. LLM inference calls typically take 500 ms–3 s, so the overhead is small relative to the savings on hits. The embedding storage step on writes is fully asynchronous and never adds latency to the response path.
+
+!!! note "Streaming not supported"
+    Requests with `"stream": true` are not stored in or served from the semantic cache. Exact-match caching also does not apply to streaming requests.
+
+---
+
 ## See also
 
 - [Request Pipeline](request-pipeline.md) — where cache check and cache store fit in the middleware chain

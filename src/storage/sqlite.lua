@@ -97,6 +97,26 @@ local function migrate_columns(cfg)
     if not lcols.trace_id then ldb:exec("CREATE INDEX IF NOT EXISTS idx_log_trace_id ON request_log(trace_id)") end
     ldb:close()
 
+    -- Semantic cache table (idempotent)
+    local ldb2 = open_db(cfg.sqlite.logs_db)
+    ldb2:exec([[
+        CREATE TABLE IF NOT EXISTS semantic_cache (
+            id            TEXT    PRIMARY KEY,
+            gateway_id    TEXT    NOT NULL,
+            model         TEXT    NOT NULL,
+            prompt_hash   TEXT    NOT NULL,
+            embedding     TEXT    NOT NULL,
+            response_body TEXT    NOT NULL,
+            cost_usd      REAL    NOT NULL DEFAULT 0,
+            created_at    INTEGER NOT NULL,
+            expires_at    INTEGER NOT NULL DEFAULT 0,
+            hit_count     INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_semantic_cache_gw_model
+            ON semantic_cache(gateway_id, model, created_at DESC);
+    ]])
+    ldb2:close()
+
     -- Playground trace tables (added after initial schema)
     local cfg_db2 = open_db(cfg.sqlite.config_db)
     cfg_db2:exec([[
@@ -1542,6 +1562,41 @@ function M.list_guardrail_events(gateway_id, limit)
     ]], limit), gateway_id) or {}
     for _, row in ipairs(rows) do decode_detectors(row) end
     return rows
+end
+
+-- ---------------------------------------------------------------------------
+-- Semantic cache storage
+-- ---------------------------------------------------------------------------
+
+function M.insert_semantic_cache(entry)
+    -- INSERT OR IGNORE so duplicate prompt_hash entries are silently skipped
+    return exec_one(log_db(), [[
+        INSERT OR IGNORE INTO semantic_cache
+            (id, gateway_id, model, prompt_hash, embedding,
+             response_body, cost_usd, created_at, expires_at, hit_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    ]], entry.id, entry.gateway_id, entry.model, entry.prompt_hash,
+        entry.embedding, entry.response_body, entry.cost_usd or 0,
+        entry.created_at, entry.expires_at or 0)
+end
+
+function M.find_semantic_candidates(gateway_id, model, limit)
+    limit = math.min(limit or 100, 500)
+    local now = math.floor(ngx.now())
+    return query_all(log_db(), string.format([[
+        SELECT id, embedding, response_body, cost_usd
+        FROM semantic_cache
+        WHERE gateway_id = ? AND model = ?
+          AND (expires_at = 0 OR expires_at > ?)
+        ORDER BY created_at DESC
+        LIMIT %d
+    ]], limit), gateway_id, model, now)
+end
+
+function M.increment_semantic_hit(id)
+    return exec_one(log_db(), [[
+        UPDATE semantic_cache SET hit_count = hit_count + 1 WHERE id = ?
+    ]], id)
 end
 
 return M

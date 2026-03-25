@@ -21,6 +21,13 @@ function M.run(ctx)
     if entry then
         state.cache_set(ctx.cache_key, entry, ttl)
     end
+
+    -- Async: store embedding for future semantic cache lookups
+    local sem_cfg = ctx.gateway_config.semantic_cache
+    if sem_cfg and sem_cfg.enabled then
+        local ok, sem = pcall(require, "cache.semantic")
+        if ok then sem.store_async(ctx, sem_cfg) end
+    end
 end
 
 return M

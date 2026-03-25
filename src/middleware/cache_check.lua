@@ -30,7 +30,29 @@ function M.run(ctx)
     ctx.cache_key = key
 
     local cached = state.cache_get(key)
-    if not cached then return end
+    if not cached then
+        -- Semantic cache check (vector similarity, only on exact-match miss)
+        local sem_cfg = ctx.gateway_config.semantic_cache
+        if sem_cfg and sem_cfg.enabled then
+            local ok, sem = pcall(require, "cache.semantic")
+            if ok then
+                local hit = sem.check(ctx, sem_cfg)
+                if hit then
+                    ctx.cache_hit          = true
+                    ctx.semantic_cache_hit = true
+                    ctx.log_fields         = ctx.log_fields or {}
+                    ctx.log_fields.saved_cost_usd = hit.cost_usd
+                    ngx.status = 200
+                    ngx.header["Content-Type"]     = "application/json"
+                    ngx.header["X-AIG-Cache"]      = "SEMANTIC_HIT"
+                    ngx.header["X-AIG-Similarity"] = string.format("%.4f", hit.similarity)
+                    ngx.print(hit.response_body)
+                    ngx.exit(200)
+                end
+            end
+        end
+        return
+    end
 
     -- Cache hit — return the stored response and stop processing
     ctx.cache_hit = true
