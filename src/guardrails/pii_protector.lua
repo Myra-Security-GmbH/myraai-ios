@@ -1,22 +1,26 @@
 -- guardrails/pii_protector.lua — Tier-2 reversible PII tokenizer.
 --
 -- Request phase:
---   Calls Presidio /analyze to locate PII spans, replaces each unique value
---   with a token [MYRA-REDACT:SALT:N], and stores the reverse map in ctx.pii_token_map.
---   The upstream AI provider receives the tokenized body.
+--   Extracts decoded text from ctx.request_body (user messages only by default).
+--   Calls Presidio /analyze on the decoded text.  Tokenizes PII spans in the
+--   decoded strings, then re-encodes with json.encode — eliminating the class
+--   of bugs caused by doing byte surgery on raw JSON while Presidio returns
+--   Unicode codepoint offsets.
+--   Stores the reverse map in ctx.pii_token_map.
+--   The upstream AI provider receives the tokenized body via ctx.raw_request_body.
 --
 -- Response phase:
 --   Finds tokens in ctx.response_body and replaces them with original values
 --   before the response is sent to the client.
 --
--- Token format: [MYRA-REDACT:SALT:N]
+-- Token format: [MYRA-REDACT-TYPE:SALT:N]
 --   SALT = first 6 hex chars of ngx.md5(request_id .. ngx.now()) — per-request unique
 --   N    = sequential counter starting at 1
 --   Characters [, ], :, alphanumerics are valid inside JSON strings without escaping.
 --
 -- Same original value → same token within a request (deduplication).
 -- Overlapping spans → highest-score span wins (greedy resolution).
--- Right-to-left replacement preserves byte offsets for earlier spans.
+-- Right-to-left replacement preserves codepoint offsets for earlier spans.
 -- Plain-string restore avoids Lua magic-char issues with [ and ] in gsub patterns.
 --
 -- Known limitation: streaming responses are not buffered (ctx.response_body is nil).
@@ -106,79 +110,6 @@ local function call_analyzer(text, detector)
 end
 
 -- ---------------------------------------------------------------------------
--- build_exclusion_ranges: find the byte ranges occupied by system/assistant
--- message content in the raw JSON body so that entities detected within those
--- ranges can be dropped before tokenization.
---
--- Rationale: system and assistant messages are operator/model-controlled text,
--- not user-supplied data.  Tokenizing PII in a system prompt corrupts the
--- model's instructions (e.g. the example email in a "Co-Authored-By" git
--- commit template gets replaced with [MYRA-REDACT-…]).  Only user messages
--- should be scanned for PII.
---
--- Implementation: parse the request JSON, extract each non-user message's
--- content, and find its literal byte position in the raw body with a plain
--- string search.  This works correctly for ASCII PII (email, phone, SSN).
--- Non-ASCII content is skipped gracefully — the search will simply fail to
--- match and the range is not added, which is safe (we might over-tokenize a
--- system prompt with non-ASCII PII, but that is the existing behaviour).
---
--- Returns an array of {s=start_byte_0based, e=end_byte_0based} intervals.
--- ---------------------------------------------------------------------------
-local SKIP_ROLES = { system = true, assistant = true }
-
-local function build_exclusion_ranges(raw_body)
-    local ok, parsed = pcall(json.decode, raw_body)
-    if not ok or type(parsed) ~= "table" then return {} end
-
-    local msgs = parsed.messages
-    if type(msgs) ~= "table" then return {} end
-
-    local ranges   = {}
-    local search_from = 1  -- advance cursor so equal substrings in later roles
-                           -- don't shadow earlier positions
-
-    for _, msg in ipairs(msgs) do
-        if SKIP_ROLES[msg.role] then
-            local content = msg.content
-            local texts   = {}
-
-            if type(content) == "string" then
-                texts[1] = content
-            elseif type(content) == "table" then
-                for _, part in ipairs(content) do
-                    if type(part) == "table" and part.type == "text"
-                       and type(part.text) == "string" then
-                        texts[#texts + 1] = part.text
-                    end
-                end
-            end
-
-            for _, t in ipairs(texts) do
-                if #t > 0 then
-                    local s = raw_body:find(t, search_from, true)
-                    if s then
-                        ranges[#ranges + 1] = { s = s - 1, e = s - 1 + #t }
-                        search_from = s + #t
-                    end
-                end
-            end
-        end
-    end
-    return ranges
-end
-
--- Returns true when the entity span [e.start, e.end) is fully contained
--- within any of the exclusion ranges.
-local function in_exclusion_ranges(entity, ranges)
-    local es, ee = entity.start, entity["end"]
-    for _, r in ipairs(ranges) do
-        if es >= r.s and ee <= r.e then return true end
-    end
-    return false
-end
-
--- ---------------------------------------------------------------------------
 -- resolve_overlaps: greedy interval deduplication.
 -- Sort by start ascending (higher score first on ties). Walk spans, accepting
 -- each non-overlapping span. When a span overlaps the accepted region, replace
@@ -221,24 +152,41 @@ local function derive_salt(ctx)
 end
 
 -- ---------------------------------------------------------------------------
+-- count_codepoints: count UTF-8 codepoints in str[1..n_bytes].
+-- Used to track field boundaries in the NUL-joined Presidio input.
+-- ---------------------------------------------------------------------------
+local function count_codepoints(str, n_bytes)
+    local count = 0
+    local i     = 1
+    while i <= n_bytes do
+        local b = str:byte(i)
+        if     b < 0x80 then i = i + 1
+        elseif b < 0xE0 then i = i + 2
+        elseif b < 0xF0 then i = i + 3
+        else                  i = i + 4
+        end
+        count = count + 1
+    end
+    return count
+end
+
+-- ---------------------------------------------------------------------------
 -- char_to_byte_pos: convert a 0-based Unicode codepoint offset to a
 -- 1-based Lua byte position in a UTF-8 string.
 --
 -- Presidio (Python) returns codepoint offsets; Lua string.sub works on bytes.
 -- For ASCII-only text they are equal, but for multi-byte UTF-8 sequences
 -- (emoji, accented chars, CJK, etc.) the positions diverge.
--- Without this conversion, tokenize_spans cuts the JSON at the wrong byte,
--- potentially splitting a `"` boundary and producing invalid JSON.
 -- ---------------------------------------------------------------------------
 local function char_to_byte_pos(s, char_pos_0based)
     local byte_i = 1
     local char_i = 0
     while char_i < char_pos_0based and byte_i <= #s do
         local b = s:byte(byte_i)
-        if     b < 0x80 then byte_i = byte_i + 1  -- 1-byte ASCII
-        elseif b < 0xE0 then byte_i = byte_i + 2  -- 2-byte
-        elseif b < 0xF0 then byte_i = byte_i + 3  -- 3-byte
-        else                  byte_i = byte_i + 4  -- 4-byte (supplementary)
+        if     b < 0x80 then byte_i = byte_i + 1
+        elseif b < 0xE0 then byte_i = byte_i + 2
+        elseif b < 0xF0 then byte_i = byte_i + 3
+        else                  byte_i = byte_i + 4
         end
         char_i = char_i + 1
     end
@@ -246,17 +194,87 @@ local function char_to_byte_pos(s, char_pos_0based)
 end
 
 -- ---------------------------------------------------------------------------
--- tokenize_spans: replace entity spans right-to-left with [MYRA-REDACT:salt:N] tokens.
--- Deduplicates: same original value → same token.
--- Presidio uses 0-based exclusive-end codepoint offsets; Lua string.sub uses
--- 1-based inclusive-end byte positions.  char_to_byte_pos() bridges the gap.
--- Returns: tokenized_text, token_map { token → original_value }
+-- collect_user_texts: extract decoded text strings from ctx.request_body.
+--
+-- Returns:
+--   joined  — all texts concatenated with NUL ("\0") separator.
+--             NUL never appears in valid decoded JSON; 1 byte = 1 codepoint
+--             so cursor arithmetic across the separator is trivial.
+--   fields  — array of { mi, bi, text, cp_start } where
+--               mi       = body.messages index (1-based)
+--               bi       = content block index (1-based) or nil for plain strings
+--               text     = decoded content string
+--               cp_start = 0-based codepoint offset of this field in `joined`
+--               is_prompt= true for the legacy body.prompt field
+--
+-- include_all=false (default): only role=="user" messages.
+-- include_all=true            : all roles (used when skip_system_messages=false).
 -- ---------------------------------------------------------------------------
-local function tokenize_spans(text, spans, salt)
-    local value_to_token = {}
-    local token_map      = {}
-    local counter        = 0
+local function collect_user_texts(body, include_all)
+    if type(body) ~= "table" then return "", {} end
 
+    local texts  = {}
+    local fields = {}
+    local cp_off = 0
+
+    if type(body.messages) == "table" then
+        for mi, msg in ipairs(body.messages) do
+            if include_all or msg.role == "user" then
+                local content = msg.content
+                if type(content) == "string" then
+                    local cp_len = count_codepoints(content, #content)
+                    fields[#fields + 1] = { mi = mi, bi = nil, text = content, cp_start = cp_off }
+                    texts[#texts + 1]   = content
+                    cp_off = cp_off + cp_len + 1   -- +1 for NUL separator
+                elseif type(content) == "table" then
+                    for bi, block in ipairs(content) do
+                        if type(block) == "table" and block.type == "text"
+                           and type(block.text) == "string" then
+                            local t      = block.text
+                            local cp_len = count_codepoints(t, #t)
+                            fields[#fields + 1] = { mi = mi, bi = bi, text = t, cp_start = cp_off }
+                            texts[#texts + 1]   = t
+                            cp_off = cp_off + cp_len + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Legacy completions-style prompt
+    if type(body.prompt) == "string" then
+        local t      = body.prompt
+        local cp_len = count_codepoints(t, #t)
+        fields[#fields + 1] = { mi = nil, bi = nil, text = t, cp_start = cp_off, is_prompt = true }
+        texts[#texts + 1]   = t
+        cp_off = cp_off + cp_len + 1
+    end
+
+    return table.concat(texts, "\0"), fields
+end
+
+-- ---------------------------------------------------------------------------
+-- set_body_field: write tokenized text back into the body table in-place.
+-- ---------------------------------------------------------------------------
+local function set_body_field(body, field)
+    if field.is_prompt then
+        body.prompt = field.text
+    elseif field.bi then
+        body.messages[field.mi].content[field.bi].text = field.text
+    else
+        body.messages[field.mi].content = field.text
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- tokenize_spans: replace entity spans right-to-left in a decoded text string.
+-- Deduplicates: same original value → same token (shared maps across calls).
+-- Presidio uses 0-based exclusive-end codepoint offsets; char_to_byte_pos()
+-- converts to 1-based inclusive Lua byte positions.
+-- Returns: tokenized_text
+-- ---------------------------------------------------------------------------
+local function tokenize_spans(text, spans, salt, value_to_token, token_map, counter)
     -- Sort descending by start so right-to-left replacement keeps earlier offsets valid.
     local sorted = {}
     for _, s in ipairs(spans) do sorted[#sorted + 1] = s end
@@ -264,20 +282,23 @@ local function tokenize_spans(text, spans, salt)
 
     local result = text
     for _, sp in ipairs(sorted) do
-        -- Convert Presidio's 0-based codepoint offsets to Lua 1-based byte positions.
-        local lua_s = char_to_byte_pos(text, sp.start)          -- inclusive start
-        local lua_e = char_to_byte_pos(text, sp["end"]) - 1     -- exclusive end → inclusive
+        -- Convert 0-based codepoint offsets to Lua 1-based byte positions.
+        -- Use the original `text` for position arithmetic (left portion is
+        -- identical in `result` since we process right-to-left).
+        local lua_s = char_to_byte_pos(text, sp.start)
+        local lua_e = char_to_byte_pos(text, sp["end"]) - 1
 
-        -- Skip malformed spans
         if lua_e >= lua_s and lua_s >= 1 and lua_e <= #text then
-            local original = text:sub(lua_s, lua_e)  -- from original text (offsets still valid)
+            local original = text:sub(lua_s, lua_e)
 
             local tok = value_to_token[original]
             if not tok then
-                counter             = counter + 1
-                tok                 = string.format("[MYRA-REDACT-%s:%s:%d]", sp.entity_type or sp.type or "PII", salt, counter)
+                counter.n               = counter.n + 1
+                tok                     = string.format("[MYRA-REDACT-%s:%s:%d]",
+                                            sp.entity_type or sp.type or "PII",
+                                            salt, counter.n)
                 value_to_token[original] = tok
-                token_map[tok]      = original
+                token_map[tok]          = original
             end
 
             result = result:sub(1, lua_s - 1) .. tok .. result:sub(lua_e + 1)
@@ -288,7 +309,7 @@ local function tokenize_spans(text, spans, salt)
         end
     end
 
-    return result, token_map
+    return result
 end
 
 -- ---------------------------------------------------------------------------
@@ -325,19 +346,15 @@ local function restore_tokens(text, token_map)
 end
 
 -- ---------------------------------------------------------------------------
--- collect_entity_types: comma-separated entity type names for logging.
--- Does NOT include matched text to avoid PII in logs.
--- ---------------------------------------------------------------------------
--- extract_scrubbed_prompt: build a compact, human-readable log of only the
--- message(s) that contain PII tokens.  Skips clean messages and all request
--- metadata (model, max_tokens, tools, etc.).
+-- extract_scrubbed_prompt: build a compact log of only the message(s) that
+-- contain PII tokens.  Takes the (already-tokenized) body table.
 --
 -- Supports:
 --   body.messages[]  — OpenAI-compat and native Anthropic
 --   body.system      — Anthropic system prompt (string or content-block array)
 --   body.prompt      — legacy completions-style
 --
--- Returns a string, or nil if nothing relevant found / decode fails.
+-- Returns a string, or nil if nothing relevant found.
 -- ---------------------------------------------------------------------------
 local TOKEN_MARKER = "%[MYRA%-REDACT"   -- Lua pattern to detect tokens
 
@@ -350,9 +367,8 @@ local function block_array_to_text(blocks)
     return table.concat(parts, "\n")
 end
 
-local function extract_scrubbed_prompt(tokenized_body)
-    local ok, body = pcall(json.decode, tokenized_body)
-    if not ok or not body then return nil end
+local function extract_scrubbed_prompt(body)
+    if type(body) ~= "table" then return nil end
 
     local lines = {}
 
@@ -450,14 +466,28 @@ function M.run(ctx, detector, phase)
 
     -- -----------------------------------------------------------------------
     -- REQUEST PHASE: detect PII and replace with tokens.
+    --
+    -- Architecture: extract decoded text → tokenize in decoded strings →
+    -- re-encode with json.encode.  This eliminates the entire class of bugs
+    -- caused by mapping Presidio's Unicode codepoint offsets onto raw JSON
+    -- bytes (where \uXXXX escapes, \" sequences, etc. shift all positions).
     -- -----------------------------------------------------------------------
-    local text = ctx.raw_request_body
-    if not text or text == "" then
+    local body = ctx.request_body
+    if not body then
         return { verdict = "pass" }
     end
 
-    -- Step 1: detect
-    local entities, err = call_analyzer(text, detector)
+    -- Collect decoded user text.
+    -- skip_system_messages=false → include all roles (system + assistant + user).
+    local include_all = (detector.skip_system_messages == false)
+    local joined, fields = collect_user_texts(body, include_all)
+    if joined == "" then
+        return { verdict = "pass" }
+    end
+
+    -- Call Presidio with the decoded text (codepoint offsets in decoded strings
+    -- are straightforward — no JSON escapes to miscount).
+    local entities, err = call_analyzer(joined, detector)
     if not entities then
         ngx.log(ngx.WARN, "pii_protector: analyzer error: ", err,
                 " name=", detector.name or "?")
@@ -471,92 +501,78 @@ function M.run(ctx, detector, phase)
         return { verdict = "pass" }
     end
 
-    -- Apply per-entity score floors (drops high-FP entities like PERSON/LOCATION
-    -- unless they exceed the higher threshold or the user explicitly configures them).
+    -- Apply per-entity score floors.
     entities = apply_entity_thresholds(entities, detector)
-
     if #entities == 0 then
         return { verdict = "pass" }
     end
 
-    -- Drop entities whose spans fall entirely within system/assistant message
-    -- content.  System prompts are operator-controlled; assistant turns are
-    -- model-generated.  Neither is user-supplied PII, and tokenizing them
-    -- corrupts the model's own instructions.
-    -- Opt-out: set skip_system_messages = false in the detector config.
-    if detector.skip_system_messages ~= false then
-        local excl = build_exclusion_ranges(text)
-        if #excl > 0 then
-            local filtered = {}
-            for _, e in ipairs(entities) do
-                if not in_exclusion_ranges(e, excl) then
-                    filtered[#filtered + 1] = e
-                end
-            end
-            entities = filtered
-        end
-    end
-
-    if #entities == 0 then
-        return { verdict = "pass" }
-    end
-
-    -- Step 2: resolve overlapping spans
+    -- Resolve overlapping spans across the entire joined text.
     local clean_spans = resolve_overlaps(entities)
 
-    -- Step 3: tokenize
-    local salt             = derive_salt(ctx)
-    local tokenized, tmap  = tokenize_spans(text, clean_spans, salt)
+    -- Tokenize each field independently.
+    -- Spans are dispatched by checking whether they fall fully within the
+    -- field's codepoint range [cp_start, cp_start + cp_len).
+    -- Spans crossing field boundaries (i.e. crossing a NUL separator) are
+    -- silently dropped — NUL never appears in user content so this only
+    -- happens if Presidio mis-detects across the artificial boundary.
+    local salt           = derive_salt(ctx)
+    local value_to_token = {}   -- original_value → token (shared for dedup)
+    local token_map      = {}   -- token → original_value (for response restore)
+    local counter        = { n = 0 }
+    local any_tokenized  = false
 
-    -- Guard: all spans were malformed
-    local map_size = 0
-    for _ in pairs(tmap) do map_size = map_size + 1 end
-    if map_size == 0 then
+    for _, field in ipairs(fields) do
+        local f_cp_start = field.cp_start
+        local f_cp_len   = count_codepoints(field.text, #field.text)
+        local f_cp_end   = f_cp_start + f_cp_len   -- exclusive upper bound
+
+        -- Collect spans that lie fully within this field and remap to
+        -- field-local 0-based codepoint offsets.
+        local field_spans = {}
+        for _, sp in ipairs(clean_spans) do
+            if sp.start >= f_cp_start and sp["end"] <= f_cp_end then
+                field_spans[#field_spans + 1] = {
+                    entity_type = sp.entity_type or sp.type,
+                    start       = sp.start   - f_cp_start,
+                    ["end"]     = sp["end"]  - f_cp_start,
+                    score       = sp.score,
+                }
+            end
+            -- Cross-boundary spans silently dropped.
+        end
+
+        if #field_spans > 0 then
+            local tokenized = tokenize_spans(
+                field.text, field_spans, salt, value_to_token, token_map, counter)
+            field.text = tokenized
+            set_body_field(body, field)
+            any_tokenized = true
+        end
+    end
+
+    if not any_tokenized then
         return { verdict = "pass" }
     end
 
-    -- Guard: tokenization must not produce invalid JSON escape sequences.
-    -- Presidio returns codepoint offsets into the raw JSON body which includes
-    -- \uXXXX escape sequences.  If a span boundary lands inside such an escape
-    -- (e.g. at the 'u' of \u0040), tokenize_spans splits it, producing output
-    -- like \[MYRA-REDACT-...] — an invalid JSON escape that Anthropic's strict
-    -- parser rejects with "invalid escaped character in string".
-    -- Fail open: skip tokenization if the result contains any invalid escape.
-    do
-        local pos = 1
-        local bad = false
-        while pos <= #tokenized do
-            local bs = tokenized:find("\\", pos, true)
-            if not bs then break end
-            local nc = tokenized:sub(bs + 1, bs + 1)
-            -- Valid JSON escape chars: " \ / b f n r t u
-            if nc ~= '"'  and nc ~= '\\'  and nc ~= '/'
-            and nc ~= 'b' and nc ~= 'f'   and nc ~= 'n'
-            and nc ~= 'r' and nc ~= 't'   and nc ~= 'u'
-            and nc ~= ''  then
-                bad = true
-                break
-            end
-            pos = bs + 2
-        end
-        if bad then
-            ngx.log(ngx.WARN, "pii_protector: tokenization introduced invalid JSON escape",
-                    " — skipping tokenization to preserve request integrity",
-                    " name=", detector.name or "?")
-            return { verdict = "pass" }
-        end
+    -- Re-encode the updated body as JSON.
+    -- If encoding fails (should not happen with a well-formed body table),
+    -- fail open: leave ctx.raw_request_body unchanged.
+    local new_raw = json.encode(body)
+    if not new_raw then
+        ngx.log(ngx.WARN, "pii_protector: json.encode failed after tokenization",
+                " — skipping to preserve request integrity",
+                " name=", detector.name or "?")
+        return { verdict = "pass" }
     end
 
-    -- Step 4: persist and update body.
-    -- The orchestrator calls ngx.req.set_body_data(ctx.raw_request_body) for us
-    -- after we return verdict="scrubbed".
-    ctx.pii_token_map    = tmap
-    ctx.raw_request_body = tokenized
+    ctx.pii_token_map    = token_map
+    ctx.raw_request_body = new_raw
 
-    -- Log only the affected messages (those containing PII tokens) so operators
-    -- can audit which values were masked without storing the full request JSON.
+    -- Log only the affected messages so operators can audit which values were
+    -- masked without storing the full request JSON.
     if ctx.gateway_config and ctx.gateway_config.log_payloads then
-        local scrubbed_excerpt = extract_scrubbed_prompt(tokenized)
+        local scrubbed_excerpt = extract_scrubbed_prompt(body)
         if scrubbed_excerpt then
             ctx.log_fields = ctx.log_fields or {}
             ctx.log_fields.prompt_scrubbed = scrubbed_excerpt
@@ -566,12 +582,12 @@ function M.run(ctx, detector, phase)
     -- For compat (OpenAI-format) clients that requested streaming: force the
     -- upstream call to be buffered so the response phase can restore tokens and
     -- capture response_raw.  send_response.lua re-emits the result as SSE.
-    if ctx.is_compat and ctx.request_body and ctx.request_body.stream == true then
+    if ctx.is_compat and body.stream == true then
         ctx.pii_force_buffered = true
     end
 
     local entity_types = collect_entity_types(entities)
-    ngx.log(ngx.INFO, "pii_protector: tokenized ", map_size,
+    ngx.log(ngx.INFO, "pii_protector: tokenized ", counter.n,
             " unique PII value(s) types=", entity_types,
             " name=", detector.name or "?")
 

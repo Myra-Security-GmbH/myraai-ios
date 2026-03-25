@@ -62,9 +62,14 @@ end
 -- ---------------------------------------------------------------------------
 -- Context helpers
 -- ---------------------------------------------------------------------------
-local function req_ctx(body, request_id)
+-- Build a request context from a raw JSON string.
+-- ctx.request_body is set by parsing the raw body (mirrors what transform.lua
+-- does at runtime so the new architecture's collect_user_texts can work).
+local function req_ctx(raw_body, request_id)
+    local parsed = raw_body and json_real.decode(raw_body) or nil
     return {
-        raw_request_body = body or "",
+        raw_request_body = raw_body or "",
+        request_body     = parsed,
         response_body    = nil,
         pii_token_map    = nil,
         request_id       = request_id or "req-test-1234",
@@ -76,6 +81,7 @@ end
 local function resp_ctx(response_body, token_map)
     return {
         raw_request_body = nil,
+        request_body     = nil,
         response_body    = response_body or "",
         pii_token_map    = token_map,
         request_id       = "req-test-1234",
@@ -106,7 +112,9 @@ describe("pii_protector request phase — no PII", function()
         local body = '{"messages":[{"role":"user","content":"hello world"}]}'
         local ctx  = req_ctx(body)
         d.run(ctx, DET, "request")
-        assert.equal(body, ctx.raw_request_body)
+        -- Raw body is re-encoded from the table even on pass (no change expected).
+        -- The content must still be present.
+        assert.not_nil(ctx.raw_request_body:find("hello world", 1, true))
     end)
 
     it("returns pass for empty body", function()
@@ -119,10 +127,19 @@ describe("pii_protector request phase — no PII", function()
 
     it("returns pass for nil body", function()
         install_http_mock({})
-        local d        = reload()
-        local ctx      = req_ctx(nil)
+        local d              = reload()
+        local ctx            = req_ctx(nil)
         ctx.raw_request_body = nil
-        local r        = d.run(ctx, DET, "request")
+        ctx.request_body     = nil
+        local r              = d.run(ctx, DET, "request")
+        assert.equal("pass", r.verdict)
+    end)
+
+    it("returns pass when messages have no user role", function()
+        install_http_mock({})
+        local d   = reload()
+        local ctx = req_ctx('{"messages":[{"role":"system","content":"be helpful"}]}')
+        local r   = d.run(ctx, DET, "request")
         assert.equal("pass", r.verdict)
     end)
 
@@ -133,12 +150,15 @@ end)
 -- ============================================================================
 describe("pii_protector request phase — PII found", function()
 
-    -- "Please email alice@example.com for details"
-    --  0         1         2         3         4
-    --  0123456789012345678901234567890123456789012
-    -- "alice@example.com" → start=13, end=30
-    local BODY1 = "Please email alice@example.com for details"
-    local SPAN1 = {{ entity_type = "EMAIL_ADDRESS", start = 13, ["end"] = 30, score = 0.85 }}
+    -- Body: a standard chat message containing an email address.
+    -- Presidio now receives the decoded user content string: "Please email alice@example.com for details"
+    -- "alice@example.com" is at codepoint offset 13 in that string.
+    local USER_TEXT = "Please email alice@example.com for details"
+    local BODY1 = string.format('{"messages":[{"role":"user","content":"%s"}]}', USER_TEXT)
+    -- Span offsets relative to the decoded user content (not raw JSON).
+    local EMAIL_START = USER_TEXT:find("alice@example.com", 1, true) - 1  -- 0-based
+    local SPAN1 = {{ entity_type = "EMAIL_ADDRESS",
+                     start = EMAIL_START, ["end"] = EMAIL_START + 17, score = 0.85 }}
 
     it("returns scrubbed verdict and sets pii_token_map", function()
         install_http_mock(SPAN1)
@@ -205,12 +225,14 @@ describe("pii_protector request phase — PII found", function()
     end)
 
     it("dedup: same value appearing twice → one token entry, two substitutions", function()
-        -- "From alice@example.com to alice@example.com"
-        --  start1=5, end1=22; start2=26, end2=43
-        local body  = "From alice@example.com to alice@example.com"
-        local spans = {
-            { entity_type = "EMAIL_ADDRESS", start =  5, ["end"] = 22, score = 0.9 },
-            { entity_type = "EMAIL_ADDRESS", start = 26, ["end"] = 43, score = 0.9 },
+        -- User content: "From alice@example.com to alice@example.com"
+        local text   = "From alice@example.com to alice@example.com"
+        local body   = string.format('{"messages":[{"role":"user","content":"%s"}]}', text)
+        local s1     = text:find("alice@example.com", 1, true) - 1  -- 0-based first
+        local s2     = text:find("alice@example.com", s1 + 2, true) - 1  -- 0-based second
+        local spans  = {
+            { entity_type = "EMAIL_ADDRESS", start = s1, ["end"] = s1 + 17, score = 0.9 },
+            { entity_type = "EMAIL_ADDRESS", start = s2, ["end"] = s2 + 17, score = 0.9 },
         }
         install_http_mock(spans)
         local d   = reload()
@@ -234,9 +256,10 @@ describe("pii_protector request phase — PII found", function()
     end)
 
     it("overlap: higher-score span wins, lower-score span dropped", function()
-        -- Span A: 0–15 score=0.95  Span B: 10–20 score=0.70 (overlaps A)
-        local body  = "1234567890ABCDE12345"
-        local spans = {
+        -- User content: "1234567890ABCDE12345"
+        local text   = "1234567890ABCDE12345"
+        local body   = string.format('{"messages":[{"role":"user","content":"%s"}]}', text)
+        local spans  = {
             { entity_type = "TYPE_A", start =  0, ["end"] = 15, score = 0.95 },
             { entity_type = "TYPE_B", start = 10, ["end"] = 20, score = 0.70 },
         }
@@ -250,11 +273,14 @@ describe("pii_protector request phase — PII found", function()
     end)
 
     it("multiple distinct values get distinct tokens", function()
-        -- "Call 555-0100 or email bob@test.org"
-        local body  = "Call 555-0100 or email bob@test.org"
-        local spans = {
-            { entity_type = "PHONE_NUMBER",  start =  5, ["end"] = 13, score = 0.88 },
-            { entity_type = "EMAIL_ADDRESS", start = 23, ["end"] = 34, score = 0.92 },
+        -- User content: "Call 555-0100 or email bob@test.org"
+        local text   = "Call 555-0100 or email bob@test.org"
+        local body   = string.format('{"messages":[{"role":"user","content":"%s"}]}', text)
+        local ps     = text:find("555-0100", 1, true) - 1
+        local es     = text:find("bob@test.org", 1, true) - 1
+        local spans  = {
+            { entity_type = "PHONE_NUMBER",  start = ps, ["end"] = ps + 8,  score = 0.88 },
+            { entity_type = "EMAIL_ADDRESS", start = es, ["end"] = es + 12, score = 0.92 },
         }
         install_http_mock(spans)
         local d   = reload()
@@ -265,6 +291,15 @@ describe("pii_protector request phase — PII found", function()
         assert.equal(2, count, "two distinct values → two distinct tokens")
     end)
 
+    it("re-encoded body is valid JSON after tokenization", function()
+        install_http_mock(SPAN1)
+        local d   = reload()
+        local ctx = req_ctx(BODY1)
+        d.run(ctx, DET, "request")
+        local parsed = json_real.decode(ctx.raw_request_body)
+        assert.not_nil(parsed, "re-encoded body must be valid JSON")
+    end)
+
 end)
 
 -- ============================================================================
@@ -272,10 +307,12 @@ end)
 -- ============================================================================
 describe("pii_protector request phase — Presidio errors", function()
 
+    local BODY = '{"messages":[{"role":"user","content":"some text"}]}'
+
     it("fail_open=true returns pass on analyzer error", function()
         install_http_mock(nil, "connection refused")
         local d   = reload()
-        local ctx = req_ctx("some text")
+        local ctx = req_ctx(BODY)
         local r   = d.run(ctx, { name = "t", fail_open = true }, "request")
         assert.equal("pass", r.verdict)
         assert.is_nil(ctx.pii_token_map)
@@ -284,7 +321,7 @@ describe("pii_protector request phase — Presidio errors", function()
     it("fail_open=false returns block on analyzer error", function()
         install_http_mock(nil, "connection refused")
         local d   = reload()
-        local ctx = req_ctx("some text")
+        local ctx = req_ctx(BODY)
         local r   = d.run(ctx, { name = "t", fail_open = false }, "request")
         assert.equal("block", r.verdict)
     end)
@@ -292,7 +329,7 @@ describe("pii_protector request phase — Presidio errors", function()
     it("fail_open defaults to true when not set", function()
         install_http_mock(nil, "timeout")
         local d   = reload()
-        local ctx = req_ctx("some text")
+        local ctx = req_ctx(BODY)
         local r   = d.run(ctx, { name = "t" }, "request")
         assert.equal("pass", r.verdict)
     end)
@@ -402,26 +439,33 @@ end)
 describe("pii_protector token format", function()
 
     it("token embeds entity type: [MYRA-REDACT-SSN:XXXXXX:N]", function()
-        local spans = {{ entity_type = "SSN", start = 4, ["end"] = 15, score = 0.99 }}
+        -- User content: "SSN 123-45-6789 here"
+        local text   = "SSN 123-45-6789 here"
+        local body   = string.format('{"messages":[{"role":"user","content":"%s"}]}', text)
+        local ps     = text:find("123-45-6789", 1, true) - 1  -- 0-based
+        local spans  = {{ entity_type = "SSN", start = ps, ["end"] = ps + 11, score = 0.99 }}
         install_http_mock(spans)
         local d   = reload()
-        -- "SSN 123-45-6789 here"  start=4 end=15 → "123-45-6789"
-        local ctx = req_ctx("SSN 123-45-6789 here")
+        local ctx = req_ctx(body)
         d.run(ctx, DET, "request")
         for tok in pairs(ctx.pii_token_map) do
             assert.not_nil(
                 tok:match("^%[MYRA%-REDACT%-[A-Z_]+:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]:%d+%]$"),
                 "got: " .. tok)
-            assert.not_nil(tok:find("MYRA-REDACT-SSN:", 1, true), "token must embed entity type SSN, got: " .. tok)
+            assert.not_nil(tok:find("MYRA-REDACT-SSN:", 1, true),
+                           "token must embed entity type SSN, got: " .. tok)
         end
     end)
 
     it("different request_ids produce different salts", function()
-        local spans = {{ entity_type = "EMAIL_ADDRESS", start = 0, ["end"] = 10, score = 0.9 }}
+        local text  = "a@b.com xyz"
+        local body  = string.format('{"messages":[{"role":"user","content":"%s"}]}', text)
+        local s     = text:find("a@b.com", 1, true) - 1
+        local spans = {{ entity_type = "EMAIL_ADDRESS", start = s, ["end"] = s + 7, score = 0.9 }}
         install_http_mock(spans)
         local d    = reload()
-        local ctx1 = req_ctx("a@b.com xyz", "request-id-AAA")
-        local ctx2 = req_ctx("a@b.com xyz", "request-id-BBB")
+        local ctx1 = req_ctx(body, "request-id-AAA")
+        local ctx2 = req_ctx(body, "request-id-BBB")
         d.run(ctx1, DET, "request")
         d.run(ctx2, DET, "request")
         local tok1, tok2
@@ -429,8 +473,6 @@ describe("pii_protector token format", function()
         for t in pairs(ctx2.pii_token_map) do tok2 = t end
         assert.not_nil(tok1)
         assert.not_nil(tok2)
-        -- With our stub ngx.md5 mixing on the full seed string (including request_id),
-        -- different IDs produce different salts.
         assert.not_equal(tok1, tok2, "different request_ids must produce different tokens")
     end)
 
@@ -441,53 +483,50 @@ end)
 -- ============================================================================
 describe("pii_protector skip_system_messages", function()
 
-    -- Helper: build a minimal chat request body with a system message containing
-    -- a known email and a user message containing a different email.
-    -- "noreply@anthropic.com" appears in the system role; "alice@example.com"
-    -- appears in the user role.
-    --
-    -- The system content starts at byte 47 in this specific JSON string:
-    --   {"messages":[{"role":"system","content":"system noreply@anthropic.com"},
-    --                {"role":"user","content":"user alice@example.com"}]}
+    -- New architecture: Presidio receives only the decoded user text (not raw JSON).
+    -- Span offsets are therefore relative to the decoded user content string.
     local SYSTEM_EMAIL = "noreply@anthropic.com"
     local USER_EMAIL   = "alice@example.com"
+
+    -- Body with both a system message (containing SYSTEM_EMAIL) and a user
+    -- message (containing USER_EMAIL).
     local BODY = string.format(
         '{"messages":[{"role":"system","content":"system %s"},{"role":"user","content":"user %s"}]}',
         SYSTEM_EMAIL, USER_EMAIL
     )
 
-    -- Presidio returns both emails as detected entities.  We work out their
-    -- offsets in BODY manually and return them from the mock.
-    local sys_start  = BODY:find(SYSTEM_EMAIL, 1, true) - 1  -- 0-based
-    local sys_end    = sys_start + #SYSTEM_EMAIL
-    local user_start = BODY:find(USER_EMAIL,   1, true) - 1
-    local user_end   = user_start + #USER_EMAIL
+    -- With skip_system_messages=true (default), Presidio receives only:
+    --   "user alice@example.com"
+    -- USER_EMAIL starts at offset 5 (0-based) in that string.
+    local USER_TEXT        = "user " .. USER_EMAIL
+    local user_email_start = USER_TEXT:find(USER_EMAIL, 1, true) - 1  -- 0-based = 5
 
-    local BOTH_SPANS = {
-        { entity_type = "EMAIL_ADDRESS", start = sys_start,  ["end"] = sys_end,  score = 1.0 },
-        { entity_type = "EMAIL_ADDRESS", start = user_start, ["end"] = user_end, score = 1.0 },
+    -- Span for the user email only (as Presidio would see it with default behaviour).
+    local USER_SPAN = {
+        { entity_type = "EMAIL_ADDRESS",
+          start = user_email_start, ["end"] = user_email_start + #USER_EMAIL,
+          score = 1.0 },
     }
 
     it("system-message email is NOT tokenized, user-message email IS (default behaviour)", function()
-        install_http_mock(BOTH_SPANS)
+        install_http_mock(USER_SPAN)
         local d   = reload()
         local ctx = req_ctx(BODY)
         local r   = d.run(ctx, DET, "request")
 
-        -- At least the user email triggered a scrub
         assert.equal("scrubbed", r.verdict)
 
-        -- Original user email must be gone
+        -- Original user email must be gone from re-encoded body
         assert.is_nil(ctx.raw_request_body:find(USER_EMAIL, 1, true),
                       "user email must be tokenized")
 
-        -- System email must be preserved (not tokenized)
+        -- System email must be preserved
         assert.not_nil(ctx.raw_request_body:find(SYSTEM_EMAIL, 1, true),
                        "system email must NOT be tokenized")
     end)
 
     it("only one token entry created (system email excluded, user email tokenized)", function()
-        install_http_mock(BOTH_SPANS)
+        install_http_mock(USER_SPAN)
         local d   = reload()
         local ctx = req_ctx(BODY)
         d.run(ctx, DET, "request")
@@ -498,6 +537,19 @@ describe("pii_protector skip_system_messages", function()
     end)
 
     it("skip_system_messages=false tokenizes both emails", function()
+        -- With include_all=true, Presidio receives:
+        --   "system noreply@anthropic.com\0user alice@example.com"
+        -- SYSTEM_EMAIL starts at offset 7; USER_EMAIL starts at offset 7 + 21 + 1 + 5 = 34
+        local all_text  = "system " .. SYSTEM_EMAIL .. "\0" .. "user " .. USER_EMAIL
+        local sys_s     = all_text:find(SYSTEM_EMAIL, 1, true) - 1  -- 0-based
+        local usr_s     = all_text:find(USER_EMAIL,   1, true) - 1  -- 0-based
+
+        local BOTH_SPANS = {
+            { entity_type = "EMAIL_ADDRESS",
+              start = sys_s, ["end"] = sys_s + #SYSTEM_EMAIL, score = 1.0 },
+            { entity_type = "EMAIL_ADDRESS",
+              start = usr_s, ["end"] = usr_s + #USER_EMAIL,   score = 1.0 },
+        }
         install_http_mock(BOTH_SPANS)
         local d   = reload()
         local ctx = req_ctx(BODY)
@@ -516,11 +568,8 @@ describe("pii_protector skip_system_messages", function()
     end)
 
     it("returns pass when the only detected entity is in a system message", function()
-        -- Presidio returns only the system-message email
-        local sys_only = {
-            { entity_type = "EMAIL_ADDRESS", start = sys_start, ["end"] = sys_end, score = 1.0 },
-        }
-        install_http_mock(sys_only)
+        -- With default behaviour, Presidio only receives the user text and finds nothing.
+        install_http_mock({})
         local d   = reload()
         local ctx = req_ctx(BODY)
         local r   = d.run(ctx, DET, "request")
@@ -537,11 +586,12 @@ describe("pii_protector skip_system_messages", function()
             '{"messages":[{"role":"assistant","content":"contact %s"},{"role":"user","content":"user %s"}]}',
             assistant_email, USER_EMAIL
         )
-        local a_start = body2:find(assistant_email, 1, true) - 1
-        local u_start = body2:find(USER_EMAIL, 1, true) - 1
-        local spans2  = {
-            { entity_type = "EMAIL_ADDRESS", start = a_start, ["end"] = a_start + #assistant_email, score = 1.0 },
-            { entity_type = "EMAIL_ADDRESS", start = u_start, ["end"] = u_start + #USER_EMAIL,      score = 1.0 },
+        -- Presidio only receives "user alice@example.com"
+        local u_text = "user " .. USER_EMAIL
+        local u_s    = u_text:find(USER_EMAIL, 1, true) - 1  -- 0-based
+        local spans2 = {
+            { entity_type = "EMAIL_ADDRESS",
+              start = u_s, ["end"] = u_s + #USER_EMAIL, score = 1.0 },
         }
         install_http_mock(spans2)
         local d   = reload()
@@ -561,6 +611,8 @@ end)
 -- ============================================================================
 describe("pii_protector allow_list passthrough", function()
 
+    local BODY = '{"messages":[{"role":"user","content":"hello"}]}'
+
     it("allow_list is included in the Presidio request payload", function()
         local captured_payload
 
@@ -575,7 +627,7 @@ describe("pii_protector allow_list passthrough", function()
         end
 
         local d   = reload()
-        local ctx = req_ctx("hello")
+        local ctx = req_ctx(BODY)
         local det = { name = "pii-protect", fail_open = true,
                       allow_list = { "noreply@anthropic.com", "bot@internal" } }
         d.run(ctx, det, "request")
@@ -600,7 +652,7 @@ describe("pii_protector allow_list passthrough", function()
         end
 
         local d   = reload()
-        local ctx = req_ctx("hello")
+        local ctx = req_ctx(BODY)
         local det = { name = "pii-protect", fail_open = true,
                       allow_list = { "noreply@anthropic.com" },
                       allow_list_match = "regex" }
@@ -623,81 +675,153 @@ describe("pii_protector allow_list passthrough", function()
         end
 
         local d   = reload()
-        local ctx = req_ctx("hello")
+        local ctx = req_ctx(BODY)
         d.run(ctx, DET, "request")  -- DET has no allow_list
 
         assert.is_nil(captured_payload.allow_list,
                       "allow_list must not be sent when not configured")
     end)
 
+    it("Presidio receives decoded user content (not raw JSON)", function()
+        local captured_text
+
+        package.loaded["utils.http"]  = nil
+        package.preload["utils.http"] = function()
+            return {
+                request = function(opts)
+                    local p = require("utils.json").decode(opts.body)
+                    captured_text = p and p.text
+                    return 200, {}, "[]", nil
+                end
+            }
+        end
+
+        local d   = reload()
+        -- Body with \u0040 JSON escape (@ symbol): decoded content = "user@example.com"
+        local ctx = req_ctx('{"messages":[{"role":"user","content":"user\\u0040example.com"}]}')
+        d.run(ctx, DET, "request")
+
+        -- Presidio must receive the decoded "@", not the raw JSON "\u0040"
+        assert.not_nil(captured_text)
+        assert.not_nil(captured_text:find("@", 1, true),
+                       "Presidio must receive decoded @ character, not \\u0040 escape")
+        assert.is_nil(captured_text:find("\\u0040", 1, true),
+                      "Presidio must not receive raw JSON escape")
+    end)
+
 end)
 
 -- ============================================================================
--- 9. JSON escape integrity guard
+-- 9. Encoding correctness — no raw JSON escape corruption
 -- ============================================================================
-describe("pii_protector JSON escape integrity guard", function()
+describe("pii_protector encoding correctness", function()
 
-    -- Regression test: pii_protector sends the raw JSON body to Presidio, so
-    -- Presidio's codepoint offsets are relative to the raw bytes including any
-    -- \uXXXX escape sequences.  If a span boundary lands inside an escape (e.g.
-    -- at the 'u' of \u0040), tokenize_spans would produce \[TOKEN] — an invalid
-    -- JSON escape.  The guard must detect this and fall back to "pass".
+    it("tokenizes PII in content containing \\uXXXX escapes without corrupting JSON", function()
+        -- Old architecture sent raw JSON to Presidio; a span landing inside
+        -- \u0040 would produce \[TOKEN] — an invalid JSON escape.
+        -- New architecture sends decoded text, so @ is a single char at a
+        -- known offset.  Tokenization operates on "@..." directly and the
+        -- result is re-encoded as valid JSON.
 
-    it("returns pass when a Presidio span starts inside a \\uXXXX escape", function()
-        -- Body: raw JSON containing \u0040 (JSON-escape for @) inside a string.
-        local body = '{"messages":[{"role":"user","content":"test\\u0040phone"}]}'
+        -- Decoded user text: "note@: email alice@example.com"
+        -- The \u0040 in the raw JSON decodes to "@".
+        local raw_body = '{"messages":[{"role":"user","content":"note\\u0040: email alice@example.com"}]}'
+        local decoded_text = "note@: email alice@example.com"
 
-        -- Find the 1-based position of '\' in \u0040 inside the body.
-        local backslash_1 = body:find("\\u0040", 1, true)
-        assert.not_nil(backslash_1, "test body must contain \\u0040")
-
-        -- The 'u' is immediately after '\'.  In 0-based codepoint terms (what
-        -- Presidio returns), the 'u' is at backslash_1 + 1 - 1 = backslash_1.
-        local u_pos_0based = backslash_1  -- 0-based: 'u' follows '\' at 1-based (backslash_1+1)
-
-        -- Simulate Presidio detecting a phone starting at 'u' (inside the escape).
-        local span_end = u_pos_0based + 9  -- covers "u0040phon"
-        local spans = {{ entity_type = "PHONE_NUMBER",
-                         start = u_pos_0based, ["end"] = span_end, score = 0.9 }}
+        -- alice@example.com starts at offset 13 in decoded_text (0-based)
+        local alice_s = decoded_text:find("alice@example.com", 1, true) - 1
+        local spans   = {{ entity_type = "EMAIL_ADDRESS",
+                           start = alice_s, ["end"] = alice_s + 17, score = 0.95 }}
 
         install_http_mock(spans)
         local d   = reload()
-        local ctx = req_ctx(body)
+        local ctx = req_ctx(raw_body)
         local r   = d.run(ctx, DET, "request")
 
-        -- Guard: tokenization would have produced \[TOKEN] (invalid JSON escape).
-        -- pii_protector must fall back to pass rather than forward corrupted JSON.
-        assert.equal("pass", r.verdict,
-            "must return pass when tokenization would corrupt a JSON escape")
-        assert.equal(body, ctx.raw_request_body,
-            "raw_request_body must be unchanged")
-        assert.is_nil(ctx.pii_token_map,
-            "pii_token_map must not be set when guard fires")
-    end)
-
-    it("still tokenizes PII that does not touch any \\uXXXX escape", function()
-        -- Body with unicode escape elsewhere but PII clearly separated from it.
-        -- \u0040 appears before the email; the EMAIL span starts well after it.
-        local body = '{"messages":[{"role":"user","content":"note\\u0040: email alice@example.com"}]}'
-
-        -- Find the actual byte position of "alice" in the raw body.
-        local alice_1 = body:find("alice@example.com", 1, true)
-        assert.not_nil(alice_1, "test body must contain the email")
-        local alice_0 = alice_1 - 1  -- convert to 0-based for Presidio
-
-        local spans = {{ entity_type = "EMAIL_ADDRESS",
-                         start = alice_0, ["end"] = alice_0 + 17, score = 0.95 }}
-
-        install_http_mock(spans)
-        local d   = reload()
-        local ctx = req_ctx(body)
-        local r   = d.run(ctx, DET, "request")
-
-        -- PII is safely outside the escape; tokenization should succeed.
         assert.equal("scrubbed", r.verdict,
-            "PII safely outside \\uXXXX escape must still be tokenized")
+            "PII in content with \\u0040 escape must be tokenized")
         assert.is_nil(ctx.raw_request_body:find("alice@example.com", 1, true),
             "original email must be absent after tokenization")
+
+        -- Re-encoded body must be valid JSON (no corrupted \[TOKEN] sequences)
+        local parsed = json_real.decode(ctx.raw_request_body)
+        assert.not_nil(parsed, "re-encoded body must be valid JSON")
+    end)
+
+    it("tokenizes PII in content containing escaped quotes without corrupting JSON", function()
+        -- Decoded user text: 'say "hello" to alice@example.com'
+        -- In raw JSON this is: "say \"hello\" to alice@example.com"
+        local decoded_text = 'say "hello" to alice@example.com'
+        -- cjson encodes " as \", so build JSON manually with escaped quotes
+        local raw_body = '{"messages":[{"role":"user","content":"say \\"hello\\" to alice@example.com"}]}'
+
+        local alice_s = decoded_text:find("alice@example.com", 1, true) - 1  -- 0-based
+        local spans   = {{ entity_type = "EMAIL_ADDRESS",
+                           start = alice_s, ["end"] = alice_s + 17, score = 0.95 }}
+
+        install_http_mock(spans)
+        local d   = reload()
+        local ctx = req_ctx(raw_body)
+        local r   = d.run(ctx, DET, "request")
+
+        assert.equal("scrubbed", r.verdict)
+        assert.is_nil(ctx.raw_request_body:find("alice@example.com", 1, true))
+
+        local parsed = json_real.decode(ctx.raw_request_body)
+        assert.not_nil(parsed, "re-encoded body must be valid JSON")
+        -- The escaped quotes must survive the round-trip
+        local content = parsed.messages[1].content
+        assert.not_nil(content:find('"hello"', 1, true),
+                       "escaped quotes must survive tokenization round-trip")
+    end)
+
+    it("multi-turn: spans in turn 2 don't affect turn 1", function()
+        local body = '{"messages":[' ..
+            '{"role":"user","content":"hello world"},' ..
+            '{"role":"user","content":"email alice@example.com please"}' ..
+        ']}'
+        -- Decoded texts joined with NUL:
+        --   "hello world\0email alice@example.com please"
+        -- alice@example.com is at offset 6 within the second field (0-based),
+        -- which maps to offset 12 + 1 + 6 = 19 in the joined string (0-based).
+        local joined = "hello world\0email alice@example.com please"
+        local alice_joined_s = joined:find("alice@example.com", 1, true) - 1  -- 0-based
+
+        local spans = {{ entity_type = "EMAIL_ADDRESS",
+                         start = alice_joined_s, ["end"] = alice_joined_s + 17, score = 0.9 }}
+        install_http_mock(spans)
+        local d   = reload()
+        local ctx = req_ctx(body)
+        local r   = d.run(ctx, DET, "request")
+
+        assert.equal("scrubbed", r.verdict)
+        local parsed = json_real.decode(ctx.raw_request_body)
+        assert.not_nil(parsed)
+        -- Turn 1 must be untouched
+        assert.equal("hello world", parsed.messages[1].content,
+                     "first turn must be unchanged")
+        -- Turn 2 must have the email replaced
+        assert.is_nil(parsed.messages[2].content:find("alice@example.com", 1, true),
+                      "email in turn 2 must be tokenized")
+    end)
+
+    it("span crossing NUL separator is silently dropped and request passes clean", function()
+        local body = '{"messages":[' ..
+            '{"role":"user","content":"alice@example.com"},' ..
+            '{"role":"user","content":"hello"}' ..
+        ']}'
+        -- Joined: "alice@example.com\0hello"
+        -- A span that crosses the NUL (e.g. start=16, end=20) crosses the boundary.
+        local spans = {{ entity_type = "EMAIL_ADDRESS",
+                         start = 16, ["end"] = 20, score = 0.9 }}
+        install_http_mock(spans)
+        local d   = reload()
+        local ctx = req_ctx(body)
+        local r   = d.run(ctx, DET, "request")
+
+        -- Cross-boundary span is dropped → no tokenization → pass
+        assert.equal("pass", r.verdict)
+        assert.is_nil(ctx.pii_token_map)
     end)
 
 end)
@@ -725,7 +849,8 @@ describe("orchestrator recognises pii_protector type", function()
         local orch = require("guardrails.orchestrator")
 
         local ctx = {
-            raw_request_body = "hello world",
+            raw_request_body = '{"messages":[{"role":"user","content":"hello world"}]}',
+            request_body     = { messages = {{ role = "user", content = "hello world" }} },
             response_body    = nil,
             pii_token_map    = nil,
             request_id       = "test-id",
