@@ -30,6 +30,18 @@ frontend/.npm/
 # Frontend test output
 frontend/playwright-report/
 frontend/test-results/
+frontend/coverage/
+
+# Playwright / root test output
+test-results/
+
+# LuaCov coverage artifacts
+.luacov
+luacov.stats.out
+luacov.report.out
+
+# Local Docker dev environment (Claude Code session data, worktrees)
+testdocker/
 
 # Test environment
 testhome/
@@ -49,3 +61,4 @@ Thumbs.db
 *.swo
 *~
 run_docker_production.sh
+run-docker-gw.sh
