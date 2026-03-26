@@ -4,6 +4,22 @@ import { test, expect, Page } from "@playwright/test";
 // Helpers
 // ---------------------------------------------------------------------------
 
+const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
+
+/** Delete all conversations for the current user via the admin API (best-effort cleanup). */
+async function deleteAllConversations(page: Page) {
+  try {
+    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
+    if (!resp.ok()) return;
+    const convs = (await resp.json()) as Array<{ id: string }>;
+    for (const conv of convs) {
+      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
+    }
+  } catch {
+    // best-effort — don't fail the test on cleanup errors
+  }
+}
+
 async function gotoChatPage(page: Page) {
   await page.goto("/chat");
   // Wait for the page to settle (config bar or empty state)
@@ -53,10 +69,163 @@ async function selectFirstGateway(page: Page): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// localStorage persistence helpers
+// ---------------------------------------------------------------------------
+
+const LS_TENANT  = "aig-chat-tenant";
+const LS_GATEWAY = "aig-chat-gateway";
+const LS_MODEL   = "aig-chat-model";
+
+/** Clear all chat localStorage keys so tests start from a known blank state. */
+async function clearChatStorage(page: Page) {
+  // Must navigate somewhere first so we're on the right origin
+  await page.evaluate(
+    ([t, g, m]) => { localStorage.removeItem(t); localStorage.removeItem(g); localStorage.removeItem(m); },
+    [LS_TENANT, LS_GATEWAY, LS_MODEL],
+  );
+}
+
+/** Read all three chat localStorage keys at once. */
+async function readChatStorage(page: Page) {
+  return page.evaluate(
+    ([t, g, m]) => ({
+      tenant:  localStorage.getItem(t) ?? "",
+      gateway: localStorage.getItem(g) ?? "",
+      model:   localStorage.getItem(m) ?? "",
+    }),
+    [LS_TENANT, LS_GATEWAY, LS_MODEL],
+  );
+}
+
+/** Return the selected option value for a <select> element. */
+async function selectValue(page: Page, index: number): Promise<string> {
+  return page.locator("select").nth(index).inputValue();
+}
+
+/** Return the model name shown by the ModelPicker button (strips the trailing dropdown arrow). */
+async function modelPickerText(page: Page): Promise<string> {
+  return (await page.locator("[aria-haspopup='listbox']").textContent() ?? "")
+    .trim()
+    .replace(/[▾▼▽⌄\s]+$/, "")
+    .trim();
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
+test.describe("Chat page — localStorage persistence", () => {
+  test.beforeEach(async ({ page }) => {
+    // Navigate to / first so we're on the right origin before touching storage
+    await page.goto("/");
+    await clearChatStorage(page);
+  });
+
+  test("writes tenant, gateway and model to localStorage immediately after selection", async ({ page }) => {
+    await gotoChatPage(page);
+    const ok = await selectFirstGateway(page);
+    if (!ok) { test.skip(); return; }
+
+    // Wait for effects to flush (they run after render)
+    await page.waitForTimeout(200);
+
+    const stored = await readChatStorage(page);
+    expect(stored.tenant,  "tenant id should be written").toBeTruthy();
+    expect(stored.gateway, "gateway id should be written").toBeTruthy();
+    expect(stored.model,   "model should be written").toBeTruthy();
+
+    // Stored values must match what the selects actually show
+    expect(stored.tenant).toBe(await selectValue(page, 0));
+    expect(stored.gateway).toBe(await selectValue(page, 1));
+    expect(stored.model).toBe(await modelPickerText(page));
+  });
+
+  test("restores tenant, gateway and model after SPA navigation away and back", async ({ page }) => {
+    await gotoChatPage(page);
+    const ok = await selectFirstGateway(page);
+    if (!ok) { test.skip(); return; }
+
+    await page.waitForTimeout(200);
+
+    // Capture what was selected
+    const tenantBefore  = await selectValue(page, 0);
+    const gatewayBefore = await selectValue(page, 1);
+    const modelBefore   = await modelPickerText(page);
+    expect(tenantBefore).toBeTruthy();
+    expect(gatewayBefore).toBeTruthy();
+    expect(modelBefore).toBeTruthy();
+
+    // SPA navigate away then back (React Router unmounts / remounts Chat)
+    await page.goto("/dashboard");
+    await page.waitForTimeout(200);
+    await page.goto("/chat");
+    // Allow time for async API calls (tenants, gateways) + React effects to settle
+    await page.waitForTimeout(1200);
+
+    const tenantAfter  = await selectValue(page, 0);
+    const gatewayAfter = await selectValue(page, 1);
+    const modelAfter   = await modelPickerText(page);
+
+    expect(tenantAfter,  `tenant should be restored to ${tenantBefore}`).toBe(tenantBefore);
+    expect(gatewayAfter, `gateway should be restored to ${gatewayBefore}`).toBe(gatewayBefore);
+    expect(modelAfter,   `model should be restored to ${modelBefore}`).toBe(modelBefore);
+  });
+
+  test("restores tenant, gateway and model after hard page reload", async ({ page }) => {
+    await gotoChatPage(page);
+    const ok = await selectFirstGateway(page);
+    if (!ok) { test.skip(); return; }
+
+    await page.waitForTimeout(200);
+
+    const tenantBefore  = await selectValue(page, 0);
+    const gatewayBefore = await selectValue(page, 1);
+    const modelBefore   = await modelPickerText(page);
+
+    // Hard reload (equivalent to Ctrl+F5)
+    await page.reload();
+    await page.waitForTimeout(1200);
+
+    const tenantAfter  = await selectValue(page, 0);
+    const gatewayAfter = await selectValue(page, 1);
+    const modelAfter   = await modelPickerText(page);
+
+    expect(tenantAfter,  `tenant should survive reload (was ${tenantBefore})`).toBe(tenantBefore);
+    expect(gatewayAfter, `gateway should survive reload (was ${gatewayBefore})`).toBe(gatewayBefore);
+    expect(modelAfter,   `model should survive reload (was ${modelBefore})`).toBe(modelBefore);
+  });
+
+  test("does not reset gateway when only the model changes", async ({ page }) => {
+    await gotoChatPage(page);
+    const ok = await selectFirstGateway(page);
+    if (!ok) { test.skip(); return; }
+
+    await page.waitForTimeout(200);
+    const gatewayBefore = await selectValue(page, 1);
+
+    // Change model (open picker, pick second option if available)
+    const modelPickerBtn = page.locator("[aria-haspopup='listbox']");
+    await modelPickerBtn.click();
+    const options = page.locator("[role='listbox'] [role='option']");
+    const count = await options.count();
+    if (count > 1) {
+      await options.nth(1).click();
+    } else {
+      await page.keyboard.press("Escape");
+    }
+    await page.waitForTimeout(200);
+
+    // Gateway must not have changed
+    const gatewayAfter = await selectValue(page, 1);
+    expect(gatewayAfter, "changing model must not reset the gateway").toBe(gatewayBefore);
+  });
+});
+
 test.describe("Chat page", () => {
+  test.afterEach(async ({ page }) => {
+    await deleteAllConversations(page);
+  });
+
   test("page loads at /chat", async ({ page }) => {
     await gotoChatPage(page);
     // Sidebar nav link exists and is active
