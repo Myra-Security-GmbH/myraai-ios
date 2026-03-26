@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "prebuild": "node -e \"const m=[];['VITE_ADMIN_URL','VITE_AUTH_URL','VITE_GATEWAY_URL','VITE_DOCS_URL'].forEach(v=>{if(!process.env[v])m.push(v)});if(m.length){console.error('\\n\\x1b[31m✖ Build aborted: missing required env vars:\\x1b[0m\\n'+m.map(v=>'  '+v).join('\\n')+'\\n\\n\\x1b[33m  Run: bash build_frontend.sh\\x1b[0m\\n');process.exit(1)}\"",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
