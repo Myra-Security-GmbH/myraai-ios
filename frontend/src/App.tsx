@@ -1,3 +1,11 @@
+// @myraui packages in use:
+//   @myraui/core    — loaded here as <Core> to inject global styles
+//   @myraui/styles  — imported in Layout.module.scss for design tokens
+//   @myraui/utils   — getCyDataId used in Sidebar and LoginPage for data-cy attributes
+//   @myraui/badge   — available for notification count indicators (number overlaid on an icon,
+//                     e.g. unread count on a sidebar item). Import Badge from "@myraui/badge"
+//                     when adding such indicators. Do NOT confuse with <StatusBadge> (colored
+//                     text pill in src/common/components/StatusBadge.tsx).
 import { Core } from "@myraui/core";
 import { Route, Routes, Navigate } from "react-router-dom";
 import { ThemeProvider } from "src/common/contexts/ThemeContext";

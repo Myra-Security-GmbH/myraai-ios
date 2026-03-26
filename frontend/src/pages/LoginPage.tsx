@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getCyDataId } from "@myraui/utils";
 import { authApi } from "src/api/client";
 import { useAuth } from "src/common/contexts/AuthContext";
+import s from "./LoginPage.module.scss";
+
+const cyId = getCyDataId("login-page");
 
 type Step = "choose" | "email-input" | "code-input";
 
@@ -55,37 +59,37 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <div style={styles.logo}>
-          <img src="/logo.svg" alt="AI Gateway" style={styles.logoImg} />
+    <div className={s.page}>
+      <div className={s.card}>
+        <div className={s.logo}>
+          <img src="/logo.svg" alt="AI Gateway" className={s["logo-img"]} />
         </div>
 
-        <h1 style={styles.title}>Sign in to AI Gateway</h1>
+        <h1 className={s.title}>Sign in to AI Gateway</h1>
 
-        {error && <div style={styles.error}>{error}</div>}
-        {info  && <div style={styles.info}>{info}</div>}
+        {error && <div className={s.error}>{error}</div>}
+        {info  && <div className={s.info}>{info}</div>}
 
         {step === "choose" && (
-          <div style={styles.methods}>
+          <div className={s.methods}>
             {/* Google SSO — temporarily hidden */}
-            {/* <a href="/admin/auth/google" style={styles.googleBtn}>
+            {/* <a href="/admin/auth/google" className={s["google-btn"]}>
               <GoogleIcon />
               Continue with Google
             </a>
 
-            <div style={styles.divider}><span>or</span></div> */}
+            <div className={s.divider}><span>or</span></div> */}
 
             {/* Email OTP */}
-            <button style={styles.emailBtn} onClick={() => setStep("email-input")}>
+            <button className={s["email-btn"]} onClick={() => setStep("email-input")} data-cy={cyId("email-btn")}>
               Continue with Email code
             </button>
           </div>
         )}
 
         {step === "email-input" && (
-          <form onSubmit={handleRequestOTP} style={styles.form}>
-            <label htmlFor="login-email" style={styles.label}>Email address</label>
+          <form onSubmit={handleRequestOTP} className={s.form}>
+            <label htmlFor="login-email" className={s.label}>Email address</label>
             <input
               id="login-email"
               type="email"
@@ -94,21 +98,22 @@ export default function LoginPage() {
               placeholder="admin@example.com"
               required
               autoFocus
-              style={styles.input}
+              className={s.input}
+              data-cy={cyId("email-input")}
             />
-            <button type="submit" disabled={loading} style={styles.primaryBtn}>
+            <button type="submit" disabled={loading} className={s["primary-btn"]} data-cy={cyId("send-code-btn")}>
               {loading ? "Sending…" : "Send code"}
             </button>
-            <button type="button" style={styles.linkBtn} onClick={() => setStep("choose")}>
+            <button type="button" className={s["link-btn"]} onClick={() => setStep("choose")}>
               ← Back
             </button>
           </form>
         )}
 
         {step === "code-input" && (
-          <form onSubmit={handleVerifyOTP} style={styles.form}>
-            <label htmlFor="login-code" style={styles.label}>6-digit code</label>
-            <p style={styles.hint}>We sent a code to <strong>{email}</strong></p>
+          <form onSubmit={handleVerifyOTP} className={s.form}>
+            <label htmlFor="login-code" className={s.label}>6-digit code</label>
+            <p className={s.hint}>We sent a code to <strong>{email}</strong></p>
             <input
               id="login-code"
               type="text"
@@ -120,12 +125,13 @@ export default function LoginPage() {
               placeholder="123456"
               required
               autoFocus
-              style={{ ...styles.input, letterSpacing: "0.3em", fontSize: 22, textAlign: "center" }}
+              className={s["code-input"]}
+              data-cy={cyId("code-input")}
             />
-            <button type="submit" disabled={loading || code.length !== 6} style={styles.primaryBtn}>
+            <button type="submit" disabled={loading || code.length !== 6} className={s["primary-btn"]} data-cy={cyId("sign-in-btn")}>
               {loading ? "Verifying…" : "Sign in"}
             </button>
-            <button type="button" style={styles.linkBtn} onClick={() => { setStep("email-input"); setCode(""); setInfo(null); }}>
+            <button type="button" className={s["link-btn"]} onClick={() => { setStep("email-input"); setCode(""); setInfo(null); }}>
               ← Back
             </button>
           </form>
@@ -145,144 +151,3 @@ function GoogleIcon() {
     </svg>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100dvh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "var(--bg, #f5f5f5)",
-    padding: 16,
-  },
-  card: {
-    background: "var(--card-bg, #fff)",
-    border: "1px solid var(--border, #e5e7eb)",
-    borderRadius: 12,
-    padding: "40px 36px",
-    width: "100%",
-    maxWidth: 400,
-    boxShadow: "0 4px 24px rgba(0,0,0,.06)",
-  },
-  logo: {
-    display: "flex",
-    justifyContent: "center",
-    marginBottom: 24,
-  },
-  logoImg: {
-    height: 36,
-    background: "#1B3A5C",
-    padding: "8px 16px",
-    borderRadius: 8,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 600,
-    textAlign: "center",
-    margin: "0 0 24px",
-    color: "var(--text, #111)",
-  },
-  methods: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-  },
-  googleBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    padding: "10px 16px",
-    borderRadius: 8,
-    border: "1px solid var(--border, #e5e7eb)",
-    background: "var(--card-bg, #fff)",
-    color: "var(--text, #111)",
-    fontSize: 14,
-    fontWeight: 500,
-    textDecoration: "none",
-    cursor: "pointer",
-    transition: "background .15s",
-  },
-  divider: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    color: "var(--text-muted, #888)",
-    fontSize: 12,
-  },
-  emailBtn: {
-    padding: "10px 16px",
-    borderRadius: 8,
-    border: "1px solid var(--border, #e5e7eb)",
-    background: "transparent",
-    color: "var(--text, #111)",
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: "pointer",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: 500,
-    color: "var(--text, #111)",
-    marginBottom: -4,
-  },
-  hint: {
-    fontSize: 13,
-    color: "var(--text-muted, #888)",
-    margin: 0,
-  },
-  input: {
-    padding: "10px 12px",
-    borderRadius: 8,
-    border: "1px solid var(--border, #e5e7eb)",
-    fontSize: 15,
-    outline: "none",
-    width: "100%",
-    boxSizing: "border-box",
-    background: "var(--input-bg, #fff)",
-    color: "var(--text, #111)",
-  },
-  primaryBtn: {
-    padding: "10px 16px",
-    borderRadius: 8,
-    border: "none",
-    background: "var(--primary, #2563eb)",
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: "pointer",
-    marginTop: 4,
-  },
-  linkBtn: {
-    padding: "6px 0",
-    background: "none",
-    border: "none",
-    color: "var(--text-muted, #888)",
-    fontSize: 13,
-    cursor: "pointer",
-    textAlign: "left",
-  },
-  error: {
-    background: "rgba(239,68,68,.08)",
-    color: "#dc2626",
-    border: "1px solid rgba(239,68,68,.2)",
-    borderRadius: 8,
-    padding: "10px 12px",
-    fontSize: 13,
-    marginBottom: 12,
-  },
-  info: {
-    background: "rgba(34,197,94,.08)",
-    color: "#16a34a",
-    border: "1px solid rgba(34,197,94,.2)",
-    borderRadius: 8,
-    padding: "10px 12px",
-    fontSize: 13,
-    marginBottom: 12,
-  },
-};
