@@ -193,6 +193,7 @@ export interface User {
   name: string | null;
   role: "admin" | "tenant_admin" | "member" | "viewer";
   created_at: string;
+  last_login_at: string | null;
 }
 
 export interface AuthToken {
@@ -462,4 +463,59 @@ export interface AnalyticsDepth {
   by_tenant: TenantStats[];
   by_gateway: GatewayStats[];
   by_user: UserStats[];
+}
+
+// ---------------------------------------------------------------------------
+// Chat types
+// ---------------------------------------------------------------------------
+
+export interface ChatConversation {
+  id: string;
+  user_id?: string;
+  gateway_id: string;
+  title: string;
+  model: string;
+  system_prompt: string | null;
+  temperature: number;
+  max_tokens: number;
+  created_at: string;
+  updated_at: string;
+  messages?: ChatMessage[];
+}
+
+export interface ChatMessage {
+  id: string;
+  conversation_id?: string;
+  parent_message_id: string | null;
+  role: "user" | "assistant" | "system";
+  /** Plain text, or JSON-serialised content blocks when attachments are present. */
+  content: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_usd: number | null;
+  latency_ms: number | null;
+  created_at: string;
+  attachments?: ChatAttachment[];
+}
+
+export interface ChatAttachment {
+  id: string;
+  message_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+  /** Only present when fetched via GET /attachments/:id */
+  data?: string;
+}
+
+export interface ChatPreset {
+  id: string;
+  name: string;
+  model: string;
+  system_prompt: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
+  created_at: string;
+  updated_at: string;
 }

@@ -183,8 +183,9 @@ function M.migrate(cfg)
 
     -- Split on ';' and execute each non-empty statement.
     for stmt in ddl:gmatch("([^;]+)") do
-        stmt = stmt:match("^%s*(.-)%s*$")  -- trim whitespace
-        if stmt ~= "" and not stmt:match("^%-%-") then
+        stmt = stmt:gsub("%-%-[^\n]*", "")  -- strip inline/block comments
+        stmt = stmt:match("^%s*(.-)%s*$")   -- trim whitespace
+        if stmt ~= "" then
             local res, e = db:query(stmt)
             if not res then
                 -- Ignore "Table already exists" (1050) — idempotent
@@ -228,6 +229,9 @@ function M.migrate(cfg)
         db:query("SET foreign_key_checks=1")
         ngx.log(ngx.NOTICE, "storage/mysql: flat permission model migration complete")
     end
+
+    -- Add last_login_at column if not present (idempotent)
+    db:query("ALTER TABLE `user` ADD COLUMN IF NOT EXISTS last_login_at BIGINT")
 
     db:set_keepalive(0, 5)
 end
@@ -839,7 +843,9 @@ function M.get_user(id)
         SELECT id, tenant_id, email, name, role,
                CASE WHEN deleted_at IS NOT NULL
                     THEN DATE_FORMAT(FROM_UNIXTIME(deleted_at), '%Y-%m-%dT%H:%i:%sZ') END AS deleted_at,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+               CASE WHEN last_login_at IS NOT NULL
+                    THEN DATE_FORMAT(FROM_UNIXTIME(last_login_at), '%Y-%m-%dT%H:%i:%sZ') END AS last_login_at
         FROM `user` WHERE id = ?
     ]], id)
     release(db)
@@ -853,7 +859,9 @@ function M.list_users(tenant_id)
     if tenant_id then
         rows = query_all(db, [[
             SELECT id, tenant_id, email, name, role,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                   CASE WHEN last_login_at IS NOT NULL
+                        THEN DATE_FORMAT(FROM_UNIXTIME(last_login_at), '%Y-%m-%dT%H:%i:%sZ') END AS last_login_at
             FROM `user`
             WHERE tenant_id = ? AND deleted_at IS NULL
             ORDER BY created_at DESC
@@ -861,7 +869,9 @@ function M.list_users(tenant_id)
     elseif tenant_id == false then
         rows = query_all(db, [[
             SELECT id, tenant_id, email, name, role,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                   CASE WHEN last_login_at IS NOT NULL
+                        THEN DATE_FORMAT(FROM_UNIXTIME(last_login_at), '%Y-%m-%dT%H:%i:%sZ') END AS last_login_at
             FROM `user`
             WHERE tenant_id IS NULL AND deleted_at IS NULL
             ORDER BY created_at DESC
@@ -869,7 +879,9 @@ function M.list_users(tenant_id)
     else
         rows = query_all(db, [[
             SELECT id, tenant_id, email, name, role,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                   CASE WHEN last_login_at IS NOT NULL
+                        THEN DATE_FORMAT(FROM_UNIXTIME(last_login_at), '%Y-%m-%dT%H:%i:%sZ') END AS last_login_at
             FROM `user`
             WHERE deleted_at IS NULL
             ORDER BY created_at DESC
@@ -877,6 +889,13 @@ function M.list_users(tenant_id)
     end
     release(db)
     return rows
+end
+
+function M.touch_last_login(user_id)
+    local db, err = get_conn()
+    if not db then return end
+    exec_one(db, "UPDATE `user` SET last_login_at = UNIX_TIMESTAMP() WHERE id = ?", user_id)
+    release(db)
 end
 
 function M.list_user_gateways(user_id)
@@ -1667,6 +1686,301 @@ function M.upsert_oauth_link(user_id, provider, subject, email)
     release(db)
     return e
 end
+
+-- ---------------------------------------------------------------------------
+-- Chat: conversations
+-- ---------------------------------------------------------------------------
+
+function M.list_conversations(user_id, limit, offset)
+    limit  = math.min(limit or 50, 200)
+    offset = offset or 0
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows = query_all(db, string.format([[
+        SELECT id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
+        FROM chat_conversation
+        WHERE user_id = ? AND deleted_at IS NULL
+        ORDER BY updated_at DESC
+        LIMIT %d OFFSET %d
+    ]], limit, offset), user_id) or {}
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+function M.create_conversation(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_conversation
+            (id, user_id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+             created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    ]], id, data.user_id, data.gateway_id,
+        data.title or "New conversation",
+        data.model or "",
+        data.system_prompt,
+        data.temperature or 0.7,
+        data.max_tokens or 2048,
+        now, now)
+    release(db)
+    if e then return nil, e end
+    return id
+end
+
+function M.get_conversation(id, user_id)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local conv = query_one(db, [[
+        SELECT id, user_id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+        FROM chat_conversation
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        LIMIT 1
+    ]], id, user_id)
+    if not conv then release(db); return nil, "not_found" end
+
+    -- Load messages
+    local msgs = query_all(db, [[
+        SELECT id, parent_message_id, role, content,
+               input_tokens, output_tokens, cost_usd, latency_ms,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+        FROM chat_message
+        WHERE conversation_id = ? AND deleted_at IS NULL
+        ORDER BY created_at ASC
+    ]], id) or {}
+    -- Load attachment metadata for all messages
+    if #msgs > 0 then
+        local msg_ids = {}
+        local msg_idx = {}
+        for i, m in ipairs(msgs) do
+            msg_ids[i] = "'" .. m.id:gsub("'", "''") .. "'"
+            msg_idx[m.id] = m
+            m.attachments = setmetatable({}, cjson.array_mt)
+        end
+        local in_clause = table.concat(msg_ids, ",")
+        local atts = query_all(db, string.format([[
+            SELECT id, message_id, filename, mime_type, size_bytes,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at
+            FROM chat_attachment WHERE message_id IN (%s)
+        ]], in_clause)) or {}
+        for _, att in ipairs(atts) do
+            local m = msg_idx[att.message_id]
+            if m then m.attachments[#m.attachments+1] = att end
+        end
+    end
+    release(db)
+    conv.messages = setmetatable(msgs, cjson.array_mt)
+    return conv
+end
+
+function M.update_conversation(id, user_id, data)
+    local db, err = get_conn()
+    if not db then return err end
+    local sets = {}
+    local params = {}
+    if data.title         ~= nil then sets[#sets+1] = "title = ?";         params[#params+1] = data.title end
+    if data.model         ~= nil then sets[#sets+1] = "model = ?";         params[#params+1] = data.model end
+    if data.system_prompt ~= nil then sets[#sets+1] = "system_prompt = ?"; params[#params+1] = data.system_prompt end
+    if data.temperature   ~= nil then sets[#sets+1] = "temperature = ?";   params[#params+1] = data.temperature end
+    if data.max_tokens    ~= nil then sets[#sets+1] = "max_tokens = ?";    params[#params+1] = data.max_tokens end
+    if data.gateway_id    ~= nil then sets[#sets+1] = "gateway_id = ?";    params[#params+1] = data.gateway_id end
+    if #sets == 0 then release(db); return nil end
+    sets[#sets+1] = "updated_at = ?"
+    params[#params+1] = math.floor(ngx.now())
+    params[#params+1] = id
+    params[#params+1] = user_id
+    local sql = "UPDATE chat_conversation SET " .. table.concat(sets, ", ") ..
+                " WHERE id = ? AND user_id = ? AND deleted_at IS NULL"
+    local e = exec_one(db, sql, table.unpack(params))
+    release(db)
+    return e
+end
+
+function M.delete_conversation(id, user_id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        UPDATE chat_conversation SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+    ]], math.floor(ngx.now()), id, user_id)
+    release(db)
+    return e
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: messages
+-- ---------------------------------------------------------------------------
+
+function M.append_message(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id  = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_message
+            (id, conversation_id, parent_message_id, role, content,
+             input_tokens, output_tokens, cost_usd, latency_ms, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    ]], id, data.conversation_id, data.parent_message_id,
+        data.role, data.content,
+        data.input_tokens, data.output_tokens,
+        data.cost_usd, data.latency_ms, now)
+    if not e then
+        -- Touch conversation updated_at
+        exec_one(db, [[
+            UPDATE chat_conversation SET updated_at = ? WHERE id = ?
+        ]], now, data.conversation_id)
+    end
+    release(db)
+    if e then return nil, e end
+    return id
+end
+
+function M.update_message(id, conversation_id, user_id, content)
+    -- Simple in-place edit for Phase 1.  Phase 2 adds branching via parent_message_id.
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        UPDATE chat_message m
+        JOIN chat_conversation c ON c.id = m.conversation_id
+        SET m.content = ?
+        WHERE m.id = ? AND m.conversation_id = ? AND c.user_id = ? AND m.deleted_at IS NULL
+    ]], content, id, conversation_id, user_id)
+    release(db)
+    return e
+end
+
+function M.delete_message(id, conversation_id, user_id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        UPDATE chat_message m
+        JOIN chat_conversation c ON c.id = m.conversation_id
+        SET m.deleted_at = ?
+        WHERE m.id = ? AND m.conversation_id = ? AND c.user_id = ? AND m.deleted_at IS NULL
+    ]], math.floor(ngx.now()), id, conversation_id, user_id)
+    release(db)
+    return e
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: attachments
+-- ---------------------------------------------------------------------------
+
+function M.insert_attachment(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id  = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_attachment (id, message_id, filename, mime_type, size_bytes, data, created_at)
+        VALUES (?,?,?,?,?,?,?)
+    ]], id, data.message_id, data.filename, data.mime_type, data.size_bytes, data.data, now)
+    release(db)
+    if e then return nil, e end
+    return id
+end
+
+function M.get_attachment(id, user_id)
+    -- user_id ownership check via conversation join
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local row = query_one(db, [[
+        SELECT a.id, a.message_id, a.filename, a.mime_type, a.size_bytes, a.data,
+               DATE_FORMAT(FROM_UNIXTIME(a.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+        FROM chat_attachment a
+        JOIN chat_message m    ON m.id = a.message_id
+        JOIN chat_conversation c ON c.id = m.conversation_id
+        WHERE a.id = ? AND c.user_id = ?
+        LIMIT 1
+    ]], id, user_id)
+    release(db)
+    if not row then return nil, "not_found" end
+    return row
+end
+
+function M.delete_attachment(id, user_id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        DELETE a FROM chat_attachment a
+        JOIN chat_message m ON m.id = a.message_id
+        JOIN chat_conversation c ON c.id = m.conversation_id
+        WHERE a.id = ? AND c.user_id = ?
+    ]], id, user_id)
+    release(db)
+    return e
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: presets
+-- ---------------------------------------------------------------------------
+
+function M.list_presets(user_id)
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows = query_all(db, [[
+        SELECT id, name, model, system_prompt, temperature, max_tokens,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+        FROM chat_preset WHERE user_id = ? ORDER BY name ASC
+    ]], user_id) or {}
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+function M.create_preset(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id  = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_preset (id, user_id, name, model, system_prompt, temperature, max_tokens, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?)
+    ]], id, data.user_id, data.name, data.model or "",
+        data.system_prompt, data.temperature, data.max_tokens, now, now)
+    release(db)
+    if e then return nil, e end
+    return id
+end
+
+function M.update_preset(id, user_id, data)
+    local db, err = get_conn()
+    if not db then return err end
+    local sets   = {}
+    local params = {}
+    if data.name          ~= nil then sets[#sets+1] = "name = ?";          params[#params+1] = data.name end
+    if data.model         ~= nil then sets[#sets+1] = "model = ?";         params[#params+1] = data.model end
+    if data.system_prompt ~= nil then sets[#sets+1] = "system_prompt = ?"; params[#params+1] = data.system_prompt end
+    if data.temperature   ~= nil then sets[#sets+1] = "temperature = ?";   params[#params+1] = data.temperature end
+    if data.max_tokens    ~= nil then sets[#sets+1] = "max_tokens = ?";    params[#params+1] = data.max_tokens end
+    if #sets == 0 then release(db); return nil end
+    sets[#sets+1] = "updated_at = ?"
+    params[#params+1] = math.floor(ngx.now())
+    params[#params+1] = id
+    params[#params+1] = user_id
+    local sql = "UPDATE chat_preset SET " .. table.concat(sets, ", ") ..
+                " WHERE id = ? AND user_id = ?"
+    local e = exec_one(db, sql, table.unpack(params))
+    release(db)
+    return e
+end
+
+function M.delete_preset(id, user_id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, "DELETE FROM chat_preset WHERE id = ? AND user_id = ?", id, user_id)
+    release(db)
+    return e
+end
+
+-- ---------------------------------------------------------------------------
+-- OAuth links
+-- ---------------------------------------------------------------------------
 
 function M.get_user_by_oauth(provider, subject)
     local db, err = get_conn()

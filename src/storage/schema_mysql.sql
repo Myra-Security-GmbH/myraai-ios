@@ -47,13 +47,14 @@ CREATE TABLE IF NOT EXISTS provider_config (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `user` (
-    id         VARCHAR(36)  NOT NULL,
-    tenant_id  VARCHAR(36),
-    email      VARCHAR(255) NOT NULL,
-    name       VARCHAR(255),
-    role       VARCHAR(32)  NOT NULL DEFAULT 'member',
-    deleted_at BIGINT,
-    created_at BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    id            VARCHAR(36)  NOT NULL,
+    tenant_id     VARCHAR(36),
+    email         VARCHAR(255) NOT NULL,
+    name          VARCHAR(255),
+    role          VARCHAR(32)  NOT NULL DEFAULT 'member',
+    deleted_at    BIGINT,
+    created_at    BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    last_login_at BIGINT,
     PRIMARY KEY (id),
     UNIQUE KEY uq_user_email (email),
     CONSTRAINT fk_user_tenant FOREIGN KEY (tenant_id)
@@ -326,3 +327,72 @@ ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(
 INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
 VALUES ('groq',      'llama-3.3-70b-versatile',     0.00059,  0.00079,  NULL,      NULL,      UNIX_TIMESTAMP())
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), updated_at=VALUES(updated_at);
+
+-- ---------------------------------------------------------------------------
+-- Chat tables
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS chat_conversation (
+    id            VARCHAR(36)  NOT NULL,
+    user_id       VARCHAR(36)  NOT NULL,
+    gateway_id    VARCHAR(36)  NOT NULL,
+    title         VARCHAR(255) NOT NULL DEFAULT 'New conversation',
+    model         VARCHAR(128) NOT NULL DEFAULT '',
+    system_prompt TEXT,
+    temperature   FLOAT        DEFAULT 0.7,
+    max_tokens    INT          DEFAULT 2048,
+    created_at    BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    updated_at    BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    deleted_at    BIGINT,
+    PRIMARY KEY (id),
+    KEY idx_chat_conv_user (user_id, updated_at),
+    CONSTRAINT fk_chat_conv_user    FOREIGN KEY (user_id)    REFERENCES `user`(id)   ON DELETE CASCADE,
+    CONSTRAINT fk_chat_conv_gateway FOREIGN KEY (gateway_id) REFERENCES gateway(id)  ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS chat_message (
+    id                VARCHAR(36)  NOT NULL,
+    conversation_id   VARCHAR(36)  NOT NULL,
+    parent_message_id VARCHAR(36),
+    role              VARCHAR(16)  NOT NULL,
+    content           MEDIUMTEXT   NOT NULL,
+    input_tokens      INT,
+    output_tokens     INT,
+    cost_usd          DOUBLE,
+    latency_ms        INT,
+    created_at        BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    deleted_at        BIGINT,
+    PRIMARY KEY (id),
+    KEY idx_chat_msg_conv_ts (conversation_id, created_at),
+    CONSTRAINT fk_chat_msg_conv FOREIGN KEY (conversation_id)
+        REFERENCES chat_conversation(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS chat_attachment (
+    id          VARCHAR(36)  NOT NULL,
+    message_id  VARCHAR(36)  NOT NULL,
+    filename    VARCHAR(255) NOT NULL,
+    mime_type   VARCHAR(128) NOT NULL,
+    size_bytes  INT          NOT NULL,
+    data        LONGTEXT     NOT NULL,
+    created_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    PRIMARY KEY (id),
+    CONSTRAINT fk_chat_att_msg FOREIGN KEY (message_id)
+        REFERENCES chat_message(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS chat_preset (
+    id            VARCHAR(36)  NOT NULL,
+    user_id       VARCHAR(36)  NOT NULL,
+    name          VARCHAR(128) NOT NULL,
+    model         VARCHAR(128) NOT NULL DEFAULT '',
+    system_prompt TEXT,
+    temperature   FLOAT,
+    max_tokens    INT,
+    created_at    BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    updated_at    BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    PRIMARY KEY (id),
+    KEY idx_chat_preset_user (user_id),
+    CONSTRAINT fk_chat_preset_user FOREIGN KEY (user_id)
+        REFERENCES `user`(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

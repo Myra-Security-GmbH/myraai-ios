@@ -22,6 +22,7 @@ import Playground from "src/modules/playground/pages/Playground";
 import Users from "src/modules/users/pages/Users";
 import TenantAnalytics from "src/modules/analytics/pages/TenantAnalytics";
 import Profile from "src/modules/profile/pages/Profile";
+import Chat from "src/modules/chat/pages/Chat";
 import LoginPage from "src/pages/LoginPage";
 
 function AppShell() {
@@ -43,6 +44,7 @@ function AppShell() {
           <Route path="/logs" element={<Logs />} />
           <Route path="/analytics" element={<TenantAnalytics />} />
           <Route path="/playground" element={<Playground />} />
+          <Route path="/chat" element={<Chat />} />
           <Route path="/model-prices" element={<ModelPrices />} />
           <Route path="/profile" element={<Profile />} />
         </Routes>

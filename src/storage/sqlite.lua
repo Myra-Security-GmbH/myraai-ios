@@ -68,6 +68,10 @@ local function migrate_columns(cfg)
     for row in db:nrows("PRAGMA table_info(tenant)") do tcols[row.name] = true end
     if not tcols.budget_period then db:exec("ALTER TABLE tenant ADD COLUMN budget_period TEXT NOT NULL DEFAULT 'monthly'") end
 
+    local ucols = {}
+    for row in db:nrows("PRAGMA table_info(user)") do ucols[row.name] = true end
+    if not ucols.last_login_at then db:exec("ALTER TABLE user ADD COLUMN last_login_at INTEGER") end
+
     -- spend_ledger: period-aware persistent spend tracking (replaces shared-dict counters)
     db:exec([[
         CREATE TABLE IF NOT EXISTS spend_ledger (
@@ -262,6 +266,62 @@ local function migrate_columns(cfg)
         );
     ]])
 
+    -- Chat tables
+    cfg_db2:exec([[
+        CREATE TABLE IF NOT EXISTS chat_conversation (
+            id            TEXT    PRIMARY KEY,
+            user_id       TEXT    NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+            gateway_id    TEXT    NOT NULL REFERENCES gateway(id) ON DELETE CASCADE,
+            title         TEXT    NOT NULL DEFAULT 'New conversation',
+            model         TEXT    NOT NULL DEFAULT '',
+            system_prompt TEXT,
+            temperature   REAL    DEFAULT 0.7,
+            max_tokens    INTEGER DEFAULT 2048,
+            created_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            updated_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            deleted_at    INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_conv_user ON chat_conversation(user_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS chat_message (
+            id                TEXT    PRIMARY KEY,
+            conversation_id   TEXT    NOT NULL REFERENCES chat_conversation(id) ON DELETE CASCADE,
+            parent_message_id TEXT,
+            role              TEXT    NOT NULL,
+            content           TEXT    NOT NULL,
+            input_tokens      INTEGER,
+            output_tokens     INTEGER,
+            cost_usd          REAL,
+            latency_ms        INTEGER,
+            created_at        INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            deleted_at        INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_msg_conv_ts ON chat_message(conversation_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS chat_attachment (
+            id         TEXT    PRIMARY KEY,
+            message_id TEXT    NOT NULL REFERENCES chat_message(id) ON DELETE CASCADE,
+            filename   TEXT    NOT NULL,
+            mime_type  TEXT    NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            data       TEXT    NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_att_msg ON chat_attachment(message_id);
+
+        CREATE TABLE IF NOT EXISTS chat_preset (
+            id            TEXT    PRIMARY KEY,
+            user_id       TEXT    NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+            name          TEXT    NOT NULL,
+            model         TEXT    NOT NULL DEFAULT '',
+            system_prompt TEXT,
+            temperature   REAL,
+            max_tokens    INTEGER,
+            created_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            updated_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_preset_user ON chat_preset(user_id);
+    ]])
 
     cfg_db2:close()
 end
@@ -994,7 +1054,9 @@ function M.get_user(id)
         SELECT id, tenant_id, email, name, role,
                CASE WHEN deleted_at IS NOT NULL
                     THEN strftime('%Y-%m-%dT%H:%M:%SZ', deleted_at, 'unixepoch') END AS deleted_at,
-               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
+               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at,
+               CASE WHEN last_login_at IS NOT NULL
+                    THEN strftime('%Y-%m-%dT%H:%M:%SZ', last_login_at, 'unixepoch') END AS last_login_at
         FROM user WHERE id = ?
     ]], id)
 end
@@ -1004,7 +1066,9 @@ function M.list_users(tenant_id)
         return query_all(cfg_db(), [[
             SELECT u.id, u.tenant_id, u.email, u.name, u.role,
                    t.slug AS tenant_slug,
-                   strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at
+                   strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at,
+                   CASE WHEN u.last_login_at IS NOT NULL
+                        THEN strftime('%Y-%m-%dT%H:%M:%SZ', u.last_login_at, 'unixepoch') END AS last_login_at
             FROM user u
             LEFT JOIN tenant t ON t.id = u.tenant_id
             WHERE u.tenant_id = ? AND u.deleted_at IS NULL
@@ -1014,12 +1078,20 @@ function M.list_users(tenant_id)
     return query_all(cfg_db(), [[
         SELECT u.id, u.tenant_id, u.email, u.name, u.role,
                t.slug AS tenant_slug,
-               strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at
+               strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at,
+               CASE WHEN u.last_login_at IS NOT NULL
+                    THEN strftime('%Y-%m-%dT%H:%M:%SZ', u.last_login_at, 'unixepoch') END AS last_login_at
         FROM user u
         LEFT JOIN tenant t ON t.id = u.tenant_id
         WHERE u.deleted_at IS NULL
         ORDER BY u.created_at DESC
     ]]) or {}
+end
+
+function M.touch_last_login(user_id)
+    exec_one(cfg_db(),
+        "UPDATE user SET last_login_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ?",
+        user_id)
 end
 
 function M.list_user_gateways(user_id)
@@ -1806,6 +1878,231 @@ function M.get_user_by_oauth(provider, subject)
         WHERE l.provider = ? AND l.subject = ? AND u.deleted_at IS NULL
         LIMIT 1
     ]], provider, subject)
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: conversations
+-- ---------------------------------------------------------------------------
+
+function M.list_conversations(user_id, limit, offset)
+    limit  = math.min(limit or 50, 200)
+    offset = offset or 0
+    return query_all(cfg_db(), string.format([[
+        SELECT id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+               datetime(created_at, 'unixepoch') || 'Z' AS created_at,
+               datetime(updated_at, 'unixepoch') || 'Z' AS updated_at
+        FROM chat_conversation
+        WHERE user_id = ? AND deleted_at IS NULL
+        ORDER BY updated_at DESC
+        LIMIT %d OFFSET %d
+    ]], limit, offset), user_id) or setmetatable({}, cjson.array_mt)
+end
+
+function M.create_conversation(data)
+    local id  = uuid_lib.v4()
+    local now = os.time()
+    local e = exec_one(cfg_db(), [[
+        INSERT INTO chat_conversation
+            (id, user_id, gateway_id, title, model, system_prompt, temperature, max_tokens, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    ]], id, data.user_id, data.gateway_id,
+        data.title or "New conversation",
+        data.model or "",
+        data.system_prompt,
+        data.temperature or 0.7,
+        data.max_tokens or 2048,
+        now, now)
+    if e then return nil, e end
+    return id
+end
+
+function M.get_conversation(id, user_id)
+    local conv = query_one(cfg_db(), [[
+        SELECT id, user_id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+               datetime(created_at, 'unixepoch') || 'Z' AS created_at,
+               datetime(updated_at, 'unixepoch') || 'Z' AS updated_at
+        FROM chat_conversation WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1
+    ]], id, user_id)
+    if not conv then return nil, "not_found" end
+    local msgs = query_all(cfg_db(), [[
+        SELECT id, parent_message_id, role, content,
+               input_tokens, output_tokens, cost_usd, latency_ms,
+               datetime(created_at, 'unixepoch') || 'Z' AS created_at
+        FROM chat_message WHERE conversation_id = ? AND deleted_at IS NULL ORDER BY created_at ASC
+    ]], id) or {}
+    for _, m in ipairs(msgs) do m.attachments = setmetatable({}, cjson.array_mt) end
+    if #msgs > 0 then
+        local msg_idx = {}
+        local ids = {}
+        for _, m in ipairs(msgs) do
+            msg_idx[m.id] = m
+            ids[#ids+1] = "'" .. m.id:gsub("'", "''") .. "'"
+        end
+        local atts = query_all(cfg_db(), string.format([[
+            SELECT id, message_id, filename, mime_type, size_bytes,
+                   datetime(created_at, 'unixepoch') || 'Z' AS created_at
+            FROM chat_attachment WHERE message_id IN (%s)
+        ]], table.concat(ids, ","))) or {}
+        for _, att in ipairs(atts) do
+            local m = msg_idx[att.message_id]
+            if m then m.attachments[#m.attachments+1] = att end
+        end
+    end
+    conv.messages = setmetatable(msgs, cjson.array_mt)
+    return conv
+end
+
+function M.update_conversation(id, user_id, data)
+    local sets, params = {}, {}
+    if data.title         ~= nil then sets[#sets+1] = "title = ?";         params[#params+1] = data.title end
+    if data.model         ~= nil then sets[#sets+1] = "model = ?";         params[#params+1] = data.model end
+    if data.system_prompt ~= nil then sets[#sets+1] = "system_prompt = ?"; params[#params+1] = data.system_prompt end
+    if data.temperature   ~= nil then sets[#sets+1] = "temperature = ?";   params[#params+1] = data.temperature end
+    if data.max_tokens    ~= nil then sets[#sets+1] = "max_tokens = ?";    params[#params+1] = data.max_tokens end
+    if data.gateway_id    ~= nil then sets[#sets+1] = "gateway_id = ?";    params[#params+1] = data.gateway_id end
+    if #sets == 0 then return nil end
+    sets[#sets+1] = "updated_at = ?"
+    params[#params+1] = os.time()
+    params[#params+1] = id
+    params[#params+1] = user_id
+    return exec_one(cfg_db(),
+        "UPDATE chat_conversation SET " .. table.concat(sets, ", ") ..
+        " WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+        table.unpack(params))
+end
+
+function M.delete_conversation(id, user_id)
+    return exec_one(cfg_db(), [[
+        UPDATE chat_conversation SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+    ]], os.time(), id, user_id)
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: messages
+-- ---------------------------------------------------------------------------
+
+function M.append_message(data)
+    local id  = uuid_lib.v4()
+    local now = os.time()
+    local e = exec_one(cfg_db(), [[
+        INSERT INTO chat_message
+            (id, conversation_id, parent_message_id, role, content,
+             input_tokens, output_tokens, cost_usd, latency_ms, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    ]], id, data.conversation_id, data.parent_message_id,
+        data.role, data.content,
+        data.input_tokens, data.output_tokens,
+        data.cost_usd, data.latency_ms, now)
+    if not e then
+        exec_one(cfg_db(), "UPDATE chat_conversation SET updated_at = ? WHERE id = ?",
+                 now, data.conversation_id)
+    end
+    if e then return nil, e end
+    return id
+end
+
+function M.update_message(id, conversation_id, user_id, content)
+    return exec_one(cfg_db(), [[
+        UPDATE chat_message SET content = ?
+        WHERE id = ? AND conversation_id = ?
+          AND deleted_at IS NULL
+          AND EXISTS (SELECT 1 FROM chat_conversation c WHERE c.id = ? AND c.user_id = ?)
+    ]], content, id, conversation_id, conversation_id, user_id)
+end
+
+function M.delete_message(id, conversation_id, user_id)
+    return exec_one(cfg_db(), [[
+        UPDATE chat_message SET deleted_at = ?
+        WHERE id = ? AND conversation_id = ?
+          AND deleted_at IS NULL
+          AND EXISTS (SELECT 1 FROM chat_conversation c WHERE c.id = ? AND c.user_id = ?)
+    ]], os.time(), id, conversation_id, conversation_id, user_id)
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: attachments
+-- ---------------------------------------------------------------------------
+
+function M.insert_attachment(data)
+    local id  = uuid_lib.v4()
+    local now = os.time()
+    local e = exec_one(cfg_db(), [[
+        INSERT INTO chat_attachment (id, message_id, filename, mime_type, size_bytes, data, created_at)
+        VALUES (?,?,?,?,?,?,?)
+    ]], id, data.message_id, data.filename, data.mime_type, data.size_bytes, data.data, now)
+    if e then return nil, e end
+    return id
+end
+
+function M.get_attachment(id, user_id)
+    local row = query_one(cfg_db(), [[
+        SELECT a.id, a.message_id, a.filename, a.mime_type, a.size_bytes, a.data,
+               datetime(a.created_at, 'unixepoch') || 'Z' AS created_at
+        FROM chat_attachment a
+        JOIN chat_message m ON m.id = a.message_id
+        JOIN chat_conversation c ON c.id = m.conversation_id
+        WHERE a.id = ? AND c.user_id = ? LIMIT 1
+    ]], id, user_id)
+    if not row then return nil, "not_found" end
+    return row
+end
+
+function M.delete_attachment(id, user_id)
+    return exec_one(cfg_db(), [[
+        DELETE FROM chat_attachment WHERE id = ?
+          AND EXISTS (
+            SELECT 1 FROM chat_message m
+            JOIN chat_conversation c ON c.id = m.conversation_id
+            WHERE m.id = chat_attachment.message_id AND c.user_id = ?
+          )
+    ]], id, user_id)
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: presets
+-- ---------------------------------------------------------------------------
+
+function M.list_presets(user_id)
+    return query_all(cfg_db(), [[
+        SELECT id, name, model, system_prompt, temperature, max_tokens,
+               datetime(created_at, 'unixepoch') || 'Z' AS created_at,
+               datetime(updated_at, 'unixepoch') || 'Z' AS updated_at
+        FROM chat_preset WHERE user_id = ? ORDER BY name ASC
+    ]], user_id) or setmetatable({}, cjson.array_mt)
+end
+
+function M.create_preset(data)
+    local id  = uuid_lib.v4()
+    local now = os.time()
+    local e = exec_one(cfg_db(), [[
+        INSERT INTO chat_preset
+            (id, user_id, name, model, system_prompt, temperature, max_tokens, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?)
+    ]], id, data.user_id, data.name, data.model or "",
+        data.system_prompt, data.temperature, data.max_tokens, now, now)
+    if e then return nil, e end
+    return id
+end
+
+function M.update_preset(id, user_id, data)
+    local sets, params = {}, {}
+    if data.name          ~= nil then sets[#sets+1] = "name = ?";          params[#params+1] = data.name end
+    if data.model         ~= nil then sets[#sets+1] = "model = ?";         params[#params+1] = data.model end
+    if data.system_prompt ~= nil then sets[#sets+1] = "system_prompt = ?"; params[#params+1] = data.system_prompt end
+    if data.temperature   ~= nil then sets[#sets+1] = "temperature = ?";   params[#params+1] = data.temperature end
+    if data.max_tokens    ~= nil then sets[#sets+1] = "max_tokens = ?";    params[#params+1] = data.max_tokens end
+    if #sets == 0 then return nil end
+    sets[#sets+1] = "updated_at = ?"
+    params[#params+1] = os.time()
+    params[#params+1] = id
+    params[#params+1] = user_id
+    return exec_one(cfg_db(),
+        "UPDATE chat_preset SET " .. table.concat(sets, ", ") .. " WHERE id = ? AND user_id = ?",
+        table.unpack(params))
+end
+
+function M.delete_preset(id, user_id)
+    return exec_one(cfg_db(), "DELETE FROM chat_preset WHERE id = ? AND user_id = ?", id, user_id)
 end
 
 return M
