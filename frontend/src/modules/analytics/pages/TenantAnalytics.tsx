@@ -12,6 +12,22 @@ import s from "src/common/components/layout/Layout.module.scss";
 // Helpers
 // ---------------------------------------------------------------------------
 
+type Currency = "USD" | "EUR";
+
+// Module-level rate cache — avoids re-fetching within a browser session.
+// frankfurter.app serves ECB data, updated each business day.
+let _rateCache: { rate: number; date: string } | null = null;
+
+async function fetchEurRate(): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10);
+  if (_rateCache?.date === today) return _rateCache.rate;
+  const res  = await fetch("https://api.frankfurter.app/latest?from=USD&to=EUR");
+  const data = await res.json();
+  const rate = data.rates?.EUR as number;
+  _rateCache = { rate, date: today };
+  return rate;
+}
+
 function fmt(n: number | undefined | null, decimals = 0) {
   if (n == null) return "—";
   return n.toLocaleString("en-US", { maximumFractionDigits: decimals });
@@ -19,6 +35,13 @@ function fmt(n: number | undefined | null, decimals = 0) {
 function fmtCost(n: number | undefined | null) {
   if (n == null || n === 0) return "$0.00";
   return `$${n.toFixed(2)}`;
+}
+function fmtCurrency(n: number | undefined | null, currency: Currency, eurRate: number): string {
+  if (currency === "EUR") {
+    if (n == null || n === 0) return "€0.00";
+    return `€${(n * eurRate).toFixed(2)}`;
+  }
+  return fmtCost(n);
 }
 function fmtMs(n: number | undefined | null) {
   if (n == null || n === 0) return "—";
@@ -125,14 +148,14 @@ function ProportionBar({ value, max }: { value: number; max: number }) {
   );
 }
 
-function BudgetBar({ used, total }: { used: number; total: number }) {
+function BudgetBar({ used, total, fmtFn = fmtCost }: { used: number; total: number; fmtFn?: (n: number) => string }) {
   const pct   = total > 0 ? Math.min((used / total) * 100, 100) : 0;
   const color = pct >= 100 ? "#dc2626" : pct >= 80 ? "#d97706" : "var(--badge-success-text, #16a34a)";
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>
-        <span>{fmtCost(used)}</span>
-        <span>{fmtCost(total)}</span>
+        <span>{fmtFn(used)}</span>
+        <span>{fmtFn(total)}</span>
       </div>
       <div style={{ height: 6, background: "var(--card-border)", borderRadius: 3, overflow: "hidden" }}>
         <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.3s" }} />
@@ -166,14 +189,17 @@ function BarChart({ data, height = 72 }: { data: TimeseriesPoint[]; height?: num
 // ---------------------------------------------------------------------------
 
 function DetailPanel({
-  tenant, tenantMeta, detail, spend, onClose,
+  tenant, tenantMeta, detail, spend, onClose, currency, eurRate,
 }: {
   tenant: TenantStats;
   tenantMeta: Tenant | undefined;
   detail: TenantAnalyticsDetail | null;
   spend: SpendRecord[] | null;
   onClose: () => void;
+  currency: Currency;
+  eurRate: number;
 }) {
+  const fc = (n: number | undefined | null) => fmtCurrency(n, currency, eurRate);
   const monthlySpend = spend
     ?.filter(r => /^\d{4}-\d{2}$/.test(r.period))
     .sort((a, b) => b.period.localeCompare(a.period))
@@ -198,7 +224,7 @@ function DetailPanel({
                 <span className={`${s.badge} ${s["badge--neutral"]}`}>{tenantMeta.plan}</span>
                 {tenantMeta.budget_usd != null && (
                   <span className={`${s.badge} ${s["badge--neutral"]}`}>
-                    {fmtCost(tenantMeta.budget_usd)} / {tenantMeta.budget_period}
+                    {fc(tenantMeta.budget_usd)} / {tenantMeta.budget_period}
                   </span>
                 )}
               </div>
@@ -214,7 +240,7 @@ function DetailPanel({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
           {([
             ["Requests",    fmt(tenant.requests)],
-            ["Cost",        fmtCost(tenant.cost_usd)],
+            ["Cost",        fc(tenant.cost_usd)],
             ["Avg Latency", fmtMs(tenant.avg_latency_ms)],
           ] as [string, string][]).map(([label, value]) => (
             <div key={label} style={{ background: "var(--section-bg)", borderRadius: 8, padding: "12px 14px", border: "1px solid var(--card-border)" }}>
@@ -227,7 +253,7 @@ function DetailPanel({
         {tenantMeta?.budget_usd != null && (
           <div className={s.card} style={{ marginBottom: 20 }}>
             <div className={s["card-header"]}><h2 className={s["card-title"]}>Budget Utilization</h2></div>
-            <BudgetBar used={tenant.cost_usd} total={tenantMeta.budget_usd} />
+            <BudgetBar used={tenant.cost_usd} total={tenantMeta.budget_usd} fmtFn={fc} />
           </div>
         )}
 
@@ -250,7 +276,7 @@ function DetailPanel({
                         <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{m.provider}</div>
                       </td>
                       <td>{fmt(m.requests)}</td>
-                      <td>{fmtCost(m.cost_usd)}</td>
+                      <td>{fc(m.cost_usd)}</td>
                       <td>{fmtMs(m.avg_latency_ms)}</td>
                     </tr>
                   ))}
@@ -268,7 +294,7 @@ function DetailPanel({
                 <thead><tr><th>Month</th><th>Spend</th></tr></thead>
                 <tbody>
                   {monthlySpend.map((r: SpendRecord) => (
-                    <tr key={r.period}><td>{r.period}</td><td>{fmtCost(r.amount_usd)}</td></tr>
+                    <tr key={r.period}><td>{r.period}</td><td>{fc(r.amount_usd)}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -322,14 +348,18 @@ export default function TenantAnalytics() {
   const [tenants, setTenants]             = useState<Tenant[] | null>(null);
   const [globalTimeseries, setGlobalTs]   = useState<TimeseriesPoint[] | null>(null);
   const [loading, setLoading]             = useState(true);
+  const [loadError, setLoadError]         = useState<string | null>(null);
   const [selected, setSelected]           = useState<TenantStats | null>(null);
   const [detail, setDetail]               = useState<TenantAnalyticsDetail | null>(null);
   const [spend, setSpend]                 = useState<SpendRecord[] | null>(null);
   const [filterText, setFilterText]       = useState("");
+  const [currency, setCurrency]           = useState<Currency>("USD");
+  const [eurRate, setEurRate]             = useState(1);
 
   // Fetch analytics + tenants + global timeseries on period change
   useEffect(() => {
     setLoading(true);
+    setLoadError(null);
     const since = periodSince(period);
     Promise.all([
       api.get<AnalyticsDepth>(`/stats/analytics?since=${since}`),
@@ -339,8 +369,15 @@ export default function TenantAnalytics() {
       setAnalytics(a);
       setTenants(t);
       setGlobalTs(ts);
-    }).finally(() => setLoading(false));
+    }).catch((err: any) => setLoadError(err.message ?? "Failed to load analytics"))
+      .finally(() => setLoading(false));
   }, [period]);
+
+  // Fetch EUR rate when currency switches to EUR
+  useEffect(() => {
+    if (currency !== "EUR") return;
+    fetchEurRate().then(setEurRate).catch(() => {});
+  }, [currency]);
 
   // Reset filter when switching tabs
   useEffect(() => { setFilterText(""); }, [tab]);
@@ -403,7 +440,10 @@ export default function TenantAnalytics() {
     : tab === "model"    ? byModel.length
     : byUser.length;
 
+  const fc = (n: number | undefined | null) => fmtCurrency(n, currency, eurRate);
+
   if (loading) return <div className={s.page}><p className={s.empty}>Loading…</p></div>;
+  if (loadError) return <div className={s.page}><div className={`${s.alert} ${s["alert--error"]}`}>{loadError}</div></div>;
 
   const tabLabel = (t: Tab) => ({ tenant: "By Tenant", gateway: "By Gateway", provider: "By Provider", model: "By Model", user: "By User" }[t]);
   const filterPlaceholder = { tenant: "Filter tenants…", gateway: "Filter gateways…", provider: "Filter providers…", model: "Filter models…", user: "Filter users…" }[tab];
@@ -416,13 +456,28 @@ export default function TenantAnalytics() {
           <h1 className={s["page-title"]}>Cost Analytics</h1>
           <p className={s["page-subtitle"]}>Spend breakdown by tenant, gateway, provider, model, and user</p>
         </div>
-        <div className={s["timeframe-tabs"]}>
-          {(["today", "7d", "30d"] as Period[]).map(p => (
-            <button key={p} className={`${s["timeframe-tab"]} ${period === p ? s["timeframe-tab--active"] : ""}`}
-              onClick={() => setPeriod(p)}>
-              {periodLabel(p)}
-            </button>
-          ))}
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <select
+            value={currency}
+            onChange={e => setCurrency(e.target.value as Currency)}
+            aria-label="Currency"
+            style={{
+              background: "var(--section-bg)", border: "1px solid var(--card-border)",
+              borderRadius: 6, padding: "5px 10px", fontSize: 13,
+              color: "var(--text-primary)", cursor: "pointer",
+            }}
+          >
+            <option value="USD">USD $</option>
+            <option value="EUR">EUR €</option>
+          </select>
+          <div className={s["timeframe-tabs"]}>
+            {(["today", "7d", "30d"] as Period[]).map(p => (
+              <button key={p} className={`${s["timeframe-tab"]} ${period === p ? s["timeframe-tab--active"] : ""}`}
+                onClick={() => setPeriod(p)}>
+                {periodLabel(p)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -438,13 +493,13 @@ export default function TenantAnalytics() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }}>
         <div className={s["hero-card"]}>
           <div className={s["hero-label"]}>Total Spend</div>
-          <div className={s["hero-value"]}>{fmtCost(totalCost)}</div>
+          <div className={s["hero-value"]}>{fc(totalCost)}</div>
           <div className={s["hero-sub"]}>{periodLabel(period)}</div>
         </div>
         <div className={s["hero-card"]}>
           <div className={s["hero-label"]}>Cache Savings</div>
           <div className={s["hero-value"]} style={{ color: totalSavedCost > 0 ? "var(--badge-success-text, #16a34a)" : undefined }}>
-            {fmtCost(totalSavedCost)}
+            {fc(totalSavedCost)}
           </div>
           <div className={s["hero-sub"]}>{periodLabel(period)}</div>
         </div>
@@ -467,7 +522,7 @@ export default function TenantAnalytics() {
           </div>
           <div className={s["hero-sub"]}>
             {topSpender
-              ? <><span className={s["hero-sub-highlight"]}>{fmtCost(topSpender.cost_usd)}</span> this period</>
+              ? <><span className={s["hero-sub-highlight"]}>{fc(topSpender.cost_usd)}</span> this period</>
               : "No data"}
           </div>
         </div>
@@ -545,7 +600,7 @@ export default function TenantAnalytics() {
                           onClick={() => setSelected(selected?.tenant_id === row.tenant_id ? null : row)}>
                           <td><span className={s.code}>{row.tenant}</span></td>
                           <td>{fmt(row.requests)}</td>
-                          <td>{fmtCost(row.cost_usd)}</td>
+                          <td>{fc(row.cost_usd)}</td>
                           <td><ProportionBar value={row.cost_usd} max={maxTenantCost} /></td>
                           <td>{cacheRate != null ? `${cacheRate}%` : "—"}</td>
                           <td>{row.errors > 0
@@ -557,7 +612,7 @@ export default function TenantAnalytics() {
                           <td>{fmtMs(row.avg_latency_ms)}</td>
                           <td style={{ minWidth: 160 }}>
                             {meta?.budget_usd != null
-                              ? <BudgetBar used={row.cost_usd} total={meta.budget_usd} />
+                              ? <BudgetBar used={row.cost_usd} total={meta.budget_usd} fmtFn={fc} />
                               : <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>unlimited</span>}
                           </td>
                         </tr>
@@ -597,7 +652,7 @@ export default function TenantAnalytics() {
                           <td><span className={s.code}>{row.gateway}</span></td>
                           <td>{row.tenant ? <span className={s.code}>{row.tenant}</span> : "—"}</td>
                           <td>{fmt(row.requests)}</td>
-                          <td>{fmtCost(row.cost_usd)}</td>
+                          <td>{fc(row.cost_usd)}</td>
                           <td><ProportionBar value={row.cost_usd} max={maxGwCost} /></td>
                           <td>{cacheRate != null ? `${cacheRate}%` : "—"}</td>
                           <td>{row.errors > 0
@@ -642,7 +697,7 @@ export default function TenantAnalytics() {
                         <td><span className={s.code}>{row.provider}</span></td>
                         <td>{row.model_count}</td>
                         <td>{fmt(row.requests)}</td>
-                        <td>{fmtCost(row.cost_usd)}</td>
+                        <td>{fc(row.cost_usd)}</td>
                         <td><ProportionBar value={row.cost_usd} max={maxProviderCost} /></td>
                         <td>{fmtMs(row.avg_latency_ms)}</td>
                       </tr>
@@ -679,7 +734,7 @@ export default function TenantAnalytics() {
                         <td className={s.mono} style={{ fontSize: 11 }}>{row.model}</td>
                         <td>{row.provider}</td>
                         <td>{fmt(row.requests)}</td>
-                        <td>{fmtCost(row.cost_usd)}</td>
+                        <td>{fc(row.cost_usd)}</td>
                         <td><ProportionBar value={row.cost_usd} max={maxModelCost} /></td>
                         <td>{fmtMs(row.avg_latency_ms)}</td>
                       </tr>
@@ -717,7 +772,7 @@ export default function TenantAnalytics() {
                         <tr key={row.user_id}>
                           <td><span className={s.code}>{row.email ?? row.user_id}</span></td>
                           <td>{fmt(row.requests)}</td>
-                          <td>{fmtCost(row.cost_usd)}</td>
+                          <td>{fc(row.cost_usd)}</td>
                           <td><ProportionBar value={row.cost_usd} max={maxUserCost} /></td>
                           <td>{cacheRate != null ? `${cacheRate}%` : "—"}</td>
                           <td>{row.errors > 0
@@ -746,6 +801,8 @@ export default function TenantAnalytics() {
           detail={detail}
           spend={spend}
           onClose={() => setSelected(null)}
+          currency={currency}
+          eurRate={eurRate}
         />
       )}
     </main>
