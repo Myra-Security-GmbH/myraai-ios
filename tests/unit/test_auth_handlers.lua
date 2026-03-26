@@ -140,6 +140,10 @@ package.preload["utils.email"] = function()
             _sent_emails[#_sent_emails + 1] = { to = to, subject = subject, body = body }
             return nil   -- no error
         end,
+        send_template = function(to, template, vars)
+            _sent_emails[#_sent_emails + 1] = { to = to, template = template, vars = vars }
+            return nil   -- no error
+        end,
     }
 end
 package.loaded["utils.email"] = nil
@@ -194,6 +198,12 @@ local function insert_admin_user(email, role)
 end
 
 -- Direct DB access for test cleanup (open a second connection to CFG_PATH)
+local function cleanup_user(email)
+    local db = lsqlite3.open(CFG_PATH)
+    db:exec(string.format("DELETE FROM user WHERE email = %q", email))
+    db:close()
+end
+
 local function cleanup_otps(email)
     local db = lsqlite3.open(CFG_PATH)
     if email then
@@ -246,7 +256,7 @@ describe("GET /admin/auth/me", function()
             sub   = "user-xyz",
             email = "admin@example.com",
             role  = "admin",
-            org   = nil,
+            tenant = nil,
             iat   = _ngx_time,
             exp   = _ngx_time + 3600,
         })
@@ -350,6 +360,8 @@ describe("POST /admin/auth/otp/verify", function()
     -- Seed user and OTP before each test
     before_each(function()
         _sent_emails = {}
+        -- Hard-delete any leftover user so the UNIQUE constraint doesn't fire
+        cleanup_user(verify_email)
         verify_user_id = insert_admin_user(verify_email)
 
         -- Clean any leftover OTPs from previous tests for this email

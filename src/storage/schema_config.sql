@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS tenant (
     budget_usd    REAL,
     budget_period TEXT NOT NULL DEFAULT 'monthly',
     siem_config   TEXT,
-    organization_id TEXT REFERENCES organization(id) ON DELETE SET NULL,
     deleted_at    INTEGER,
     created_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
 );
@@ -36,26 +35,17 @@ CREATE TABLE IF NOT EXISTS provider_config (
     UNIQUE(gateway_id, provider, alias)
 );
 
--- Organizations group tenants and admin users (platform multi-tenancy).
-CREATE TABLE IF NOT EXISTS organization (
-    id         TEXT PRIMARY KEY,
-    name       TEXT NOT NULL,
-    slug       TEXT NOT NULL UNIQUE,
-    created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
-    deleted_at INTEGER
-);
-
--- Users: one org per user, role scoped to that org.
--- Platform admins (role='admin') may have organization_id NULL.
--- role: 'admin' (platform superadmin) | 'member' (org full access) | 'viewer' (read-only, no inference)
+-- Users: one tenant per user, role scoped to that tenant.
+-- Platform admins (role='admin') may have tenant_id NULL.
+-- role: 'admin' (platform superadmin) | 'tenant_admin' (tenant admin) | 'member' (full access) | 'viewer' (read-only, no inference)
 CREATE TABLE IF NOT EXISTS user (
-    id              TEXT PRIMARY KEY,
-    organization_id TEXT REFERENCES organization(id) ON DELETE CASCADE,
-    email           TEXT NOT NULL UNIQUE,
-    name            TEXT,
-    role            TEXT NOT NULL DEFAULT 'member',
-    deleted_at      INTEGER,
-    created_at      INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+    id         TEXT PRIMARY KEY,
+    tenant_id  TEXT REFERENCES tenant(id) ON DELETE CASCADE,
+    email      TEXT NOT NULL UNIQUE,
+    name       TEXT,
+    role       TEXT NOT NULL DEFAULT 'member',
+    deleted_at INTEGER,
+    created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
 );
 
 -- Fine-grained per-user gateway access (only enforced for role='member')

@@ -15,9 +15,10 @@ _G.ngx = {
         get_body_data = function() return nil end,
         get_headers   = function() return {} end,
     },
-    var = {},
-    ctx = {},
-    ERR = 0, WARN = 1, INFO = 2,
+    var   = {},
+    ctx   = {},
+    ERR   = 0, WARN = 1, INFO = 2,
+    timer = { at = function(_, fn, ...) fn(nil, ...) end },
 }
 
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
@@ -339,21 +340,22 @@ describe("middleware.auth user enforcement", function()
         assert(tostring(err):find("FORBIDDEN"), "expected FORBIDDEN, got: " .. tostring(err))
     end)
 
-    -- --- member without gateway access ---
+    -- --- member: implicit access to all tenant gateways (no per-gateway check) ---
 
-    it("member without gateway access is rejected with FORBIDDEN", function()
+    it("member has implicit access to all tenant gateways (allowed without explicit grant)", function()
         local auth = setup_auth(
             { id = "tok-mb", scopes = "[]", expires_at = nil,
               user_id = "u-3", label = nil, budget_usd = nil, rate_limit = nil },
             { id = "u-3", role = "member", deleted_at = nil, _has_access = false }
         )
         local ctx = make_ctx()
-        local ok, err = pcall(function() auth.run(ctx) end)
-        assert.is_false(ok)
-        assert(tostring(err):find("FORBIDDEN"), "expected FORBIDDEN, got: " .. tostring(err))
+        -- In the flat tenant model, members have access to all gateways in their tenant
+        assert.has_no.errors(function() auth.run(ctx) end)
+        assert.equal("u-3",    ctx.user_id)
+        assert.equal("member", ctx.user_role)
     end)
 
-    -- --- member WITH gateway access ---
+    -- --- member WITH gateway access (also allowed) ---
 
     it("member with gateway access is allowed", function()
         local auth = setup_auth(
@@ -961,7 +963,7 @@ end)
 describe("admin/api POST /gateways/:id/tokens passes user_id from body", function()
     local API_MODULES = {
         "admin.api", "storage", "auth.byok", "utils.crypto",
-        "utils.json", "providers", "core.app_config",
+        "utils.json", "providers", "core.app_config", "admin.auth",
     }
     local function clear_api()
         for _, n in ipairs(API_MODULES) do
@@ -986,6 +988,7 @@ describe("admin/api POST /gateways/:id/tokens passes user_id from body", functio
         package.preload["auth.byok"]   = function() return { get = function() return nil end } end
         package.preload["providers"]   = function() return { list = function() return {} end } end
         package.preload["core.app_config"] = function() return { get = function() return {} end } end
+        package.preload["admin.auth"]  = function() return { require_session = function() end } end
 
         package.preload["storage"] = function()
             return {
@@ -995,11 +998,15 @@ describe("admin/api POST /gateways/:id/tokens passes user_id from body", functio
                     captured.label      = label
                     return "new-token-id", nil
                 end,
+                get_gateway_by_id   = function() return { id = "gw-test", tenant_id = "t-1" } end,
                 insert_audit_log = function() end,
                 -- stubs for routes that run at load time or list calls
                 list_auth_tokens = function() return {} end,
             }
         end
+
+        -- Set up a tenant_admin session so require_tenant_admin() passes
+        ngx.ctx.admin_user = { id = "u-admin", role = "tenant_admin", tenant_id = "t-1" }
 
         local response = {}
         ngx.req.get_method    = function() return "POST" end

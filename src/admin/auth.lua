@@ -32,21 +32,21 @@ function M.require_session()
     end
 
     ngx.ctx.admin_user = {
-        id     = payload.sub,
-        email  = payload.email,
-        role   = payload.role,
-        org_id = payload.org,
+        id        = payload.sub,
+        email     = payload.email,
+        role      = payload.role,
+        tenant_id = payload.tenant,
     }
 end
 
--- Returns true if the current admin user is allowed to access the given org_id.
+-- Returns true if the current admin user is allowed to access the given tenant_id.
 -- Platform admins (role='admin') pass unconditionally.
--- Org members (role='member'|'viewer') pass only for their own org.
-function M.check_org(org_id)
+-- Other roles pass only for their own tenant.
+function M.check_tenant(tenant_id)
     local u = ngx.ctx.admin_user
     if not u then return false end
     if u.role == "admin" then return true end
-    if u.org_id == org_id then return true end
+    if u.tenant_id == tenant_id then return true end
     return false
 end
 

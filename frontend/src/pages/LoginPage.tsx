@@ -68,13 +68,13 @@ export default function LoginPage() {
 
         {step === "choose" && (
           <div style={styles.methods}>
-            {/* Google SSO */}
-            <a href="/admin/auth/google" style={styles.googleBtn}>
+            {/* Google SSO — temporarily hidden */}
+            {/* <a href="/admin/auth/google" style={styles.googleBtn}>
               <GoogleIcon />
               Continue with Google
             </a>
 
-            <div style={styles.divider}><span>or</span></div>
+            <div style={styles.divider}><span>or</span></div> */}
 
             {/* Email OTP */}
             <button style={styles.emailBtn} onClick={() => setStep("email-input")}>

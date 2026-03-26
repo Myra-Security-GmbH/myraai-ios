@@ -4,8 +4,8 @@
 --   POST   /admin/v1/tenants
 --   GET    /admin/v1/tenants/:id/gateways
 --   POST   /admin/v1/tenants/:id/gateways
---   GET    /admin/v1/organizations/:id/users
---   POST   /admin/v1/organizations/:id/users
+--   GET    /admin/v1/tenants/:id/users
+--   POST   /admin/v1/tenants/:id/users
 --   GET    /admin/v1/gateways/:id
 --   PATCH  /admin/v1/gateways/:id
 --   GET    /admin/v1/gateways/:id/tokens
@@ -40,6 +40,7 @@ local byok         = require("auth.byok")
 local crypto       = require("utils.crypto")
 local providers_mod = require("providers")
 local auth         = require("admin.auth")
+local email        = require("utils.email")
 
 local M = {}
 
@@ -86,7 +87,47 @@ local function read_body()
 end
 
 -- ---------------------------------------------------------------------------
--- Ownership helpers — enforce org-scoped resource isolation
+-- Role assignment permission enforcement
+-- ---------------------------------------------------------------------------
+
+-- Roles each caller may assign.  A caller may not assign a role equal to or
+-- above their own (except platform admins, who may assign anything).
+local ASSIGNABLE_ROLES = {
+    admin        = { admin=true, tenant_admin=true, member=true, viewer=true },
+    tenant_admin = { member=true, viewer=true },
+    member       = {},
+    viewer       = {},
+}
+
+-- Returns an error string if the current admin user is not permitted to assign
+-- target_role, or nil if the assignment is allowed.
+local function validate_role_assignment(target_role)
+    local u = ngx.ctx.admin_user
+    local allowed = ASSIGNABLE_ROLES[u and u.role or ""] or {}
+    if not allowed[target_role] then
+        return "role '" .. tostring(target_role) ..
+               "' cannot be assigned by a " .. tostring(u and u.role or "unknown")
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Role helpers — enforce minimum role level for mutating operations
+-- ---------------------------------------------------------------------------
+
+-- Returns true if the current user is admin or tenant_admin.
+-- Otherwise sends 403 and returns false.  Call at the top of any mutating
+-- route that member/viewer must not reach.
+local function require_tenant_admin()
+    local u = ngx.ctx.admin_user
+    if u.role ~= "admin" and u.role ~= "tenant_admin" then
+        send(403, { error = "forbidden" })
+        return false
+    end
+    return true
+end
+
+-- ---------------------------------------------------------------------------
+-- Ownership helpers — enforce tenant-scoped resource isolation
 -- ---------------------------------------------------------------------------
 
 -- Verifies tenant is accessible to the current user.
@@ -95,7 +136,7 @@ local function require_tenant_access(tenant_id)
     local u = ngx.ctx.admin_user
     local t = storage.get_tenant(tenant_id)
     if not t then send(404, { error = "not found" }); return nil end
-    if u.role ~= "admin" and t.organization_id ~= u.org_id then
+    if u.role ~= "admin" and u.tenant_id ~= tenant_id then
         send(403, { error = "forbidden" }); return nil
     end
     return t
@@ -106,18 +147,18 @@ local function require_gateway_access(gateway_id)
     local u = ngx.ctx.admin_user
     local gw = storage.get_gateway_by_id(gateway_id)
     if not gw then send(404, { error = "not found" }); return nil end
-    if u.role ~= "admin" and not storage.tenant_in_org(gw.tenant_id, u.org_id) then
+    if u.role ~= "admin" and u.tenant_id ~= gw.tenant_id then
         send(403, { error = "forbidden" }); return nil
     end
     return gw
 end
 
--- Verifies user belongs to the same org as the caller. Returns user row or nil.
+-- Verifies user belongs to the same tenant as the caller. Returns user row or nil.
 local function require_user_access(user_id)
     local u = ngx.ctx.admin_user
     local usr = storage.get_user(user_id)
     if not usr then send(404, { error = "not found" }); return nil end
-    if u.role ~= "admin" and usr.organization_id ~= u.org_id then
+    if u.role ~= "admin" and usr.tenant_id ~= u.tenant_id then
         send(403, { error = "forbidden" }); return nil
     end
     return usr
@@ -134,8 +175,8 @@ end
 route("GET", "^/admin/v1/stats$", function()
     local args = ngx.req.get_uri_args()
     local u = ngx.ctx.admin_user
-    local org_filter = (u.role ~= "admin") and u.org_id or nil
-    send(200, storage.get_usage_stats(args.tenant_id, org_filter))
+    local tenant_filter = (u.role ~= "admin") and u.tenant_id or args.tenant_id
+    send(200, storage.get_usage_stats(tenant_filter))
 end)
 
 -- GET /admin/v1/stats/timeseries?bucket=1h&n=24[&tenant_id=X]
@@ -147,19 +188,18 @@ route("GET", "^/admin/v1/stats/timeseries$", function()
     local bucket_sec = BUCKET_SIZES[args.bucket or "1h"] or 3600
     local n          = math.min(math.max(tonumber(args.n) or 24, 1), 168)
     local end_sec    = tonumber(args["until"])
-    local tenant_id  = (args.tenant_id ~= nil and args.tenant_id ~= "") and args.tenant_id or nil
     local u = ngx.ctx.admin_user
-    local org_filter = (u.role ~= "admin") and u.org_id or nil
-    send(200, storage.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id, org_filter))
+    local tenant_id = (u.role ~= "admin") and u.tenant_id
+        or ((args.tenant_id ~= nil and args.tenant_id ~= "") and args.tenant_id or nil)
+    send(200, storage.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id))
 end)
 
 route("GET", "^/admin/v1/logs$", function()
     local args = ngx.req.get_uri_args()
     local u = ngx.ctx.admin_user
-    local org_filter = (u.role ~= "admin") and u.org_id or nil
+    local tenant_filter = (u.role ~= "admin") and u.tenant_id or args.tenant_id
     send(200, storage.list_logs({
-        org_id            = org_filter,
-        tenant_id         = args.tenant_id,
+        tenant_id         = tenant_filter,
         gateway_id        = args.gateway_id,
         provider          = args.provider,
         model             = args.model,
@@ -176,17 +216,18 @@ end)
 -- Returns latency percentiles (p50/p95/p99) and top models by request volume.
 route("GET", "^/admin/v1/stats/analytics$", function()
     local u = ngx.ctx.admin_user
-    if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
-    local args    = ngx.req.get_uri_args()
-    local since   = tonumber(args.since)
-    send(200, storage.get_analytics_depth(since))
+    if u.role ~= "admin" and u.role ~= "tenant_admin" then return send(403, { error = "forbidden" }) end
+    local args         = ngx.req.get_uri_args()
+    local since        = tonumber(args.since)
+    local tenant_filter = (u.role ~= "admin") and u.tenant_id or args.tenant_id
+    send(200, storage.get_analytics_depth(since, tenant_filter))
 end)
 
 route("GET", "^/admin/v1/logs/([^/]+)$", function(id)
     local entry = storage.get_log(id)
     if not entry then return send(404, { error = "not found" }) end
     local u = ngx.ctx.admin_user
-    if u.role ~= "admin" and not storage.tenant_in_org(entry.tenant_id, u.org_id) then
+    if u.role ~= "admin" and entry.tenant_id ~= u.tenant_id then
         return send(403, { error = "forbidden" })
     end
     send(200, entry)
@@ -197,55 +238,40 @@ end)
 -- ---------------------------------------------------------------------------
 route("GET", "^/admin/v1/tenants$", function()
     local u = ngx.ctx.admin_user
-    local org_filter = (u.role ~= "admin") and u.org_id or nil
-    local rows = storage.list_tenants(org_filter)
-    local cjson = require("cjson.safe")
+    local tenant_filter = (u.role ~= "admin") and u.tenant_id or nil
+    local rows = storage.list_tenants(tenant_filter)
     for _, r in ipairs(rows) do
         r.siem = r.siem_config and json.decode(r.siem_config) or nil
         r.siem_config = nil
-        if r.organization_id == nil then r.organization_id = cjson.null end
     end
     send(200, rows)
 end)
 
 route("POST", "^/admin/v1/tenants$", function()
     local u = ngx.ctx.admin_user
+    if u.role ~= "admin" then
+        return send(403, { error = "forbidden" })
+    end
     local b = read_body()
     if not b or not b.slug then return send(400, { error = "slug required" }) end
     local siem_json = b.siem and json.encode(b.siem) or nil
-    -- non-platform-admin users always create within their own org
-    local org_id = (u.role ~= "admin") and u.org_id or b.organization_id
-    local id = storage.upsert_tenant(b.slug, b.plan, b.budget_usd, b.budget_period, siem_json, org_id)
-    send(201, { id = id, slug = b.slug, organization_id = org_id })
+    local id = storage.upsert_tenant(b.slug, b.plan, b.budget_usd, b.budget_period, siem_json)
+    send(201, { id = id, slug = b.slug })
 end)
 
 route("PATCH", "^/admin/v1/tenants/([^/]+)$", function(tenant_id)
-    local u = ngx.ctx.admin_user
+    if not require_tenant_admin() then return end
+    if not require_tenant_access(tenant_id) then return end
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
-    -- non-platform-admin: verify the tenant belongs to their org
-    if u.role ~= "admin" then
-        local t = storage.get_tenant(tenant_id)
-        if not t or t.organization_id ~= u.org_id then
-            return send(403, { error = "forbidden" })
-        end
-    end
     local siem_json = (type(b.siem) == "table") and json.encode(b.siem) or nil
-    -- org_id sentinel: false = not in body (don't touch), nil/string = explicit value
-    local org_id
-    if u.role ~= "admin" then
-        org_id = false           -- non-platform-admin cannot change org assignment
-    elseif b.organization_id ~= nil then
-        org_id = b.organization_id   -- nil clears, string sets
-    else
-        org_id = false           -- key absent from body → don't touch
-    end
-    local err = storage.update_tenant(tenant_id, b.plan, b.budget_usd, b.budget_period, siem_json, org_id)
+    local err = storage.update_tenant(tenant_id, b.plan, nullable(b.budget_usd), b.budget_period, siem_json)
     if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
 route("DELETE", "^/admin/v1/tenants/([^/]+)$", function(tenant_id)
+    if not require_tenant_admin() then return end
     if not require_tenant_access(tenant_id) then return end
     local err = storage.delete_tenant(tenant_id)
     if err then return send(500, { error = tostring(err) }) end
@@ -263,6 +289,7 @@ route("GET", "^/admin/v1/tenants/([^/]+)/gateways$", function(tenant_id)
 end)
 
 route("POST", "^/admin/v1/tenants/([^/]+)/gateways$", function(tenant_id)
+    if not require_tenant_admin() then return end
     if not require_tenant_access(tenant_id) then return end
     local b = read_body()
     if not b or not b.slug then return send(400, { error = "slug required" }) end
@@ -278,6 +305,7 @@ route("GET", "^/admin/v1/gateways/([^/]+)$", function(gateway_id)
 end)
 
 route("PATCH", "^/admin/v1/gateways/([^/]+)$", function(gateway_id)
+    if not require_tenant_admin() then return end
     local row = require_gateway_access(gateway_id)
     if not row then return end
     local b = read_body()
@@ -291,6 +319,7 @@ route("PATCH", "^/admin/v1/gateways/([^/]+)$", function(gateway_id)
 end)
 
 route("DELETE", "^/admin/v1/gateways/([^/]+)$", function(gateway_id)
+    if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
     local err = storage.delete_gateway(gateway_id)
     if err then return send(500, { error = tostring(err) }) end
@@ -306,6 +335,7 @@ route("GET", "^/admin/v1/gateways/([^/]+)/keys$", function(gateway_id)
 end)
 
 route("POST", "^/admin/v1/gateways/([^/]+)/keys$", function(gateway_id)
+    if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
     local b = read_body()
     if not b or not b.provider or not b.key then
@@ -317,6 +347,7 @@ route("POST", "^/admin/v1/gateways/([^/]+)/keys$", function(gateway_id)
 end)
 
 route("DELETE", "^/admin/v1/gateways/([^/]+)/keys/([^/]+)/([^/]+)$", function(gateway_id, provider, alias)
+    if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
     local err = storage.delete_provider_config(gateway_id, provider, alias)
     if err then return send(500, { error = tostring(err) }) end
@@ -337,6 +368,7 @@ route("GET", "^/admin/v1/gateways/([^/]+)/rules$", function(gateway_id)
 end)
 
 route("POST", "^/admin/v1/gateways/([^/]+)/rules$", function(gateway_id)
+    if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
@@ -346,6 +378,7 @@ route("POST", "^/admin/v1/gateways/([^/]+)/rules$", function(gateway_id)
 end)
 
 route("PATCH", "^/admin/v1/gateways/([^/]+)/rules/([^/]+)$", function(gateway_id, rule_id)
+    if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
@@ -356,8 +389,10 @@ route("PATCH", "^/admin/v1/gateways/([^/]+)/rules/([^/]+)$", function(gateway_id
 end)
 
 route("DELETE", "^/admin/v1/gateways/([^/]+)/rules/([^/]+)$", function(gateway_id, rule_id)
+    if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
-    storage.delete_routing_rule(rule_id)
+    local err = storage.delete_routing_rule(rule_id)
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
@@ -424,7 +459,8 @@ end)
 route("DELETE", "^/admin/v1/model%-prices/([^/]+)/(.+)$", function(provider, model)
     local u = ngx.ctx.admin_user
     if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
-    storage.delete_model_price(provider, model)
+    local err = storage.delete_model_price(provider, model)
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
@@ -467,7 +503,7 @@ route("POST", "^/admin/v1/playground/token$", function()
     -- (e.g. another browser tab or a Playwright test run).
     storage.delete_expired_playground_tokens(b.gateway_id)
 
-    local raw_token = crypto.random_hex(32)
+    local raw_token = "myra_" .. crypto.random_hex(32)
     local hash      = crypto.sha256_hex(raw_token)
     -- 10-minute TTL — enough for a playground session
     local expires_ts = os.time() + 600
@@ -566,9 +602,10 @@ route("GET", "^/admin/v1/gateways/([^/]+)/tokens$", function(gateway_id)
 end)
 
 route("POST", "^/admin/v1/gateways/([^/]+)/tokens$", function(gateway_id)
+    if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
     local b = read_body()
-    local raw_token = crypto.random_hex(32)
+    local raw_token = "myra_" .. crypto.random_hex(32)
     local hash      = crypto.sha256_hex(raw_token)
     local rate_limit_json = b and b.rate_limit and b.rate_limit ~= json.null and json.encode(b.rate_limit) or nil
     local id, err = storage.insert_auth_token(gateway_id, hash,
@@ -579,38 +616,91 @@ route("POST", "^/admin/v1/gateways/([^/]+)/tokens$", function(gateway_id)
 end)
 
 route("DELETE", "^/admin/v1/gateways/([^/]+)/tokens/([^/]+)$", function(gateway_id, token_id)
+    if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
-    storage.delete_auth_token(token_id)
+    local err = storage.delete_auth_token(token_id)
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
 -- ---------------------------------------------------------------------------
 -- User routes
 -- ---------------------------------------------------------------------------
-route("GET", "^/admin/v1/organizations/([^/]+)/users$", function(org_id)
-    if not auth.check_org(org_id) then return send(403, { error = "forbidden" }) end
-    send(200, storage.list_users(org_id))
+route("GET", "^/admin/v1/users$", function()
+    local u = ngx.ctx.admin_user
+    if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
+    -- Returns users with no tenant (global admins)
+    send(200, storage.list_users(false))
 end)
 
-route("POST", "^/admin/v1/organizations/([^/]+)/users$", function(org_id)
-    if not auth.check_org(org_id) then return send(403, { error = "forbidden" }) end
+route("GET", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
+    if not require_tenant_admin() then return end
+    if not auth.check_tenant(tenant_id) then return send(403, { error = "forbidden" }) end
+    send(200, storage.list_users(tenant_id))
+end)
+
+route("POST", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
+    if not require_tenant_admin() then return end
+    if not auth.check_tenant(tenant_id) then return send(403, { error = "forbidden" }) end
     local b = read_body()
     if not b or not b.email then return send(400, { error = "email required" }) end
-    local id, err = storage.insert_user(org_id, b.email, nullable(b.name), b.role)
+    local role = b.role or "member"
+    local role_err = validate_role_assignment(role)
+    if role_err then return send(403, { error = role_err }) end
+    local id, err = storage.insert_user(tenant_id, b.email, nullable(b.name), role)
     if err then return send(500, { error = tostring(err) }) end
+
+    -- Send invitation email asynchronously (non-blocking)
+    ngx.timer.at(0, function()
+        local mail_err = email.send_template(b.email, "invitation", {
+            name      = b.name,
+            email     = b.email,
+            role      = b.role or "member",
+            login_url = os.getenv("AIG_FRONTEND_URL") or os.getenv("AIG_ADMIN_CORS_ORIGIN"),
+        })
+        if mail_err then
+            ngx.log(ngx.WARN, "invitation email failed for ", b.email, ": ", mail_err)
+        end
+    end)
+
     send(201, { id = id, email = b.email })
 end)
 
+route("POST", "^/admin/v1/users/([^/]+)/resend%-invite$", function(user_id)
+    if not require_tenant_admin() then return end
+    if not require_user_access(user_id) then return end
+    local user = storage.get_user(user_id)
+    if not user then return send(404, { error = "user not found" }) end
+    ngx.timer.at(0, function()
+        local mail_err = email.send_template(user.email, "invitation", {
+            name      = user.name,
+            email     = user.email,
+            role      = user.role,
+            login_url = os.getenv("AIG_FRONTEND_URL") or os.getenv("AIG_ADMIN_CORS_ORIGIN"),
+        })
+        if mail_err then
+            ngx.log(ngx.WARN, "resend-invite email failed for ", user.email, ": ", mail_err)
+        end
+    end)
+    send(200, { ok = true })
+end)
+
 route("PATCH", "^/admin/v1/users/([^/]+)$", function(user_id)
+    if not require_tenant_admin() then return end
     if not require_user_access(user_id) then return end
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
+    if b.role then
+        local role_err = validate_role_assignment(b.role)
+        if role_err then return send(403, { error = role_err }) end
+    end
     local err = storage.update_user(user_id, nullable(b.email), nullable(b.name), b.role)
     if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
 route("DELETE", "^/admin/v1/users/([^/]+)$", function(user_id)
+    if not require_tenant_admin() then return end
     if not require_user_access(user_id) then return end
     local err = storage.delete_user(user_id)
     if err then return send(500, { error = tostring(err) }) end
@@ -623,11 +713,12 @@ route("GET", "^/admin/v1/users/([^/]+)/tokens$", function(user_id)
 end)
 
 route("POST", "^/admin/v1/users/([^/]+)/tokens$", function(user_id)
+    if not require_tenant_admin() then return end
     if not require_user_access(user_id) then return end
     local b = read_body()
     if not b or not b.gateway_id then return send(400, { error = "gateway_id required" }) end
     if not require_gateway_access(b.gateway_id) then return end
-    local raw_token = crypto.random_hex(32)
+    local raw_token = "myra_" .. crypto.random_hex(32)
     local hash      = crypto.sha256_hex(raw_token)
     local rate_limit_json = b.rate_limit and b.rate_limit ~= json.null and json.encode(b.rate_limit) or nil
     local id, err = storage.insert_auth_token(b.gateway_id, hash,
@@ -637,7 +728,44 @@ route("POST", "^/admin/v1/users/([^/]+)/tokens$", function(user_id)
     send(201, { id = id, token = raw_token, gateway_id = b.gateway_id })
 end)
 
+-- ---------------------------------------------------------------------------
+-- Self-service token management (any authenticated user)
+-- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/me/tokens$", function()
+    local me = ngx.ctx.admin_user
+    send(200, storage.list_user_tokens(me.id))
+end)
+
+route("POST", "^/admin/v1/me/tokens$", function()
+    local me = ngx.ctx.admin_user
+    local b = read_body()
+    if not b or not b.gateway_id then return send(400, { error = "gateway_id required" }) end
+    if not require_gateway_access(b.gateway_id) then return end
+    local raw_token = "myra_" .. crypto.random_hex(32)
+    local hash      = crypto.sha256_hex(raw_token)
+    local rate_limit_json = b.rate_limit and b.rate_limit ~= json.null and json.encode(b.rate_limit) or nil
+    local id, err = storage.insert_auth_token(b.gateway_id, hash,
+        b.scopes or {"inference"}, nullable(b.expires_at),
+        me.id, nullable(b.label), rate_limit_json, nullable(b.budget_usd))
+    if err then return send(500, { error = tostring(err) }) end
+    send(201, { id = id, token = raw_token, gateway_id = b.gateway_id })
+end)
+
+route("DELETE", "^/admin/v1/me/tokens/([^/]+)$", function(token_id)
+    local me = ngx.ctx.admin_user
+    local tokens = storage.list_user_tokens(me.id)
+    local owned = false
+    for _, t in ipairs(tokens) do
+        if t.id == token_id then owned = true; break end
+    end
+    if not owned then return send(403, { error = "forbidden" }) end
+    local err = storage.delete_auth_token(token_id)
+    if err then return send(500, { error = tostring(err) }) end
+    send(200, { ok = true })
+end)
+
 route("DELETE", "^/admin/v1/users/([^/]+)/budget$", function(user_id)
+    if not require_tenant_admin() then return end
     if not require_user_access(user_id) then return end
     -- Reset spend_ledger for all tokens belonging to this user
     local tokens = storage.list_user_tokens(user_id)
@@ -722,6 +850,7 @@ end)
 
 -- DELETE /admin/v1/gateways/:id/budget  — reset all (or ?period=) spend for a gateway
 route("DELETE", "^/admin/v1/gateways/([^/]+)/budget$", function(gateway_id)
+    if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
     local args   = ngx.req.get_uri_args()
     local period = args.period ~= "" and args.period or nil
@@ -731,55 +860,11 @@ end)
 
 -- DELETE /admin/v1/tenants/:id/budget  — reset all (or ?period=) spend for a tenant
 route("DELETE", "^/admin/v1/tenants/([^/]+)/budget$", function(tenant_id)
+    if not require_tenant_admin() then return end
     if not require_tenant_access(tenant_id) then return end
     local args   = ngx.req.get_uri_args()
     local period = args.period ~= "" and args.period or nil
     storage.reset_spend("tenant", tenant_id, period)
-    send(200, { ok = true })
-end)
-
--- ---------------------------------------------------------------------------
--- Organizations  (platform admin only for create/delete; own org for read/edit)
--- ---------------------------------------------------------------------------
-
-route("GET", "^/admin/v1/organizations$", function()
-    local u = ngx.ctx.admin_user
-    if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
-    send(200, storage.list_orgs())
-end)
-
-route("POST", "^/admin/v1/organizations$", function()
-    local u = ngx.ctx.admin_user
-    if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
-    local body = read_body()
-    if not body.name or body.name == "" then return send(400, { error = "name required" }) end
-    if not body.slug or body.slug == "" then return send(400, { error = "slug required" }) end
-    local id = require("utils.uuid").v4()
-    local err = storage.create_org(id, body.name, body.slug)
-    if err then return send(409, { error = "slug already exists" }) end
-    send(201, storage.get_org(id) or { id = id })
-end)
-
-route("GET", "^/admin/v1/organizations/([^/]+)$", function(org_id)
-    if not auth.check_org(org_id) then return send(403, { error = "forbidden" }) end
-    local org = storage.get_org(org_id)
-    if not org then return send(404, { error = "not found" }) end
-    send(200, org)
-end)
-
-route("PATCH", "^/admin/v1/organizations/([^/]+)$", function(org_id)
-    if not auth.check_org(org_id) then return send(403, { error = "forbidden" }) end
-    local body = read_body()
-    local org  = storage.get_org(org_id)
-    if not org then return send(404, { error = "not found" }) end
-    storage.update_org(org_id, body.name or org.name, body.slug or org.slug)
-    send(200, storage.get_org(org_id))
-end)
-
-route("DELETE", "^/admin/v1/organizations/([^/]+)$", function(org_id)
-    local u = ngx.ctx.admin_user
-    if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
-    storage.delete_org(org_id)
     send(200, { ok = true })
 end)
 

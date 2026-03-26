@@ -21,7 +21,6 @@
 
 local upstream   = require("middleware.upstream")
 local search     = require("utils.search")
-local fetch_url  = require("utils.fetch_url")
 local providers  = require("providers")
 local json       = require("utils.json")
 local trace      = require("utils.trace")
@@ -187,6 +186,9 @@ function M.run(ctx)
 
     local provider = ctx.provider
     if not provider then return end
+
+    -- Lazy-load fetch_url here (requires resty.http, only needed when web_search is active)
+    local fetch_url = require("utils.fetch_url")
 
     -- ── Gemini: single-leg via native googleSearch grounding ─────────────────
     -- gemini.build_request() converts a tool named "web_search" to {googleSearch:{}}

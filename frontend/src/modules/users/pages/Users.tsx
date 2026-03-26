@@ -3,8 +3,9 @@ import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { useAuth } from "src/common/contexts/AuthContext";
 import { api } from "src/api/client";
-import { User, Organization, Gateway, AuthToken } from "src/api/types";
+import { User, Tenant, Gateway, AuthToken } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
+import { DocLink } from "src/common/components/DocLink";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -19,19 +20,16 @@ function CloseIcon() {
 // User modal (create / edit)
 // ---------------------------------------------------------------------------
 
-function UserModal({ orgs, user, onClose, onSaved }: {
-  orgs: Organization[];
+function UserModal({ tenants, tenantId: defaultTenantId, user, onClose, onSaved }: {
+  tenants: Tenant[];
+  tenantId?: string;
   user?: User;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { user: me } = useAuth();
   const isEdit = !!user;
-  // For non-platform-admin, lock org to their own
-  const defaultOrgId = me?.role !== "admin" && me?.org_id
-    ? me.org_id
-    : (user?.organization_id ?? orgs[0]?.id ?? "");
-  const [orgId, setOrgId] = useState(defaultOrgId);
+  const [tenantId, setTenantId] = useState(user?.tenant_id ?? defaultTenantId ?? tenants[0]?.id ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [name, setName] = useState(user?.name ?? "");
   const [role, setRole] = useState<User["role"]>(user?.role ?? "member");
@@ -45,16 +43,18 @@ function UserModal({ orgs, user, onClose, onSaved }: {
       if (isEdit) {
         await api.patch(`/users/${user!.id}`, { email, name: name || null, role });
       } else {
-        await api.post(`/organizations/${orgId}/users`, { email, name: name || null, role });
+        await api.post(`/tenants/${tenantId}/users`, { email, name: name || null, role });
       }
       onSaved(); onClose();
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   }
 
-  const canChangeOrg = !isEdit && me?.role === "admin";
+  const canChangeTenant = !isEdit && me?.role === "admin";
+  const canAssignTenantAdmin = me?.role === "admin" || me?.role === "tenant_admin";
   const availableRoles: Array<{ value: User["role"]; label: string }> = [
-    { value: "member", label: "member — full org access" },
+    ...(canAssignTenantAdmin ? [{ value: "tenant_admin" as User["role"], label: "tenant admin — manages tenant users & settings" }] : []),
+    { value: "member", label: "member — full tenant access" },
     { value: "viewer", label: "viewer — read-only, no inference" },
     ...(me?.role === "admin" ? [{ value: "admin" as User["role"], label: "admin — platform superadmin" }] : []),
   ];
@@ -70,13 +70,13 @@ function UserModal({ orgs, user, onClose, onSaved }: {
         <form onSubmit={handleSubmit}>
           {!isEdit && (
             <div className={s["form-group"]}>
-              <label className={s["form-label"]}>Organization *</label>
-              {canChangeOrg ? (
-                <select className={s["form-select"]} value={orgId} onChange={(e) => setOrgId(e.target.value)} required>
-                  {orgs.map((o) => <option key={o.id} value={o.id}>{o.slug}</option>)}
+              <label className={s["form-label"]}>Tenant *</label>
+              {canChangeTenant ? (
+                <select className={s["form-select"]} value={tenantId} onChange={(e) => setTenantId(e.target.value)} required>
+                  {tenants.map((t) => <option key={t.id} value={t.id}>{t.slug}</option>)}
                 </select>
               ) : (
-                <input className={s["form-input"]} value={orgs.find((o) => o.id === orgId)?.slug ?? orgId} readOnly />
+                <input className={s["form-input"]} value={tenants.find((t) => t.id === tenantId)?.slug ?? tenantId} readOnly />
               )}
             </div>
           )}
@@ -114,7 +114,7 @@ function UserModal({ orgs, user, onClose, onSaved }: {
 
 function TokenModal({ user, gateways, onClose, onCreated }: {
   user: User;
-  gateways: Gateway[];
+  gateways: (Gateway & { tenant_slug: string })[];
   onClose: () => void;
   onCreated: (token: string) => void;
 }) {
@@ -157,7 +157,10 @@ function TokenModal({ user, gateways, onClose, onCreated }: {
     <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={s.modal}>
         <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>New Token for {user.email}</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h2 className={s["modal-title"]}>New Token for {user.email}</h2>
+            <DocLink path="/api-reference/users-tokens/" label="Token docs" />
+          </div>
           <button className={s["modal-close"]} onClick={onClose}><CloseIcon /></button>
         </div>
         {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
@@ -165,7 +168,7 @@ function TokenModal({ user, gateways, onClose, onCreated }: {
           <div className={s["form-group"]}>
             <label className={s["form-label"]}>Gateway *</label>
             <select className={s["form-select"]} value={gatewayId} onChange={(e) => setGatewayId(e.target.value)} required>
-              {gateways.map((g) => <option key={g.id} value={g.id}>{g.slug}</option>)}
+              {gateways.map((g) => <option key={g.id} value={g.id}>{g.tenant_slug}/{g.slug}</option>)}
             </select>
           </div>
           <div className={s["form-row"]}>
@@ -237,7 +240,7 @@ function TokenRevealModal({ token, onClose }: { token: string; onClose: () => vo
         <div className={`${s.alert} ${s["alert--warning"]}`} style={{ marginBottom: 12 }}>
           Copy this token now — it will not be shown again.
         </div>
-        <div className={s.mono} style={{ background: "var(--bg-secondary)", padding: "10px 14px", borderRadius: 6, wordBreak: "break-all", fontSize: 13, marginBottom: 14 }}>
+        <div className={s.mono} style={{ background: "var(--bg-secondary)", padding: "10px 14px", borderRadius: 6, wordBreak: "break-all", fontSize: 13, marginBottom: 14, cursor: "pointer" }} title="Click to copy" onClick={copy}>
           {token}
         </div>
         <div className={s["form-actions"]}>
@@ -253,22 +256,24 @@ function TokenRevealModal({ token, onClose }: { token: string; onClose: () => vo
 // User detail panel
 // ---------------------------------------------------------------------------
 
-function UserDetail({ user: initialUser, orgs, onBack, onDeleted, onUpdated }: {
+function UserDetail({ user: initialUser, tenants, onBack, onDeleted, onUpdated }: {
   user: User;
-  orgs: Organization[];
+  tenants: Tenant[];
   onBack: () => void;
   onDeleted: () => void;
   onUpdated: (u: User) => void;
 }) {
   const { user: me } = useAuth();
   const [user, setUser] = useState(initialUser);
-  const [orgGateways, setOrgGateways] = useState<Gateway[]>([]);
+  const [tenantGateways, setTenantGateways] = useState<(Gateway & { tenant_slug: string })[]>([]);
   const [tokens, setTokens] = useState<AuthToken[]>([]);
   const [loadingTokens, setLoadingTokens] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [inviteSent, setInviteSent] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   function loadTokens() {
     setLoadingTokens(true);
@@ -276,15 +281,15 @@ function UserDetail({ user: initialUser, orgs, onBack, onDeleted, onUpdated }: {
   }
 
   function loadGateways() {
-    // GET /tenants auto-filters to the caller's org for non-admin users
-    api.get<{ id: string }[]>(`/tenants`)
+    // GET /tenants auto-filters to the caller's tenant for non-admin users
+    api.get<Tenant[]>(`/tenants`)
       .then(async (tenants) => {
-        const all: Gateway[] = [];
+        const all: (Gateway & { tenant_slug: string })[] = [];
         for (const t of tenants) {
           const gs = await api.get<Gateway[]>(`/tenants/${t.id}/gateways`).catch(() => [] as Gateway[]);
-          all.push(...gs);
+          all.push(...gs.map((g) => ({ ...g, tenant_slug: t.slug })));
         }
-        setOrgGateways(all);
+        setTenantGateways(all);
       })
       .catch(() => {});
   }
@@ -298,30 +303,41 @@ function UserDetail({ user: initialUser, orgs, onBack, onDeleted, onUpdated }: {
     catch (e: any) { alert(e.message); setDeleting(false); }
   }
 
+  async function handleResendInvite() {
+    setInviteError(null);
+    try {
+      await api.post(`/users/${user.id}/resend-invite`, {});
+      setInviteSent(true);
+      setTimeout(() => setInviteSent(false), 3000);
+    } catch (e: any) { setInviteError(e.message); }
+  }
+
   async function revokeToken(tokenId: string) {
     if (!confirm("Revoke this token?")) return;
-    await api.delete(`/gateways/${tokens.find((t) => t.id === tokenId)?.gateway_id}/tokens/${tokenId}`);
-    loadTokens();
+    try {
+      await api.delete(`/gateways/${tokens.find((t) => t.id === tokenId)?.gateway_id}/tokens/${tokenId}`);
+      loadTokens();
+    } catch (e: any) { alert(e.message); }
   }
 
   function handleSaved() {
-    if (!user.organization_id) return;
-    api.get<User[]>(`/organizations/${user.organization_id}/users`).then((us) => {
+    if (!user.tenant_id) return;
+    api.get<User[]>(`/tenants/${user.tenant_id}/users`).then((us) => {
       const updated = us.find((u) => u.id === user.id);
       if (updated) { setUser(updated); onUpdated(updated); }
     });
   }
 
-  const canEdit = me?.role === "admin" || me?.org_id === user.organization_id;
-  const roleColor = user.role === "admin" ? s["badge--success"] : user.role === "member" ? s["badge--warning"] : s["badge--neutral"];
+  const canEdit = me?.role === "admin" || me?.tenant_id === user.tenant_id;
+  const roleColor = (user.role === "admin" || user.role === "tenant_admin") ? s["badge--success"] : user.role === "member" ? s["badge--warning"] : s["badge--neutral"];
 
   return (
     <>
-      {showEdit && <UserModal orgs={orgs} user={user} onClose={() => setShowEdit(false)} onSaved={handleSaved} />}
+      {showEdit && <UserModal tenants={tenants} user={user} onClose={() => setShowEdit(false)} onSaved={handleSaved} />}
       {showToken && (
         <TokenModal
           user={user}
-          gateways={orgGateways}
+          gateways={tenantGateways}
           onClose={() => setShowToken(false)}
           onCreated={(t) => { setShowToken(false); setNewToken(t); loadTokens(); }}
         />
@@ -338,12 +354,16 @@ function UserDetail({ user: initialUser, orgs, onBack, onDeleted, onUpdated }: {
           <h2 className={s["card-title"]}>{user.email}</h2>
           {canEdit && (
             <div style={{ display: "flex", gap: 8 }}>
+              <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={handleResendInvite} disabled={inviteSent}>
+                {inviteSent ? "Invite Sent ✓" : "Resend Invite"}
+              </button>
               <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={() => setShowEdit(true)}>Edit</button>
               <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={handleDelete} disabled={deleting}>
                 {deleting ? "Deleting…" : "Delete User"}
               </button>
             </div>
           )}
+          {inviteError && <div className={`${s.alert} ${s["alert--error"]}`} style={{ marginTop: 8 }}>{inviteError}</div>}
         </div>
         <div className={s["stats-grid"]}>
           <div className={s["stat-card"]}>
@@ -361,9 +381,11 @@ function UserDetail({ user: initialUser, orgs, onBack, onDeleted, onUpdated }: {
             </div>
           </div>
           <div className={s["stat-card"]}>
-            <div className={s["stat-label"]}>Organization</div>
+            <div className={s["stat-label"]}>Tenant</div>
             <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>
-              {user.org_slug ? <span className={s.code}>{user.org_slug}</span> : <span style={{ color: "var(--text-secondary)" }}>—</span>}
+              {user.tenant_id
+                ? <span className={s.code}>{tenants.find((t) => t.id === user.tenant_id)?.slug ?? user.tenant_id}</span>
+                : <span style={{ color: "var(--text-secondary)" }}>—</span>}
             </div>
           </div>
           <div className={s["stat-card"]}>
@@ -412,13 +434,13 @@ function UserDetail({ user: initialUser, orgs, onBack, onDeleted, onUpdated }: {
                 </thead>
                 <tbody>
                   {tokens.map((t) => {
-                    const gw = orgGateways.find((g) => g.id === t.gateway_id);
+                    const gw = tenantGateways.find((g) => g.id === t.gateway_id);
                     const scopes = typeof t.scopes === "string" ? JSON.parse(t.scopes) : (t.scopes ?? []);
                     const rl = typeof t.rate_limit === "string" ? JSON.parse(t.rate_limit) : t.rate_limit;
                     return (
                       <tr key={t.id}>
                         <td>{t.label ?? <span style={{ color: "var(--text-secondary)" }}>—</span>}</td>
-                        <td><span className={s.code}>{gw?.slug ?? t.gateway_id.slice(0, 8)}</span></td>
+                        <td><span className={s.code}>{gw ? `${gw.tenant_slug}/${gw.slug}` : t.gateway_id.slice(0, 8)}</span></td>
                         <td>
                           {scopes.length === 0
                             ? <span className={`${s.badge} ${s["badge--neutral"]}`}>all</span>
@@ -459,47 +481,53 @@ export default function Users() {
   const { userId } = useParams<{ userId?: string }>();
   const navigate = useNavigate();
   const { user: me } = useAuth();
-  const [orgs, setOrgs] = useState<Organization[]>([]);
+
+  if (me && me.role !== "admin" && me.role !== "tenant_admin") {
+    return <Navigate to="/" replace />;
+  }
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [filterOrgId, setFilterOrgId] = useState("");
+  const [filterTenantId, setFilterTenantId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  function loadUsers(orgId?: string) {
+  function loadUsers(tenantId?: string) {
     setLoading(true);
-    if (!orgId) {
-      // Load users from all accessible orgs
-      const targetOrgs = me?.role === "admin" ? orgs : orgs.filter((o) => o.id === me?.org_id);
-      if (targetOrgs.length === 0) {
+    if (!tenantId) {
+      const targetTenants = me?.role === "admin" ? tenants : tenants.filter((t) => t.id === me?.tenant_id);
+      if (targetTenants.length === 0) {
         setUsers([]);
         setLoading(false);
         return;
       }
-      Promise.all(targetOrgs.map((o) =>
-        api.get<User[]>(`/organizations/${o.id}/users`).catch(() => [] as User[])
-      )).then((results) => {
-        setUsers(results.flat());
+      const tenantFetches = targetTenants.map((t) =>
+        api.get<User[]>(`/tenants/${t.id}/users`).catch(() => [] as User[])
+      );
+      const globalFetch = me?.role === "admin"
+        ? api.get<User[]>("/users").catch(() => [] as User[])
+        : Promise.resolve([] as User[]);
+      Promise.all([...tenantFetches, globalFetch]).then((results) => {
+        const all = results.flat();
+        // deduplicate by id (admins may appear in multiple lists)
+        setUsers(all.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i));
       }).catch((e) => setError(e.message)).finally(() => setLoading(false));
     } else {
-      api.get<User[]>(`/organizations/${orgId}/users`)
+      api.get<User[]>(`/tenants/${tenantId}/users`)
         .then(setUsers).catch((e) => setError(e.message)).finally(() => setLoading(false));
     }
   }
 
   useEffect(() => {
-    const loadOrgs = me?.role === "admin"
-      ? api.get<Organization[]>("/organizations")
-      : me?.org_id
-        ? api.get<Organization>(`/organizations/${me.org_id}`).then((o) => [o]).catch(() => [] as Organization[])
-        : Promise.resolve([] as Organization[]);
-
-    loadOrgs.then(setOrgs).catch(() => {});
-  }, [me]);
+    api.get<Tenant[]>("/tenants").then(setTenants).catch(() => {});
+  }, []);
 
   useEffect(() => {
-    if (orgs.length > 0) loadUsers(filterOrgId || undefined);
-  }, [orgs, filterOrgId]);
+    // Wait for both auth (me) and tenants before loading users.
+    // Without me in deps, loadUsers() would run with me=null if /tenants
+    // responds before /admin/auth/me, causing it to bail with an empty list.
+    if (me && tenants.length > 0) loadUsers(filterTenantId || undefined);
+  }, [me, tenants, filterTenantId]);
 
   const selected = users.find((u) => u.id === userId) ?? null;
 
@@ -512,9 +540,9 @@ export default function Users() {
         <UserDetail
           key={userId}
           user={selected}
-          orgs={orgs}
+          tenants={tenants}
           onBack={() => navigate("/users")}
-          onDeleted={() => { navigate("/users"); loadUsers(filterOrgId || undefined); }}
+          onDeleted={() => { navigate("/users"); loadUsers(filterTenantId || undefined); }}
           onUpdated={(u) => setUsers((us) => us.map((x) => x.id === u.id ? u : x))}
         />
       </main>
@@ -522,15 +550,16 @@ export default function Users() {
   }
 
   const roleColor = (role: User["role"]) =>
-    role === "admin" ? s["badge--success"] : role === "member" ? s["badge--warning"] : s["badge--neutral"];
+    (role === "admin" || role === "tenant_admin") ? s["badge--success"] : role === "member" ? s["badge--warning"] : s["badge--neutral"];
 
   return (
     <main className={s.page}>
       {showCreate && (
         <UserModal
-          orgs={orgs}
+          tenants={tenants}
+          tenantId={me?.tenant_id ?? tenants[0]?.id}
           onClose={() => setShowCreate(false)}
-          onSaved={() => loadUsers(filterOrgId || undefined)}
+          onSaved={() => loadUsers(filterTenantId || undefined)}
         />
       )}
 
@@ -543,15 +572,15 @@ export default function Users() {
           {me?.role === "admin" && (
             <select
               className={s["form-select"]}
-              value={filterOrgId}
-              onChange={(e) => setFilterOrgId(e.target.value)}
+              value={filterTenantId}
+              onChange={(e) => setFilterTenantId(e.target.value)}
               style={{ minWidth: 160 }}
             >
-              <option value="">All organizations</option>
-              {orgs.map((o) => <option key={o.id} value={o.id}>{o.slug}</option>)}
+              <option value="">All tenants</option>
+              {tenants.map((t) => <option key={t.id} value={t.id}>{t.slug}</option>)}
             </select>
           )}
-          <button className={`${s.btn} ${s["btn--primary"]}`} onClick={() => setShowCreate(true)} disabled={orgs.length === 0}>
+          <button className={`${s.btn} ${s["btn--primary"]}`} onClick={() => setShowCreate(true)} disabled={tenants.length === 0}>
             + New User
           </button>
         </div>
@@ -573,7 +602,7 @@ export default function Users() {
                 <th>Email</th>
                 <th>Name</th>
                 <th>Role</th>
-                <th>Organization</th>
+                <th>Tenant</th>
                 <th>Created</th>
                 <th></th>
               </tr>
@@ -584,7 +613,7 @@ export default function Users() {
                   <td>{u.email}</td>
                   <td style={{ color: u.name ? undefined : "var(--text-secondary)" }}>{u.name ?? "—"}</td>
                   <td><span className={`${s.badge} ${roleColor(u.role)}`}>{u.role}</span></td>
-                  <td><span className={s.code}>{u.org_slug ?? "—"}</span></td>
+                  <td><span className={s.code}>{tenants.find((t) => t.id === u.tenant_id)?.slug ?? "—"}</span></td>
                   <td className={s.mono}>{fmtDate(u.created_at)}</td>
                   <td>
                     <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/users/${u.id}`); }}>

@@ -6,6 +6,7 @@ import { Gateway, Tenant, ProviderConfig, ProviderMeta, RoutingRule, DetectorCon
 import { GuardrailBuilder } from "src/modules/guardrails/GuardrailBuilder";
 import { fmtDate, fmtDateTime } from "src/common/utils/date";
 import { fmtNumber, fmtCost, fmtMs, fmtSec } from "src/common/utils/format";
+import { DocLink, docsUrl } from "src/common/components/DocLink";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -231,7 +232,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
         <form onSubmit={handleSubmit}>
           <div className={s["form-row"]}>
             <div className={s["form-group"]}>
-              <label htmlFor="budgetusd" className={s["form-label"]}>Budget (USD)</label>
+              <label htmlFor="budgetusd" className={s["form-label"]} style={{ display: "flex", alignItems: "center", gap: 6 }}>Budget (USD) <DocLink path="/configuration/budgets/" label="Budget docs" /></label>
               <input id="budgetusd" className={s["form-input"]} type="number" min="0" step="0.01" value={budgetUsd} onChange={(e) => setBudgetUsd(e.target.value)} placeholder="unlimited" />
             </div>
             <div className={s["form-group"]}>
@@ -261,7 +262,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
           </div>
           <div className={s["form-row"]}>
             <div className={s["form-group"]}>
-              <label htmlFor="raterequests" className={s["form-label"]}>Rate Limit (req)</label>
+              <label htmlFor="raterequests" className={s["form-label"]} style={{ display: "flex", alignItems: "center", gap: 6 }}>Rate Limit (req) <DocLink path="/configuration/rate-limiting/" label="Rate limiting docs" /></label>
               <input id="raterequests" className={s["form-input"]} type="number" min="1" value={rateRequests} onChange={(e) => setRateRequests(e.target.value)} />
             </div>
             <div className={s["form-group"]}>
@@ -320,6 +321,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
               <input type="checkbox" checked={cbEnabled} onChange={(e) => setCbEnabled(e.target.checked)} />
               <span className={s["form-label"]} style={{ margin: 0 }}>Circuit Breaker</span>
+              <DocLink path="/routing/circuit-breaker/" label="Circuit breaker docs" />
             </label>
             <p className={s["form-hint"]} style={{ marginTop: 4 }}>
               Automatically stops routing to a provider after repeated failures, then probes after a cooldown.
@@ -392,7 +394,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
           <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
           {/* SIEM */}
           <div className={s["form-group"]}>
-            <label className={s["form-label"]}>SIEM Integration</label>
+            <label className={s["form-label"]} style={{ display: "flex", alignItems: "center", gap: 6 }}>SIEM Integration <DocLink path="/configuration/siem/" label="SIEM docs" /></label>
             <p className={s["form-hint"]} style={{ marginBottom: 8 }}>
               Stream security events to an external SIEM. Overrides any tenant-level SIEM config.
             </p>
@@ -484,7 +486,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
           <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
           {/* Request Tracing */}
           <div className={s["form-group"]}>
-            <label className={s["form-label"]}>Request Tracing</label>
+            <label className={s["form-label"]} style={{ display: "flex", alignItems: "center", gap: 6 }}>Request Tracing <DocLink path="/observability/tracing/" label="Tracing docs" /></label>
             <p className={s["form-hint"]} style={{ marginBottom: 8 }}>
               Record a full step-by-step trace for every request — received, transformed, routed, upstream call, and delivery.
             </p>
@@ -677,7 +679,7 @@ function CreateTokenModal({ gatewayId, onClose, onCreated }: {
             <p style={{ color: "var(--text-secondary)", marginBottom: 12, fontSize: 14 }}>
               Copy this token now. It will <strong>not</strong> be shown again.
             </p>
-            <div className={s["token-reveal"]}>{newToken}</div>
+            <div className={s["token-reveal"]} title="Click to copy" style={{ cursor: "pointer" }} onClick={copyToken}>{newToken}</div>
             <div className={s["form-actions"]}>
               <button className={`${s.btn} ${s["btn--primary"]}`} onClick={copyToken}>
                 {copied ? "Copied!" : "Copy"}
@@ -810,7 +812,10 @@ function RuleModal({ gatewayId, rule, onClose, onSaved }: {
     <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={s.modal} style={{ maxWidth: 640 }}>
         <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>{isEdit ? "Edit Rule" : "New Routing Rule"}</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h2 className={s["modal-title"]}>{isEdit ? "Edit Rule" : "New Routing Rule"}</h2>
+            <DocLink path="/routing/routing-rules/" label="Routing rules docs" />
+          </div>
           <button className={s["modal-close"]} onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -1056,7 +1061,17 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
   }
 
   const cfg = gw.config;
-  const baseUrl = `http://127.0.0.1:8081/v1/${tenantSlug}/${gw.slug}/<provider>/v1`;
+  const [endpointProvider, setEndpointProvider] = useState("compat");
+  const [copied, setCopied] = useState(false);
+  const gatewayBase = import.meta.env.VITE_GATEWAY_URL ?? window.location.origin;
+  const endpointUrl = `${gatewayBase}/v1/${tenantSlug}/${gw.slug}/${endpointProvider}/chat/completions`;
+
+  function copyEndpoint() {
+    navigator.clipboard.writeText(endpointUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   return (
     <>
@@ -1135,8 +1150,25 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
           </div>
         </div>
         <div className={s["form-group"]} style={{ marginTop: 12 }}>
-          <label className={s["form-label"]}>Base URL</label>
-          <div className={s["code"]} style={{ padding: "8px 12px", fontSize: 12, wordBreak: "break-all" }}>{baseUrl}</div>
+          <label className={s["form-label"]}>Endpoint URL</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+            <select
+              className={s["form-input"]}
+              style={{ width: "auto" }}
+              value={endpointProvider}
+              onChange={(e) => setEndpointProvider(e.target.value)}
+            >
+              {["compat", "openai", "anthropic", "gemini", "bedrock", "mistral", "groq", "cohere", "deepseek", "xai"].map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div className={s["code"]} style={{ flex: 1, padding: "8px 12px", fontSize: 12, wordBreak: "break-all" }}>{endpointUrl}</div>
+            <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={copyEndpoint} style={{ whiteSpace: "nowrap" }}>
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1178,7 +1210,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
         {loadingTokens ? (
           <div className={s.empty}>Loading…</div>
         ) : tokens.length === 0 ? (
-          <div className={s.empty}>No tokens yet. Generate one to allow access to this gateway.</div>
+          <div className={s.empty}>No tokens yet. Generate one to allow access to this gateway. <a href={docsUrl("/api-reference/users-tokens/")} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)" }}>Learn more</a></div>
         ) : (
           <div className={s["table-wrapper"]}>
             <table className={s.table}>
@@ -1210,7 +1242,10 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
       {/* Guardrails */}
       <div className={s.card}>
         <div className={s["card-header"]}>
-          <h2 className={s["card-title"]}>Guardrails</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h2 className={s["card-title"]}>Guardrails</h2>
+            <DocLink path="/security/guardrails/" label="Guardrails docs" />
+          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {guardrailsSaved && <span style={{ fontSize: 12, color: "var(--badge-success-text)" }}>Saved</span>}
             <button
@@ -1304,7 +1339,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
           <button className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`} onClick={() => setShowNewRule(true)}>+ New Rule</button>
         </div>
         {rules.length === 0 ? (
-          <div className={s.empty}>No routing rules. Add rules to override default provider routing.</div>
+          <div className={s.empty}>No routing rules. Add rules to override default provider routing. <a href={docsUrl("/routing/routing-rules/")} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)" }}>Learn more</a></div>
         ) : (
           <div className={s["table-wrapper"]}>
             <table className={s.table}>
@@ -1438,7 +1473,13 @@ export default function Gateways() {
   const selectedGateway = gateways.find((g) => g.id === gatewayId) ?? null;
 
   useEffect(() => {
-    api.get<Tenant[]>("/tenants").then(setTenants);
+    api.get<Tenant[]>("/tenants").then((ts) => {
+      setTenants(ts);
+      // Auto-select the only tenant so the user doesn't have to click it manually
+      if (!tenantId && ts.length === 1) {
+        navigate(`/tenants/${ts[0].id}/gateways`, { replace: true });
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -1525,7 +1566,7 @@ export default function Gateways() {
           <div className={s.empty}>Loading…</div>
         ) : gateways.length === 0 ? (
           <div className={s.card}>
-            <div className={s.empty}>No gateways for <strong>{selectedTenant.slug}</strong> yet.</div>
+            <div className={s.empty}>No gateways for <strong>{selectedTenant.slug}</strong> yet. <a href={docsUrl("/getting-started/quick-start/")} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)" }}>Quick start guide</a></div>
           </div>
         ) : (
           <div className={s["table-wrapper"]}>

@@ -13,8 +13,8 @@ import ModelPrices from "src/modules/prices/pages/ModelPrices";
 import Playground from "src/modules/playground/pages/Playground";
 import Users from "src/modules/users/pages/Users";
 import TenantAnalytics from "src/modules/analytics/pages/TenantAnalytics";
+import Profile from "src/modules/profile/pages/Profile";
 import LoginPage from "src/pages/LoginPage";
-import Organizations from "src/pages/OrganizationsPage";
 
 function AppShell() {
   return (
@@ -36,7 +36,7 @@ function AppShell() {
           <Route path="/analytics" element={<TenantAnalytics />} />
           <Route path="/playground" element={<Playground />} />
           <Route path="/model-prices" element={<ModelPrices />} />
-          <Route path="/organizations" element={<Organizations />} />
+          <Route path="/profile" element={<Profile />} />
         </Routes>
       </div>
     </div>

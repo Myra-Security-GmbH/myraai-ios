@@ -27,6 +27,7 @@ _G.ngx = {
     ERR    = 0, WARN = 1, INFO = 2,
     print  = function(s) response_body = s end,
     escape_uri = function(s) return s end,
+    timer  = { at = function() end },
 }
 
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
@@ -73,6 +74,9 @@ local storage_stub = {
         if id == "log-found" then return { id = id, model = "gpt-4o" } end
         return nil
     end,
+    get_tenant                = function(id)           track("get_tenant", id)
+        return { id = id, slug = "acme" }
+    end,
     list_tenants              = function()             track("list_tenants"); return {
         { id = "tn-1", slug = "acme", siem_config = cjson.encode({ host = "siem.example.com" }) },
         { id = "tn-2", slug = "beta", siem_config = nil },
@@ -118,6 +122,9 @@ local storage_stub = {
             return { id = "gw-1", tenant_slug = "acme", gateway_slug = "main" }
         end
         return nil
+    end,
+    get_user                  = function(id)           track("get_user", id)
+        return { id = id, email = "user@example.com", role = "member", tenant_id = "tn-1" }
     end,
     list_users                = function(tenant_id)   track("list_users", tenant_id); return {} end,
     insert_user               = function(tid, email, name, role)
@@ -203,12 +210,13 @@ local api = require("admin.api")
 -- ---------------------------------------------------------------------------
 -- Helper: set up a request and call handle(), return decoded response
 -- ---------------------------------------------------------------------------
-local function call(method, uri, body_tbl, query_args)
+local function call(method, uri, body_tbl, query_args, user_override)
     response_body   = nil
     response_status = 200
     ngx.status      = 200
     audit_log_calls = {}
 
+    ngx.ctx.admin_user = user_override or { id = "user-1", role = "admin", tenant_id = "tn-1" }
     ngx.req.get_method   = function() return method end
     ngx.req.get_uri_args = function() return query_args or {} end
     ngx.var.uri          = uri
@@ -399,15 +407,6 @@ ok("POST /users/:id/tokens → token returned", b.token ~= nil)
 
 s, b = call("POST", "/admin/v1/users/user-1/tokens", { label = "x" }) -- no gateway_id
 ok("POST /users/:id/tokens no gateway_id → 400", ngx.status == 400)
-
-s, b = call("GET", "/admin/v1/users/user-1/gateways")
-ok("GET /users/:id/gateways → 200", ngx.status == 200)
-
-s, b = call("POST", "/admin/v1/users/user-1/gateways/gw-1")
-ok("POST /users/:id/gateways/:gw_id → 201", ngx.status == 201)
-
-s, b = call("DELETE", "/admin/v1/users/user-1/gateways/gw-1")
-ok("DELETE /users/:id/gateways/:gw_id → 200", ngx.status == 200)
 
 s, b = call("DELETE", "/admin/v1/users/user-1/budget")
 ok("DELETE /users/:id/budget → 200", ngx.status == 200)

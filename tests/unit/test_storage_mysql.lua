@@ -480,6 +480,131 @@ M.upsert_routing_rule("gw-1", nil, 0, {}, {}, false)
 ok("34. boolean false → 0 in SQL", queries[1]:find(",0%)") or queries[1]:find(", 0,") or queries[1]:find(",0,"), queries[1])
 
 -- ---------------------------------------------------------------------------
+-- 35. insert_user — inserts into tenant_id (not organization_id)
+-- ---------------------------------------------------------------------------
+reset_storage()
+M = require("storage.mysql")
+local user_id, user_err = M.insert_user("tn-uuid-1", "alice@example.com", "Alice", "member")
+local user_sql = queries[2] or ""  -- queries[1] is the duplicate-check SELECT; INSERT is queries[2]
+ok("35a. insert_user returns uuid", user_id ~= nil and user_id:match("^uuid%-"), tostring(user_id))
+ok("35b. insert_user no error",     user_err == nil, tostring(user_err))
+ok("35c. insert_user uses tenant_id column",
+    user_sql:find("tenant_id") ~= nil, user_sql)
+ok("35d. insert_user does NOT use organization_id column",
+    user_sql:find("organization_id") == nil, user_sql)
+ok("35e. insert_user sets correct email",
+    user_sql:find("'alice@example%.com'") ~= nil, user_sql)
+ok("35f. insert_user sets correct role",
+    user_sql:find("'member'") ~= nil, user_sql)
+
+-- ---------------------------------------------------------------------------
+-- 36. bootstrap_admin — uses tenant_id (not organization_id)
+-- ---------------------------------------------------------------------------
+reset_storage()
+M = require("storage.mysql")
+-- No existing admin: first query returns empty set
+table.insert(query_results, {})
+-- Set env so the function proceeds
+local orig_getenv = os.getenv
+os.getenv = function(k)
+    if k == "AIG_BOOTSTRAP_ADMIN_EMAIL" then return "admin@example.com"
+    elseif k == "AIG_BOOTSTRAP_ADMIN_NAME" then return "Admin"
+    else return orig_getenv(k) end
+end
+M.bootstrap_admin()
+os.getenv = orig_getenv
+local bootstrap_sql = queries[2] or ""
+ok("36a. bootstrap_admin uses tenant_id column",
+    bootstrap_sql:find("tenant_id") ~= nil, bootstrap_sql)
+ok("36b. bootstrap_admin does NOT use organization_id column",
+    bootstrap_sql:find("organization_id") == nil, bootstrap_sql)
+
+-- ---------------------------------------------------------------------------
+-- 37. upsert_tenant — does NOT include organization_id in INSERT
+-- ---------------------------------------------------------------------------
+reset_storage()
+M = require("storage.mysql")
+-- INSERT IGNORE returns no rows; SELECT returns id
+table.insert(query_results, {})
+table.insert(query_results, { { id = "tn-001" } })
+local tid = M.upsert_tenant("my-tenant", "free", nil, nil, nil)
+local upsert_sql = queries[1] or ""
+ok("37a. upsert_tenant does NOT include organization_id",
+    upsert_sql:find("organization_id") == nil, upsert_sql)
+ok("37b. upsert_tenant returns tenant id", tid == "tn-001", tostring(tid))
+
+-- ---------------------------------------------------------------------------
+-- 38. update_tenant — does not include organization_id
+-- ---------------------------------------------------------------------------
+reset_storage()
+M = require("storage.mysql")
+M.update_tenant("tn-1", "pro", 100, nil, nil)
+local update_sql_no_org = queries[1] or ""
+ok("38a. update_tenant does NOT include organization_id",
+    update_sql_no_org:find("organization_id") == nil, update_sql_no_org)
+
+-- ---------------------------------------------------------------------------
+-- 39. list_tenants — with tenant_id filters by id column
+-- ---------------------------------------------------------------------------
+reset_storage()
+M = require("storage.mysql")
+table.insert(query_results, {})
+M.list_tenants("tn-abc")
+local list_t_sql = queries[1] or ""
+ok("39a. list_tenants(tenant_id) filters by id = ?",
+    list_t_sql:find("AND id") ~= nil or list_t_sql:find("AND `id`") ~= nil, list_t_sql)
+ok("39b. list_tenants(tenant_id) does NOT filter by organization_id",
+    list_t_sql:find("organization_id") == nil, list_t_sql)
+
+-- list_tenants() without tenant_id should return all (no id filter)
+reset_storage()
+M = require("storage.mysql")
+table.insert(query_results, {})
+M.list_tenants()
+local list_t_all_sql = queries[1] or ""
+ok("39c. list_tenants() without arg does NOT filter by id",
+    list_t_all_sql:find("AND id") == nil and list_t_all_sql:find("AND `id`") == nil, list_t_all_sql)
+
+-- ---------------------------------------------------------------------------
+-- 40. list_logs — tenant_id filter uses direct column
+-- ---------------------------------------------------------------------------
+reset_storage()
+M = require("storage.mysql")
+table.insert(query_results, {})
+M.list_logs({ tenant_id = "tn-xyz" })
+local list_logs_sql = queries[1] or ""
+ok("40a. list_logs(tenant_id) filters by tenant_id column",
+    list_logs_sql:find("tenant_id") ~= nil, list_logs_sql)
+ok("40b. list_logs(tenant_id) does NOT use organization_id",
+    list_logs_sql:find("organization_id") == nil, list_logs_sql)
+
+-- ---------------------------------------------------------------------------
+-- 41. get_usage_stats — tenant_id filter uses direct column
+-- ---------------------------------------------------------------------------
+reset_storage()
+M = require("storage.mysql")
+-- stats query + by_tenant + recent + recent_blocked
+for _ = 1, 4 do table.insert(query_results, {}) end
+M.get_usage_stats("tn-stats")
+local found_org_subq = false
+for _, q in ipairs(queries) do
+    if q:find("organization_id") then found_org_subq = true end
+end
+ok("41. get_usage_stats(tenant_id) does NOT use organization_id subquery", not found_org_subq,
+    table.concat(queries, " | "):sub(1, 200))
+
+-- ---------------------------------------------------------------------------
+-- 42. get_stats_timeseries — tenant_id uses direct column
+-- ---------------------------------------------------------------------------
+reset_storage()
+M = require("storage.mysql")
+table.insert(query_results, {})
+M.get_stats_timeseries(3600, 24, nil, "tn-ts")
+local ts_sql = queries[1] or ""
+ok("42. get_stats_timeseries(tenant_id) does NOT use organization_id subquery",
+    ts_sql:find("organization_id") == nil, ts_sql)
+
+-- ---------------------------------------------------------------------------
 -- Summary
 -- ---------------------------------------------------------------------------
 print(string.format("\n%d passed, %d failed", pass, fail))

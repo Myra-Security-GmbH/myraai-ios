@@ -721,7 +721,9 @@ describe("Gateways — create auth token modal", () => {
     await waitFor(() => screen.getByRole("button", { name: "Generate Token" }));
     await userEvent.click(screen.getByRole("button", { name: "Generate Token" }));
     await waitFor(() => expect(screen.getByText("tok_abc123")).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    // The generated token section shows a Copy button (multiple Copy buttons may exist on the page)
+    const copyButtons = screen.getAllByRole("button", { name: "Copy" });
+    expect(copyButtons.length).toBeGreaterThanOrEqual(1);
   });
 });
 

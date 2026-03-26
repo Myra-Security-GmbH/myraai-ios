@@ -19,6 +19,75 @@ local trace      = require("utils.trace")
 
 local M = {}
 
+-- Maximum bytes to capture from a provider error response body for logging.
+local MAX_ERR_BODY = 16384
+
+-- Buffer up to max_bytes from a reader function (or return the string as-is).
+-- Any remainder is drained so the connection can be returned to the pool.
+local function read_body_str(body, max_bytes)
+    max_bytes = max_bytes or MAX_ERR_BODY
+    if type(body) ~= "function" then
+        local s = tostring(body or "")
+        if #s > max_bytes then return s:sub(1, max_bytes) .. " [truncated]" end
+        return s
+    end
+    local parts, total = {}, 0
+    while total < max_bytes do
+        local chunk = body(math.min(8192, max_bytes - total))
+        if not chunk or chunk == "" then break end
+        parts[#parts + 1] = chunk
+        total = total + #chunk
+    end
+    -- drain the rest so the connection can be reused
+    while true do
+        local chunk = body(8192)
+        if not chunk or chunk == "" then break end
+    end
+    local s = table.concat(parts)
+    if total >= max_bytes then s = s .. " [truncated]" end
+    return s
+end
+
+-- Return a copy of a headers table with sensitive values replaced.
+local SENSITIVE_HDR = {
+    ["authorization"]  = true,
+    ["x-api-key"]      = true,
+    ["x-goog-api-key"] = true,
+    ["api-key"]        = true,
+}
+local function redact_headers(headers)
+    if type(headers) ~= "table" then return {} end
+    local out = {}
+    for k, v in pairs(headers) do
+        out[k] = SENSITIVE_HDR[k:lower()] and "[REDACTED]" or v
+    end
+    return out
+end
+
+-- Emit a single structured log line with every available detail about a
+-- non-200 provider response or connection failure.
+local function log_provider_error(req_ctx, res, fields)
+    -- fields: {attempt, provider, model, latency_ms, resp_body, error, event}
+    local entry = {
+        event          = fields.event or "upstream_error",
+        attempt        = fields.attempt,
+        provider       = fields.provider,
+        model          = fields.model,
+        latency_ms     = fields.latency_ms,
+        error          = fields.error,
+        -- full request context
+        url            = req_ctx and req_ctx.url,
+        req_headers    = req_ctx and req_ctx.req_headers,
+        req_body       = req_ctx and req_ctx.req_body,
+        -- full response context
+        resp_status    = res and res.status,
+        resp_headers   = res and res.headers,
+        resp_body      = fields.resp_body,
+    }
+    local level = (res and res.status and res.status >= 500) and ngx.ERR or ngx.WARN
+    ngx.log(level, "[upstream_error] ", json.encode(entry))
+end
+
 -- Sleep with jittered exponential back-off between retries.
 -- Respects Retry-After (seconds) and Retry-After-Ms (milliseconds) response headers.
 local function backoff_sleep(try, headers)
@@ -73,6 +142,13 @@ local function call_provider(ctx, provider_name, model, is_streaming)
     ctx.provider = orig_provider
     ctx.model    = orig_model
 
+    -- Capture request context for error logging (headers redacted for security)
+    local req_ctx = {
+        url         = url,
+        req_headers = redact_headers(headers),
+        req_body    = body,
+    }
+
     local status, resp_headers, body_or_reader, call_err, httpc =
         http_util.request({
             method     = "POST",
@@ -84,7 +160,7 @@ local function call_provider(ctx, provider_name, model, is_streaming)
         })
 
     if call_err then
-        return nil, "http: " .. call_err
+        return nil, "http: " .. call_err, req_ctx
     end
 
     return {
@@ -95,7 +171,8 @@ local function call_provider(ctx, provider_name, model, is_streaming)
         provider_name = provider_name,
         provider_mod  = provider_mod,
         url           = url,             -- for tracing (no auth key)
-    }
+        req_ctx       = req_ctx,         -- for error logging
+    }, nil, req_ctx
 end
 
 -- #5: Shared SSE line extractor used by both streaming handlers.
@@ -542,12 +619,11 @@ function M.run(ctx)
             })
 
             local t_call = ngx.now()
-            local res, err = call_provider(ctx, provider_name, model, is_streaming)
+            local res, err, req_ctx = call_provider(ctx, provider_name, model, is_streaming)
             local call_ms = math.floor((ngx.now() - t_call) * 1000)
 
             if not res then
                 last_err = err
-                ngx.log(ngx.WARN, "upstream call failed: ", err)
                 -- TRACE: call error
                 trace.step(ctx, "upstream_error", {
                     attempt    = total_attempts,
@@ -555,6 +631,14 @@ function M.run(ctx)
                     model      = model,
                     error      = err,
                     latency_ms = call_ms,
+                })
+                log_provider_error(req_ctx, nil, {
+                    event      = "connection_failed",
+                    attempt    = total_attempts,
+                    provider   = provider_name,
+                    model      = model,
+                    latency_ms = call_ms,
+                    error      = err,
                 })
                 cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, nil,
                               ctx.gateway_config.webhooks)
@@ -564,7 +648,27 @@ function M.run(ctx)
             -- 5xx from provider → retry
             if res.status >= 500 then
                 last_err = "provider HTTP " .. res.status
-                ngx.log(ngx.WARN, "upstream: provider returned ", res.status)
+                -- Buffer the error body (and implicitly drain) so we can log it
+                -- and return the connection to the pool.
+                local resp_body_5xx = read_body_str(res.body)
+                if res.httpc then res.httpc:set_keepalive() end
+                -- TRACE: call error
+                trace.step(ctx, "upstream_error", {
+                    attempt    = total_attempts,
+                    provider   = provider_name,
+                    model      = model,
+                    error      = last_err,
+                    latency_ms = call_ms,
+                    resp_body  = resp_body_5xx,
+                })
+                log_provider_error(res.req_ctx, res, {
+                    event      = "provider_5xx",
+                    attempt    = total_attempts,
+                    provider   = provider_name,
+                    model      = model,
+                    latency_ms = call_ms,
+                    resp_body  = resp_body_5xx,
+                })
                 cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status,
                                   ctx.gateway_config.webhooks)
                 goto next_try
@@ -573,17 +677,28 @@ function M.run(ctx)
             -- 429 Too Many Requests → retry with back-off instead of passing through
             if res.status == 429 then
                 last_err = "provider HTTP 429"
-                ngx.log(ngx.WARN, "upstream: 429 rate-limited by ", provider_name)
+                -- Buffer body (also drains it) so we can log rate-limit details
+                local resp_body_429 = read_body_str(res.body)
+                if res.httpc then res.httpc:set_keepalive() end
+                -- TRACE: call error
+                trace.step(ctx, "upstream_error", {
+                    attempt    = total_attempts,
+                    provider   = provider_name,
+                    model      = model,
+                    error      = last_err,
+                    latency_ms = call_ms,
+                    resp_body  = resp_body_429,
+                })
+                log_provider_error(res.req_ctx, res, {
+                    event      = "provider_429",
+                    attempt    = total_attempts,
+                    provider   = provider_name,
+                    model      = model,
+                    latency_ms = call_ms,
+                    resp_body  = resp_body_429,
+                })
                 cb.record_failure(ctx.gateway_id, provider_name, cb_cfg, res.status,
                                   ctx.gateway_config.webhooks)
-                -- drain body to return connection to pool
-                if type(res.body) == "function" then
-                    while true do
-                        local c = res.body(8192)
-                        if not c or c == "" then break end
-                    end
-                end
-                if res.httpc then res.httpc:set_keepalive() end
                 goto next_try
             end
 
@@ -592,17 +707,16 @@ function M.run(ctx)
             if res.status >= 400 then
                 -- res.body may be a reader function (when client sent stream=true)
                 -- even though the provider returned a plain JSON error. Buffer it.
-                local body_str = res.body
-                if type(body_str) == "function" then
-                    local parts = {}
-                    while true do
-                        local chunk = body_str(8192)
-                        if not chunk or chunk == "" then break end
-                        parts[#parts + 1] = chunk
-                    end
-                    body_str = table.concat(parts)
-                end
+                local body_str = read_body_str(res.body)
                 if res.httpc then res.httpc:set_keepalive() end
+                log_provider_error(res.req_ctx, res, {
+                    event      = "provider_4xx",
+                    attempt    = total_attempts,
+                    provider   = provider_name,
+                    model      = model,
+                    latency_ms = call_ms,
+                    resp_body  = body_str,
+                })
                 ctx.upstream_latency_ms = call_ms
                 ctx.upstream_attempts   = total_attempts
                 ctx.provider_request_id = res.headers and

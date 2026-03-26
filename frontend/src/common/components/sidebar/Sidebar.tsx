@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useTheme } from "src/common/contexts/ThemeContext";
 import { useAuth } from "src/common/contexts/AuthContext";
+import { docsUrl } from "src/common/components/DocLink";
 import styles from "./Sidebar.module.scss";
 
 function NavIcon({ children }: { children: React.ReactNode }) {
@@ -61,11 +62,15 @@ function PlaygroundIcon() {
 function AnalyticsIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>;
 }
-function OrgIcon() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
+function TokenIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
 }
+
 function LogoutIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
+}
+function DocsIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
 }
 
 function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean }) {
@@ -120,12 +125,11 @@ export default function Sidebar() {
         <NavItem to="/dashboard" label="Dashboard" icon={<DashboardIcon />} collapsed={collapsed} />
 
         <SectionLabel label="MANAGEMENT" collapsed={collapsed} />
-        {user?.role === "admin" && (
-          <NavItem to="/organizations" label="Organizations" icon={<OrgIcon />} collapsed={collapsed} />
-        )}
         <NavItem to="/tenants" label="Tenants" icon={<TenantsIcon />} collapsed={collapsed} />
         <NavItem to="/gateways" label="Gateways" icon={<GatewayIcon />} collapsed={collapsed} />
-        <NavItem to="/users" label="Users" icon={<UsersIcon />} collapsed={collapsed} />
+        {(user?.role === "admin" || user?.role === "tenant_admin") && (
+          <NavItem to="/users" label="Users" icon={<UsersIcon />} collapsed={collapsed} />
+        )}
 
         <SectionLabel label="OBSERVABILITY" collapsed={collapsed} />
         <NavItem to="/analytics" label="Cost Analytics" icon={<AnalyticsIcon />} collapsed={collapsed} />
@@ -135,9 +139,15 @@ export default function Sidebar() {
 
         <SectionLabel label="CONFIG" collapsed={collapsed} />
         <NavItem to="/model-prices" label="Model Prices" icon={<PricesIcon />} collapsed={collapsed} />
+
+        <SectionLabel label="ACCOUNT" collapsed={collapsed} />
+        <NavItem to="/profile" label="My Tokens" icon={<TokenIcon />} collapsed={collapsed} />
       </div>
 
       <div className={`${styles["bottom-bar"]} ${collapsed ? styles["bottom-bar--collapsed"] : ""}`}>
+        <a className={styles["bottom-btn"]} href={docsUrl("/")} target="_blank" rel="noopener noreferrer" title="Documentation">
+          <DocsIcon />
+        </a>
         <button className={styles["bottom-btn"]} onClick={toggleTheme} title={theme === "dark" ? "Light mode" : "Dark mode"}>
           {theme === "dark" ? <SunIcon /> : <MoonIcon />}
         </button>

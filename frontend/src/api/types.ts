@@ -30,13 +30,6 @@ export interface SiemConfig {
   format?: "cef" | "rfc5424";
 }
 
-export interface Organization {
-  id: string;
-  name: string;
-  slug: string;
-  created_at: string;
-}
-
 export interface Tenant {
   id: string;
   slug: string;
@@ -44,7 +37,6 @@ export interface Tenant {
   budget_usd: number | null;
   budget_period: BudgetPeriod;
   siem?: SiemConfig;
-  organization_id: string | null;
   created_at: string;
 }
 
@@ -196,11 +188,10 @@ export interface Gateway {
 
 export interface User {
   id: string;
-  organization_id: string | null;
-  org_slug: string | null;
+  tenant_id: string | null;
   email: string;
   name: string | null;
-  role: "admin" | "member" | "viewer";
+  role: "admin" | "tenant_admin" | "member" | "viewer";
   created_at: string;
 }
 
@@ -222,6 +213,7 @@ export interface LogEntry {
   ts: string;
   tenant: string;
   tenant_id: string;
+  gateway?: string;
   gateway_id: string;
   provider: string;
   model: string;
@@ -315,6 +307,10 @@ export interface GuardrailEvent {
   provider: string;
   model: string;
   latency_ms: number;
+  gateway?: string | null;
+  gateway_id?: string | null;
+  tenant?: string | null;
+  tenant_id?: string | null;
 }
 
 export interface TenantStats {

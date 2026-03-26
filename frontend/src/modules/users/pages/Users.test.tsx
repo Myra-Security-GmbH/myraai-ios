@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import Users from "./Users";
-import type { User, Organization, Gateway, AuthToken } from "src/api/types";
+import type { User, Tenant, Gateway, AuthToken } from "src/api/types";
 
 // ---------------------------------------------------------------------------
 // API mock
@@ -31,33 +31,33 @@ const mockUseAuth = useAuth as ReturnType<typeof vi.fn>;
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const ORG1: Organization = { id: "o1", name: "Acme", slug: "acme", created_at: "2024-01-01T00:00:00Z" };
-const ORG2: Organization = { id: "o2", name: "Globex", slug: "globex", created_at: "2024-01-02T00:00:00Z" };
+const TN1: Tenant = { id: "o1", slug: "acme", plan: "free", budget_usd: null, budget_period: "monthly", created_at: "2024-01-01T00:00:00Z" };
+const TN2: Tenant = { id: "o2", slug: "globex", plan: "free", budget_usd: null, budget_period: "monthly", created_at: "2024-01-02T00:00:00Z" };
 
-const USER1: User = { id: "u1", organization_id: "o1", org_slug: "acme", email: "alice@example.com", name: "Alice", role: "admin", created_at: "2024-01-10T00:00:00Z" };
-const USER2: User = { id: "u2", organization_id: "o1", org_slug: "acme", email: "bob@example.com", name: null, role: "member", created_at: "2024-01-11T00:00:00Z" };
-const USER3: User = { id: "u3", organization_id: "o2", org_slug: "globex", email: "carol@example.com", name: "Carol", role: "viewer", created_at: "2024-01-12T00:00:00Z" };
+const USER1: User = { id: "u1", tenant_id: "o1", email: "alice@example.com", name: "Alice", role: "admin", created_at: "2024-01-10T00:00:00Z" };
+const USER2: User = { id: "u2", tenant_id: "o1", email: "bob@example.com", name: null, role: "member", created_at: "2024-01-11T00:00:00Z" };
+const USER3: User = { id: "u3", tenant_id: "o2", email: "carol@example.com", name: "Carol", role: "viewer", created_at: "2024-01-12T00:00:00Z" };
 
 const GW: Gateway = { id: "gw1", slug: "main-gw", tenant_id: "t1", config: {}, created_at: "2024-01-05T00:00:00Z" };
 
 const TOKEN: AuthToken = { id: "tok1", gateway_id: "gw1", token_hash: "abc", scopes: ["inference"], expires_at: null, created_at: "2024-02-01T00:00:00Z", user_id: "u1", label: "dev", rate_limit: null, budget_usd: null };
 
 // Default admin logged-in user (platform admin)
-const ADMIN_ME = { id: "me", email: "admin@example.com", role: "admin" as const, org_id: null };
+const ADMIN_ME = { id: "me", email: "admin@example.com", role: "admin" as const, tenant_id: null };
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Default happy-path mock: two orgs, two users in o1, one in o2, one gateway */
+/** Default happy-path mock: two tenants, two users in o1, one in o2, one gateway */
 function setupDefaultMocks() {
   mockUseAuth.mockReturnValue({ user: ADMIN_ME, loading: false, login: vi.fn(), logout: vi.fn() });
   mockApi.get.mockImplementation((path: string) => {
-    if (path === "/organizations") return Promise.resolve([ORG1, ORG2]);
-    if (path === "/organizations/o1/users") return Promise.resolve([USER1, USER2]);
-    if (path === "/organizations/o2/users") return Promise.resolve([USER3]);
-    if (path === "/tenants") return Promise.resolve([{ id: "t1" }]);
-    if (path === "/tenants/t1/gateways") return Promise.resolve([GW]);
+    if (path === "/tenants") return Promise.resolve([TN1, TN2]);
+    if (path === "/tenants/o1/users") return Promise.resolve([USER1, USER2]);
+    if (path === "/tenants/o2/users") return Promise.resolve([USER3]);
+    if (path === "/tenants/o1/gateways") return Promise.resolve([GW]);
+    if (path === "/tenants/o2/gateways") return Promise.resolve([]);
     if (path === "/users/u1/tokens") return Promise.resolve([TOKEN]);
     if (path === "/users/u2/tokens") return Promise.resolve([]);
     if (path === "/users/u3/tokens") return Promise.resolve([]);
@@ -118,7 +118,7 @@ describe("Users — list view", () => {
     expect(screen.getByText("viewer")).toBeInTheDocument();
   });
 
-  it("shows org slugs in the table", async () => {
+  it("shows tenant slugs in the table", async () => {
     setupDefaultMocks();
     renderAtPath("/users");
     await waitFor(() => expect(screen.getAllByText("acme")).not.toHaveLength(0));
@@ -134,22 +134,22 @@ describe("Users — list view", () => {
   it("shows empty state when no users", async () => {
     mockUseAuth.mockReturnValue({ user: ADMIN_ME, loading: false, login: vi.fn(), logout: vi.fn() });
     mockApi.get.mockImplementation((path: string) => {
-      if (path === "/organizations") return Promise.resolve([ORG1]);
-      if (path === "/organizations/o1/users") return Promise.resolve([]);
+      if (path === "/tenants") return Promise.resolve([TN1]);
+      if (path === "/tenants/o1/users") return Promise.resolve([]);
       return Promise.resolve([]);
     });
     renderAtPath("/users");
     await waitFor(() => expect(screen.getByText(/No users yet/i)).toBeInTheDocument());
   });
 
-  it("populates org filter dropdown (admin only)", async () => {
+  it("populates tenant filter dropdown (admin only)", async () => {
     setupDefaultMocks();
     renderAtPath("/users");
     await waitFor(() => expect(screen.getByRole("option", { name: "acme" })).toBeInTheDocument());
     expect(screen.getByRole("option", { name: "globex" })).toBeInTheDocument();
   });
 
-  it("re-fetches when org filter changes", async () => {
+  it("re-fetches when tenant filter changes", async () => {
     setupDefaultMocks();
     renderAtPath("/users");
     await waitFor(() => expect(screen.getByText("alice@example.com")).toBeInTheDocument());
@@ -219,7 +219,7 @@ describe("Users — detail view", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Users" })).toBeInTheDocument());
   });
 
-  it("shows user stats (email, name, role, org)", async () => {
+  it("shows user stats (email, name, role, tenant)", async () => {
     setupDefaultMocks();
     renderAtPath("/users/u1");
     await waitFor(() => expect(screen.getByText("alice@example.com", { selector: "h1" })).toBeInTheDocument());
@@ -264,7 +264,7 @@ describe("Users — create user modal", () => {
     expect(screen.getByRole("heading", { name: "New User" })).toBeInTheDocument();
   });
 
-  it("modal has org, email, name, role fields", async () => {
+  it("modal has tenant, email, name, role fields", async () => {
     setupDefaultMocks();
     renderAtPath("/users");
     await waitFor(() => expect(screen.getByRole("button", { name: "+ New User" })).toBeInTheDocument());
@@ -274,7 +274,7 @@ describe("Users — create user modal", () => {
     expect(screen.getByRole("option", { name: /member/ })).toBeInTheDocument();
   });
 
-  it("submits POST /organizations/:id/users with correct body", async () => {
+  it("submits POST /tenants/:id/users with correct body", async () => {
     setupDefaultMocks();
     mockApi.post.mockResolvedValue({ id: "u-new", email: "dave@example.com" });
     renderAtPath("/users");
@@ -283,7 +283,7 @@ describe("Users — create user modal", () => {
     await userEvent.type(screen.getByPlaceholderText("alice@example.com"), "dave@example.com");
     await userEvent.click(screen.getByRole("button", { name: "Create User" }));
     await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith(
-      expect.stringMatching(/^\/organizations\/.+\/users$/),
+      expect.stringMatching(/^\/tenants\/.+\/users$/),
       expect.objectContaining({ email: "dave@example.com", name: null })
     ));
   });
@@ -324,10 +324,9 @@ describe("Users — New Token modal gateway list", () => {
 
     mockUseAuth.mockReturnValue({ user: ADMIN_ME, loading: false, login: vi.fn(), logout: vi.fn() });
     mockApi.get.mockImplementation((path: string) => {
-      if (path === "/organizations") return Promise.resolve([ORG1]);
-      if (path === "/organizations/o1/users") return Promise.resolve([USER1]);
-      if (path === "/tenants") return delayedGateways.then(() => [{ id: "t1" }]);
-      if (path === "/tenants/t1/gateways") return delayedGateways;
+      if (path === "/tenants") return Promise.resolve([TN1]);
+      if (path === "/tenants/o1/users") return Promise.resolve([USER1]);
+      if (path === "/tenants/o1/gateways") return delayedGateways;
       if (path === "/users/u1/tokens") return Promise.resolve([]);
       return Promise.resolve([]);
     });
@@ -343,7 +342,7 @@ describe("Users — New Token modal gateway list", () => {
     await waitFor(() => expect(screen.getByRole("option", { name: GW.slug })).toBeInTheDocument());
   });
 
-  it("shows all org gateways in token modal", async () => {
+  it("shows all tenant gateways in token modal", async () => {
     setupDefaultMocks();
     renderAtPath("/users/u1");
     await waitFor(() => expect(screen.getByRole("button", { name: "+ New Token" })).toBeInTheDocument());

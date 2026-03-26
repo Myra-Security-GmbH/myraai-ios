@@ -14,6 +14,11 @@ vi.mock("src/api/client", () => ({
   },
 }));
 
+// Mock useAuth so canCreate resolves to true (admin role) in tests
+vi.mock("src/common/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "admin@test.com", role: "admin", tenant_id: null }, loading: false }),
+}));
+
 import { api } from "src/api/client";
 const mockApi = api as {
   get: ReturnType<typeof vi.fn>;

@@ -56,12 +56,12 @@ local function issue_jwt_for(user)
     local auth    = cfg_auth()
     local expiry  = auth.jwt_expiry_secs or 28800
     local payload = {
-        sub   = user.id,
-        email = user.email,
-        role  = user.role,
-        org   = user.organization_id,
-        iat   = ngx.time(),
-        exp   = ngx.time() + expiry,
+        sub    = user.id,
+        email  = user.email,
+        role   = user.role,
+        tenant = user.tenant_id,
+        iat    = ngx.time(),
+        exp    = ngx.time() + expiry,
     }
     return jwt.sign(payload)
 end
@@ -87,10 +87,10 @@ route("GET", "^/admin/auth/me$", function()
     if not payload then return send(401, { error = err or "invalid token" }) end
 
     send(200, {
-        id     = payload.sub,
-        email  = payload.email,
-        role   = payload.role,
-        org_id = payload.org,
+        id        = payload.sub,
+        email     = payload.email,
+        role      = payload.role,
+        tenant_id = payload.tenant,
     })
 end)
 
@@ -138,16 +138,15 @@ route("POST", "^/admin/auth/otp/request$", function()
         return send(500, { error = "internal error" })
     end
 
-    local mail_err = email.send(
-        addr,
-        "AI Gateway — login code",
-        "Your login code is: " .. code .. "\n\n" ..
-        "It expires in 15 minutes.\n" ..
-        "If you did not request this, you can safely ignore this email."
-    )
+    local mail_err = email.send_template(addr, "otp", {
+        code            = code,
+        expiry_minutes  = math.floor((auth.otp_expiry_secs or 900) / 60),
+    })
     if mail_err then
-        ngx.log(ngx.WARN, "email send failed: ", mail_err)
-        -- Code is stored; admin can retrieve it from DB if mail is broken.
+        ngx.log(ngx.ERR, "otp email failed to=", addr, " err=", mail_err,
+            " — code stored in DB, admin can retrieve it manually")
+    else
+        ngx.log(ngx.NOTICE, "otp email sent ok to=", addr)
     end
 
     send(200, GENERIC_OK)
@@ -178,7 +177,7 @@ route("POST", "^/admin/auth/otp/verify$", function()
     local token = issue_jwt_for(user)
     set_session_cookie(token)
     send(200, {
-        user = { id = user.id, email = user.email, role = user.role, org_id = user.organization_id },
+        user = { id = user.id, email = user.email, role = user.role, tenant_id = user.tenant_id },
     })
 end)
 

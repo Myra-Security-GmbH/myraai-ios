@@ -7,29 +7,17 @@
 -- Config tables (mirrors schema_config.sql)
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS organization (
-    id         VARCHAR(36)  NOT NULL,
-    name       VARCHAR(255) NOT NULL,
-    slug       VARCHAR(255) NOT NULL UNIQUE,
-    created_at BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-    deleted_at BIGINT,
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE IF NOT EXISTS tenant (
-    id              VARCHAR(36)  NOT NULL,
-    slug            VARCHAR(255) NOT NULL,
-    plan            VARCHAR(64)  NOT NULL DEFAULT 'free',
-    budget_usd      DOUBLE,
-    budget_period   VARCHAR(16)  NOT NULL DEFAULT 'monthly',
-    siem_config     TEXT,
-    organization_id VARCHAR(36),
-    deleted_at      BIGINT,
-    created_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    id            VARCHAR(36)  NOT NULL,
+    slug          VARCHAR(255) NOT NULL,
+    plan          VARCHAR(64)  NOT NULL DEFAULT 'free',
+    budget_usd    DOUBLE,
+    budget_period VARCHAR(16)  NOT NULL DEFAULT 'monthly',
+    siem_config   TEXT,
+    deleted_at    BIGINT,
+    created_at    BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_tenant_slug (slug),
-    CONSTRAINT fk_tenant_org FOREIGN KEY (organization_id)
-        REFERENCES organization (id) ON DELETE SET NULL
+    UNIQUE KEY uq_tenant_slug (slug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS gateway (
@@ -59,20 +47,17 @@ CREATE TABLE IF NOT EXISTS provider_config (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `user` (
-    id              VARCHAR(36)  NOT NULL,
-    tenant_id       VARCHAR(36),
-    organization_id VARCHAR(36),
-    email           VARCHAR(255) NOT NULL,
-    name            VARCHAR(255),
-    role            VARCHAR(32)  NOT NULL DEFAULT 'member',
-    deleted_at      BIGINT,
-    created_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    id         VARCHAR(36)  NOT NULL,
+    tenant_id  VARCHAR(36),
+    email      VARCHAR(255) NOT NULL,
+    name       VARCHAR(255),
+    role       VARCHAR(32)  NOT NULL DEFAULT 'member',
+    deleted_at BIGINT,
+    created_at BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_user_tenant_email (tenant_id, email),
+    UNIQUE KEY uq_user_email (email),
     CONSTRAINT fk_user_tenant FOREIGN KEY (tenant_id)
-        REFERENCES tenant (id) ON DELETE CASCADE,
-    CONSTRAINT fk_user_org FOREIGN KEY (organization_id)
-        REFERENCES organization (id) ON DELETE SET NULL
+        REFERENCES tenant (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS user_gateway_access (

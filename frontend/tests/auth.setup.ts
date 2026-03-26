@@ -27,6 +27,7 @@ setup("authenticate", async ({ page }) => {
   execSync(`sqlite3 ${DB} "DELETE FROM email_otp WHERE email='${EMAIL}' AND used_at IS NULL;"`);
   execSync(`sqlite3 ${DB} "INSERT INTO email_otp (id, email, code_hash, expires_at, ip_addr) VALUES ('${id}', '${EMAIL}', '${hash}', ${expiry}, '127.0.0.1');"`);
 
+
   await page.route("**/admin/auth/otp/request", route =>
     route.fulfill({ status: 200, contentType: "application/json",
                     body: JSON.stringify({ message: "Code sent (intercepted by test)" }) })

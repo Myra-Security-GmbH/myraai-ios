@@ -38,7 +38,7 @@ tags:
   - name: Inference
     description: Send inference requests to AI providers through the gateway.
   - name: Tenants
-    description: Top-level organisational units. Each tenant holds gateways, users, and tokens.
+    description: Top-level tenant groupings. Each tenant holds gateways, users, and tokens.
   - name: Gateways
     description: A gateway holds a configuration, provider keys, routing rules, and auth tokens.
   - name: BYOK Keys
@@ -525,7 +525,7 @@ components:
           example: Alice
         role:
           type: string
-          enum: [admin, member, viewer]
+          enum: [admin, tenant_admin, member, viewer]
           example: member
         created_at:
           type: integer
@@ -544,7 +544,7 @@ components:
           example: Alice
         role:
           type: string
-          enum: [admin, member, viewer]
+          enum: [admin, tenant_admin, member, viewer]
           example: member
 
     UserUpdate:
@@ -557,7 +557,7 @@ components:
           type: [string, "null"]
         role:
           type: string
-          enum: [admin, member, viewer]
+          enum: [admin, tenant_admin, member, viewer]
 
     # ── Stats ────────────────────────────────────────────────────────────────
 

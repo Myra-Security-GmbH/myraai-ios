@@ -14,9 +14,10 @@ _G.ngx = {
         get_body_data = function() return nil end,
         get_headers   = function() return {} end,
     },
-    var = {},
-    ctx = {},
-    ERR = 0, WARN = 1, INFO = 2,
+    var   = {},
+    ctx   = {},
+    ERR   = 0, WARN = 1, INFO = 2,
+    timer = { at = function(_, fn, ...) fn(nil, ...) end },
 }
 
 package.path = "src/?.lua;src/?/init.lua;;" .. package.path

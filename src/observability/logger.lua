@@ -10,6 +10,7 @@ local M = {}
 
 function M.emit(ctx)
     if ctx.skip_log then return end
+    if not ctx.gateway_config then return end  -- OPTIONS / pre-auth requests have no gateway context
 
     local prompt, response
     if ctx.gateway_config.log_payloads and not ctx.skip_log_payload then

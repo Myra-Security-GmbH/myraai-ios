@@ -28,11 +28,12 @@ function fmt(n: number | null | undefined) {
 interface Props {
   rows: any[];
   showGuardrailLatency?: boolean;
+  showGateway?: boolean;
 }
 
-export function GuardrailEventsTable({ rows, showGuardrailLatency = false }: Props) {
+export function GuardrailEventsTable({ rows, showGuardrailLatency = false, showGateway = true }: Props) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const colSpan = showGuardrailLatency ? 7 : 6;
+  const colSpan = (showGuardrailLatency ? 7 : 6) + (showGateway ? 1 : 0);
 
   return (
     <div className={s["table-wrapper"]}>
@@ -41,6 +42,7 @@ export function GuardrailEventsTable({ rows, showGuardrailLatency = false }: Pro
           <tr>
             <th>Time</th>
             <th>Tenant</th>
+            {showGateway && <th>Gateway</th>}
             <th>Outcome</th>
             <th>Detector</th>
             <th>Reason</th>
@@ -63,6 +65,9 @@ export function GuardrailEventsTable({ rows, showGuardrailLatency = false }: Pro
                 >
                   <td className={s.mono} style={{ fontSize: 11 }}>{fmtDateTime(row.ts)}</td>
                   <td><span className={s.code}>{row.tenant ?? row.tenant_id?.slice(0, 8)}</span></td>
+                  {showGateway && (
+                    <td><span className={s.code}>{row.gateway ?? row.gateway_id?.slice(0, 8) ?? "—"}</span></td>
+                  )}
                   <td><span className={`${s.badge} ${s[`badge--${variant}`]}`}>{outcome}</span></td>
                   <td style={{ fontSize: 12 }}>
                     {(row.detectors_fired?.length ?? 0) > 0

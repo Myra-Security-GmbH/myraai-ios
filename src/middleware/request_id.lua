@@ -14,7 +14,10 @@ function M.run(ctx)
     -- Initialise OTel trace context if tracing is configured for this gateway
     local tracing = ctx.gateway_config and ctx.gateway_config.tracing
     if tracing and (tracing.enabled or tracing.otlp_endpoint) then
-        pcall(function() require("observability.tracer").init(ctx) end)
+        local ok, err = pcall(function() require("observability.tracer").init(ctx) end)
+        if not ok then
+            ngx.log(ngx.WARN, "tracer init failed: ", tostring(err))
+        end
     end
 end
 

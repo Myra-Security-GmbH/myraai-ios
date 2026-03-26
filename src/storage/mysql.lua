@@ -96,16 +96,33 @@ local function nullify(row)
     return row
 end
 
+-- resty.mysql uses MySQL's text protocol and returns every column value as a
+-- Lua string, regardless of the declared SQL type.  Convert any string that
+-- parses as a number back to a Lua number so that cjson serialises it as a
+-- JSON number (unquoted) and the frontend receives the correct type.
+-- Safe for this codebase: all text-typed identifiers (UUIDs, slugs, emails,
+-- model names) are never purely numeric, so tonumber() returns nil for them.
+local function coerce_numbers(row)
+    if not row then return row end
+    for k, v in pairs(row) do
+        if type(v) == "string" then
+            local n = tonumber(v)
+            if n then row[k] = n end
+        end
+    end
+    return row
+end
+
 local function query_one(db, sql, ...)
     local res, err = db:query(bind(db, sql, ...))
     if not res then return nil, err end
-    return nullify(res[1])
+    return coerce_numbers(nullify(res[1]))
 end
 
 local function query_all(db, sql, ...)
     local res, err = db:query(bind(db, sql, ...))
     if not res then return setmetatable({}, cjson.array_mt), err end
-    for i = 1, #res do nullify(res[i]) end
+    for i = 1, #res do coerce_numbers(nullify(res[i])) end
     return setmetatable(res, cjson.array_mt)
 end
 
@@ -178,6 +195,40 @@ function M.migrate(cfg)
             end
         end
     end
+    -- Flat permission model migration (idempotent: guard on organization_id column existence)
+    local check = db:query("SELECT COUNT(*) AS n FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user' AND column_name='organization_id'")
+    if check and check[1] and check[1].n and tonumber(check[1].n) > 0 then
+        -- Map user.organization_id → user.tenant_id (best-effort: first matching tenant)
+        db:query("SET foreign_key_checks=0")
+        db:query([[
+            ALTER TABLE `user`
+            ADD COLUMN IF NOT EXISTS tenant_id_new VARCHAR(36) NULL
+        ]])
+        db:query([[
+            UPDATE `user` u
+            JOIN tenant t ON t.organization_id = u.organization_id AND t.deleted_at IS NULL
+            SET u.tenant_id_new = t.id
+            WHERE u.organization_id IS NOT NULL
+        ]])
+        -- Map org_admin → tenant_admin
+        db:query("UPDATE `user` SET role='tenant_admin' WHERE role='org_admin'")
+        -- Drop old column, rename new; drop FKs first
+        db:query("ALTER TABLE `user` DROP FOREIGN KEY IF EXISTS fk_user_org")
+        db:query("ALTER TABLE `user` DROP COLUMN IF EXISTS organization_id")
+        db:query("ALTER TABLE `user` DROP COLUMN IF EXISTS tenant_id")
+        db:query("ALTER TABLE `user` RENAME COLUMN tenant_id_new TO tenant_id")
+        db:query("ALTER TABLE `user` ADD CONSTRAINT fk_user_tenant FOREIGN KEY (tenant_id) REFERENCES tenant(id) ON DELETE CASCADE")
+        db:query("ALTER TABLE `user` DROP INDEX IF EXISTS uq_user_tenant_email")
+        db:query("ALTER TABLE `user` ADD UNIQUE KEY uq_user_email (email)")
+        -- Drop organization_id from tenant
+        db:query("ALTER TABLE tenant DROP FOREIGN KEY IF EXISTS fk_tenant_org")
+        db:query("ALTER TABLE tenant DROP COLUMN IF EXISTS organization_id")
+        -- Drop organization table
+        db:query("DROP TABLE IF EXISTS organization")
+        db:query("SET foreign_key_checks=1")
+        ngx.log(ngx.NOTICE, "storage/mysql: flat permission model migration complete")
+    end
+
     db:set_keepalive(0, 5)
 end
 
@@ -492,6 +543,8 @@ function M.insert_user(tenant_id, email, name, role)
     local id = uuid()
     local db, err = get_conn()
     if not db then return nil, err end
+    local existing = query_one(db, "SELECT id FROM `user` WHERE email = ? AND deleted_at IS NULL LIMIT 1", email)
+    if existing then release(db); return nil, "email already in use" end
     local e = exec_one(db, [[
         INSERT INTO `user` (id, tenant_id, email, name, role)
         VALUES (?,?,?,?,?)
@@ -668,14 +721,36 @@ end
 -- Admin list / read queries
 -- ---------------------------------------------------------------------------
 
-function M.list_tenants()
+function M.get_tenant(id)
     local db, err = get_conn()
-    if not db then return {} end
-    local rows = query_all(db, [[
+    if not db then return nil end
+    local row = query_one(db, [[
         SELECT id, slug, plan, budget_usd, budget_period, siem_config,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
-        FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
-    ]]) or {}
+        FROM tenant WHERE id = ? AND deleted_at IS NULL
+    ]], id)
+    release(db)
+    return row
+end
+
+function M.list_tenants(tenant_id_filter)
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows
+    if tenant_id_filter then
+        rows = query_all(db, [[
+            SELECT id, slug, plan, budget_usd, budget_period, siem_config,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+            FROM tenant WHERE deleted_at IS NULL AND id = ?
+            ORDER BY created_at DESC
+        ]], tenant_id_filter) or {}
+    else
+        rows = query_all(db, [[
+            SELECT id, slug, plan, budget_usd, budget_period, siem_config,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+            FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
+        ]]) or {}
+    end
     release(db)
     return rows
 end
@@ -777,21 +852,27 @@ function M.list_users(tenant_id)
     local rows
     if tenant_id then
         rows = query_all(db, [[
-            SELECT u.id, u.tenant_id, u.email, u.name, u.role,
-                   DATE_FORMAT(FROM_UNIXTIME(u.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   t.slug AS tenant_slug
-            FROM `user` u JOIN tenant t ON t.id = u.tenant_id
-            WHERE u.tenant_id = ? AND u.deleted_at IS NULL
-            ORDER BY u.created_at DESC
+            SELECT id, tenant_id, email, name, role,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+            FROM `user`
+            WHERE tenant_id = ? AND deleted_at IS NULL
+            ORDER BY created_at DESC
         ]], tenant_id) or {}
+    elseif tenant_id == false then
+        rows = query_all(db, [[
+            SELECT id, tenant_id, email, name, role,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+            FROM `user`
+            WHERE tenant_id IS NULL AND deleted_at IS NULL
+            ORDER BY created_at DESC
+        ]]) or {}
     else
         rows = query_all(db, [[
-            SELECT u.id, u.tenant_id, u.email, u.name, u.role,
-                   DATE_FORMAT(FROM_UNIXTIME(u.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   t.slug AS tenant_slug
-            FROM `user` u JOIN tenant t ON t.id = u.tenant_id
-            WHERE u.deleted_at IS NULL
-            ORDER BY u.created_at DESC
+            SELECT id, tenant_id, email, name, role,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+            FROM `user`
+            WHERE deleted_at IS NULL
+            ORDER BY created_at DESC
         ]]) or {}
     end
     release(db)
@@ -906,7 +987,7 @@ function M.list_logs(filters)
                input_tokens, output_tokens, cost_usd, latency_ms,
                upstream_latency_ms, guardrail_latency_ms, upstream_attempts,
                fallback_provider, fallback_model, saved_cost_usd, request_size_bytes,
-               detectors_fired, scrub_applied, response_raw, trace_id
+               detectors_fired, scrub_applied, prompt, response_raw, trace_id
         FROM request_log WHERE %s ORDER BY ts DESC LIMIT %d OFFSET %d
     ]], table.concat(where, " AND "), limit, offset)
 
@@ -957,7 +1038,7 @@ function M.get_usage_stats(tenant_id)
     local tenant_clause = ""
     if tenant_id and tenant_id ~= "" then
         if tenant_id:match("^[0-9a-fA-F%-]+$") then
-            tenant_clause = " AND tenant_id = " .. db:escape_literal(tenant_id)
+            tenant_clause = " AND tenant_id = " .. escape_string(tenant_id)
         end
     end
 
@@ -1021,6 +1102,7 @@ function M.get_usage_stats(tenant_id)
     local recent_sql = string.format([[
         SELECT DATE_FORMAT(FROM_UNIXTIME(r.ts/1000), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS ts,
                r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
+               r.gateway_id, COALESCE(g.slug, r.gateway_id) AS gateway,
                r.provider, r.model,
                r.status, r.input_tokens, r.output_tokens,
                ROUND(r.cost_usd,5) AS cost_usd, r.latency_ms, r.cached,
@@ -1031,20 +1113,23 @@ function M.get_usage_stats(tenant_id)
                ROUND(r.saved_cost_usd,5) AS saved_cost_usd, r.request_size_bytes
         FROM request_log r
         LEFT JOIN tenant t ON t.id = r.tenant_id
+        LEFT JOIN gateway g ON g.id = r.gateway_id
         %s
         ORDER BY r.ts DESC LIMIT 10
-    ]], tenant_id and ("WHERE r.tenant_id = " .. db:escape_literal(tenant_id)) or "")
+    ]], tenant_clause ~= "" and ("WHERE 1=1" .. tenant_clause) or "")
     local recent = query_all(db, recent_sql) or {}
 
     local recent_blocked_sql = string.format([[
         SELECT DATE_FORMAT(FROM_UNIXTIME(r.ts/1000), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS ts,
                r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
+               r.gateway_id, COALESCE(g.slug, r.gateway_id) AS gateway,
                r.blocked_by, r.block_reason, r.latency_ms,
                r.guardrail_latency_ms, r.guardrail_verdict,
                r.blocked, r.scrub_applied, r.detectors_fired,
                r.response_raw, r.prompt_scrubbed
         FROM request_log r
         LEFT JOIN tenant t ON t.id = r.tenant_id
+        LEFT JOIN gateway g ON g.id = r.gateway_id
         WHERE (r.blocked = 1
            OR r.scrub_applied = 1
            OR (r.detectors_fired IS NOT NULL AND r.detectors_fired != '[]'))%s
@@ -1079,7 +1164,10 @@ function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
     local now_bucket_sec = math.floor(ref / bucket_sec) * bucket_sec
     local since_ms       = (now_bucket_sec - (n - 1) * bucket_sec) * 1000
 
-    local tenant_clause = tenant_id and " AND tenant_id = ?" or ""
+    local tenant_clause = ""
+    if tenant_id then
+        tenant_clause = " AND tenant_id = ?"
+    end
     local sql = string.format([[
         SELECT (ts DIV %d) * %d AS bucket_ts,
                COUNT(*) AS requests,
@@ -1120,15 +1208,20 @@ end
 -- Analytics depth: latency percentiles + top models (requires MySQL 8.0+)
 -- ---------------------------------------------------------------------------
 
-function M.get_analytics_depth(since_ms)
+function M.get_analytics_depth(since_ms, tenant_id)
     local db, err = get_conn()
     if not db then return {} end
 
     local now_ms = math.floor(ngx.now() * 1000)
     local from   = since_ms or (now_ms - 86400 * 1000)
 
+    local tc = ""
+    if tenant_id and tenant_id ~= "" and tenant_id:match("^[0-9a-fA-F%-]+$") then
+        tc = " AND r.tenant_id = " .. escape_string(tenant_id)
+    end
+
     -- Window functions: ROW_NUMBER() and COUNT(*) OVER () — MySQL 8.0+
-    local pct = query_one(db, [[
+    local pct = query_one(db, string.format([[
         SELECT
             MAX(CASE WHEN rn <= CAST(CEIL(cnt * 0.50) AS UNSIGNED) THEN latency_ms END) AS p50,
             MAX(CASE WHEN rn <= CAST(CEIL(cnt * 0.95) AS UNSIGNED) THEN latency_ms END) AS p95,
@@ -1137,24 +1230,24 @@ function M.get_analytics_depth(since_ms)
             SELECT latency_ms,
                    ROW_NUMBER() OVER (ORDER BY latency_ms) AS rn,
                    COUNT(*)     OVER ()                    AS cnt
-            FROM request_log
-            WHERE ts >= ? AND latency_ms IS NOT NULL AND blocked = 0
+            FROM request_log r
+            WHERE r.ts >= ? AND r.latency_ms IS NOT NULL AND r.blocked = 0%s
         ) sub
-    ]], from) or {}
+    ]], tc), from) or {}
 
-    local top_models = query_all(db, [[
-        SELECT model, provider,
+    local top_models = query_all(db, string.format([[
+        SELECT r.model, r.provider,
                COUNT(*) AS requests,
-               ROUND(COALESCE(SUM(cost_usd),0),4) AS cost_usd,
-               ROUND(COALESCE(AVG(latency_ms),0))  AS avg_latency_ms
-        FROM request_log
-        WHERE ts >= ?
-        GROUP BY provider, model
+               ROUND(COALESCE(SUM(r.cost_usd),0),4) AS cost_usd,
+               ROUND(COALESCE(AVG(r.latency_ms),0))  AS avg_latency_ms
+        FROM request_log r
+        WHERE r.ts >= ?%s
+        GROUP BY r.provider, r.model
         ORDER BY requests DESC
         LIMIT 10
-    ]], from) or {}
+    ]], tc), from) or {}
 
-    local by_tenant = query_all(db, [[
+    local by_tenant = query_all(db, string.format([[
         SELECT r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
                COUNT(*)                                                            AS requests,
                SUM(CASE WHEN r.blocked=1 OR r.scrub_applied=1 THEN 1 ELSE 0 END) AS blocked,
@@ -1167,11 +1260,11 @@ function M.get_analytics_depth(since_ms)
                SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
         FROM request_log r
         LEFT JOIN tenant t ON t.id = r.tenant_id
-        WHERE r.ts >= ?
+        WHERE r.ts >= ?%s
         GROUP BY r.tenant_id ORDER BY cost_usd DESC
-    ]], from) or {}
+    ]], tc), from) or {}
 
-    local by_gateway = query_all(db, [[
+    local by_gateway = query_all(db, string.format([[
         SELECT r.gateway_id, COALESCE(g.slug, r.gateway_id) AS gateway,
                COALESCE(t.slug, r.tenant_id) AS tenant,
                COUNT(*)                                                            AS requests,
@@ -1186,11 +1279,11 @@ function M.get_analytics_depth(since_ms)
         FROM request_log r
         LEFT JOIN gateway g ON g.id = r.gateway_id
         LEFT JOIN tenant  t ON t.id = r.tenant_id
-        WHERE r.ts >= ?
+        WHERE r.ts >= ?%s
         GROUP BY r.gateway_id ORDER BY cost_usd DESC
-    ]], from) or {}
+    ]], tc), from) or {}
 
-    local by_user = query_all(db, [[
+    local by_user = query_all(db, string.format([[
         SELECT r.user_id, r.tenant_id,
                u.email,
                COUNT(*)                                                            AS requests,
@@ -1204,10 +1297,10 @@ function M.get_analytics_depth(since_ms)
                SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
         FROM request_log r
         LEFT JOIN `user` u ON u.id = r.user_id
-        WHERE r.ts >= ? AND r.user_id IS NOT NULL
+        WHERE r.ts >= ? AND r.user_id IS NOT NULL%s
         GROUP BY r.user_id, r.tenant_id ORDER BY cost_usd DESC
         LIMIT 50
-    ]], from) or {}
+    ]], tc), from) or {}
 
     release(db)
     return {
@@ -1487,60 +1580,6 @@ function M.increment_semantic_hit(id)
 end
 
 -- ---------------------------------------------------------------------------
--- Organization CRUD
--- ---------------------------------------------------------------------------
-
-function M.create_org(id, name, slug)
-    local db, err = get_conn()
-    if not db then return err end
-    local e = exec_one(db, [[
-        INSERT IGNORE INTO organization (id, name, slug) VALUES (?,?,?)
-    ]], id, name, slug)
-    release(db)
-    return e
-end
-
-function M.list_orgs()
-    local db, err = get_conn()
-    if not db then return {} end
-    local rows = query_all(db, [[
-        SELECT id, name, slug,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
-        FROM organization WHERE deleted_at IS NULL ORDER BY name
-    ]]) or {}
-    release(db)
-    return rows
-end
-
-function M.get_org(id)
-    local db, err = get_conn()
-    if not db then return nil end
-    local row = query_one(db, [[
-        SELECT id, name, slug,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
-        FROM organization WHERE id = ? AND deleted_at IS NULL
-    ]], id)
-    release(db)
-    return row
-end
-
-function M.update_org(id, name, slug)
-    local db, err = get_conn()
-    if not db then return err end
-    local e = exec_one(db, "UPDATE organization SET name=?, slug=? WHERE id=?", name, slug, id)
-    release(db)
-    return e
-end
-
-function M.delete_org(id)
-    local db, err = get_conn()
-    if not db then return err end
-    local e = exec_one(db, "UPDATE organization SET deleted_at=UNIX_TIMESTAMP() WHERE id=?", id)
-    release(db)
-    return e
-end
-
--- ---------------------------------------------------------------------------
 -- Admin user lookup
 -- ---------------------------------------------------------------------------
 
@@ -1548,7 +1587,7 @@ function M.find_admin_user_by_email(email)
     local db, err = get_conn()
     if not db then return nil end
     local row = query_one(db, [[
-        SELECT id, email, name, role, organization_id
+        SELECT id, email, name, role, tenant_id
         FROM `user`
         WHERE email = ? AND deleted_at IS NULL
         LIMIT 1
@@ -1633,7 +1672,7 @@ function M.get_user_by_oauth(provider, subject)
     local db, err = get_conn()
     if not db then return nil end
     local row = query_one(db, [[
-        SELECT u.id, u.email, u.name, u.role, u.organization_id
+        SELECT u.id, u.email, u.name, u.role, u.tenant_id
         FROM oauth_link l
         JOIN `user` u ON u.id = l.user_id
         WHERE l.provider = ? AND l.subject = ?

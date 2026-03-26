@@ -70,8 +70,8 @@ export const authApi = {
 };
 
 export interface AdminUser {
-  id:     string;
-  email:  string;
-  role:   "admin" | "member" | "viewer";
-  org_id: string | null;
+  id:        string;
+  email:     string;
+  role:      "admin" | "tenant_admin" | "member" | "viewer";
+  tenant_id: string | null;
 }

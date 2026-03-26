@@ -3,7 +3,7 @@ import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { useAuth } from "src/common/contexts/AuthContext";
 import { api } from "src/api/client";
-import { Tenant, Gateway, Organization, BudgetPeriod } from "src/api/types";
+import { Tenant, Gateway, BudgetPeriod } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
 import { fmtCost } from "src/common/utils/format";
 import s from "src/common/components/layout/Layout.module.scss";
@@ -21,16 +21,8 @@ function TenantModal({ tenant, onClose, onSaved }: {
   const [plan, setPlan] = useState(tenant?.plan ?? "standard");
   const [budget, setBudget] = useState(tenant?.budget_usd != null ? String(tenant.budget_usd) : "");
   const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>(tenant?.budget_period ?? "monthly");
-  const [orgId, setOrgId] = useState<string | null>(tenant?.organization_id ?? null);
-  const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (user?.role === "admin") {
-      api.get<Organization[]>("/organizations").then(setOrgs).catch(() => {});
-    }
-  }, [user?.role]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,14 +32,10 @@ function TenantModal({ tenant, onClose, onSaved }: {
       if (isEdit) {
         await api.patch(`/tenants/${tenant!.id}`, {
           plan, budget_usd: budgetVal, budget_period: budgetPeriod,
-          // Only send organization_id when platform admin (non-admin cannot change it)
-          ...(user?.role === "admin" ? { organization_id: orgId } : {}),
         });
       } else {
         await api.post("/tenants", {
           slug, plan, budget_usd: budgetVal, budget_period: budgetPeriod,
-          // non-admin: backend enforces own org; admin: send chosen org (may be null)
-          ...(user?.role === "admin" ? { organization_id: orgId } : {}),
         });
       }
       onSaved(); onClose();
@@ -95,25 +83,6 @@ function TenantModal({ tenant, onClose, onSaved }: {
               </select>
             </div>
           </div>
-          {/* Organization field */}
-          <div className={s["form-group"]}>
-            <label htmlFor="org" className={s["form-label"]}>Organization</label>
-            {user?.role === "admin" ? (
-              <select id="org" className={s["form-select"]} value={orgId ?? ""} onChange={(e) => setOrgId(e.target.value || null)}>
-                <option value="">— None —</option>
-                {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </select>
-            ) : (
-              <input
-                id="org"
-                className={s["form-input"]}
-                value={user?.org_id ?? ""}
-                disabled
-                readOnly
-                placeholder="Assigned automatically"
-              />
-            )}
-          </div>
           <div className={s["form-actions"]}>
             <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
             <button type="submit" className={`${s.btn} ${s["btn--primary"]}`} disabled={loading}>
@@ -130,8 +99,8 @@ function TenantModal({ tenant, onClose, onSaved }: {
 // Tenant detail view
 // ---------------------------------------------------------------------------
 
-function TenantDetail({ tenant: initialTenant, orgs, onBack, onDeleted, onUpdated }: {
-  tenant: Tenant; orgs: Organization[]; onBack: () => void; onDeleted: () => void; onUpdated: (t: Tenant) => void;
+function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
+  tenant: Tenant; onBack: () => void; onDeleted: () => void; onUpdated: (t: Tenant) => void;
 }) {
   const [tenant, setTenant] = useState(initialTenant);
   const [gateways, setGateways] = useState<Gateway[]>([]);
@@ -169,7 +138,6 @@ function TenantDetail({ tenant: initialTenant, orgs, onBack, onDeleted, onUpdate
   }
 
   const planColor = tenant.plan === "enterprise" ? s["badge--success"] : tenant.plan === "standard" ? s["badge--warning"] : s["badge--neutral"];
-  const orgName = orgs.find((o) => o.id === tenant.organization_id)?.name ?? null;
 
   return (
     <>
@@ -202,14 +170,6 @@ function TenantDetail({ tenant: initialTenant, orgs, onBack, onDeleted, onUpdate
             <div className={s["stat-label"]}>Plan</div>
             <div className={s["stat-value"]} style={{ marginTop: 6 }}>
               <span className={`${s.badge} ${planColor}`}>{tenant.plan}</span>
-            </div>
-          </div>
-          <div className={s["stat-card"]}>
-            <div className={s["stat-label"]}>Organization</div>
-            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>
-              {orgName
-                ? <span className={`${s.badge} ${s["badge--neutral"]}`}>{orgName}</span>
-                : <span style={{ color: "var(--text-secondary)" }}>—</span>}
             </div>
           </div>
           <div className={s["stat-card"]}>
@@ -303,19 +263,17 @@ export default function Tenants() {
   useDocumentTitle("Tenants");
   const { tenantId } = useParams<{ tenantId?: string }>();
   const navigate = useNavigate();
+  const { user: me } = useAuth();
+  const canCreate = me?.role === "admin";
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   function load() {
     setLoading(true);
-    Promise.all([
-      api.get<Tenant[]>("/tenants"),
-      api.get<Organization[]>("/organizations").catch(() => [] as Organization[]),
-    ])
-      .then(([ts, os]) => { setTenants(ts); setOrgs(os); })
+    api.get<Tenant[]>("/tenants")
+      .then(setTenants)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }
@@ -333,7 +291,6 @@ export default function Tenants() {
         <TenantDetail
           key={tenantId}
           tenant={selected}
-          orgs={orgs}
           onBack={() => navigate("/tenants")}
           onDeleted={() => { navigate("/tenants"); load(); }}
           onUpdated={(t) => setTenants((ts) => ts.map((x) => x.id === t.id ? t : x))}
@@ -351,9 +308,11 @@ export default function Tenants() {
           <h1 className={s["page-title"]}>Tenants</h1>
           <p className={s["page-subtitle"]}>{tenants.length} tenant{tenants.length !== 1 ? "s" : ""}</p>
         </div>
-        <button className={`${s.btn} ${s["btn--primary"]}`} onClick={() => setShowCreate(true)}>
-          + New Tenant
-        </button>
+        {canCreate && (
+          <button className={`${s.btn} ${s["btn--primary"]}`} onClick={() => setShowCreate(true)}>
+            + New Tenant
+          </button>
+        )}
       </div>
 
       {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
@@ -371,37 +330,29 @@ export default function Tenants() {
               <tr>
                 <th>Slug</th>
                 <th>Plan</th>
-                <th>Organization</th>
                 <th>Budget</th>
                 <th>Created</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {tenants.map((t) => {
-                const orgName = orgs.find((o) => o.id === t.organization_id)?.name ?? null;
-                return (
-                  <tr key={t.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/tenants/${t.id}`)}>
-                    <td><span className={s.code}>{t.slug}</span></td>
-                    <td>
-                      <span className={`${s.badge} ${t.plan === "enterprise" ? s["badge--success"] : t.plan === "standard" ? s["badge--warning"] : s["badge--neutral"]}`}>
-                        {t.plan}
-                      </span>
-                    </td>
-                    <td>{orgName
-                      ? <span className={`${s.badge} ${s["badge--neutral"]}`}>{orgName}</span>
-                      : <span style={{ color: "var(--text-secondary)" }}>—</span>}
-                    </td>
-                    <td>{t.budget_usd != null ? fmtCost(t.budget_usd) : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}</td>
-                    <td className={s.mono}>{fmtDate(t.created_at)}</td>
-                    <td>
-                      <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/tenants/${t.id}`); }}>
-                        Open →
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {tenants.map((t) => (
+                <tr key={t.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/tenants/${t.id}`)}>
+                  <td><span className={s.code}>{t.slug}</span></td>
+                  <td>
+                    <span className={`${s.badge} ${t.plan === "enterprise" ? s["badge--success"] : t.plan === "standard" ? s["badge--warning"] : s["badge--neutral"]}`}>
+                      {t.plan}
+                    </span>
+                  </td>
+                  <td>{t.budget_usd != null ? fmtCost(t.budget_usd) : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}</td>
+                  <td className={s.mono}>{fmtDate(t.created_at)}</td>
+                  <td>
+                    <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/tenants/${t.id}`); }}>
+                      Open →
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

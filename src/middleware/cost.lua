@@ -29,21 +29,30 @@ function M.run(ctx)
     -- ── Per-gateway ──────────────────────────────────────────────────────────
     local gw_period = budget_lib.current_period(
         ctx.gateway_config and ctx.gateway_config.budget_period or "monthly")
-    pcall(storage.incr_spend, "gateway", ctx.gateway_id, gw_period, micro)
+    local gw_ok, gw_err = pcall(storage.incr_spend, "gateway", ctx.gateway_id, gw_period, micro)
+    if not gw_ok then
+        ngx.log(ngx.ERR, "cost: incr_spend gateway failed: ", tostring(gw_err), " gw=", ctx.gateway_id)
+    end
     state.cache_del("spend:gateway:" .. ctx.gateway_id .. ":" .. gw_period)
 
     -- ── Per-tenant ───────────────────────────────────────────────────────────
     if ctx.tenant_id then
         local t_period = budget_lib.current_period(
             ctx.gateway_config and ctx.gateway_config.tenant_budget_period or "monthly")
-        pcall(storage.incr_spend, "tenant", ctx.tenant_id, t_period, micro)
+        local t_ok, t_err = pcall(storage.incr_spend, "tenant", ctx.tenant_id, t_period, micro)
+        if not t_ok then
+            ngx.log(ngx.ERR, "cost: incr_spend tenant failed: ", tostring(t_err), " tenant=", ctx.tenant_id)
+        end
         state.cache_del("spend:tenant:" .. ctx.tenant_id .. ":" .. t_period)
     end
 
     -- ── Per-token ────────────────────────────────────────────────────────────
     if ctx.token_id and ctx.token_budget_usd then
         local tk_period = budget_lib.current_period(ctx.token_budget_period or "monthly")
-        pcall(storage.incr_spend, "token", ctx.token_id, tk_period, micro)
+        local tk_ok, tk_err = pcall(storage.incr_spend, "token", ctx.token_id, tk_period, micro)
+        if not tk_ok then
+            ngx.log(ngx.ERR, "cost: incr_spend token failed: ", tostring(tk_err), " token=", ctx.token_id)
+        end
         state.cache_del("spend:token:" .. ctx.token_id .. ":" .. tk_period)
     end
 end

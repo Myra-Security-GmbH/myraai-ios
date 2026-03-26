@@ -19,6 +19,8 @@ _G.ngx = {
     var  = {},
     ctx  = {},
     ERR  = 0, WARN = 1, INFO = 2,
+    -- In tests, invoke timer callbacks synchronously so storage.insert_log is captured.
+    timer = { at = function(_, fn, ...) fn(nil, ...) end },
 }
 
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
@@ -39,14 +41,18 @@ end
 -- Stubs
 -- ---------------------------------------------------------------------------
 
-local log_store = {}      -- captures calls to storage.insert_log
-local log_err   = nil     -- when non-nil, insert_log returns this error string
-local ngx_log_calls = {}  -- captures ngx.log calls
+local log_store    = {}      -- captures calls to storage.insert_log
+local log_err      = nil     -- when non-nil, insert_log returns this error string
+local ngx_log_calls = {}     -- captures ngx.log calls
+local trace_complete_calls = {} -- captures storage.complete_playground_trace calls
 
 local storage_stub = {
     insert_log = function(fields)
         table.insert(log_store, fields)
         return log_err
+    end,
+    complete_playground_trace = function(trace_id, status, reason)
+        table.insert(trace_complete_calls, { trace_id = trace_id, status = status, reason = reason })
     end,
 }
 
@@ -62,13 +68,6 @@ local json_stub = (function()
     local cjson = require("cjson.safe")
     return { encode = cjson.encode, decode = cjson.decode }
 end)()
-
-local trace_calls = {}
-local trace_stub = {
-    done = function(ctx, status, reason)
-        table.insert(trace_calls, { ctx = ctx, status = status, reason = reason })
-    end,
-}
 
 local webhook_calls = {}
 local webhook_stub = {
@@ -100,26 +99,24 @@ local function reset()
     package.loaded["storage"]              = nil
     package.loaded["utils.json"]           = nil
     package.loaded["utils.uuid"]           = nil
-    package.loaded["utils.trace"]          = nil
     package.loaded["utils.webhook"]        = nil
     package.loaded["observability.siem"]   = nil
     package.loaded["observability.tracer"] = nil
 
-    package.loaded["storage"]            = storage_stub
-    package.loaded["utils.json"]         = json_stub
-    package.loaded["utils.uuid"]         = uuid_stub
-    package.loaded["utils.trace"]        = trace_stub
-    package.loaded["utils.webhook"]      = webhook_stub
-    package.loaded["observability.siem"] = siem_stub
+    package.loaded["storage"]              = storage_stub
+    package.loaded["utils.json"]           = json_stub
+    package.loaded["utils.uuid"]           = uuid_stub
+    package.loaded["utils.webhook"]        = webhook_stub
+    package.loaded["observability.siem"]   = siem_stub
     package.loaded["observability.tracer"] = tracer_stub
 
-    log_store      = {}
-    log_err        = nil
-    ngx_log_calls  = {}
-    trace_calls    = {}
-    webhook_calls  = {}
-    siem_calls     = {}
-    tracer_calls   = {}
+    log_store             = {}
+    log_err               = nil
+    ngx_log_calls         = {}
+    trace_complete_calls  = {}
+    webhook_calls         = {}
+    siem_calls            = {}
+    tracer_calls          = {}
 
     return require("observability.logger")
 end
@@ -293,7 +290,7 @@ ok("13. insert_log error triggers ngx.log(ERR)", ngx_log_err_count > 0)
 ngx.log = _saved_log
 
 -- ---------------------------------------------------------------------------
--- 14. ctx.trace_id present + not blocked → trace.done("done")
+-- 14. ctx.trace_id present + not blocked → storage.complete_playground_trace("done")
 -- ---------------------------------------------------------------------------
 reset()
 logger = require("observability.logger")
@@ -302,14 +299,14 @@ logger.emit({
     trace_id       = "trace-xyz",
     log_fields     = {},
 })
-ok("14. trace.done called when trace_id set",
-    #trace_calls == 1 and trace_calls[1].status == "done",
-    #trace_calls)
-ok("14b. trace.done reason is nil when not blocked",
-    trace_calls[1].reason == nil)
+ok("14. complete_playground_trace called when trace_id set",
+    #trace_complete_calls == 1 and trace_complete_calls[1].status == "done",
+    #trace_complete_calls)
+ok("14b. trace reason is nil when not blocked",
+    trace_complete_calls[1].reason == nil)
 
 -- ---------------------------------------------------------------------------
--- 15. blocked + trace_id → trace.done("blocked", reason)
+-- 15. blocked + trace_id → storage.complete_playground_trace("blocked", reason)
 -- ---------------------------------------------------------------------------
 reset()
 logger = require("observability.logger")
@@ -318,20 +315,20 @@ logger.emit({
     trace_id       = "trace-abc",
     log_fields     = { blocked_by = "guardrail:pii", block_reason = "SSN found" },
 })
-ok("15. trace.done('blocked', reason) when blocked",
-    #trace_calls == 1 and trace_calls[1].status == "blocked",
-    trace_calls[1] and trace_calls[1].status)
-ok("15b. block_reason forwarded to trace.done",
-    trace_calls[1].reason == "SSN found",
-    trace_calls[1].reason)
+ok("15. complete_playground_trace('blocked', reason) when blocked",
+    #trace_complete_calls == 1 and trace_complete_calls[1].status == "blocked",
+    trace_complete_calls[1] and trace_complete_calls[1].status)
+ok("15b. block_reason forwarded",
+    trace_complete_calls[1].reason == "SSN found",
+    trace_complete_calls[1].reason)
 
 -- ---------------------------------------------------------------------------
--- 16. no trace_id → trace.done NOT called
+-- 16. no trace_id → complete_playground_trace NOT called
 -- ---------------------------------------------------------------------------
 reset()
 logger = require("observability.logger")
 logger.emit({ gateway_config = {}, log_fields = {} })
-ok("16. trace.done NOT called when no trace_id", #trace_calls == 0)
+ok("16. complete_playground_trace NOT called when no trace_id", #trace_complete_calls == 0)
 
 -- ---------------------------------------------------------------------------
 -- 17. webhook fires when blocked + webhooks configured
@@ -438,6 +435,35 @@ logger.emit({
 })
 ok("25. user_id forwarded",    log_store[1].user_id     == "u-42")
 ok("25b. token_label forwarded", log_store[1].token_label == "my-laptop")
+
+-- ---------------------------------------------------------------------------
+-- 26. nil gateway_config (OPTIONS / pre-auth path) — must not crash
+-- ---------------------------------------------------------------------------
+-- Regression: OPTIONS preflight requests skip context.init(), so
+-- ngx.ctx.gateway_config is never set. logger.emit() was crashing with
+-- "attempt to index field 'gateway_config' (a nil value)" before the guard
+-- `if not ctx.gateway_config then return end` was added.
+reset()
+logger = require("observability.logger")
+local ok26, err26 = pcall(logger.emit, { gateway_config = nil })
+ok("26. nil gateway_config does not raise (OPTIONS/pre-auth guard)",
+    ok26 == true, tostring(err26))
+ok("26b. insert_log NOT called when gateway_config is nil", #log_store == 0)
+
+-- ---------------------------------------------------------------------------
+-- 27. skip_log_payload suppresses prompt/response even when log_payloads=true
+-- ---------------------------------------------------------------------------
+reset()
+logger = require("observability.logger")
+logger.emit({
+    gateway_config     = { log_payloads = true },
+    skip_log_payload   = true,
+    request_body       = { messages = { { role = "user", content = "secret" } } },
+    response_body      = "secret answer",
+    log_fields         = {},
+})
+ok("27. skip_log_payload suppresses prompt", log_store[1].prompt   == nil)
+ok("27b. skip_log_payload suppresses response", log_store[1].response == nil)
 
 -- ---------------------------------------------------------------------------
 -- Summary
