@@ -78,9 +78,29 @@
   top: 0;
   background-color: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border-color);
-  transition: width 0.2s ease, min-width 0.2s ease;
+  transition: width 0.2s ease, min-width 0.2s ease, transform 0.25s ease;
   overflow: hidden;
   flex-shrink: 0;
+
+  // On mobile: slide in from the left as a fixed overlay
+  @media (max-width: 768px) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    z-index: 200;
+    transform: translateX(-100%);
+    // Always show full width on mobile regardless of collapsed state
+    width: tools.pixelToRem(240) !important;
+    min-width: tools.pixelToRem(240) !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
+  }
+}
+
+.sidebar--mobile-open {
+  @media (max-width: 768px) {
+    transform: translateX(0);
+  }
 }
 
 .sidebar--collapsed {
@@ -211,6 +231,66 @@
   flex-direction: column;
   justify-content: center;
   padding: tools.pixelToRem(8) 0;
+}
+
+// ── Mobile-only elements ──────────────────────────────────────────────────────
+
+// Hamburger button — fixed to viewport, visible only on mobile when sidebar closed
+.mobile-trigger {
+  display: none;
+
+  @media (max-width: 768px) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: tools.pixelToRem(12);
+    left: tools.pixelToRem(12);
+    z-index: 300;
+    width: tools.pixelToRem(40);
+    height: tools.pixelToRem(40);
+    border-radius: tools.pixelToRem(8);
+    border: 1px solid var(--sidebar-border-color);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+}
+
+// Semi-transparent overlay behind the open sidebar
+.mobile-overlay {
+  display: none;
+
+  @media (max-width: 768px) {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 199;
+  }
+}
+
+// ✕ close button inside the sidebar header (mobile only)
+.mobile-close {
+  display: none;
+
+  @media (max-width: 768px) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    flex-shrink: 0;
+    width: tools.pixelToRem(36);
+    height: tools.pixelToRem(36);
+    border: none;
+    background: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    border-radius: tools.pixelToRem(6);
+
+    &:hover { color: #ffffff; }
+  }
 }
 
 .bottom-btn {

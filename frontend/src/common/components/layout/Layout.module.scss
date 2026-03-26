@@ -5,6 +5,11 @@
   padding: tools.pixelToRem(32) tools.pixelToRem(40);
   background-color: var(--content-bg);
   min-height: 100vh;
+
+  @media (max-width: 768px) {
+    // 64px top clears the fixed hamburger button; 16px sides
+    padding: tools.pixelToRem(64) tools.pixelToRem(16) tools.pixelToRem(16);
+  }
 }
 
 .page-header {
@@ -12,6 +17,11 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: tools.pixelToRem(24);
+
+  @media (max-width: 640px) {
+    flex-wrap: wrap;
+    gap: tools.pixelToRem(12);
+  }
 }
 
 .page-title {
@@ -147,7 +157,8 @@
   grid-template-columns: repeat(3, 1fr);
   gap: tools.pixelToRem(16);
 
-  @media (max-width: 640px) { grid-template-columns: 1fr; }
+  @media (max-width: 900px) { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 560px) { grid-template-columns: 1fr; }
 }
 
 .hero-card {
@@ -260,6 +271,12 @@
   overflow-x: auto;
   border: 1px solid var(--card-border);
   border-radius: tools.pixelToRem(8);
+  // Scroll shadow: subtle left/right gradient indicates horizontally scrollable content
+  background:
+    linear-gradient(to right,  var(--card-bg) 20%, transparent) left  center / 40px 100% no-repeat local,
+    linear-gradient(to left,   var(--card-bg) 20%, transparent) right center / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0%   50%, rgba(0,0,0,.08), transparent) left  center / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.08), transparent) right center / 14px 100% no-repeat scroll;
 }
 
 table.table {
@@ -356,6 +373,11 @@ table.table tbody tr.blocked td {
     padding: tools.pixelToRem(5) tools.pixelToRem(10);
     font-size: tools.pixelToRem(12);
   }
+
+  // Ensure minimum 44px touch target on mobile
+  @media (max-width: 768px) {
+    min-height: tools.pixelToRem(44);
+  }
 }
 
 // Form
@@ -386,6 +408,14 @@ table.table tbody tr.blocked td {
   transition: border-color 0.15s;
 
   &:focus { border-color: #002b4a; }
+
+  // 16px font prevents iOS Safari from auto-zooming on focus;
+  // min-height ensures 44px touch target
+  @media (max-width: 768px) {
+    font-size: tools.pixelToRem(16);
+    min-height: tools.pixelToRem(44);
+    padding: tools.pixelToRem(10) tools.pixelToRem(12);
+  }
 }
 
 .form-select {
@@ -415,6 +445,8 @@ table.table tbody tr.blocked td {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: tools.pixelToRem(16);
+
+  @media (max-width: 560px) { grid-template-columns: 1fr; }
 }
 
 .form-actions {
@@ -424,6 +456,11 @@ table.table tbody tr.blocked td {
   margin-top: tools.pixelToRem(24);
   padding-top: tools.pixelToRem(16);
   border-top: 1px solid var(--card-border);
+
+  @media (max-width: 560px) {
+    flex-direction: column-reverse; // primary action on top
+    .btn { width: 100%; justify-content: center; }
+  }
 }
 
 // Modal overlay
@@ -444,8 +481,16 @@ table.table tbody tr.blocked td {
   padding: tools.pixelToRem(28);
   width: tools.pixelToRem(480);
   max-width: 90vw;
-  max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
+
+  @media (max-width: 560px) {
+    padding: tools.pixelToRem(20);
+    width: calc(100vw - tools.pixelToRem(32));
+    max-width: none;
+    // Collapse two-column form rows inside modals on small screens
+    :global(.form-row) { grid-template-columns: 1fr; }
+  }
 }
 
 .modal-header {

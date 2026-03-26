@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { NavLink } from "react-router-dom";
+import { getCyDataId } from "@myraui/utils";
 import { useTheme } from "src/common/contexts/ThemeContext";
 import { useAuth } from "src/common/contexts/AuthContext";
 import { docsUrl } from "src/common/components/DocLink";
 import styles from "./Sidebar.module.scss";
+
+const cyId = getCyDataId("sidebar");
 
 function NavIcon({ children }: { children: React.ReactNode }) {
   return <span className={styles["nav-icon"]}>{children}</span>;
@@ -32,6 +36,12 @@ function ChevronLeftIcon() {
 }
 function ChevronRightIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>;
+}
+function HamburgerIcon() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>;
+}
+function XIcon() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>;
 }
 
 // Simple inline icons for nav items
@@ -78,14 +88,16 @@ function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean 
   return <span className={styles["section-label"]}>{label}</span>;
 }
 
-function NavItem({ to, label, icon, collapsed }: { to: string; label: string; icon: React.ReactNode; collapsed: boolean }) {
+function NavItem({ to, label, icon, collapsed, onMobileClose }: { to: string; label: string; icon: React.ReactNode; collapsed: boolean; onMobileClose?: () => void }) {
   return (
     <NavLink
       to={to}
+      onClick={onMobileClose}
       className={({ isActive }) =>
         [styles["nav-item"], isActive ? styles["active"] : ""].filter(Boolean).join(" ")
       }
       title={collapsed ? label : undefined}
+      data-cy={cyId(`nav-${label.toLowerCase().replace(/\s+/g, "-")}`)}
     >
       <NavIcon>{icon}</NavIcon>
       {!collapsed && <span className={styles["nav-label"]}>{label}</span>}
@@ -99,6 +111,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("aig-sidebar-collapsed") === "true"
   );
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   function toggleCollapsed() {
     setCollapsed((v) => {
@@ -108,56 +121,101 @@ export default function Sidebar() {
     });
   }
 
+  function closeMobile() { setMobileOpen(false); }
+
+  // Lock body scroll while mobile sidebar is open
+  useEffect(() => {
+    if (mobileOpen) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileOpen]);
+
+  // On mobile the drawer is always full-width, so never treat it as collapsed.
+  const effectiveCollapsed = collapsed && !mobileOpen;
+  const navProps = { collapsed: effectiveCollapsed, onMobileClose: closeMobile };
+
   return (
-    <nav className={`${styles["sidebar"]} ${collapsed ? styles["sidebar--collapsed"] : ""}`} data-theme={theme}>
-      <div className={styles["header"]}>
-        {collapsed ? (
-          <div className={styles["header-icon"]}>
-            <img src="/favicon.svg" width="24" height="24" alt="Logo" />
-          </div>
-        ) : (
-          <img src="/logo.svg" alt="AI Gateway by Myra Security" className={styles["header-logo"]} />
-        )}
-      </div>
+    <>
+      {/* Hamburger trigger — portaled to body so it is never clipped by the sidebar's transform */}
+      {createPortal(
+        <button
+          className={styles["mobile-trigger"]}
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open navigation menu"
+          style={mobileOpen ? { display: "none" } : undefined}
+        >
+          <HamburgerIcon />
+        </button>,
+        document.body
+      )}
 
-      <div className={styles["nav-sections"]}>
-        <SectionLabel label="MAIN" collapsed={collapsed} />
-        <NavItem to="/dashboard" label="Dashboard" icon={<DashboardIcon />} collapsed={collapsed} />
+      {/* Dim overlay — tapping it closes the sidebar */}
+      {mobileOpen && createPortal(
+        <div className={styles["mobile-overlay"]} onClick={closeMobile} />,
+        document.body
+      )}
 
-        <SectionLabel label="MANAGEMENT" collapsed={collapsed} />
-        <NavItem to="/tenants" label="Tenants" icon={<TenantsIcon />} collapsed={collapsed} />
-        <NavItem to="/gateways" label="Gateways" icon={<GatewayIcon />} collapsed={collapsed} />
-        {(user?.role === "admin" || user?.role === "tenant_admin") && (
-          <NavItem to="/users" label="Users" icon={<UsersIcon />} collapsed={collapsed} />
-        )}
+      <nav
+        className={[
+          styles["sidebar"],
+          collapsed ? styles["sidebar--collapsed"] : "",
+          mobileOpen ? styles["sidebar--mobile-open"] : "",
+        ].filter(Boolean).join(" ")}
+        data-theme={theme}
+      >
+        <div className={styles["header"]}>
+          {effectiveCollapsed ? (
+            <div className={styles["header-icon"]}>
+              <img src="/favicon.svg" width="24" height="24" alt="Logo" />
+            </div>
+          ) : (
+            <img src="/logo.svg" alt="AI Gateway by Myra Security" className={styles["header-logo"]} />
+          )}
+          {/* Close button — visible only on mobile */}
+          <button className={styles["mobile-close"]} onClick={closeMobile} aria-label="Close menu">
+            <XIcon />
+          </button>
+        </div>
 
-        <SectionLabel label="OBSERVABILITY" collapsed={collapsed} />
-        <NavItem to="/analytics" label="Cost Analytics" icon={<AnalyticsIcon />} collapsed={collapsed} />
-        <NavItem to="/playground" label="Playground" icon={<PlaygroundIcon />} collapsed={collapsed} />
-        <NavItem to="/monitor" label="Live Monitor" icon={<MonitorIcon />} collapsed={collapsed} />
-        <NavItem to="/logs" label="Request Logs" icon={<LogsIcon />} collapsed={collapsed} />
+        <div className={styles["nav-sections"]}>
+          <SectionLabel label="MAIN" collapsed={effectiveCollapsed} />
+          <NavItem to="/dashboard" label="Dashboard" icon={<DashboardIcon />} {...navProps} />
 
-        <SectionLabel label="CONFIG" collapsed={collapsed} />
-        <NavItem to="/model-prices" label="Model Prices" icon={<PricesIcon />} collapsed={collapsed} />
+          <SectionLabel label="MANAGEMENT" collapsed={effectiveCollapsed} />
+          <NavItem to="/tenants" label="Tenants" icon={<TenantsIcon />} {...navProps} />
+          <NavItem to="/gateways" label="Gateways" icon={<GatewayIcon />} {...navProps} />
+          {(user?.role === "admin" || user?.role === "tenant_admin") && (
+            <NavItem to="/users" label="Users" icon={<UsersIcon />} {...navProps} />
+          )}
 
-        <SectionLabel label="ACCOUNT" collapsed={collapsed} />
-        <NavItem to="/profile" label="My Tokens" icon={<TokenIcon />} collapsed={collapsed} />
-      </div>
+          <SectionLabel label="OBSERVABILITY" collapsed={effectiveCollapsed} />
+          <NavItem to="/analytics" label="Cost Analytics" icon={<AnalyticsIcon />} {...navProps} />
+          <NavItem to="/playground" label="Playground" icon={<PlaygroundIcon />} {...navProps} />
+          <NavItem to="/monitor" label="Live Monitor" icon={<MonitorIcon />} {...navProps} />
+          <NavItem to="/logs" label="Request Logs" icon={<LogsIcon />} {...navProps} />
 
-      <div className={`${styles["bottom-bar"]} ${collapsed ? styles["bottom-bar--collapsed"] : ""}`}>
-        <a className={styles["bottom-btn"]} href={docsUrl("/")} target="_blank" rel="noopener noreferrer" title="Documentation">
-          <DocsIcon />
-        </a>
-        <button className={styles["bottom-btn"]} onClick={toggleTheme} title={theme === "dark" ? "Light mode" : "Dark mode"}>
-          {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-        </button>
-        <button className={styles["bottom-btn"]} onClick={logout} title="Sign out">
-          <LogoutIcon />
-        </button>
-        <button className={styles["bottom-btn"]} onClick={toggleCollapsed} title={collapsed ? "Expand" : "Collapse"}>
-          {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
-        </button>
-      </div>
-    </nav>
+          <SectionLabel label="CONFIG" collapsed={effectiveCollapsed} />
+          <NavItem to="/model-prices" label="Model Prices" icon={<PricesIcon />} {...navProps} />
+
+          <SectionLabel label="ACCOUNT" collapsed={effectiveCollapsed} />
+          <NavItem to="/profile" label="My Tokens" icon={<TokenIcon />} {...navProps} />
+        </div>
+
+        <div className={`${styles["bottom-bar"]} ${effectiveCollapsed ? styles["bottom-bar--collapsed"] : ""}`}>
+          <a className={styles["bottom-btn"]} href={docsUrl("/")} target="_blank" rel="noopener noreferrer" title="Documentation">
+            <DocsIcon />
+          </a>
+          <button className={styles["bottom-btn"]} onClick={toggleTheme} title={theme === "dark" ? "Light mode" : "Dark mode"}>
+            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+          </button>
+          <button className={styles["bottom-btn"]} onClick={logout} title="Sign out">
+            <LogoutIcon />
+          </button>
+          <button className={styles["bottom-btn"]} onClick={toggleCollapsed} title={collapsed ? "Expand" : "Collapse"}>
+            {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+          </button>
+        </div>
+      </nav>
+    </>
   );
 }
