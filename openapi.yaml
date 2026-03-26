@@ -168,8 +168,8 @@ components:
         budget_period:
           type: [string, "null"]
           description: |
-            Budget reset period. One of `daily`, `weekly`, `monthly`. null means the cap never resets.
-          enum: [daily, weekly, monthly, null]
+            Budget reset period. One of `daily`, `monthly`, `total`. `total` accumulates spend over the lifetime of the budget without ever auto-resetting. null means the cap never resets.
+          enum: [daily, monthly, total, null]
           example: monthly
 
     TenantUpdate:
@@ -183,8 +183,8 @@ components:
           example: 1000.00
         budget_period:
           type: [string, "null"]
-          description: Budget reset period. One of `daily`, `weekly`, `monthly`. null means the cap never resets.
-          enum: [daily, weekly, monthly, null]
+          description: Budget reset period. One of `daily`, `monthly`, `total`. `total` accumulates spend over the lifetime of the budget without ever auto-resetting. null means the cap never resets.
+          enum: [daily, monthly, total, null]
           example: monthly
 
     # ── Gateways ─────────────────────────────────────────────────────────────
