@@ -18,7 +18,8 @@ Browse all documentation topics by category.
     ---
 
     - [Admin Panel Authentication](../admin-ui/authentication.md)
-    - [Organizations](../admin-ui/organizations.md)
+    - [User Management](../admin-ui/users.md)
+    - [My Tokens](../admin-ui/my-tokens.md)
 
 -   **Core Concepts**
 
@@ -96,6 +97,12 @@ Browse all documentation topics by category.
     - [Request Tracing](../observability/tracing.md)
     - [Playground](../observability/playground.md)
     - [Web Search](../features/web-search.md)
+
+-   **Integrations**
+
+    ---
+
+    - [Claude Code](../integrations/claude-code.md)
 
 -   **API Reference**
 

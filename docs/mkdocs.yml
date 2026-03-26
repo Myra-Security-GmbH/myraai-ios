@@ -74,7 +74,8 @@ nav:
     - getting-started/installation.md
   - Admin UI:
     - admin-ui/authentication.md
-    - admin-ui/organizations.md
+    - admin-ui/users.md
+    - admin-ui/my-tokens.md
   - Core Concepts:
     - concepts/request-pipeline.md
     - concepts/multi-tenancy.md
@@ -124,6 +125,8 @@ nav:
     - observability/tracing.md
     - observability/playground.md
     - features/web-search.md
+  - Integrations:
+    - integrations/claude-code.md
   - API Reference:
     - api-reference/authentication.md
     - api-reference/tenants-gateways.md

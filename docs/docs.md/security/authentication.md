@@ -12,6 +12,16 @@ The gateway looks for an auth token in the following header order. The first mat
 
 This order lets you use the gateway as a drop-in replacement for OpenAI-compatible clients that send `Authorization: Bearer` or `x-api-key` without reconfiguration.
 
+## Token format
+
+All tokens issued by the gateway begin with the `myra_` prefix followed by 64 hex characters (32 random bytes):
+
+```
+myra_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+The prefix lets you immediately identify a string as a Myra AI Gateway token, which is useful when auditing secrets managers or environment variable inventories.
+
 ## Token security model
 
 - Tokens are stored as a one-way hash — the original value cannot be recovered from the database
@@ -36,9 +46,10 @@ Each token's `user_id` maps to a user record which has a `role` field:
 
 | Role | Inference access | Admin panel access |
 |---|---|---|
-| `admin` | All gateways (platform-wide) | Full access, all organizations |
-| `member` | All gateways in their organization | Own organization |
-| `viewer` | 403 on all inference requests | Own organization (read-only) |
+| `admin` | All gateways (platform-wide) | Full access, all tenants |
+| `tenant_admin` | All gateways in their tenant | Own tenant — manages users and settings |
+| `member` | All gateways in their tenant | Own tenant |
+| `viewer` | 403 on all inference requests | Own tenant (read-only) |
 
 !!! warning
     The `viewer` role is intended for users who need read access to the admin UI only. Sending an inference request with a viewer-role token always returns `403 Forbidden`.
@@ -77,8 +88,9 @@ Select `inference` for standard API access.
 
 1. Open **Users** in the left sidebar.
 2. Click **New User**.
-3. Select the organization, enter an email and optional name, and choose a role:
-   - **member** — full access to all gateways in the organization
+3. Select the tenant, enter an email and optional name, and choose a role:
+   - **tenant_admin** — manages users and settings within the tenant
+   - **member** — full access to all gateways in the tenant
    - **viewer** — read-only admin UI access; cannot make inference requests
 4. Click **Save**.
 

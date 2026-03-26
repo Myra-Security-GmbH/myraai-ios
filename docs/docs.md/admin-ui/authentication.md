@@ -8,6 +8,8 @@ The admin panel (`/admin/*`) is protected by a stateless JWT session cookie. Two
 
 Navigate to `http://<your-gateway>/login`. You will be redirected here automatically if you access a protected page without a valid session.
 
+![Login page](../assets/screenshots/login-page.png)
+
 ---
 
 ## Google SSO
@@ -48,9 +50,10 @@ After a successful login a secure session is created. Sessions expire after 8 ho
 
 | Role | Access |
 |---|---|
-| `admin` | Full platform — all organizations, tenants, gateways, users |
-| `member` | Own organization — all tenants, gateways, and users within their org |
-| `viewer` | Own organization — read-only access to the admin panel; cannot make inference requests |
+| `admin` | Full platform — all tenants, gateways, users |
+| `tenant_admin` | Own tenant — manages users, gateways, and settings within their tenant |
+| `member` | Own tenant — full access to gateways within their tenant; can create their own inference tokens via [My Tokens](my-tokens.md) |
+| `viewer` | Own tenant — read-only access to the admin panel; cannot make inference requests |
 
 Any user in the database can log in to the admin panel regardless of role. Create users via **Users → New User** or the [Users API](../api-reference/users-tokens.md).
 

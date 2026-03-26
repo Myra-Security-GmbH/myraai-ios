@@ -25,9 +25,9 @@ The gateway checks request headers in this order; the first matching header wins
 
 | Priority | Header | Example |
 |---|---|---|
-| 1 | `x-aig-token` | `x-aig-token: aig_xxxx` |
-| 2 | `Authorization: Bearer` | `Authorization: Bearer aig_xxxx` |
-| 3 | `x-api-key` | `x-api-key: aig_xxxx` |
+| 1 | `x-aig-token` | `x-aig-token: myra_xxxx` |
+| 2 | `Authorization: Bearer` | `Authorization: Bearer myra_xxxx` |
+| 3 | `x-api-key` | `x-api-key: myra_xxxx` |
 
 This ordering lets you drop the gateway in as a replacement for the OpenAI API without modifying existing clients that send `Authorization: Bearer` or `x-api-key`.
 
@@ -72,7 +72,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
 ```json
 {
   "id": "tok_abc123",
-  "token": "aig_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "token": "myra_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "gateway_id": "gw_xyz789"
 }
 ```
@@ -85,19 +85,19 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
 ```bash
 # x-aig-token header (preferred)
 curl -X POST "https://<your-gateway-host>/v1/myapp/production/openai/chat/completions" \
-  -H "x-aig-token: aig_xxxx" \
+  -H "x-aig-token: myra_xxxx" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}'
 
 # Authorization: Bearer (OpenAI SDK compatible)
 curl -X POST "https://<your-gateway-host>/v1/myapp/production/openai/chat/completions" \
-  -H "Authorization: Bearer aig_xxxx" \
+  -H "Authorization: Bearer myra_xxxx" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}'
 
 # x-api-key (Anthropic SDK compatible)
 curl -X POST "https://<your-gateway-host>/v1/myapp/production/anthropic/chat/completions" \
-  -H "x-api-key: aig_xxxx" \
+  -H "x-api-key: myra_xxxx" \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-opus-4-6","messages":[{"role":"user","content":"Hello"}]}'
 ```

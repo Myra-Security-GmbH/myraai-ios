@@ -2,7 +2,7 @@
 
 **Stack:** OpenResty (LuaJIT)
 **Pattern:** Multi-tenant reverse proxy with a middleware chain across three Nginx phases (access → content → log)
-**Storage:** SQLite (dev/single-server) or PostgreSQL (production)
+**Storage:** SQLite (dev/single-server), MySQL 8.0+, or PostgreSQL (production)
 **State:** `ngx.shared.dict` (single-server) or Redis (distributed)
 
 ---
@@ -162,16 +162,28 @@ SHA-256 hashes are stored — plaintext is never persisted. Per-token metadata:
 
 ### User Roles
 
-| Role | Inference | Admin |
+| Role | Inference | Admin scope |
 |---|---|---|
-| `admin` | Yes | Full access |
-| `member` | Yes (assigned gateways only) | No |
-| `viewer` | No (403 Forbidden) | No |
+| `admin` | Yes | Full platform access; may assign any role |
+| `tenant_admin` | Yes | Full access within own tenant; may create/manage gateways and users (member/viewer only); cannot manage other tenants |
+| `member` | Yes (assigned gateways only) | No admin access; may not assign roles |
+| `viewer` | No (403 Forbidden) | Read-only; inference blocked |
+
+### Role Assignment Rules
+
+A caller may only assign roles strictly below their own:
+
+| Caller | Assignable roles |
+|---|---|
+| `admin` | `admin`, `tenant_admin`, `member`, `viewer` |
+| `tenant_admin` | `member`, `viewer` |
+| `member` / `viewer` | *(none)* |
 
 ### Access Control
 
 - Gateway auth is required by default; disable with `auth_required: false`
-- Per-user gateway access matrix (`user_gateway_access` table)
+- Per-user gateway access matrix (`user_gateway_access` table) — enforced for `member` role
+- `tenant_admin` users are automatically scoped to their own tenant; cross-tenant requests return 403
 - Deleting a user immediately disables all their tokens
 
 ---

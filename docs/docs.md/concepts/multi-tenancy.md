@@ -14,15 +14,14 @@ AI Gateway can serve many tenants and gateways from a single process, with hard 
 
 ```mermaid
 graph TD
-    O[Organization]
-    O --> T["Tenant<br/>budget · plan"]
+    T["Tenant<br/>budget · plan"]
     T --> G["Gateway<br/>config · provider keys<br/>auth tokens · routing rules"]
-    O --> U["User<br/>role: admin · member · viewer"]
+    T --> U["User<br/>role: admin · tenant_admin · member · viewer"]
 ```
 
-An **Organization** is the top-level grouping for users and tenants. Each organization can have multiple **Tenants**, and each tenant can have multiple **Gateways** — each gateway is an independent policy domain with its own config, keys, tokens, and rules.
+A **Tenant** is the top-level grouping for users and gateways. Each tenant can have multiple **Gateways** — each gateway is an independent policy domain with its own config, keys, tokens, and rules.
 
-**Users** belong to an organization. Their role (`admin`, `member`, or `viewer`) determines what they can do across all gateways in that organization.
+**Users** belong to a tenant. Their role determines what they can do within that tenant.
 
 ![Tenants list](../assets/screenshots/tenants-list.png)
 
@@ -58,9 +57,10 @@ The gateway resolves `{tenant_slug}` and `{gateway_slug}` on every request and l
 
 | Role | Inference requests | Admin operations |
 |------|-------------------|-----------------|
-| `admin` | Yes, on all gateways (platform-wide) | Full CRUD on all organizations, tenants, gateways, users, tokens, rules, keys |
-| `member` | Yes, on all gateways in their organization | Full access within their organization |
-| `viewer` | No — returns `403 FORBIDDEN` | Read-only within their organization |
+| `admin` | Yes, on all gateways (platform-wide) | Full CRUD on all tenants, gateways, users, tokens, rules, keys |
+| `tenant_admin` | Yes, on all gateways in their tenant | Full access within their tenant; manages users and tenant settings |
+| `member` | Yes, on all gateways in their tenant | Full access within their tenant |
+| `viewer` | No — returns `403 FORBIDDEN` | Read-only within their tenant |
 
 Role is enforced at the authentication step. A `viewer` token is rejected before the request body is read.
 

@@ -125,7 +125,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="https://your-gateway-host/v1/my-tenant/my-gateway/compat",
-    api_key="aig_your_inference_token"
+    api_key="myra_your_inference_token"
 )
 
 response = client.chat.completions.create(
@@ -141,7 +141,7 @@ import OpenAI from 'openai';
 
 const client = new OpenAI({
   baseURL: 'https://your-gateway-host/v1/my-tenant/my-gateway/compat',
-  apiKey: 'aig_your_inference_token',
+  apiKey: 'myra_your_inference_token',
 });
 
 const response = await client.chat.completions.create({
@@ -154,7 +154,7 @@ const response = await client.chat.completions.create({
 
 ```bash
 curl https://your-gateway-host/v1/my-tenant/my-gateway/compat/chat/completions \
-  -H "Authorization: Bearer aig_your_inference_token" \
+  -H "Authorization: Bearer myra_your_inference_token" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet-4-6",

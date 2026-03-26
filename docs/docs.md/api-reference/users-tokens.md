@@ -1,6 +1,6 @@
 # Users & Tokens API
 
-Users are identity records within an organization. Each user has a role and can hold multiple auth tokens. Tokens are the credentials used to authenticate inference requests.
+Users are identity records within a tenant. Each user has a role and can hold multiple auth tokens. Tokens are the credentials used to authenticate inference requests.
 
 **Base URL:** `https://<your-gateway-host>/admin/v1`
 
@@ -12,8 +12,8 @@ Users are identity records within an organization. Each user has a role and can 
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/organizations/{id}/users` | List users for an organization |
-| `POST` | `/organizations/{id}/users` | Create a user |
+| `GET` | `/tenants/{id}/users` | List users for a tenant |
+| `POST` | `/tenants/{id}/users` | Create a user |
 | `PATCH` | `/users/{id}` | Update a user |
 | `DELETE` | `/users/{id}` | Delete a user (disables all their tokens) |
 | `DELETE` | `/users/{id}/budget` | Reset all token spend counters for a user |
@@ -28,6 +28,14 @@ Users are identity records within an organization. Each user has a role and can 
 | `GET` | `/users/{id}/tokens` | List tokens belonging to a user |
 | `POST` | `/users/{id}/tokens` | Create a user-scoped token |
 
+### Self-Service (My Tokens)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/me/tokens` | List the caller's own tokens |
+| `POST` | `/me/tokens` | Create a token for the caller |
+| `DELETE` | `/me/tokens/{tid}` | Revoke one of the caller's own tokens |
+
 ---
 
 ## Users
@@ -35,7 +43,7 @@ Users are identity records within an organization. Each user has a role and can 
 ### List users
 
 ```bash
-curl https://<your-gateway-host>/admin/v1/organizations/{org_id}/users
+curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users
 ```
 
 **Response:**
@@ -44,8 +52,7 @@ curl https://<your-gateway-host>/admin/v1/organizations/{org_id}/users
 [
   {
     "id": "usr_abc123",
-    "organization_id": "org_xyz",
-    "org_slug": "acme-corp",
+    "tenant_id": "ten_xyz",
     "email": "alice@example.com",
     "name": "Alice",
     "role": "member",
@@ -57,7 +64,7 @@ curl https://<your-gateway-host>/admin/v1/organizations/{org_id}/users
 ### Create a user
 
 ```bash
-curl -X POST https://<your-gateway-host>/admin/v1/organizations/{org_id}/users \
+curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users \
   -H "Content-Type: application/json" \
   -d '{
     "email": "alice@example.com",
@@ -70,7 +77,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/organizations/{org_id}/users \
 |---|---|---|---|
 | `email` | string | Yes | User's email address. Must be globally unique. |
 | `name` | string | No | Display name. |
-| `role` | string | No | One of `member` or `viewer`. Defaults to `member`. Only platform `admin` users can create other `admin` accounts. |
+| `role` | string | No | One of `tenant_admin`, `member`, or `viewer`. Defaults to `member`. Only platform `admin` users can create other `admin` accounts. |
 
 **Response:** `{ "id": "usr_abc123", "email": "alice@example.com" }`
 
@@ -141,7 +148,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
 ```json
 {
   "id": "tok_def456",
-  "token": "aig_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "token": "myra_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "gateway_id": "gw_xyz789"
 }
 ```
@@ -183,6 +190,66 @@ Revocation is immediate. Any subsequent inference request using the revoked toke
 ```bash
 curl -X DELETE https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens/{token_id}
 ```
+
+---
+
+## Self-Service Tokens (`/me/tokens`)
+
+These endpoints are available to **any authenticated user** regardless of role (except `viewer`). They let `member` and `tenant_admin` users create and manage tokens for themselves without needing an admin to act on their behalf.
+
+!!! note
+    `viewer` users can call these endpoints but cannot create tokens with the `inference` scope because they have no inference access. Creating a token via `/me/tokens` automatically sets `scopes: ["inference"]`.
+
+### List own tokens
+
+```bash
+curl https://<your-gateway-host>/admin/v1/me/tokens \
+  -H "Cookie: aig_admin=<session>"
+```
+
+**Response:** array of [token objects](#token-fields).
+
+### Create own token
+
+```bash
+curl -X POST https://<your-gateway-host>/admin/v1/me/tokens \
+  -H "Cookie: aig_admin=<session>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "gateway_id": "gw_xyz789",
+    "label": "my laptop",
+    "expires_at": null,
+    "budget_usd": null,
+    "rate_limit": null
+  }'
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `gateway_id` | string | Yes | Gateway the token grants access to. Must be accessible to the caller's tenant. |
+| `label` | string | No | Human-readable name. |
+| `expires_at` | string \| null | No | ISO-8601 expiry timestamp. `null` = never. |
+| `budget_usd` | number \| null | No | Per-token spend cap in USD. |
+| `rate_limit` | object \| null | No | `{"requests": N, "window_sec": S}` |
+
+**Response:**
+
+```json
+{
+  "id": "tok_abc123",
+  "token": "myra_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "gateway_id": "gw_xyz789"
+}
+```
+
+### Revoke own token
+
+```bash
+curl -X DELETE https://<your-gateway-host>/admin/v1/me/tokens/{token_id} \
+  -H "Cookie: aig_admin=<session>"
+```
+
+Returns `403` if the token does not belong to the caller. Revocation is immediate.
 
 ---
 
