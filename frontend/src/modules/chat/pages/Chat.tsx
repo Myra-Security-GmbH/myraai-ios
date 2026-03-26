@@ -273,7 +273,7 @@ export default function Chat() {
 
     // Build content — plain text or content blocks if attachments
     let userContent: string;
-    let hasSkill: string | null = null;
+    let hasSkill: string | null = null; // reserved for future skill-based providers
     if (pendingAttachments.length > 0) {
       const blocks: object[] = [{ type: "text", text }];
       const unsupported: string[] = [];
@@ -289,21 +289,25 @@ export default function Chat() {
             source: { type: "base64", media_type: att.mime_type, data: att.data },
           });
         } else if (att.mime_type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-          let fileId: string;
+          // Gateway extracts plain text from the docx server-side and returns { text }
+          let extractedText: string;
           try {
-            const res = await api.post<{ file_id: string }>("/chat/files", {
+            const res = await api.post<{ text: string }>("/chat/files", {
               gateway_id: gatewayId,
               filename: att.filename,
               mime_type: att.mime_type,
               data: att.data,
             });
-            fileId = res.file_id;
+            extractedText = res.text;
           } catch (e) {
-            setError("Failed to upload document to Anthropic: " + String(e));
+            setError("Failed to extract text from .docx: " + String(e));
             return;
           }
-          blocks.push({ type: "document", source: { type: "file", file_id: fileId } });
-          hasSkill = "docx";
+          blocks.push({
+            type: "docx",
+            filename: att.filename,
+            text: extractedText,
+          });
         } else {
           unsupported.push(att.filename);
         }
@@ -380,19 +384,22 @@ export default function Chat() {
         let content: unknown = m.content;
         try {
           const parsed = JSON.parse(m.content);
-          if (Array.isArray(parsed)) content = parsed;
+          if (Array.isArray(parsed)) {
+            // Convert docx blocks back to plain text for the LLM
+            content = parsed.map((b: { type: string; filename?: string; text?: string; [k: string]: unknown }) => {
+              if (b.type === "docx") {
+                return { type: "text", text: `[Document: ${b.filename}]\n\n${b.text ?? ""}` };
+              }
+              return b;
+            });
+          }
         } catch { /* plain text — keep as string */ }
         return { role: m.role, content };
       }),
     ];
 
-    // Determine if skill headers are needed (new docx in this message, or file_id in history)
-    const needsSkill = hasSkill ?? (history.some((m) => {
-      try {
-        const p = JSON.parse(m.content);
-        return Array.isArray(p) && p.some((b: any) => b?.source?.type === "file");
-      } catch { return false; }
-    }) ? "docx" : null);
+    // No skill headers needed — docx is now sent as extracted plain text
+    const needsSkill = hasSkill;
 
     // Stream inference
     const tok = playToken;
@@ -413,11 +420,13 @@ export default function Chat() {
       const res = await fetch(compatUrl, {
         method: "POST",
         signal: abort.signal,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${tok.token}`,
-          ...(needsSkill ? { "x-aig-skill": needsSkill } : {}),
-        },
+        headers: Object.fromEntries(
+          Object.entries({
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${tok.token}`,
+            ...(needsSkill ? { "x-aig-skill": needsSkill } : {}),
+          }).filter(([, v]) => v !== undefined)
+        ) as Record<string, string>,
         body: JSON.stringify({
           model,
           messages: apiMessages,

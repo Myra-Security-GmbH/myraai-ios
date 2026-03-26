@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         msmtp \
         msmtp-mta \
         openresty-resty \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Lua vendor dependencies (lua-resty-http, lua-resty-hmac)

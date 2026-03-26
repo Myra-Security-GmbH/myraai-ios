@@ -44,11 +44,17 @@ function RegenerateIcon() {
   );
 }
 
+type ContentBlock =
+  | { type: "text"; text?: string }
+  | { type: "image_url"; image_url?: { url: string } }
+  | { type: "docx"; filename: string; text?: string }
+  | { type: string; [k: string]: unknown };
+
 /** Try to parse content as JSON content-block array; fall back to plain string */
-function parseContent(content: string): { type: "text" | "image_url"; text?: string; url?: string }[] {
+function parseContent(content: string): ContentBlock[] {
   try {
     const parsed = JSON.parse(content);
-    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed)) return parsed as ContentBlock[];
   } catch { /* not JSON */ }
   return [{ type: "text", text: content }];
 }
@@ -76,9 +82,10 @@ const MessageBubble = memo(function MessageBubble({
   const [copied, setCopied] = useState(false);
 
   const blocks = parseContent(message.content);
+  const docxBlocks = blocks.filter((b): b is { type: "docx"; filename: string; text?: string } => b.type === "docx");
   const textContent = blocks
     .filter((b) => b.type === "text")
-    .map((b) => b.text ?? "")
+    .map((b) => (b as { type: "text"; text?: string }).text ?? "")
     .join("\n");
 
   function handleCopy() {
@@ -169,6 +176,30 @@ const MessageBubble = memo(function MessageBubble({
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
                 {message.attachments.map((att) => (
                   <AttachmentChip key={att.id} attachment={att} />
+                ))}
+              </div>
+            )}
+
+            {/* Docx attachment chips — show filename only, not extracted text */}
+            {docxBlocks.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                {docxBlocks.map((b, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      background: "var(--card-bg, #f0f0f0)",
+                      border: "1px solid var(--card-border, #ccc)",
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    📄 {b.filename}
+                  </span>
                 ))}
               </div>
             )}

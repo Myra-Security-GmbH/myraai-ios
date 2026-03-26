@@ -277,16 +277,13 @@ function M.register(route)
         send(200, { ok = true })
     end)
 
-    -- ── Anthropic Files API proxy ────────────────────────────────────────────
+    -- ── Document file processor ───────────────────────────────────────────────
     -- POST /admin/v1/chat/files  { gateway_id, filename, mime_type, data }
-    -- Uploads a file to Anthropic's Files API using the gateway's configured
-    -- Anthropic key and returns the resulting file_id.  Only the gateway owner
-    -- (or an admin) is allowed to use a given gateway's key.
+    -- For .docx files: extracts plain text from the Word document on the server
+    -- and returns { text: "..." } so the frontend can include it as a text block.
+    -- For PDF/text: uploads to Anthropic Files API and returns { file_id: "..." }.
     route("POST", "^/admin/v1/chat/files$", function()
         local body = read_body()
-        if not body.gateway_id or body.gateway_id == "" then
-            return send(400, { error = "gateway_id is required" })
-        end
         if not body.data or body.data == "" then
             return send(400, { error = "data is required" })
         end
@@ -295,14 +292,62 @@ function M.register(route)
         end
         local mime = body.mime_type or "application/octet-stream"
 
-        local api_key, key_err = byok.get_key(body.gateway_id, "anthropic", "default")
-        if not api_key then
-            return send(503, { error = "Anthropic key not configured for this gateway: " .. tostring(key_err) })
-        end
-
         local bin = ngx.decode_base64(body.data)
         if not bin then
             return send(400, { error = "data is not valid base64" })
+        end
+
+        -- .docx: extract text server-side (Anthropic does not accept docx as a document block)
+        if mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" then
+            -- Write to a temp file, run python3 to extract text, clean up
+            local tmpfile = "/tmp/aig_docx_" .. ngx.now() .. "_" .. math.random(100000) .. ".docx"
+            local f = io.open(tmpfile, "wb")
+            if not f then
+                return send(500, { error = "Failed to create temp file for docx extraction" })
+            end
+            f:write(bin)
+            f:close()
+
+            -- Write a Python helper script to /tmp and run it (avoids shell quoting issues)
+            local script = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, zipfile, re
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+    xml = z.read('word/document.xml').decode('utf-8', 'replace')
+    txt = re.sub(r'<[^>]+>', '', xml)
+    txt = re.sub(r'[ \t]+', ' ', txt)
+    txt = re.sub(r'\n{3,}', '\n\n', txt.strip())
+    print(txt)
+except Exception as e:
+    sys.exit(1)
+]])
+                sf:close()
+            end
+            local cmd = "python3 " .. script .. " " .. tmpfile .. " 2>/dev/null"
+            local pipe = io.popen(cmd, "r")
+            local text = pipe and pipe:read("*a") or ""
+            if pipe then pipe:close() end
+            os.remove(tmpfile)
+            os.remove(script)
+
+            text = text:gsub("^%s+", ""):gsub("%s+$", "")
+            if text == "" then
+                return send(422, { error = "Could not extract text from .docx file" })
+            end
+            return send(200, { text = text })
+        end
+
+        -- PDF / plain text: upload to Anthropic Files API
+        if not body.gateway_id or body.gateway_id == "" then
+            return send(400, { error = "gateway_id is required for PDF/text uploads" })
+        end
+
+        local api_key, key_err = byok.get_key(body.gateway_id, "anthropic", "default")
+        if not api_key then
+            return send(503, { error = "Anthropic key not configured for this gateway: " .. tostring(key_err) })
         end
 
         local boundary = "----AIG_FILES_BOUNDARY"
@@ -321,10 +366,10 @@ function M.register(route)
             method  = "POST",
             url     = "https://api.anthropic.com/v1/files",
             headers = {
-                ["x-api-key"]        = api_key,
+                ["x-api-key"]         = api_key,
                 ["anthropic-version"] = "2023-06-01",
-                ["anthropic-beta"]   = "files-api-2025-04-14",
-                ["Content-Type"]     = "multipart/form-data; boundary=" .. boundary,
+                ["anthropic-beta"]    = "files-api-2025-04-14",
+                ["Content-Type"]      = "multipart/form-data; boundary=" .. boundary,
             },
             body    = multipart,
         })
