@@ -7,7 +7,7 @@ local http_util = require("utils.http")
 
 local M = {}
 
-local DEFAULT_URL     = "http://127.0.0.1:8083"
+local DEFAULT_URL     = os.getenv("PROMPT_GUARD_URL") or "http://127.0.0.1:8083"
 local DEFAULT_TIMEOUT = 2000
 
 -- Extract text from a message content value (string or Anthropic content-block array).

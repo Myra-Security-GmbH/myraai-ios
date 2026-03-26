@@ -8,8 +8,8 @@ local http_util = require("utils.http")
 
 local M = {}
 
-local DEFAULT_ANALYZER_URL   = "http://127.0.0.1:5002"
-local DEFAULT_ANONYMIZER_URL = "http://127.0.0.1:5001"
+local DEFAULT_ANALYZER_URL   = os.getenv("PRESIDIO_ANALYZER_URL")  or "http://127.0.0.1:5002"
+local DEFAULT_ANONYMIZER_URL = os.getenv("PRESIDIO_ANONYMIZER_URL") or "http://127.0.0.1:5001"
 local DEFAULT_SCORE_THRESHOLD = 0.7
 local DEFAULT_LANGUAGE        = "en"
 

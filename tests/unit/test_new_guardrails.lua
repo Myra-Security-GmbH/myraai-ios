@@ -536,4 +536,103 @@ describe("language detector", function()
         assert.equal("pass", r.verdict)
     end)
 
+    -- ── UTF-8 byte-range coverage ────────────────────────────────────────────
+
+    -- Hebrew: leading bytes 0xD6–0xD7 (U+0590–U+05FF)
+    -- "שלום" = \xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d (4 chars, each b in D6-D7)
+    local HEBREW = "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d"
+
+    it("blocks Hebrew text when only latin is allowed", function()
+        local ctx = req_ctx(string.rep(HEBREW, 5))
+        local r   = language_det.run(ctx, det_block, "request")
+        assert.equal("block", r.verdict)
+        assert.equal("language:hebrew", r.pattern)
+    end)
+
+    it("passes Hebrew text when hebrew is in allowed list", function()
+        local det = { type = "language", action = "block", allowed = { "latin", "hebrew" } }
+        local ctx = req_ctx(string.rep(HEBREW, 5))
+        local r   = language_det.run(ctx, det, "request")
+        assert.equal("pass", r.verdict)
+    end)
+
+    -- Devanagari: 0xE0 leading byte, second byte in 0xA4–0xA5 (U+0900–U+097F)
+    -- "न" = \xe0\xa4\xa8
+    local DEVANAGARI = string.rep("\xe0\xa4\xa8", 10)
+
+    it("blocks Devanagari text when only latin is allowed", function()
+        local ctx = req_ctx(DEVANAGARI)
+        local r   = language_det.run(ctx, det_block, "request")
+        assert.equal("block", r.verdict)
+        assert.equal("language:devanagari", r.pattern)
+    end)
+
+    it("passes Devanagari text when devanagari is in allowed list", function()
+        local det = { type = "language", action = "block", allowed = { "latin", "devanagari" } }
+        local ctx = req_ctx(DEVANAGARI)
+        local r   = language_det.run(ctx, det, "request")
+        assert.equal("pass", r.verdict)
+    end)
+
+    -- Thai: 0xE0 leading byte, second byte in 0xB8–0xB9 (U+0E00–U+0E7F)
+    -- "ส" = \xe0\xb8\xaa
+    local THAI = string.rep("\xe0\xb8\xaa", 10)
+
+    it("blocks Thai text when only latin is allowed", function()
+        local ctx = req_ctx(THAI)
+        local r   = language_det.run(ctx, det_block, "request")
+        assert.equal("block", r.verdict)
+        assert.equal("language:thai", r.pattern)
+    end)
+
+    it("passes Thai text when thai is in allowed list", function()
+        local det = { type = "language", action = "block", allowed = { "latin", "thai" } }
+        local ctx = req_ctx(THAI)
+        local r   = language_det.run(ctx, det, "request")
+        assert.equal("pass", r.verdict)
+    end)
+
+    -- 4-byte sequences (b >= 0xF0): emoji — no script bucket, counts as latin
+    -- "😀" = \xf0\x9f\x98\x80
+    it("classifies 4-byte emoji as latin (no non-latin script bucket)", function()
+        local emoji = string.rep("\xf0\x9f\x98\x80", 10)
+        -- allowed = {"cjk"} so latin would be blocked
+        local det_no_latin = { type = "language", action = "block", allowed = { "cjk" } }
+        local ctx = req_ctx(emoji)
+        local r   = language_det.run(ctx, det_no_latin, "request")
+        assert.equal("block", r.verdict)
+        assert.equal("language:latin", r.pattern)
+    end)
+
+    -- Generic 3-byte (b >= 0xE0, not 0xE0/0xE4–0xE9): e.g. U+1E00 = \xe1\xb8\x80
+    it("handles generic 3-byte sequences without crashing (classified as latin)", function()
+        local three_byte = string.rep("\xe1\xb8\x80", 10)
+        local det_no_latin = { type = "language", action = "block", allowed = { "cjk" } }
+        local ctx = req_ctx(three_byte)
+        local r   = language_det.run(ctx, det_no_latin, "request")
+        assert.equal("block", r.verdict)
+        assert.equal("language:latin", r.pattern)
+    end)
+
+    -- Generic 2-byte (b >= 0xC0, not covered by other ranges): e.g. é = \xc3\xa9
+    it("handles generic 2-byte sequences without crashing (classified as latin)", function()
+        local two_byte = string.rep("\xc3\xa9", 10)  -- é × 10
+        local det_no_latin = { type = "language", action = "block", allowed = { "cjk" } }
+        local ctx = req_ctx(two_byte)
+        local r   = language_det.run(ctx, det_no_latin, "request")
+        assert.equal("block", r.verdict)
+        assert.equal("language:latin", r.pattern)
+    end)
+
+    -- Continuation byte (b < 0x80 is ASCII; 0x80–0xBF are continuation bytes → else branch)
+    it("handles bare continuation bytes without crashing", function()
+        local cont = string.rep("\x80", 20)
+        local det_no_latin = { type = "language", action = "block", allowed = { "cjk" } }
+        local ctx = req_ctx(cont)
+        local r   = language_det.run(ctx, det_no_latin, "request")
+        -- All bytes are continuation bytes → no non-latin script → "latin"
+        assert.equal("block", r.verdict)
+        assert.equal("language:latin", r.pattern)
+    end)
+
 end)
