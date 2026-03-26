@@ -13,6 +13,13 @@ Browse all documentation topics by category.
     - [Quick start](../getting-started/quick-start.md)
     - [Getting Access](../getting-started/installation.md)
 
+-   **Admin UI**
+
+    ---
+
+    - [Admin Panel Authentication](../admin-ui/authentication.md)
+    - [Organizations](../admin-ui/organizations.md)
+
 -   **Core Concepts**
 
     ---

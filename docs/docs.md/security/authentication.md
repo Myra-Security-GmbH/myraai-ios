@@ -34,11 +34,11 @@ This order lets you use the gateway as a drop-in replacement for OpenAI-compatib
 
 Each token's `user_id` maps to a user record which has a `role` field:
 
-| Role | Inference access | Admin API access |
+| Role | Inference access | Admin panel access |
 |---|---|---|
-| `admin` | All gateways | Full |
-| `member` | Assigned gateways only | None |
-| `viewer` | 403 on all inference | None |
+| `admin` | All gateways (platform-wide) | Full access, all organizations |
+| `member` | All gateways in their organization | Own organization |
+| `viewer` | 403 on all inference requests | Own organization (read-only) |
 
 !!! warning
     The `viewer` role is intended for users who need read access to the admin UI only. Sending an inference request with a viewer-role token always returns `403 Forbidden`.
@@ -69,7 +69,7 @@ When creating a user token, you select one or more scopes:
 | `read` | Reserved for future use. |
 | `admin` | Reserved for future use. |
 
-Select `inference` for standard API access. Access to specific gateways is controlled by the user's role and gateway access grants, not by scopes.
+Select `inference` for standard API access.
 
 ## Using the admin UI
 
@@ -77,13 +77,12 @@ Select `inference` for standard API access. Access to specific gateways is contr
 
 1. Open **Users** in the left sidebar.
 2. Click **New User**.
-3. Select the tenant, enter an email and optional name, and choose a role:
-   - **admin** — full access to all gateways in the tenant
-   - **member** — access only to gateways explicitly granted to them
+3. Select the organization, enter an email and optional name, and choose a role:
+   - **member** — full access to all gateways in the organization
    - **viewer** — read-only admin UI access; cannot make inference requests
 4. Click **Save**.
 
-For `member`-role users, assign gateway access after creating the user: open the user, click **Add Gateway**, and select the gateways they should be able to use.
+Platform `admin` users can also create other `admin` accounts.
 
 ### Create a token
 

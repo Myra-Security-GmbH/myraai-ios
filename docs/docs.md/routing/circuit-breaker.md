@@ -65,27 +65,13 @@ Add `circuit_breaker` to the gateway config:
 
 ## Interaction with Retries and Fallbacks
 
-The circuit breaker check runs **before** each upstream attempt in `upstream.lua`. The sequence for a request with `retry_count: 2` and one fallback, with OpenAI's breaker open:
+The circuit breaker check runs **before** each upstream attempt. The sequence for a request with `retry_count: 2` and one fallback, with OpenAI's breaker open:
 
 1. Check OpenAI breaker → **OPEN** → skip OpenAI entirely
 2. Check Anthropic breaker → closed → attempt Anthropic
 3. Anthropic succeeds → record success → return response
 
 Without a circuit breaker, the gateway would waste two retry attempts on a failing OpenAI before trying Anthropic.
-
----
-
-## State Storage
-
-State is stored in `ngx.shared` dicts — no database writes:
-
-| Key | Dict | Content |
-|---|---|---|
-| `cb:state:{gw_id}:{provider}` | `aig_config` | `"open"` or `"half_open"` (absent = closed) |
-| `cb:opened:{gw_id}:{provider}` | `aig_config` | Unix timestamp when breaker opened (string) |
-| `cb:fail:{gw_id}:{provider}` | `aig_ratelimit` | Failure counter (auto-expires after `window_sec * 2`) |
-
-State is per worker in single-node `shared_dict` mode. In Redis mode, the same keys live in Redis and are consistent across workers and instances.
 
 ---
 

@@ -72,6 +72,9 @@ nav:
     - getting-started/what-is-ai-gateway.md
     - getting-started/quick-start.md
     - getting-started/installation.md
+  - Admin UI:
+    - admin-ui/authentication.md
+    - admin-ui/organizations.md
   - Core Concepts:
     - concepts/request-pipeline.md
     - concepts/multi-tenancy.md

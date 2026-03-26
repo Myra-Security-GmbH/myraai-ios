@@ -14,15 +14,15 @@ AI Gateway can serve many tenants and gateways from a single process, with hard 
 
 ```mermaid
 graph TD
-    T[Tenant]
+    O[Organization]
+    O --> T["Tenant<br/>budget · plan"]
     T --> G["Gateway<br/>config · provider keys<br/>auth tokens · routing rules"]
-    T --> U["User<br/>role: admin · member · viewer"]
-    U --> GA[per-gateway access grant]
+    O --> U["User<br/>role: admin · member · viewer"]
 ```
 
-A **Tenant** is the top-level billing and isolation boundary. Each tenant can have multiple **Gateways** — each gateway is an independent policy domain with its own config, keys, tokens, and rules.
+An **Organization** is the top-level grouping for users and tenants. Each organization can have multiple **Tenants**, and each tenant can have multiple **Gateways** — each gateway is an independent policy domain with its own config, keys, tokens, and rules.
 
-**Users** belong to a tenant and are granted per-gateway access. Their role (`admin`, `member`, or `viewer`) determines what they can do across all gateways in the tenant.
+**Users** belong to an organization. Their role (`admin`, `member`, or `viewer`) determines what they can do across all gateways in that organization.
 
 ![Tenants list](../assets/screenshots/tenants-list.png)
 
@@ -47,7 +47,7 @@ The gateway resolves `{tenant_slug}` and `{gateway_slug}` on every request and l
 |----------|-----------|
 | URL routing | `{tenant_slug}/{gateway_slug}` prefix resolved on every request; unknown slugs return `404 TENANT_NOT_FOUND` |
 | Internal state isolation | All internal state is namespaced per tenant and gateway — no cross-tenant data leakage is possible |
-| Database | `tenant_id` foreign key on all tables; all queries filter by tenant |
+| Storage | All data is strictly scoped to the owning tenant at the storage layer; cross-tenant access is not possible |
 | BYOK keys | Encrypted at rest; decrypted only for the matching gateway at request time |
 | Auth tokens | Scoped to a single gateway; a token issued for gateway A is rejected on gateway B |
 | Rate limits and budgets | Tracked per gateway, not shared across tenants or gateways |
@@ -58,21 +58,11 @@ The gateway resolves `{tenant_slug}` and `{gateway_slug}` on every request and l
 
 | Role | Inference requests | Admin operations |
 |------|-------------------|-----------------|
-| `admin` | Yes, on all gateways in the tenant | Full CRUD on tenant, gateways, users, tokens, rules, keys |
-| `member` | Yes, on gateways explicitly assigned to them | None |
-| `viewer` | No — returns `403 FORBIDDEN` | None |
+| `admin` | Yes, on all gateways (platform-wide) | Full CRUD on all organizations, tenants, gateways, users, tokens, rules, keys |
+| `member` | Yes, on all gateways in their organization | Full access within their organization |
+| `viewer` | No — returns `403 FORBIDDEN` | Read-only within their organization |
 
 Role is enforced at the authentication step. A `viewer` token is rejected before the request body is read.
-
-Per-user gateway access is managed via the admin API:
-
-```bash
-# Grant a user access to a specific gateway
-curl -X POST "https://<your-gateway-host>/admin/v1/users/{user_id}/gateways/{gw_id}"
-
-# Revoke access
-curl -X DELETE "https://<your-gateway-host>/admin/v1/users/{user_id}/gateways/{gw_id}"
-```
 
 Deleting a user immediately disables all of their auth tokens.
 

@@ -45,7 +45,8 @@ Consumer
 │  │  cost · cache-store                │  │
 │  ├────────────────────────────────────┤  │
 │  │     Log phase (best-effort)        │  │
-│  │  structured log · Prometheus       │  │
+│  │  structured log · SIEM · OTel ·   │  │
+│  │  Prometheus                        │  │
 │  └────────────────────────────────────┘  │
 └──────────────────────────────────────────┘
           │                    │
@@ -113,28 +114,39 @@ src/
     huggingface.lua      # HuggingFace Inference API (org/model routing)
     ollama.lua           # Ollama local server (OpenAI-compatible)
 
+  cache/
+    semantic.lua         # Vector-similarity cache: embed prompt → cosine search → serve hit
+                         # Store path is async (ngx.timer.at); query path is synchronous
+
   middleware/
     auth.lua             # Bearer / x-aig-token / x-api-key validation
-    cache_check.lua      # SHA-256 exact-match cache lookup
-    cache_store.lua      # Persist non-streaming 200 responses to cache
+    cache_check.lua      # SHA-256 exact-match lookup; semantic cache fallback
+    cache_store.lua      # Persist non-streaming 200 responses; async semantic embedding store
     cost.lua             # Token counting + budget counter increment
     guardrails.lua       # Request-phase guardrail pipeline entry point
     guardrails_response.lua  # Response-phase guardrail pipeline entry point
     quota.lua            # Budget hard-stop enforcement
-    upstream.lua         # Provider HTTP call with retry + fallback chain
+    request_id.lua       # Generate/forward X-Request-Id; init OTel trace context
+    upstream.lua         # Provider HTTP call with retry + fallback chain; inject traceparent
 
   guardrails/
     orchestrator.lua     # Tier 1 → Tier 2 sequencing, action merging
     regex.lua            # Tier 1: in-process regex patterns (block/scrub/flag)
     keyword.lua          # Tier 1: exact keyword matching
     jailbreak.lua        # Tier 1: zero-config jailbreak phrase detection
+    json_schema.lua      # Tier 1: JSON schema validation for structured-output responses
+    contains_code.lua    # Tier 1: source-code detection (fence + heuristic, 6 languages)
+    gibberish.lua        # Tier 1: low-quality response detection (entropy/repetition/alpha signals)
+    language.lua         # Tier 1: writing-system detection via UTF-8 byte-range heuristics
     presidio.lua         # Tier 2: Presidio sidecar (HTTP, NER-based PII detection)
     prompt_guard.lua     # Tier 2: Llama Guard 3 sidecar (prompt/response safety)
     pii_protector.lua    # Tier 2: Presidio-backed tokenisation + response restoration
     patterns.lua         # Shared named pattern library (email, SSN, CC, JWT, …)
 
   observability/
-    logger.lua           # Structured JSON log writer
+    logger.lua           # Structured JSON log writer; fires SIEM + OTel emit at log phase
+    tracer.lua           # OpenTelemetry: W3C traceparent propagation + OTLP/HTTP span export
+    siem.lua             # Async security event delivery (Splunk HEC / ES / Vector / Syslog CEF)
     cost_table.lua       # Model → price per 1K tokens lookup table
 
   routing/
@@ -194,7 +206,10 @@ tests/
     ▼  ── ngx.content phase ────────────────────────────────────
     │
     ├─ 7.  cache_check      SHA-256(provider:model:canonical_body) → serve if HIT
-    ├─ 8.  guardrails       Tier 1 (regex, keyword, jailbreak) → Tier 2 (presidio, prompt_guard, pii_protector)
+    │                       on miss: semantic embedding similarity search → serve if score ≥ threshold
+    ├─ 8.  guardrails       Tier 1 (regex, keyword, jailbreak, json_schema, contains_code,
+    │                               gibberish, language)
+    │                       → Tier 2 (presidio, prompt_guard, pii_protector)
     ├─ 9.  transform        Parse + normalize body; collect x-aig-meta-* headers
     ├─ 10. routing          Evaluate ordered routing rules → provider, model, fallbacks
     ├─ 11. byok             Decrypt provider API key (cache 60 s in aig_byok dict)
@@ -208,6 +223,8 @@ tests/
     ▼  ── ngx.log phase (best-effort, after response sent) ─────
     │
     ├─ 17. logger           Write structured JSON to logs.db
+    │                       → SIEM async delivery (Splunk/ES/Vector/Syslog) if configured
+    │                       → OTel OTLP span export (async) if otlp_endpoint configured
     └─ 18. metrics          Increment Prometheus counters in aig_metrics shared dict
 
 [Consumer Response]
@@ -224,9 +241,14 @@ ctx = {
   provider         = "openai", model = "gpt-4o",
   is_compat        = false,   -- true when routed through /compat/ endpoint
   auth_token       = { id, label, user_id, budget_usd, rate_limit },
-  gateway_config   = { cache_ttl, rate_limit, detectors, … },
+  gateway_config   = { cache_ttl, rate_limit, detectors, semantic_cache, tracing, … },
   body             = { … },   -- parsed request JSON
   meta             = { … },   -- x-aig-meta-* headers
+  -- OTel trace context (set by request_id.lua when tracing configured):
+  otel_trace_id       = "4bf92f3577b34da6a3ce929d0e0e4736",  -- 32 hex
+  otel_root_span_id   = "00f067aa0ba902b7",                  -- 16 hex
+  otel_parent_span_id = nil,   -- propagated from incoming W3C traceparent
+  otel_start_ns       = 1700000000000000000,
   -- populated after upstream:
   status           = 200,
   response_body    = "…",
@@ -235,7 +257,9 @@ ctx = {
   cost_usd         = 0.004,
   latency_ms       = 340,   upstream_latency_ms = 310,
   time_to_first_token_ms = 120,
+  upstream_t_start = 1700000000.1,  -- ngx.now() at start of provider call
   cached           = false,
+  semantic_cache_hit = false,       -- true when served from semantic cache
   blocked          = false, blocked_by = nil,
   fallback_provider = nil,  fallback_model = nil,
 }
@@ -294,6 +318,19 @@ POST   /admin/v1/playground/token         # issue short-lived playground token
 GET    /admin/v1/playground/search?q=...  # Brave Search proxy for web search
 POST   /admin/v1/client-errors            # frontend error reporting
 GET    /admin/v1/client-errors
+GET    /admin/v1/organizations
+POST   /admin/v1/organizations
+GET    /admin/v1/organizations/{id}
+PATCH  /admin/v1/organizations/{id}
+DELETE /admin/v1/organizations/{id}
+
+# Admin authentication (no session guard)
+GET    /admin/auth/me                      # return user from JWT cookie
+POST   /admin/auth/logout
+POST   /admin/auth/otp/request             # send 6-digit code via email
+POST   /admin/auth/otp/verify              # exchange code for session cookie
+GET    /admin/auth/google                  # initiate Google OAuth flow
+GET    /admin/auth/google/callback         # OAuth callback
 
 # Observability
 GET  /metrics     # Prometheus text format (IP-restricted to 10.0.0.0/8)
@@ -344,16 +381,44 @@ Gateway config is loaded from the DB and cached in `aig_config` shared dict for 
 | `gateway_provider_configs` | gateway_id, provider, alias, encrypted_key |
 | `auth_tokens` | gateway_id, token_hash, label, expiry, rate_limit, budget_usd, user_id |
 | `routing_rules` | gateway_id, priority, conditions (JSON), actions (JSON), enabled |
-| `users` | id, tenant_id, email, role |
+| `users` | id, tenant_id, email, role, organization_id |
+| `organization` | id, name, slug, created_at, deleted_at |
 | `user_gateway_access` | user_id, gateway_id |
 | `model_price` | provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k |
 | `client_errors` | id, message, stack, url, user_agent, ts (frontend error reports) |
+| `email_otp` | id, email, code_hash (SHA-256), expires_at, used_at, ip_addr |
+| `oauth_link` | user_id, provider, subject (Google sub), email |
 
 ### Log database (SQLite / ClickHouse)
 
-One row per request. In development: `logs.db` via `storage/sqlite.lua`. In production: swap for UDP → Vector/Loki or HTTP → ClickHouse.
+Two tables in `logs.db`:
+
+**`request_logs`** — one row per request. In development: `logs.db` via `storage/sqlite.lua`. In production: swap for UDP → Vector/Loki or HTTP → ClickHouse.
 
 **Key fields:** `request_id`, `tenant_id`, `gateway_id`, `provider`, `model`, `status`, `cached`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `cost_usd`, `latency_ms`, `upstream_latency_ms`, `time_to_first_token_ms`, `blocked`, `blocked_by`, `prompt`, `response`, `meta`
+
+**`semantic_cache`** — one row per stored embedding.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | TEXT PK | UUID |
+| `gateway_id` | TEXT | Gateway scope |
+| `model` | TEXT | Model name (candidates filtered by gateway + model) |
+| `prompt_hash` | TEXT | SHA-256 of prompt text (dedup guard) |
+| `embedding` | TEXT | JSON float array |
+| `response_body` | TEXT | Cached response body |
+| `cost_usd` | REAL | Cost of the original upstream call |
+| `created_at` | INTEGER | Unix seconds |
+| `expires_at` | INTEGER | Unix seconds (created_at + `ttl`) |
+| `hit_count` | INTEGER | Incremented on each semantic cache hit |
+
+Index on `(gateway_id, model, created_at DESC)` for efficient candidate retrieval.
+
+### Caching
+
+**Exact-match cache** (`aig_cache` shared dict): keyed on SHA-256(provider:model:canonical_body). `stream`, `user`, and `metadata` fields are excluded before hashing; all other request fields are included. TTL configured per gateway via `cache_ttl` (seconds). Hit returns `X-AIG-Cache: HIT`.
+
+**Semantic cache** (`semantic_cache` table in `logs.db`): activated per gateway via `semantic_cache.enabled`. On an exact-match miss, the incoming prompt is embedded via a configurable OpenAI-compatible endpoint and compared (cosine similarity) against stored embeddings filtered by `(gateway_id, model)`. If `best_score ≥ threshold` (default 0.95), the stored response is returned with `X-AIG-Cache: SEMANTIC_HIT` and `X-AIG-Similarity: <score>`. The store path is fully asynchronous (`ngx.timer.at(0, ...)`): after a successful upstream response, the prompt is embedded and inserted into `semantic_cache`. Streaming responses are not semantically cached.
 
 ### Shared memory (`ngx.shared.dict`)
 
@@ -465,6 +530,41 @@ Token accepted from (in priority order): `x-aig-token` → `Authorization: Beare
 
 SHA-256 hash stored in DB; plaintext never persisted. Token carries optional per-token `rate_limit` and `budget_usd` that are checked independently alongside gateway-level limits.
 
+### Admin panel authentication
+
+The admin panel (`/admin/*`) is protected by a stateless JWT session:
+
+```
+Algorithm : HS256 (HMAC-SHA256)
+Secret    : AIG_JWT_SECRET env var (required in production; warns if using "dev-change-me")
+Expiry    : AIG_JWT_EXPIRY_SECS (default 28800 = 8 h)
+Cookie    : aig_admin=<token>; Path=/; HttpOnly; SameSite=Strict
+```
+
+**JWT payload:** `{ sub, email, role, org, iat, exp }`
+
+**nginx routing split:**
+- `/admin/auth/*` — public, no guard → `admin.auth_handlers`
+- `/admin/*` — `access_by_lua_block { auth.require_session() }` → `admin.api`
+
+`require_session()` validates the cookie, populates `ngx.ctx.admin_user`, and returns `401` with `{"error":"unauthenticated"}` on any failure.
+
+**Login methods:**
+- **Google SSO** — server-side OAuth 2.0 code flow; CSRF state in `aig_ratelimit` shared dict (10-min TTL); id_token payload decoded via base64url (sig verify skipped — HTTPS transport trusted); user must be pre-provisioned with `admin` or `admin_org` role
+- **Email OTP** — 6-digit cryptographically-random code (via `resty.random`), SHA-256 hashed in `email_otp` table, delivered via `sendmail -t`; 15-min TTL; single-use; generic response to prevent email enumeration
+
+**Roles:**
+
+| Role | Access |
+|---|---|
+| `admin` | Full platform — all organizations, tenants, gateways |
+| `admin_org` | Own organization only — tenants/gateways/users scoped by `org_id` |
+| `member` / `viewer` | Inference-layer identities; cannot log in to admin panel |
+
+**Bootstrap admin:** `storage.bootstrap_admin()` is called in `init_by_lua_block`. If no admin user exists and `AIG_BOOTSTRAP_ADMIN_EMAIL` is set, it creates an `admin` user with that email.
+
+**Implementation:** `src/admin/auth.lua`, `src/admin/auth_handlers.lua`, `src/utils/jwt.lua`, `src/utils/email.lua`
+
 ### BYOK key vault
 
 ```
@@ -504,9 +604,18 @@ Tiered content safety pipeline. Runs at both request and response phase.
 
 ```
 Tier 1 (in-process, ~microseconds):
-  regex         — named pattern sets + custom regex (block / scrub / flag)
-  keyword       — exact string match (block / flag)
-  jailbreak     — zero-config built-in jailbreak phrase list (block)
+  regex          — named pattern sets + custom regex (block / scrub / flag)
+  keyword        — exact string match (block / flag)
+  jailbreak      — zero-config built-in jailbreak phrase list (18 phrases, block / flag)
+  json_schema    — JSON schema validation for structured-output responses (response-only)
+                   block reason codes: json_parse_error, missing_field, type_mismatch, range_violation
+  contains_code  — source-code detection using fence + structural heuristics (both phases)
+                   supported: sql, python, javascript, bash, html, lua; min_signals configurable
+  gibberish      — low-quality response detection via 3 signals (response-only)
+                   signals: Shannon entropy, word repetition ratio, alpha-char ratio
+                   1 signal → always flagged; ≥2 signals → configured action
+  language       — writing-system detection via UTF-8 byte-range heuristics (both phases)
+                   detected scripts: latin, cjk, cyrillic, arabic, hebrew, thai, devanagari
 
 Tier 2 (HTTP sidecar, ~milliseconds):
   presidio      — Presidio Analyzer + Anonymizer for NER-based PII detection
@@ -574,6 +683,43 @@ Exposed at `GET /metrics`. Four metrics, all with labels `{provider, tenant_id, 
 
 `src/observability/cost_table.lua` maps `(provider, model)` → `{input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k}`. The DB `model_price` table overrides the hardcoded defaults. The `scripts/import_litellm_prices.sh` and `scripts/sync_openrouter_models.sh` scripts populate the table in bulk.
 
+### SIEM integration
+
+`src/observability/siem.lua` forwards security events to an external SIEM asynchronously in the log phase. Delivery is fire-and-forget (via `ngx.timer.at`); it never adds latency to inference requests.
+
+Supported backends: `splunk_hec` (HTTPS/Bearer), `elasticsearch` / `opensearch` (HTTPS/Basic), `vector` (HTTP, fan-out), `syslog` (UDP or TCP, CEF or RFC 5424 format).
+
+Config lives under `gateway_config.siem` (gateway-level) or `tenant.siem` (tenant default, overridden by gateway). Event filter controls which events are forwarded: `blocked`, `guardrail`, `scrubbed`, `all`.
+
+### OpenTelemetry distributed tracing
+
+`src/observability/tracer.lua` emits W3C-compliant OTLP/HTTP JSON spans to any OpenTelemetry collector. This is independent of the internal pipeline trace (playground/Traces API).
+
+**Initialisation** (`request_id.lua`): parses the incoming `traceparent` header (if present), propagates `trace_id` and `parent_span_id`, or generates new IDs. Sets `ctx.otel_trace_id`, `ctx.otel_root_span_id`, `ctx.otel_start_ns`.
+
+**Traceparent forwarding** (`upstream.lua`): injects a `traceparent` header into every upstream provider call, enabling end-to-end trace correlation through the provider's infrastructure.
+
+**Span export** (`logger.lua` log phase): builds and asynchronously POSTs the OTLP payload to `{otlp_endpoint}/v1/traces`.
+
+**Span model:**
+
+| Span | Kind | Name | When |
+|---|---|---|---|
+| Root span | SERVER (2) | `inference` | Every request |
+| Upstream span | CLIENT (3) | `upstream.<provider>` | Only when upstream was called |
+
+Root span carries GenAI semantic convention attributes: `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.request.cost_usd`, plus `aig.*` gateway-specific attributes.
+
+**Config** under `gateway_config.tracing`:
+
+| Field | Default | Notes |
+|---|---|---|
+| `otlp_endpoint` | — | Base URL, e.g. `http://otel-collector:4318`. Required to enable OTLP export |
+| `service_name` | `ai-gateway` | `service.name` resource attribute |
+| `headers` | `{}` | Extra HTTP headers (e.g. auth for managed collectors) |
+| `sample_rate` | `1.0` | Fraction of requests to export (applied post-response, not head-based) |
+| `include_bodies` | `false` | Adds `aig.request_size_bytes` to spans |
+
 ---
 
 ## 13. Admin UI (Frontend)
@@ -584,8 +730,10 @@ React 19 + TypeScript SPA built with Vite. Proxied through Vite dev server (`/ad
 
 | Module | Description |
 |---|---|
+| Login | Google SSO + Email OTP two-step login; `AuthProvider` + `AuthGuard` protect all routes |
 | Dashboard | Hero cards (Requests, Cost, Guardrail Hits) with sparklines; timeframe switcher (Today/Yesterday/Last 7d/Last hour/Last minute) |
 | Analytics | Cost analytics with per-tenant drilldown, timeseries chart, and top-models table |
+| Organizations | Organization CRUD (`admin` only); `admin_org` users see read-only view of their own org |
 | Tenants | Tenant CRUD |
 | Gateways | Gateway config, routing rules, BYOK keys |
 | Users | User management, role assignment, gateway access |

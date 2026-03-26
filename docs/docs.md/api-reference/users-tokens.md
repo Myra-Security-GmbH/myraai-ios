@@ -1,6 +1,6 @@
 # Users & Tokens API
 
-Users are identity records within a tenant. Each user has a role and can hold multiple auth tokens. Tokens are the credentials used to authenticate inference requests. Gateway access grants control which gateways a user's tokens are valid for.
+Users are identity records within an organization. Each user has a role and can hold multiple auth tokens. Tokens are the credentials used to authenticate inference requests.
 
 **Base URL:** `https://<your-gateway-host>/admin/v1`
 
@@ -12,8 +12,8 @@ Users are identity records within a tenant. Each user has a role and can hold mu
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/tenants/{id}/users` | List users for a tenant |
-| `POST` | `/tenants/{id}/users` | Create a user |
+| `GET` | `/organizations/{id}/users` | List users for an organization |
+| `POST` | `/organizations/{id}/users` | Create a user |
 | `PATCH` | `/users/{id}` | Update a user |
 | `DELETE` | `/users/{id}` | Delete a user (disables all their tokens) |
 | `DELETE` | `/users/{id}/budget` | Reset all token spend counters for a user |
@@ -28,14 +28,6 @@ Users are identity records within a tenant. Each user has a role and can hold mu
 | `GET` | `/users/{id}/tokens` | List tokens belonging to a user |
 | `POST` | `/users/{id}/tokens` | Create a user-scoped token |
 
-### Access control
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/users/{id}/gateways` | List gateways the user can access |
-| `POST` | `/users/{id}/gateways/{gw_id}` | Grant a user access to a gateway |
-| `DELETE` | `/users/{id}/gateways/{gw_id}` | Revoke a user's access to a gateway |
-
 ---
 
 ## Users
@@ -43,30 +35,29 @@ Users are identity records within a tenant. Each user has a role and can hold mu
 ### List users
 
 ```bash
-curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users
+curl https://<your-gateway-host>/admin/v1/organizations/{org_id}/users
 ```
 
 **Response:**
 
 ```json
-{
-  "users": [
-    {
-      "id": "usr_abc123",
-      "tenant_id": "ten_xyz",
-      "email": "alice@example.com",
-      "name": "Alice",
-      "role": "member",
-      "created_at": "2025-03-21T10:00:00Z"
-    }
-  ]
-}
+[
+  {
+    "id": "usr_abc123",
+    "organization_id": "org_xyz",
+    "org_slug": "acme-corp",
+    "email": "alice@example.com",
+    "name": "Alice",
+    "role": "member",
+    "created_at": "2025-03-21T10:00:00Z"
+  }
+]
 ```
 
 ### Create a user
 
 ```bash
-curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users \
+curl -X POST https://<your-gateway-host>/admin/v1/organizations/{org_id}/users \
   -H "Content-Type: application/json" \
   -d '{
     "email": "alice@example.com",
@@ -77,9 +68,9 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users \
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `email` | string | Yes | User's email address. Must be unique within the tenant. |
+| `email` | string | Yes | User's email address. Must be globally unique. |
 | `name` | string | No | Display name. |
-| `role` | string | Yes | One of `admin`, `member`, or `viewer`. |
+| `role` | string | No | One of `member` or `viewer`. Defaults to `member`. Only platform `admin` users can create other `admin` accounts. |
 
 **Response:** `{ "id": "usr_abc123", "email": "alice@example.com" }`
 
@@ -88,7 +79,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users \
 ```bash
 curl -X PATCH https://<your-gateway-host>/admin/v1/users/{id} \
   -H "Content-Type: application/json" \
-  -d '{"role": "admin"}'
+  -d '{"role": "viewer"}'
 ```
 
 ### Delete a user
@@ -192,43 +183,6 @@ Revocation is immediate. Any subsequent inference request using the revoked toke
 ```bash
 curl -X DELETE https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens/{token_id}
 ```
-
----
-
-## Access control
-
-Gateway access grants control which gateways a `member`-role user's tokens are valid on. Tokens belonging to `admin`-role users are valid on all gateways.
-
-### List gateway access for a user
-
-```bash
-curl https://<your-gateway-host>/admin/v1/users/{user_id}/gateways
-```
-
-**Response:**
-
-```json
-{
-  "gateways": [
-    {"id": "gw_xyz789", "slug": "production", "tenant_id": "ten_abc123"}
-  ]
-}
-```
-
-### Grant gateway access
-
-```bash
-curl -X POST https://<your-gateway-host>/admin/v1/users/{user_id}/gateways/{gateway_id}
-```
-
-### Revoke gateway access
-
-```bash
-curl -X DELETE https://<your-gateway-host>/admin/v1/users/{user_id}/gateways/{gateway_id}
-```
-
-!!! note
-    Revoking gateway access does not automatically revoke the user's tokens. Existing tokens become unusable on that gateway but are not deleted. Re-granting access restores their validity.
 
 ---
 
