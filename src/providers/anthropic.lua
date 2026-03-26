@@ -24,6 +24,15 @@ function M.build_headers(ctx, api_key)
     if req_headers["anthropic-beta"] then
         headers["anthropic-beta"] = req_headers["anthropic-beta"]
     end
+    -- Skills (docx, xlsx, pptx, pdf) require three extra beta headers
+    if req_headers["x-aig-skill"] then
+        local skill_betas = "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
+        if headers["anthropic-beta"] then
+            headers["anthropic-beta"] = headers["anthropic-beta"] .. "," .. skill_betas
+        else
+            headers["anthropic-beta"] = skill_betas
+        end
+    end
     -- Forward any x-aig-provider-* overrides as raw provider headers
     for k, v in pairs(req_headers) do
         local fwd = k:match("^x%-aig%-provider%-(.+)$")
@@ -57,7 +66,29 @@ function M.build_request(ctx)
         if msg.role == "system" then
             system_msg = msg.content
         else
-            messages[#messages + 1] = { role = msg.role, content = msg.content }
+            local content = msg.content
+            -- Convert OpenAI-format content arrays to Anthropic native format
+            if type(content) == "table" then
+                local ant_blocks = {}
+                for _, block in ipairs(content) do
+                    if block.type == "image_url" and type(block.image_url) == "table" then
+                        -- Parse data URL: "data:<mime>;base64,<data>"
+                        local url = block.image_url.url or ""
+                        local mime, b64 = url:match("^data:([^;]+);base64,(.+)$")
+                        if mime and b64 then
+                            ant_blocks[#ant_blocks + 1] = {
+                                type   = "image",
+                                source = { type = "base64", media_type = mime, data = b64 },
+                            }
+                        end
+                    elseif block.type == "document" or block.type == "text" then
+                        -- Pass text and document blocks through as-is
+                        ant_blocks[#ant_blocks + 1] = block
+                    end
+                end
+                content = ant_blocks
+            end
+            messages[#messages + 1] = { role = msg.role, content = content }
         end
     end
 
@@ -99,6 +130,13 @@ function M.build_request(ctx)
         elseif type(src.tool_choice) == "table" and src.tool_choice.type then
             body.tool_choice = { type = src.tool_choice.type }
         end
+    end
+
+    -- Agent Skills (docx, xlsx, pptx, pdf) — add container + code_execution tool
+    local skill = ngx.req.get_headers()["x-aig-skill"]
+    if skill == "docx" or skill == "xlsx" or skill == "pptx" or skill == "pdf" then
+        body.container = { skills = {{ type = "anthropic", skill_id = skill, version = "latest" }} }
+        body.tools = {{ type = "code_execution_20250825", name = "code_execution" }}
     end
 
     return json.sanitize_surrogates(json.encode(body))
