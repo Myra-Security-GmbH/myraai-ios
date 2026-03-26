@@ -1,0 +1,100 @@
+# .gitlab-ci.yml — AI Gateway build & publish pipeline
+#
+# Stages:
+#   build   — compile the React frontend (all branches + tags)
+#   package — build the Docker image and push on master / git tags
+#
+# Required CI/CD variables  (Settings → CI/CD → Variables):
+#   REGISTRY_USER   username for int-docker-reg.myra.security
+#   REGISTRY_PASS   password / token  ← mark as "Masked"
+#
+# Optional variable overrides (add in CI/CD → Variables to customise):
+#   VITE_ADMIN_URL      default: https://ai-api-admin.myra.eu/admin/v1
+#   VITE_AUTH_URL       default: https://ai-api-admin.myra.eu/admin/auth
+#   VITE_GATEWAY_URL    default: https://ai-api.myra.eu
+#   VITE_DOCS_URL       default: https://ai-docs.myra.eu
+#
+# On the production server, to deploy a new image:
+#   docker compose pull && docker compose up -d
+
+variables:
+  REGISTRY: "int-docker-reg.myra.security"
+  IMAGE: "$REGISTRY/ai-gateway"
+  # DinD requires TLS certificates to be shared between the service and client
+  DOCKER_TLS_CERTDIR: "/certs"
+
+stages:
+  - build
+  - package
+
+# ── Build the React frontend ─────────────────────────────────────────────────
+build:frontend:
+  stage: build
+  image: node:20-alpine
+  variables:
+    # These are baked into the JS bundle at build time.
+    # Override in GitLab CI/CD variables if you deploy to different URLs.
+    VITE_ADMIN_URL:   "https://ai-api-admin.myra.eu/admin/v1"
+    VITE_AUTH_URL:    "https://ai-api-admin.myra.eu/admin/auth"
+    VITE_GATEWAY_URL: "https://ai-api.myra.eu"
+    VITE_DOCS_URL:    "https://ai-docs.myra.eu"
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/node_modules/
+  script:
+    - cd frontend
+    - npm ci --prefer-offline
+    - npm run build
+  artifacts:
+    paths:
+      - frontend/dist/
+    expire_in: 2 hours
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+# ── Build Docker image and push on master / tags ──────────────────────────────
+build:docker:
+  stage: package
+  image: docker:24
+  services:
+    - docker:24-dind
+  needs:
+    - job: build:frontend
+      artifacts: true
+  before_script:
+    - docker login -u "$REGISTRY_USER" -p "$REGISTRY_PASS" "$REGISTRY"
+  script:
+    # docs/out/ must exist for the COPY in the Dockerfile to succeed.
+    # If you want docs included in the image, replace this with the actual
+    # build command:  cd docs && sh gen_docs.sh
+    - mkdir -p docs/out
+
+    # Build the image and tag with the short commit SHA for traceability.
+    - docker build -t "${IMAGE}:${CI_COMMIT_SHORT_SHA}" .
+
+    # Push to the registry only on master (as :latest + :<sha>) or on a git
+    # tag (as :<tag> + :<sha>).  Feature branch builds validate the image
+    # builds cleanly but nothing is pushed.
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "master" ]; then
+        docker tag "${IMAGE}:${CI_COMMIT_SHORT_SHA}" "${IMAGE}:latest"
+        docker push "${IMAGE}:${CI_COMMIT_SHORT_SHA}"
+        docker push "${IMAGE}:latest"
+        echo "Pushed ${IMAGE}:latest and ${IMAGE}:${CI_COMMIT_SHORT_SHA}"
+
+      elif [ -n "$CI_COMMIT_TAG" ]; then
+        docker tag "${IMAGE}:${CI_COMMIT_SHORT_SHA}" "${IMAGE}:${CI_COMMIT_TAG}"
+        docker push "${IMAGE}:${CI_COMMIT_SHORT_SHA}"
+        docker push "${IMAGE}:${CI_COMMIT_TAG}"
+        echo "Pushed ${IMAGE}:${CI_COMMIT_TAG} and ${IMAGE}:${CI_COMMIT_SHORT_SHA}"
+
+      else
+        echo "Branch build — image built but not pushed (${CI_COMMIT_BRANCH})"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
