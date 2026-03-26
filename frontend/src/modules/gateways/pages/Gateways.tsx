@@ -1018,6 +1018,33 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
     finally { setSavingGuardrails(false); }
   }
 
+  const LS_SECTIONS_KEY = `aig-gw-sections-${gw.id}`;
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(LS_SECTIONS_KEY) ?? "{}"); }
+    catch { return {}; }
+  });
+
+  function toggleSection(name: string) {
+    setCollapsed((prev) => {
+      const next = { ...prev, [name]: !prev[name] };
+      localStorage.setItem(LS_SECTIONS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function SectionToggle({ name }: { name: string }) {
+    return (
+      <button
+        onClick={() => toggleSection(name)}
+        title={collapsed[name] ? "Expand" : "Collapse"}
+        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: "2px 4px", fontSize: 14, lineHeight: 1 }}
+        aria-label={collapsed[name] ? "Expand section" : "Collapse section"}
+      >
+        {collapsed[name] ? "▶" : "▼"}
+      </button>
+    );
+  }
+
   const cfg = gw.config;
   const [endpointProvider, setEndpointProvider] = useState("compat");
   const [copied, setCopied] = useState(false);
@@ -1047,14 +1074,15 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
       <div className={s.card}>
         <div className={s["card-header"]}>
           <h2 className={s["card-title"]}>Gateway: <span className={s.code}>{gw.slug}</span></h2>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={() => setShowEdit(true)}>Edit</button>
             <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={deleteGateway} disabled={deleting}>
               {deleting ? "Deleting…" : "Delete"}
             </button>
+            <SectionToggle name="gateway" />
           </div>
         </div>
-        <div className={s["stats-grid"]}>
+        {!collapsed["gateway"] && <><div className={s["stats-grid"]}>
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Budget</div>
             <div className={s["stat-value"]}>{fmtCost(cfg.budget_usd)}</div>
@@ -1127,16 +1155,19 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
               {copied ? "Copied!" : "Copy"}
             </button>
           </div>
-        </div>
+        </div></>}
       </div>
 
       {/* Provider Keys */}
       <div className={s.card}>
         <div className={s["card-header"]}>
           <h2 className={s["card-title"]}>Provider Keys</h2>
-          <button className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`} onClick={() => setShowAddKey(true)}>+ Add / Rotate</button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`} onClick={() => setShowAddKey(true)}>+ Add / Rotate</button>
+            <SectionToggle name="keys" />
+          </div>
         </div>
-        {keys.length === 0 ? (
+        {!collapsed["keys"] && (keys.length === 0 ? (
           <div className={s.empty}>No keys stored. Add one to enable provider routing.</div>
         ) : (
           <div className={s["table-wrapper"]}>
@@ -1156,16 +1187,19 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </div>
 
       {/* Auth Tokens */}
       <div className={s.card}>
         <div className={s["card-header"]}>
           <h2 className={s["card-title"]}>Auth Tokens</h2>
-          <button className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`} onClick={() => setShowCreateToken(true)}>+ Generate</button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`} onClick={() => setShowCreateToken(true)}>+ Generate</button>
+            <SectionToggle name="tokens" />
+          </div>
         </div>
-        {loadingTokens ? (
+        {!collapsed["tokens"] && (loadingTokens ? (
           <div className={s.empty}>Loading…</div>
         ) : tokens.length === 0 ? (
           <div className={s.empty}>No tokens yet. Generate one to allow access to this gateway. <a href={docsUrl("/api-reference/users-tokens/")} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)" }}>Learn more</a></div>
@@ -1194,7 +1228,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </div>
 
       {/* Guardrails */}
@@ -1213,9 +1247,10 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
             >
               {savingGuardrails ? "Saving…" : "Save Guardrails"}
             </button>
+            <SectionToggle name="guardrails" />
           </div>
         </div>
-        {guardrailStats && (guardrailStats.blocked > 0 || guardrailStats.scrubbed > 0 || guardrailStats.flagged > 0 || guardrailStats.avg_guardrail_ms > 0) && (
+        {!collapsed["guardrails"] && <>{guardrailStats && (guardrailStats.blocked > 0 || guardrailStats.scrubbed > 0 || guardrailStats.flagged > 0 || guardrailStats.avg_guardrail_ms > 0) && (
           <div style={{ display: "flex", gap: 16, padding: "8px 0 12px", fontSize: 13, color: "var(--text-secondary)" }}>
             {guardrailStats.blocked > 0 && (
               <span><span className={`${s.badge} ${s["badge--error"]}`}>{fmtNumber(guardrailStats.blocked)} blocked</span></span>
@@ -1288,15 +1323,19 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
             )
           )}
         </div>
+        </>}
       </div>
 
       {/* Routing Rules */}
       <div className={s.card}>
         <div className={s["card-header"]}>
           <h2 className={s["card-title"]}>Routing Rules</h2>
-          <button className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`} onClick={() => setShowNewRule(true)}>+ New Rule</button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`} onClick={() => setShowNewRule(true)}>+ New Rule</button>
+            <SectionToggle name="rules" />
+          </div>
         </div>
-        {rules.length === 0 ? (
+        {!collapsed["rules"] && (rules.length === 0 ? (
           <div className={s.empty}>No routing rules. Add rules to override default provider routing. <a href={docsUrl("/routing/routing-rules/")} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)" }}>Learn more</a></div>
         ) : (
           <div className={s["table-wrapper"]}>
@@ -1360,7 +1399,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </div>
 
       {/* Circuit Breaker Status */}
@@ -1368,45 +1407,50 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
         <div className={s.card}>
           <div className={s["card-header"]}>
             <h2 className={s["card-title"]}>Circuit Breaker</h2>
-            <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={loadCbStatus}>Refresh</button>
-          </div>
-          {!cbStatus || Object.keys(cbStatus).length === 0 ? (
-            <div className={s.empty}>All providers are healthy (no open breakers).</div>
-          ) : (
-            <div className={s["table-wrapper"]}>
-              <table className={s.table}>
-                <thead>
-                  <tr><th>Provider</th><th>State</th><th>Failures</th><th>Opened at</th></tr>
-                </thead>
-                <tbody>
-                  {Object.entries(cbStatus).map(([prov, info]) => (
-                    <tr key={prov}>
-                      <td><span className={s.code}>{prov}</span></td>
-                      <td>
-                        <span className={`${s.badge} ${
-                          info.state === "closed" ? s["badge--success"] :
-                          info.state === "open"   ? s["badge--error"] :
-                          s["badge--warning"]
-                        }`}>
-                          {info.state}
-                        </span>
-                      </td>
-                      <td>{fmtNumber(info.failures)}</td>
-                      <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                        {info.opened_at
-                          ? new Date(info.opened_at * 1000).toLocaleTimeString()
-                          : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={loadCbStatus}>Refresh</button>
+              <SectionToggle name="cb" />
             </div>
-          )}
-          <p className={s["form-hint"]} style={{ padding: "8px 16px" }}>
-            Threshold: {fmtNumber(gw.config.circuit_breaker.failure_threshold ?? 5)} failures in {gw.config.circuit_breaker.window_sec ?? 60}s ·
-            Cooldown: {fmtMs(gw.config.circuit_breaker.cooldown_ms ?? 30000)}
-          </p>
+          </div>
+          {!collapsed["cb"] && <>
+            {!cbStatus || Object.keys(cbStatus).length === 0 ? (
+              <div className={s.empty}>All providers are healthy (no open breakers).</div>
+            ) : (
+              <div className={s["table-wrapper"]}>
+                <table className={s.table}>
+                  <thead>
+                    <tr><th>Provider</th><th>State</th><th>Failures</th><th>Opened at</th></tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(cbStatus).map(([prov, info]) => (
+                      <tr key={prov}>
+                        <td><span className={s.code}>{prov}</span></td>
+                        <td>
+                          <span className={`${s.badge} ${
+                            info.state === "closed" ? s["badge--success"] :
+                            info.state === "open"   ? s["badge--error"] :
+                            s["badge--warning"]
+                          }`}>
+                            {info.state}
+                          </span>
+                        </td>
+                        <td>{fmtNumber(info.failures)}</td>
+                        <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                          {info.opened_at
+                            ? new Date(info.opened_at * 1000).toLocaleTimeString()
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className={s["form-hint"]} style={{ padding: "8px 16px" }}>
+              Threshold: {fmtNumber(gw.config.circuit_breaker.failure_threshold ?? 5)} failures in {gw.config.circuit_breaker.window_sec ?? 60}s ·
+              Cooldown: {fmtMs(gw.config.circuit_breaker.cooldown_ms ?? 30000)}
+            </p>
+          </>}
         </div>
       )}
     </>
