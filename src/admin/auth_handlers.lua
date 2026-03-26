@@ -174,6 +174,7 @@ route("POST", "^/admin/auth/otp/verify$", function()
         return send(403, { error = "forbidden" })
     end
 
+    storage.touch_last_login(user.id)
     local token = issue_jwt_for(user)
     set_session_cookie(token)
     send(200, {
@@ -274,6 +275,7 @@ route("GET", "^/admin/auth/google/callback$", function()
     end
 
     storage.upsert_oauth_link(user.id, "google", claims.sub, claims.email)
+    storage.touch_last_login(user.id)
 
     local token = issue_jwt_for(user)
     set_session_cookie(token)

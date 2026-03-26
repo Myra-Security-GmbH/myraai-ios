@@ -39,13 +39,14 @@ CREATE TABLE IF NOT EXISTS provider_config (
 -- Platform admins (role='admin') may have tenant_id NULL.
 -- role: 'admin' (platform superadmin) | 'tenant_admin' (tenant admin) | 'member' (full access) | 'viewer' (read-only, no inference)
 CREATE TABLE IF NOT EXISTS user (
-    id         TEXT PRIMARY KEY,
-    tenant_id  TEXT REFERENCES tenant(id) ON DELETE CASCADE,
-    email      TEXT NOT NULL UNIQUE,
-    name       TEXT,
-    role       TEXT NOT NULL DEFAULT 'member',
-    deleted_at INTEGER,
-    created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+    id            TEXT PRIMARY KEY,
+    tenant_id     TEXT REFERENCES tenant(id) ON DELETE CASCADE,
+    email         TEXT NOT NULL UNIQUE,
+    name          TEXT,
+    role          TEXT NOT NULL DEFAULT 'member',
+    deleted_at    INTEGER,
+    created_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    last_login_at INTEGER
 );
 
 -- Fine-grained per-user gateway access (only enforced for role='member')
