@@ -25,7 +25,7 @@ test.describe("Monitor page", () => {
 
   test("pause stops auto-refresh", async ({ page }) => {
     const pauseBtn = page.getByRole("button", { name: /pause/i });
-    if (!await pauseBtn.isVisible()) { test.skip(); return; }
+    await pauseBtn.waitFor({ state: "visible", timeout: 5000 }).catch(() => { test.skip(); return; });
     await pauseBtn.click();
     await expect(page.getByRole("button", { name: /resume/i })).toBeVisible();
   });

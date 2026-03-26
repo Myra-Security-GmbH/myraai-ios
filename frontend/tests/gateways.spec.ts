@@ -16,7 +16,7 @@ async function selectTenantWithGateway(page: Page): Promise<boolean> {
   for (let i = 0; i < count; i++) {
     await btns.nth(i).click();
     await page.waitForTimeout(600);
-    const manageBtn = page.getByRole("button", { name: /Manage →/i }).first();
+    const manageBtn = page.getByRole("button", { name: /Open →/i }).first();
     if (await manageBtn.isVisible()) return true;
   }
   return false;
@@ -36,7 +36,7 @@ async function selectFirstTenant(page: Page): Promise<boolean> {
 async function openFirstGateway(page: Page): Promise<boolean> {
   const ok = await selectTenantWithGateway(page);
   if (!ok) return false;
-  const manageBtn = page.getByRole("button", { name: /Manage →/i }).first();
+  const manageBtn = page.getByRole("button", { name: /Open →/i }).first();
   await manageBtn.click();
   await page.waitForTimeout(400);
   return true;
@@ -87,6 +87,13 @@ test.describe("Gateways page", () => {
     await expect(page.getByText("Budget").first()).toBeVisible();
     await expect(page.getByText("Cache TTL").first()).toBeVisible();
     await expect(page.getByText("Auth").first()).toBeVisible();
+  });
+
+  test("gateway detail shows Endpoint URL label (not Base URL)", async ({ page }) => {
+    const ok = await openFirstGateway(page);
+    if (!ok) { test.skip(); return; }
+    await expect(page.getByText("Endpoint URL")).toBeVisible();
+    await expect(page.getByText("Base URL")).not.toBeVisible();
   });
 
   test("Edit gateway config modal has all fields", async ({ page }) => {
@@ -155,7 +162,7 @@ test.describe("Gateways page", () => {
     await page.getByRole("button", { name: /\+ New Rule/i }).click();
     await expect(page.getByRole("heading", { name: "New Routing Rule" })).toBeVisible();
     await expect(page.getByText(/Conditions/i).first()).toBeVisible();
-    await expect(page.getByText(/Route to/i).first()).toBeVisible();
+    await expect(page.getByText(/Action/i).first()).toBeVisible();
     await expect(page.getByText(/Fallbacks/i).first()).toBeVisible();
     await expect(page.getByLabel("Priority")).toBeVisible();
   });
@@ -173,7 +180,7 @@ test.describe("Gateways page", () => {
   test("back button from gateway detail returns to list", async ({ page }) => {
     const ok = await openFirstGateway(page);
     if (!ok) { test.skip(); return; }
-    await page.getByText(/← Back/i).click();
+    await page.getByText(/← Gateways/i).click();
     await expect(page.getByText("Select Tenant")).toBeVisible();
   });
 

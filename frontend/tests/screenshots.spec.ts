@@ -232,6 +232,36 @@ const GUARDRAIL_TYPES: Array<{ label: string; slug: string }> = [
   { label: "PII Protector",   slug: "pii_protector" },
 ];
 
+// ---------------------------------------------------------------------------
+// 17. Login page
+// ---------------------------------------------------------------------------
+
+test("login-page", async ({ page }) => {
+  await page.goto("/login");
+  await waitReady(page);
+  await page.screenshot(snap("login-page.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 18. My Tokens (self-service token management)
+// ---------------------------------------------------------------------------
+
+test("my-tokens", async ({ page }) => {
+  await page.goto("/profile");
+  await waitReady(page);
+  await page.screenshot(snap("my-tokens.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 19. Users list
+// ---------------------------------------------------------------------------
+
+test("users-list", async ({ page }) => {
+  await page.goto("/users");
+  await waitReady(page);
+  await page.screenshot(snap("users-list.png"));
+});
+
 for (const { label, slug } of GUARDRAIL_TYPES) {
   test(`guardrail-${slug}`, async ({ page }) => {
     await page.goto("/gateways");

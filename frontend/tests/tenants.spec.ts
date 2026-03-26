@@ -81,10 +81,10 @@ test.describe("Tenants page", () => {
     await expect(page.getByRole("heading", { name: /Gateways/i })).toBeVisible();
   });
 
-  test("Configure button opens detail view", async ({ page }) => {
-    const configureBtn = page.getByRole("button", { name: /Configure →/i }).first();
-    if (!await configureBtn.isVisible()) { test.skip(); return; }
-    await configureBtn.click();
-    await expect(page.getByText(/Back to Tenants/i)).toBeVisible();
+  test("Open → button navigates to gateway detail", async ({ page }) => {
+    const openBtn = page.getByRole("button", { name: /Open →/i }).first();
+    if (!await openBtn.isVisible()) { test.skip(); return; }
+    await openBtn.click();
+    await expect(page.getByRole("button", { name: /← Tenants/i })).toBeVisible();
   });
 });

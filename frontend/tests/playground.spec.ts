@@ -73,7 +73,27 @@ test.describe("Playground — Ollama e2e", () => {
     await expect(page.getByText(/token active/i)).toBeVisible({ timeout: 8000 });
   });
 
+  test("sends 'what is 1+1' and response contains 2", async ({ page }) => {
+    await setup(page);
+    await pickModelByName(page, "claude-haiku-4-5");
+
+    await page.getByLabel("User message").fill("what is 1+1");
+    await page.getByRole("button", { name: "Run" }).click();
+
+    const response = page.getByLabel("Response").first();
+
+    await expect(response).toContainText("Running…", { timeout: 10000 });
+    await expect(response).not.toContainText("Running…", { timeout: 30000 });
+
+    await expect(response).not.toContainText(/server error|internal.*error/i);
+
+    const text = (await response.innerText()).trim();
+    console.log("1+1 RESPONSE:", text);
+    expect(text).toMatch(/2/);
+  });
+
   test("sends message to ollama/qwen2.5:3b and receives a response", async ({ page }) => {
+    if (process.env.PLAYWRIGHT_ADMIN_URL) { test.skip(); return; } // Ollama not in Docker
     await setup(page);
     await pickModel(page);
 
@@ -110,6 +130,7 @@ test.describe("Playground — Ollama e2e", () => {
 test.describe("Playground — Web Search e2e", () => {
 
   test("ollama/gpt-oss:20b web search returns non-empty streamed content (no-content regression)", async ({ page }) => {
+    if (process.env.PLAYWRIGHT_ADMIN_URL) { test.skip(); return; } // Ollama not in Docker
     await setup(page);
     await pickModelByName(page, WEB_SEARCH_20B_MODEL);
 
@@ -140,6 +161,7 @@ test.describe("Playground — Web Search e2e", () => {
   });
 
   test("ollama/gpt-oss:20b current weather munich — no reasoning leak, actual weather data", async ({ page }) => {
+    if (process.env.PLAYWRIGHT_ADMIN_URL) { test.skip(); return; } // Ollama not in Docker
     await setup(page);
     await pickModelByName(page, WEB_SEARCH_20B_MODEL);
 
@@ -194,6 +216,7 @@ test.describe("Playground — Web Search e2e", () => {
   });
 
   test("ollama/gpt-oss:120b performs live web search and returns grounded results", async ({ page }) => {
+    if (process.env.PLAYWRIGHT_ADMIN_URL) { test.skip(); return; } // Ollama not in Docker
     await setup(page);
     await pickModelByName(page, WEB_SEARCH_MODEL);
 
@@ -232,6 +255,7 @@ test.describe("Playground — Web Search e2e", () => {
   });
 
   test("ollama/gpt-oss:20b myra security gmbh germany — english response, fetched content used", async ({ page }) => {
+    if (process.env.PLAYWRIGHT_ADMIN_URL) { test.skip(); return; } // Ollama not in Docker
     await setup(page);
     await pickModelByName(page, WEB_SEARCH_20B_MODEL);
     await expect(page.locator("[aria-haspopup='listbox']").first()).toContainText(WEB_SEARCH_20B_MODEL);

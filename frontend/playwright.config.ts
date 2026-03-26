@@ -1,8 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "path";
 
-const SESSION     = path.resolve(__dirname, "tests/.auth/session.json");
-const ORG_SESSION = path.resolve(__dirname, "tests/.auth/org-session.json");
+const SESSION              = path.resolve(__dirname, "tests/.auth/session.json");
+const MEMBER_SESSION       = path.resolve(__dirname, "tests/.auth/member-session.json");
+const TENANT_ADMIN_SESSION = path.resolve(__dirname, "tests/.auth/tenant-admin-session.json");
 
 export default defineConfig({
   testDir: "./tests",
@@ -25,7 +26,7 @@ export default defineConfig({
       testMatch: "**/auth.setup.ts",
       use: { ...devices["Desktop Chrome"] },
     },
-    // 2. Permissions setup — creates DB fixtures + admin_org session
+    // 2. Permissions setup — creates DB fixtures + member + tenant_admin sessions
     {
       name: "permissions-setup",
       testMatch: "**/permissions.setup.ts",
@@ -40,12 +41,12 @@ export default defineConfig({
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], storageState: SESSION },
     },
-    // 4. Org-scoping permission tests — need both sessions
+    // 4. Tenant-scoping permission tests — need both sessions
     {
       name: "permissions",
-      testMatch: "**/org-scoping.spec.ts",
+      testMatch: ["**/tenant-scoping.spec.ts", "**/tenant-admin-scoping.spec.ts"],
       dependencies: ["setup", "permissions-setup"],
-      use: { ...devices["Desktop Chrome"], storageState: ORG_SESSION },
+      use: { ...devices["Desktop Chrome"], storageState: MEMBER_SESSION },
     },
     // 5. Permissions teardown — removes DB fixtures after "permissions" tests finish
     {
@@ -56,7 +57,13 @@ export default defineConfig({
     // 6. All other tests — use the saved admin session
     {
       name: "chromium",
-      testIgnore: ["**/auth.setup.ts", "**/permissions.setup.ts", "**/login.spec.ts", "**/org-scoping.spec.ts"],
+      testIgnore: [
+        "**/auth.setup.ts",
+        "**/permissions.setup.ts",
+        "**/login.spec.ts",
+        "**/tenant-scoping.spec.ts",
+        "**/tenant-admin-scoping.spec.ts",
+      ],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], storageState: SESSION },
     },
