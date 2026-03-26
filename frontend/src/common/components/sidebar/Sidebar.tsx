@@ -184,12 +184,12 @@ export default function Sidebar() {
           <SectionLabel label="MAIN" collapsed={effectiveCollapsed} />
           <NavItem to="/dashboard" label="Dashboard" icon={<DashboardIcon />} {...navProps} />
 
-          <SectionLabel label="MANAGEMENT" collapsed={effectiveCollapsed} />
-          <NavItem to="/tenants" label="Tenants" icon={<TenantsIcon />} {...navProps} />
-          <NavItem to="/gateways" label="Gateways" icon={<GatewayIcon />} {...navProps} />
-          {(user?.role === "admin" || user?.role === "tenant_admin") && (
+          {(user?.role === "admin" || user?.role === "tenant_admin") && (<>
+            <SectionLabel label="MANAGEMENT" collapsed={effectiveCollapsed} />
+            <NavItem to="/tenants" label="Tenants" icon={<TenantsIcon />} {...navProps} />
+            <NavItem to="/gateways" label="Gateways" icon={<GatewayIcon />} {...navProps} />
             <NavItem to="/users" label="Users" icon={<UsersIcon />} {...navProps} />
-          )}
+          </>)}
 
           <SectionLabel label="OBSERVABILITY" collapsed={effectiveCollapsed} />
           <NavItem to="/analytics" label="Cost Analytics" icon={<AnalyticsIcon />} {...navProps} />
