@@ -4,6 +4,7 @@ import { api } from "src/api/client";
 import { UsageStats, PeriodStats, TimeseriesPoint, AnalyticsDepth } from "src/api/types";
 import { fmtDateTime } from "src/common/utils/date";
 import { GuardrailEventsTable } from "src/common/components/GuardrailEventsTable";
+import { StatusBadge } from "src/common/components/StatusBadge";
 import s from "src/common/components/layout/Layout.module.scss";
 
 function fmt(n: number | undefined | null, decimals = 0) {
@@ -14,10 +15,6 @@ function fmt(n: number | undefined | null, decimals = 0) {
 function fmtCost(n: number | undefined | null) {
   if (n == null) return "—";
   return `$${n.toFixed(2)}`;
-}
-
-function StatusBadge({ value, variant }: { value: string | number; variant: "success" | "error" | "warning" | "neutral" }) {
-  return <span className={`${s.badge} ${s[`badge--${variant}`]}`}>{value}</span>;
 }
 
 
