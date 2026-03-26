@@ -6,6 +6,8 @@ import { Tenant, Gateway, AuthToken } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
 import { docsUrl } from "src/common/components/DocLink";
 import { Modal } from "src/common/components/Modal";
+import { TokenRevealModal } from "src/common/components/TokenRevealModal";
+import { StatusBadge, roleVariant } from "src/common/components/StatusBadge";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -93,33 +95,6 @@ function TokenModal({ gateways, onClose, onCreated }: {
 }
 
 // ---------------------------------------------------------------------------
-// Token reveal modal
-// ---------------------------------------------------------------------------
-
-function TokenRevealModal({ token, onClose }: { token: string; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-  function copy() {
-    navigator.clipboard.writeText(token);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-  return (
-    <Modal title="Token Created" onClose={onClose}>
-      <div className={`${s.alert} ${s["alert--warning"]}`} style={{ marginBottom: 12 }}>
-        Copy this token now — it will not be shown again.
-      </div>
-      <div className={s.mono} style={{ background: "var(--bg-secondary)", padding: "10px 14px", borderRadius: 6, wordBreak: "break-all", fontSize: 13, marginBottom: 14, cursor: "pointer" }} title="Click to copy" onClick={copy}>
-        {token}
-      </div>
-      <div className={s["form-actions"]}>
-        <button className={`${s.btn} ${s["btn--primary"]}`} onClick={copy}>{copied ? "Copied!" : "Copy"}</button>
-        <button className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Done</button>
-      </div>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Profile page
 // ---------------------------------------------------------------------------
 
@@ -160,11 +135,6 @@ export default function Profile() {
     } catch (e: any) { alert(e.message); }
   }
 
-  const roleColor = (me?.role === "admin" || me?.role === "tenant_admin")
-    ? s["badge--success"]
-    : me?.role === "member"
-    ? s["badge--warning"]
-    : s["badge--neutral"];
 
   return (
     <div className={s.page}>
@@ -200,7 +170,7 @@ export default function Profile() {
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Role</div>
             <div className={s["stat-value"]} style={{ marginTop: 6 }}>
-              <span className={`${s.badge} ${roleColor}`}>{me?.role}</span>
+              {me?.role && <StatusBadge value={me.role} variant={roleVariant(me.role)} />}
             </div>
           </div>
         </div>

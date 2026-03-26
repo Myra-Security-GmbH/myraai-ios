@@ -1,35 +1,28 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
+import { useCurrency } from "src/common/hooks/useCurrency";
+import { CurrencySelector } from "src/common/components/CurrencySelector";
 import { api } from "src/api/client";
 import { UsageStats, LogEntry, Tenant } from "src/api/types";
 import { fmtDateTime, fmtTime } from "src/common/utils/date";
+import { fmtNumber } from "src/common/utils/format";
 import { GuardrailEventsTable } from "src/common/components/GuardrailEventsTable";
 import s from "src/common/components/layout/Layout.module.scss";
 import ms from "./Monitor.module.scss";
 
-function fmt(n: number | null | undefined, dec = 0) {
-  if (n == null) return "—";
-  return n.toLocaleString("en-US", { maximumFractionDigits: dec });
-}
-
-function fmtCost(n: number | null | undefined) {
-  if (n == null || n === 0) return "$0";
-  return `$${n.toFixed(2)}`;
-}
-
-function PeriodCard({ label, data }: { label: string; data: any }) {
+function PeriodCard({ label, data, fc }: { label: string; data: any; fc: (n: number | null | undefined) => string }) {
   const rows: [string, string][] = [
-    ["Requests",      fmt(data?.requests)],
-    ["Cached",        fmt(data?.cached)],
-    ["Blocked",       fmt(data?.blocked)],
-    ["Scrubbed",      fmt(data?.scrubbed ?? 0)],
-    ["Flagged",       fmt(data?.flagged ?? 0)],
-    ["Cost",          fmtCost(data?.cost_usd)],
-    ["Saved",         fmtCost(data?.saved_cost_usd)],
-    ["Avg latency",   data?.avg_latency_ms != null ? `${fmt(data.avg_latency_ms)} ms` : "—"],
-    ["Provider ms",   data?.avg_upstream_latency_ms ? `${fmt(data.avg_upstream_latency_ms)} ms` : "—"],
-    ["Input tokens",  fmt(data?.input_tokens)],
-    ["Output tokens", fmt(data?.output_tokens)],
+    ["Requests",      fmtNumber(data?.requests)],
+    ["Cached",        fmtNumber(data?.cached)],
+    ["Blocked",       fmtNumber(data?.blocked)],
+    ["Scrubbed",      fmtNumber(data?.scrubbed ?? 0)],
+    ["Flagged",       fmtNumber(data?.flagged ?? 0)],
+    ["Cost",          fc(data?.cost_usd)],
+    ["Saved",         fc(data?.saved_cost_usd)],
+    ["Avg latency",   data?.avg_latency_ms != null ? `${fmtNumber(data.avg_latency_ms)} ms` : "—"],
+    ["Provider ms",   data?.avg_upstream_latency_ms ? `${fmtNumber(data.avg_upstream_latency_ms)} ms` : "—"],
+    ["Input tokens",  fmtNumber(data?.input_tokens)],
+    ["Output tokens", fmtNumber(data?.output_tokens)],
   ];
   return (
     <div className={s["period-card"]}>
@@ -72,6 +65,7 @@ function Sparkline({ values, color = "#3edcfe" }: { values: number[]; color?: st
 
 export default function Monitor() {
   useDocumentTitle("Monitor");
+  const { currency, setCurrency, fc } = useCurrency();
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantFilter, setTenantFilter] = useState("");
@@ -124,6 +118,7 @@ export default function Monitor() {
           )}
         </div>
         <div className={ms["controls"]}>
+          <CurrencySelector value={currency} onChange={setCurrency} />
           {tenants.length > 0 && (
             <>
               <label className={s["form-label"]} style={{ margin: 0 }}>Tenant</label>
@@ -179,9 +174,9 @@ export default function Monitor() {
 
           {/* Period summaries */}
           <div className={s["periods-grid"]}>
-            <PeriodCard label="Last minute" data={stats.last_min} />
-            <PeriodCard label="Last hour"   data={stats.hour} />
-            <PeriodCard label="Today"       data={stats.today} />
+            <PeriodCard label="Last minute" data={stats.last_min} fc={fc} />
+            <PeriodCard label="Last hour"   data={stats.hour}     fc={fc} />
+            <PeriodCard label="Today"       data={stats.today}    fc={fc} />
           </div>
 
           {/* Per-tenant today */}
@@ -206,10 +201,10 @@ export default function Monitor() {
                     {stats.by_tenant.map((row) => (
                       <tr key={row.tenant_id}>
                         <td><span className={s.code}>{row.tenant}</span></td>
-                        <td>{fmt(row.requests)}</td>
-                        <td>{fmt(row.input_tokens)}</td>
-                        <td>{fmt(row.output_tokens)}</td>
-                        <td>{fmtCost(row.cost_usd)}</td>
+                        <td>{fmtNumber(row.requests)}</td>
+                        <td>{fmtNumber(row.input_tokens)}</td>
+                        <td>{fmtNumber(row.output_tokens)}</td>
+                        <td>{fc(row.cost_usd)}</td>
                         <td>
                           <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>no limit</span>
                         </td>
@@ -264,12 +259,12 @@ export default function Monitor() {
                             </span>
                           )}
                         </td>
-                        <td>{fmt(row.input_tokens)}</td>
-                        <td>{fmt(row.output_tokens)}</td>
-                        <td>{fmtCost(row.cost_usd)}</td>
-                        <td>{row.saved_cost_usd ? fmtCost(row.saved_cost_usd) : "—"}</td>
-                        <td>{fmt(row.latency_ms)} ms</td>
-                        <td>{row.upstream_latency_ms != null ? `${fmt(row.upstream_latency_ms)} ms` : "—"}</td>
+                        <td>{fmtNumber(row.input_tokens)}</td>
+                        <td>{fmtNumber(row.output_tokens)}</td>
+                        <td>{fc(row.cost_usd)}</td>
+                        <td>{row.saved_cost_usd ? fc(row.saved_cost_usd) : "—"}</td>
+                        <td>{fmtNumber(row.latency_ms)} ms</td>
+                        <td>{row.upstream_latency_ms != null ? `${fmtNumber(row.upstream_latency_ms)} ms` : "—"}</td>
                       </tr>
                     ))}
                   </tbody>

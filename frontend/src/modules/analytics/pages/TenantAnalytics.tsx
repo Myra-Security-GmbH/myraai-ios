@@ -1,52 +1,16 @@
 import { useEffect, useState } from "react";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
+import { useCurrency } from "src/common/hooks/useCurrency";
+import { CurrencySelector } from "src/common/components/CurrencySelector";
 import { api } from "src/api/client";
 import {
   AnalyticsDepth, Tenant, TenantStats, GatewayStats, UserStats,
   TenantAnalyticsDetail, SpendRecord, TopModelRow, TimeseriesPoint,
   LatencyPercentiles,
 } from "src/api/types";
+import { fmtNumber, fmtCost, fmtMs } from "src/common/utils/format";
 import s from "src/common/components/layout/Layout.module.scss";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-type Currency = "USD" | "EUR";
-
-// Module-level rate cache — avoids re-fetching within a browser session.
-// frankfurter.app serves ECB data, updated each business day.
-let _rateCache: { rate: number; date: string } | null = null;
-
-async function fetchEurRate(): Promise<number> {
-  const today = new Date().toISOString().slice(0, 10);
-  if (_rateCache?.date === today) return _rateCache.rate;
-  const res  = await fetch("https://api.frankfurter.app/latest?from=USD&to=EUR");
-  const data = await res.json();
-  const rate = data.rates?.EUR as number;
-  _rateCache = { rate, date: today };
-  return rate;
-}
-
-function fmt(n: number | undefined | null, decimals = 0) {
-  if (n == null) return "—";
-  return n.toLocaleString("en-US", { maximumFractionDigits: decimals });
-}
-function fmtCost(n: number | undefined | null) {
-  if (n == null || n === 0) return "$0.00";
-  return `$${n.toFixed(2)}`;
-}
-function fmtCurrency(n: number | undefined | null, currency: Currency, eurRate: number): string {
-  if (currency === "EUR") {
-    if (n == null || n === 0) return "€0.00";
-    return `€${(n * eurRate).toFixed(2)}`;
-  }
-  return fmtCost(n);
-}
-function fmtMs(n: number | undefined | null) {
-  if (n == null || n === 0) return "—";
-  return `${Math.round(n)} ms`;
-}
 function fmtRate(numerator: number, denominator: number): string {
   if (denominator === 0) return "—";
   const pct = (numerator / denominator) * 100;
@@ -189,17 +153,15 @@ function BarChart({ data, height = 72 }: { data: TimeseriesPoint[]; height?: num
 // ---------------------------------------------------------------------------
 
 function DetailPanel({
-  tenant, tenantMeta, detail, spend, onClose, currency, eurRate,
+  tenant, tenantMeta, detail, spend, onClose, fc,
 }: {
   tenant: TenantStats;
   tenantMeta: Tenant | undefined;
   detail: TenantAnalyticsDetail | null;
   spend: SpendRecord[] | null;
   onClose: () => void;
-  currency: Currency;
-  eurRate: number;
+  fc: (n: number | undefined | null) => string;
 }) {
-  const fc = (n: number | undefined | null) => fmtCurrency(n, currency, eurRate);
   const monthlySpend = spend
     ?.filter(r => /^\d{4}-\d{2}$/.test(r.period))
     .sort((a, b) => b.period.localeCompare(a.period))
@@ -239,7 +201,7 @@ function DetailPanel({
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
           {([
-            ["Requests",    fmt(tenant.requests)],
+            ["Requests",    fmtNumber(tenant.requests)],
             ["Cost",        fc(tenant.cost_usd)],
             ["Avg Latency", fmtMs(tenant.avg_latency_ms)],
           ] as [string, string][]).map(([label, value]) => (
@@ -275,7 +237,7 @@ function DetailPanel({
                         <div className={s.mono} style={{ fontSize: 11 }}>{m.model}</div>
                         <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{m.provider}</div>
                       </td>
-                      <td>{fmt(m.requests)}</td>
+                      <td>{fmtNumber(m.requests)}</td>
                       <td>{fc(m.cost_usd)}</td>
                       <td>{fmtMs(m.avg_latency_ms)}</td>
                     </tr>
@@ -353,8 +315,7 @@ export default function TenantAnalytics() {
   const [detail, setDetail]               = useState<TenantAnalyticsDetail | null>(null);
   const [spend, setSpend]                 = useState<SpendRecord[] | null>(null);
   const [filterText, setFilterText]       = useState("");
-  const [currency, setCurrency]           = useState<Currency>("USD");
-  const [eurRate, setEurRate]             = useState(1);
+  const { currency, setCurrency, fc } = useCurrency();
 
   // Fetch analytics + tenants + global timeseries on period change
   useEffect(() => {
@@ -372,12 +333,6 @@ export default function TenantAnalytics() {
     }).catch((err: any) => setLoadError(err.message ?? "Failed to load analytics"))
       .finally(() => setLoading(false));
   }, [period]);
-
-  // Fetch EUR rate when currency switches to EUR
-  useEffect(() => {
-    if (currency !== "EUR") return;
-    fetchEurRate().then(setEurRate).catch(() => {});
-  }, [currency]);
 
   // Reset filter when switching tabs
   useEffect(() => { setFilterText(""); }, [tab]);
@@ -440,8 +395,6 @@ export default function TenantAnalytics() {
     : tab === "model"    ? byModel.length
     : byUser.length;
 
-  const fc = (n: number | undefined | null) => fmtCurrency(n, currency, eurRate);
-
   if (loading) return <div className={s.page}><p className={s.empty}>Loading…</p></div>;
   if (loadError) return <div className={s.page}><div className={`${s.alert} ${s["alert--error"]}`}>{loadError}</div></div>;
 
@@ -457,19 +410,7 @@ export default function TenantAnalytics() {
           <p className={s["page-subtitle"]}>Spend breakdown by tenant, gateway, provider, model, and user</p>
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <select
-            value={currency}
-            onChange={e => setCurrency(e.target.value as Currency)}
-            aria-label="Currency"
-            style={{
-              background: "var(--section-bg)", border: "1px solid var(--card-border)",
-              borderRadius: 6, padding: "5px 10px", fontSize: 13,
-              color: "var(--text-primary)", cursor: "pointer",
-            }}
-          >
-            <option value="USD">USD $</option>
-            <option value="EUR">EUR €</option>
-          </select>
+          <CurrencySelector value={currency} onChange={setCurrency} />
           <div className={s["timeframe-tabs"]}>
             {(["today", "7d", "30d"] as Period[]).map(p => (
               <button key={p} className={`${s["timeframe-tab"]} ${period === p ? s["timeframe-tab--active"] : ""}`}
@@ -505,7 +446,7 @@ export default function TenantAnalytics() {
         </div>
         <div className={s["hero-card"]}>
           <div className={s["hero-label"]}>Total Requests</div>
-          <div className={s["hero-value"]}>{fmt(totalRequests)}</div>
+          <div className={s["hero-value"]}>{fmtNumber(totalRequests)}</div>
           <div className={s["hero-sub"]}>{periodLabel(period)}</div>
         </div>
         <div className={s["hero-card"]}>
@@ -599,7 +540,7 @@ export default function TenantAnalytics() {
                         <tr key={row.tenant_id} style={{ cursor: "pointer" }}
                           onClick={() => setSelected(selected?.tenant_id === row.tenant_id ? null : row)}>
                           <td><span className={s.code}>{row.tenant}</span></td>
-                          <td>{fmt(row.requests)}</td>
+                          <td>{fmtNumber(row.requests)}</td>
                           <td>{fc(row.cost_usd)}</td>
                           <td><ProportionBar value={row.cost_usd} max={maxTenantCost} /></td>
                           <td>{cacheRate != null ? `${cacheRate}%` : "—"}</td>
@@ -607,7 +548,7 @@ export default function TenantAnalytics() {
                             ? <span className={`${s.badge} ${s["badge--warning"]}`}>{fmtRate(row.errors, row.requests)}</span>
                             : "—"}</td>
                           <td>{row.blocked > 0
-                            ? <span className={`${s.badge} ${s["badge--error"]}`}>{fmt(row.blocked)}</span>
+                            ? <span className={`${s.badge} ${s["badge--error"]}`}>{fmtNumber(row.blocked)}</span>
                             : "—"}</td>
                           <td>{fmtMs(row.avg_latency_ms)}</td>
                           <td style={{ minWidth: 160 }}>
@@ -651,7 +592,7 @@ export default function TenantAnalytics() {
                         <tr key={row.gateway_id}>
                           <td><span className={s.code}>{row.gateway}</span></td>
                           <td>{row.tenant ? <span className={s.code}>{row.tenant}</span> : "—"}</td>
-                          <td>{fmt(row.requests)}</td>
+                          <td>{fmtNumber(row.requests)}</td>
                           <td>{fc(row.cost_usd)}</td>
                           <td><ProportionBar value={row.cost_usd} max={maxGwCost} /></td>
                           <td>{cacheRate != null ? `${cacheRate}%` : "—"}</td>
@@ -659,7 +600,7 @@ export default function TenantAnalytics() {
                             ? <span className={`${s.badge} ${s["badge--warning"]}`}>{fmtRate(row.errors, row.requests)}</span>
                             : "—"}</td>
                           <td>{row.blocked > 0
-                            ? <span className={`${s.badge} ${s["badge--error"]}`}>{fmt(row.blocked)}</span>
+                            ? <span className={`${s.badge} ${s["badge--error"]}`}>{fmtNumber(row.blocked)}</span>
                             : "—"}</td>
                           <td>{fmtMs(row.avg_latency_ms)}</td>
                         </tr>
@@ -696,7 +637,7 @@ export default function TenantAnalytics() {
                       <tr key={row.provider}>
                         <td><span className={s.code}>{row.provider}</span></td>
                         <td>{row.model_count}</td>
-                        <td>{fmt(row.requests)}</td>
+                        <td>{fmtNumber(row.requests)}</td>
                         <td>{fc(row.cost_usd)}</td>
                         <td><ProportionBar value={row.cost_usd} max={maxProviderCost} /></td>
                         <td>{fmtMs(row.avg_latency_ms)}</td>
@@ -733,7 +674,7 @@ export default function TenantAnalytics() {
                       <tr key={i}>
                         <td className={s.mono} style={{ fontSize: 11 }}>{row.model}</td>
                         <td>{row.provider}</td>
-                        <td>{fmt(row.requests)}</td>
+                        <td>{fmtNumber(row.requests)}</td>
                         <td>{fc(row.cost_usd)}</td>
                         <td><ProportionBar value={row.cost_usd} max={maxModelCost} /></td>
                         <td>{fmtMs(row.avg_latency_ms)}</td>
@@ -771,7 +712,7 @@ export default function TenantAnalytics() {
                       return (
                         <tr key={row.user_id}>
                           <td><span className={s.code}>{row.email ?? row.user_id}</span></td>
-                          <td>{fmt(row.requests)}</td>
+                          <td>{fmtNumber(row.requests)}</td>
                           <td>{fc(row.cost_usd)}</td>
                           <td><ProportionBar value={row.cost_usd} max={maxUserCost} /></td>
                           <td>{cacheRate != null ? `${cacheRate}%` : "—"}</td>
@@ -779,7 +720,7 @@ export default function TenantAnalytics() {
                             ? <span className={`${s.badge} ${s["badge--warning"]}`}>{fmtRate(row.errors, row.requests)}</span>
                             : "—"}</td>
                           <td>{row.blocked > 0
-                            ? <span className={`${s.badge} ${s["badge--error"]}`}>{fmt(row.blocked)}</span>
+                            ? <span className={`${s.badge} ${s["badge--error"]}`}>{fmtNumber(row.blocked)}</span>
                             : "—"}</td>
                           <td>{fmtMs(row.avg_latency_ms)}</td>
                         </tr>
@@ -801,8 +742,7 @@ export default function TenantAnalytics() {
           detail={detail}
           spend={spend}
           onClose={() => setSelected(null)}
-          currency={currency}
-          eurRate={eurRate}
+          fc={fc}
         />
       )}
     </main>

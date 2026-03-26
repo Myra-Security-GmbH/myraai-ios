@@ -3,19 +3,10 @@ import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { UsageStats, PeriodStats, TimeseriesPoint, AnalyticsDepth } from "src/api/types";
 import { fmtDateTime } from "src/common/utils/date";
+import { fmtNumber, fmtCost } from "src/common/utils/format";
 import { GuardrailEventsTable } from "src/common/components/GuardrailEventsTable";
 import { StatusBadge } from "src/common/components/StatusBadge";
 import s from "src/common/components/layout/Layout.module.scss";
-
-function fmt(n: number | undefined | null, decimals = 0) {
-  if (n == null) return "—";
-  return n.toLocaleString("en-US", { maximumFractionDigits: decimals });
-}
-
-function fmtCost(n: number | undefined | null) {
-  if (n == null) return "—";
-  return `$${n.toFixed(2)}`;
-}
 
 
 type Timeframe = "today" | "yesterday" | "last_7d" | "hour" | "last_min";
@@ -114,7 +105,7 @@ function HeroCards({ data, series }: { data: PeriodStats; series: TimeseriesPoin
     <div className={s["hero-grid"]}>
       <div className={s["hero-card"]}>
         <div className={s["hero-label"]}>Requests</div>
-        <div className={s["hero-value"]}>{fmt(data.requests)}</div>
+        <div className={s["hero-value"]}>{fmtNumber(data.requests)}</div>
         <div className={s["hero-sub"]}>
           {cacheRate != null
             ? <><span className={s["hero-sub-highlight"]}>{cacheRate}%</span> cache hit rate</>
@@ -136,10 +127,10 @@ function HeroCards({ data, series }: { data: PeriodStats; series: TimeseriesPoin
 
       <div className={s["hero-card"]}>
         <div className={s["hero-label"]}>Guardrail Hits</div>
-        <div className={s["hero-value"]}>{fmt((data.blocked ?? 0) + (data.scrubbed ?? 0) + (data.flagged ?? 0))}</div>
+        <div className={s["hero-value"]}>{fmtNumber((data.blocked ?? 0) + (data.scrubbed ?? 0) + (data.flagged ?? 0))}</div>
         <div className={s["hero-sub"]}>
           {(data.blocked ?? 0) > 0 || (data.scrubbed ?? 0) > 0 || (data.flagged ?? 0) > 0 ? (
-            <>{fmt(data.blocked ?? 0)} blocked · {fmt(data.scrubbed ?? 0)} scrubbed · {fmt(data.flagged ?? 0)} flagged</>
+            <>{fmtNumber(data.blocked ?? 0)} blocked · {fmtNumber(data.scrubbed ?? 0)} scrubbed · {fmtNumber(data.flagged ?? 0)} flagged</>
           ) : "No guardrail hits"}
         </div>
         {blockedSeries && <Sparkline values={blockedSeries} />}
@@ -239,15 +230,15 @@ export default function Dashboard() {
       <div className={s["periods-grid"]} style={{ display: "none" }}>
         {periods.map(({ label, data }) => {
           const rows: [string, string][] = [
-            ["Requests",      fmt(data?.requests)],
-            ["Cached",        fmt(data?.cached)],
-            ["Blocked",       fmt(data?.blocked)],
+            ["Requests",      fmtNumber(data?.requests)],
+            ["Cached",        fmtNumber(data?.cached)],
+            ["Blocked",       fmtNumber(data?.blocked)],
             ["Cost",          fmtCost(data?.cost_usd)],
             ["Saved",         data?.saved_cost_usd ? fmtCost(data.saved_cost_usd) : "—"],
-            ["Avg latency",   data?.avg_latency_ms != null ? `${fmt(data.avg_latency_ms)} ms` : "—"],
-            ["Provider ms",   data?.avg_upstream_latency_ms ? `${fmt(data.avg_upstream_latency_ms)} ms` : "—"],
-            ["Input tokens",  fmt(data?.input_tokens)],
-            ["Output tokens", fmt(data?.output_tokens)],
+            ["Avg latency",   data?.avg_latency_ms != null ? `${fmtNumber(data.avg_latency_ms)} ms` : "—"],
+            ["Provider ms",   data?.avg_upstream_latency_ms ? `${fmtNumber(data.avg_upstream_latency_ms)} ms` : "—"],
+            ["Input tokens",  fmtNumber(data?.input_tokens)],
+            ["Output tokens", fmtNumber(data?.output_tokens)],
           ];
           return (
             <div key={label} className={s["period-card"]}>
@@ -286,9 +277,9 @@ export default function Dashboard() {
                 {analytics!.by_tenant.map((row) => (
                   <tr key={row.tenant_id}>
                     <td><span className={s.code}>{row.tenant}</span></td>
-                    <td>{fmt(row.requests)}</td>
-                    <td>{fmt(row.input_tokens)}</td>
-                    <td>{fmt(row.output_tokens)}</td>
+                    <td>{fmtNumber(row.requests)}</td>
+                    <td>{fmtNumber(row.input_tokens)}</td>
+                    <td>{fmtNumber(row.output_tokens)}</td>
                     <td>{fmtCost(row.cost_usd)}</td>
                   </tr>
                 ))}
@@ -322,9 +313,9 @@ export default function Dashboard() {
                       <tr key={i}>
                         <td>{row.provider}</td>
                         <td className={s.mono} style={{ fontSize: 11 }}>{row.model}</td>
-                        <td>{fmt(row.requests)}</td>
+                        <td>{fmtNumber(row.requests)}</td>
                         <td>{row.cost_usd > 0 ? `$${row.cost_usd.toFixed(4)}` : "—"}</td>
-                        <td>{fmt(row.avg_latency_ms)} ms</td>
+                        <td>{fmtNumber(row.avg_latency_ms)} ms</td>
                       </tr>
                     ))}
                   </tbody>
@@ -373,9 +364,9 @@ export default function Dashboard() {
                         variant={row.status >= 200 && row.status < 300 ? "success" : "error"}
                       />
                     </td>
-                    <td>{fmt(row.input_tokens)}+{fmt(row.output_tokens)}</td>
+                    <td>{fmtNumber(row.input_tokens)}+{fmtNumber(row.output_tokens)}</td>
                     <td>{fmtCost(row.cost_usd)}</td>
-                    <td>{fmt(row.latency_ms)} ms</td>
+                    <td>{fmtNumber(row.latency_ms)} ms</td>
                     <td style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       {row.cached === 1 && <StatusBadge value="cached" variant="neutral" />}
                       {row.blocked === 1 && <StatusBadge value="blocked" variant="error" />}

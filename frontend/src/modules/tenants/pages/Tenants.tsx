@@ -7,6 +7,7 @@ import { Tenant, Gateway, BudgetPeriod } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
 import { fmtCost } from "src/common/utils/format";
 import { Modal } from "src/common/components/Modal";
+import { StatusBadge, planVariant } from "src/common/components/StatusBadge";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -129,7 +130,6 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
     });
   }
 
-  const planColor = tenant.plan === "enterprise" ? s["badge--success"] : tenant.plan === "standard" ? s["badge--warning"] : s["badge--neutral"];
 
   return (
     <>
@@ -161,7 +161,7 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Plan</div>
             <div className={s["stat-value"]} style={{ marginTop: 6 }}>
-              <span className={`${s.badge} ${planColor}`}>{tenant.plan}</span>
+              <StatusBadge value={tenant.plan} variant={planVariant(tenant.plan)} />
             </div>
           </div>
           <div className={s["stat-card"]}>
@@ -331,11 +331,7 @@ export default function Tenants() {
               {tenants.map((t) => (
                 <tr key={t.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/tenants/${t.id}`)}>
                   <td><span className={s.code}>{t.slug}</span></td>
-                  <td>
-                    <span className={`${s.badge} ${t.plan === "enterprise" ? s["badge--success"] : t.plan === "standard" ? s["badge--warning"] : s["badge--neutral"]}`}>
-                      {t.plan}
-                    </span>
-                  </td>
+                  <td><StatusBadge value={t.plan} variant={planVariant(t.plan)} /></td>
                   <td>{t.budget_usd != null ? fmtCost(t.budget_usd) : <span style={{ color: "var(--text-secondary)" }}>unlimited</span>}</td>
                   <td className={s.mono}>{fmtDate(t.created_at)}</td>
                   <td>
