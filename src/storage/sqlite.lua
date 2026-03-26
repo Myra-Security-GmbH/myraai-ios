@@ -164,6 +164,157 @@ local function migrate_columns(cfg)
         );
         CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
     ]])
+    -- actor_id column (added with auth sprint)
+    local acols = {}
+    for row in cfg_db2:nrows("PRAGMA table_info(audit_log)") do acols[row.name] = true end
+    if not acols.actor_id then
+        cfg_db2:exec("ALTER TABLE audit_log ADD COLUMN actor_id TEXT")
+    end
+
+    -- Organization table
+    cfg_db2:exec([[
+        CREATE TABLE IF NOT EXISTS organization (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            slug       TEXT NOT NULL UNIQUE,
+            created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            deleted_at INTEGER
+        );
+    ]])
+
+    -- organization_id on tenant
+    local ten_cols = {}
+    for row in cfg_db2:nrows("PRAGMA table_info(tenant)") do ten_cols[row.name] = true end
+    if not ten_cols.organization_id then
+        cfg_db2:exec("ALTER TABLE tenant ADD COLUMN organization_id TEXT REFERENCES organization(id) ON DELETE SET NULL")
+    end
+
+    -- Recreate user table with nullable tenant_id and organization_id (idempotent via column check)
+    local ucols = {}
+    for row in cfg_db2:nrows("PRAGMA table_info(user)") do ucols[row.name] = true end
+    if not ucols.organization_id then
+        -- Need to add organization_id and make tenant_id nullable.
+        -- SQLite does not support ALTER COLUMN, so we recreate the table.
+        cfg_db2:exec("PRAGMA foreign_keys = OFF")
+        cfg_db2:exec([[
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS user_v2 (
+                id              TEXT PRIMARY KEY,
+                tenant_id       TEXT REFERENCES tenant(id) ON DELETE CASCADE,
+                organization_id TEXT REFERENCES organization(id) ON DELETE SET NULL,
+                email           TEXT NOT NULL,
+                name            TEXT,
+                role            TEXT NOT NULL DEFAULT 'member',
+                deleted_at      INTEGER,
+                created_at      INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+            );
+            INSERT OR IGNORE INTO user_v2 (id, tenant_id, email, name, role, deleted_at, created_at)
+                SELECT id, tenant_id, email, name, role, deleted_at, created_at FROM user;
+            DROP TABLE user;
+            ALTER TABLE user_v2 RENAME TO user;
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_user_tenant_email ON user(tenant_id, email);
+            COMMIT;
+        ]])
+        cfg_db2:exec("PRAGMA foreign_keys = ON")
+    end
+
+    -- Email OTP table
+    cfg_db2:exec([[
+        CREATE TABLE IF NOT EXISTS email_otp (
+            id         TEXT PRIMARY KEY,
+            email      TEXT NOT NULL,
+            code_hash  TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            used_at    INTEGER,
+            ip_addr    TEXT,
+            created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+        );
+        CREATE INDEX IF NOT EXISTS idx_otp_email ON email_otp(email, expires_at);
+    ]])
+
+    -- OAuth link table
+    cfg_db2:exec([[
+        CREATE TABLE IF NOT EXISTS oauth_link (
+            user_id  TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+            provider TEXT NOT NULL,
+            subject  TEXT NOT NULL,
+            email    TEXT,
+            PRIMARY KEY (provider, subject)
+        );
+    ]])
+
+    -- user_gateway_access table (kept for backwards compat, no longer enforced)
+    cfg_db2:exec([[
+        CREATE TABLE IF NOT EXISTS user_gateway_access (
+            user_id    TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+            gateway_id TEXT NOT NULL REFERENCES gateway(id) ON DELETE CASCADE,
+            PRIMARY KEY (user_id, gateway_id)
+        );
+    ]])
+
+    -- SaaS user model migration: move users from tenant-scoped to org-scoped.
+    -- Idempotency marker: the old schema had index uq_user_tenant_email; after
+    -- migration it is replaced with a global UNIQUE(email) constraint.
+    local user_idx = {}
+    for row in cfg_db2:nrows("PRAGMA index_list(user)") do user_idx[row.name] = true end
+    if user_idx["uq_user_tenant_email"] then
+        -- Step 1: assign organization_id from tenant; map roles
+        cfg_db2:exec([[
+            UPDATE user
+            SET organization_id = (SELECT t.organization_id FROM tenant t WHERE t.id = user.tenant_id),
+                role = CASE WHEN role = 'viewer' THEN 'viewer' ELSE 'member' END
+            WHERE tenant_id IS NOT NULL
+        ]])
+
+        -- Step 2: for users whose tenant had no org, create one from the tenant slug
+        local orphaned = {}
+        for row in cfg_db2:nrows([[
+            SELECT u.id, u.tenant_id, t.slug AS tenant_slug
+            FROM user u JOIN tenant t ON t.id = u.tenant_id
+            WHERE u.tenant_id IS NOT NULL AND u.organization_id IS NULL
+        ]]) do
+            orphaned[#orphaned+1] = { id = row.id, tenant_id = row.tenant_id, tenant_slug = row.tenant_slug }
+        end
+        for _, u in ipairs(orphaned) do
+            local org_id = uuid_lib.v4()
+            cfg_db2:exec(("INSERT OR IGNORE INTO organization (id, name, slug) VALUES ('%s', '%s', '%s')"):format(
+                org_id, u.tenant_slug, u.tenant_slug))
+            local existing_org
+            for row in cfg_db2:nrows(("SELECT id FROM organization WHERE slug = '%s' LIMIT 1"):format(u.tenant_slug)) do
+                existing_org = row.id
+            end
+            if existing_org then
+                cfg_db2:exec(("UPDATE tenant SET organization_id = '%s' WHERE id = '%s' AND organization_id IS NULL"):format(existing_org, u.tenant_id))
+                cfg_db2:exec(("UPDATE user SET organization_id = '%s' WHERE id = '%s'"):format(existing_org, u.id))
+            end
+        end
+
+        -- Step 3: admin_org → member
+        cfg_db2:exec("UPDATE user SET role = 'member' WHERE role = 'admin_org'")
+
+        -- Step 4: rebuild user table — remove tenant_id, global UNIQUE(email)
+        cfg_db2:exec("PRAGMA foreign_keys = OFF")
+        cfg_db2:exec([[
+            BEGIN;
+            CREATE TABLE user_v3 (
+                id              TEXT PRIMARY KEY,
+                organization_id TEXT REFERENCES organization(id) ON DELETE CASCADE,
+                email           TEXT NOT NULL UNIQUE,
+                name            TEXT,
+                role            TEXT NOT NULL DEFAULT 'member',
+                deleted_at      INTEGER,
+                created_at      INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+            );
+            INSERT OR IGNORE INTO user_v3 (id, organization_id, email, name, role, deleted_at, created_at)
+                SELECT id, organization_id, email, name, role, deleted_at, created_at FROM user;
+            DROP TABLE user;
+            ALTER TABLE user_v3 RENAME TO user;
+            COMMIT;
+        ]])
+        cfg_db2:exec("PRAGMA foreign_keys = ON")
+        ngx.log(ngx.NOTICE, "storage: SaaS user model migration complete")
+    end
+
     cfg_db2:close()
 end
 
@@ -663,20 +814,27 @@ local function decode_detectors(row)
     end
 end
 
-function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config)
+function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config, org_id)
     local id = uuid()
     exec_one(cfg_db(), [[
-        INSERT OR IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config) VALUES (?,?,?,?,?,?)
-    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config)
+        INSERT OR IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config, organization_id) VALUES (?,?,?,?,?,?,?)
+    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config, org_id or nil)
     local row = query_one(cfg_db(), "SELECT id FROM tenant WHERE slug = ?", slug)
     return row and row.id
 end
 
-function M.update_tenant(id, plan, budget_usd, budget_period, siem_config)
+-- org_id sentinel: false = don't touch, nil = SET NULL, string = set to that value
+function M.update_tenant(id, plan, budget_usd, budget_period, siem_config, org_id)
+    if org_id == false then
+        return exec_one(cfg_db(), [[
+            UPDATE tenant SET plan = ?, budget_usd = ?, budget_period = COALESCE(?, budget_period),
+                   siem_config = ? WHERE id = ?
+        ]], plan, budget_usd, budget_period, siem_config, id)
+    end
     return exec_one(cfg_db(), [[
         UPDATE tenant SET plan = ?, budget_usd = ?, budget_period = COALESCE(?, budget_period),
-               siem_config = ? WHERE id = ?
-    ]], plan, budget_usd, budget_period, siem_config, id)
+               siem_config = ?, organization_id = ? WHERE id = ?
+    ]], plan, budget_usd, budget_period, siem_config, org_id, id)
 end
 
 function M.delete_tenant(id)
@@ -725,12 +883,12 @@ end
 -- User write helpers
 -- ---------------------------------------------------------------------------
 
-function M.insert_user(tenant_id, email, name, role)
+function M.insert_user(org_id, email, name, role)
     local id = uuid()
     local err = exec_one(cfg_db(), [[
-        INSERT INTO user (id, tenant_id, email, name, role)
+        INSERT INTO user (id, organization_id, email, name, role)
         VALUES (?,?,?,?,?)
-    ]], id, tenant_id, email, name, role or "member")
+    ]], id, org_id, email, name, role or "member")
     if err then return nil, err end
     return id
 end
@@ -763,9 +921,25 @@ end
 -- Admin list/read queries
 -- ---------------------------------------------------------------------------
 
-function M.list_tenants()
+function M.get_tenant(id)
+    return query_one(cfg_db(), [[
+        SELECT id, slug, plan, budget_usd, budget_period, siem_config, organization_id,
+               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
+        FROM tenant WHERE id = ? AND deleted_at IS NULL
+    ]], id)
+end
+
+function M.list_tenants(org_id)
+    if org_id then
+        return query_all(cfg_db(), [[
+            SELECT id, slug, plan, budget_usd, budget_period, siem_config, organization_id,
+                   strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
+            FROM tenant WHERE deleted_at IS NULL AND organization_id = ?
+            ORDER BY created_at DESC
+        ]], org_id) or {}
+    end
     return query_all(cfg_db(), [[
-        SELECT id, slug, plan, budget_usd, budget_period, siem_config,
+        SELECT id, slug, plan, budget_usd, budget_period, siem_config, organization_id,
                strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
         FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
     ]]) or {}
@@ -874,7 +1048,7 @@ end
 
 function M.get_user(id)
     return query_one(cfg_db(), [[
-        SELECT id, tenant_id, email, name, role,
+        SELECT id, organization_id, email, name, role,
                CASE WHEN deleted_at IS NOT NULL
                     THEN strftime('%Y-%m-%dT%H:%M:%SZ', deleted_at, 'unixepoch') END AS deleted_at,
                strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
@@ -882,22 +1056,22 @@ function M.get_user(id)
     ]], id)
 end
 
-function M.list_users(tenant_id)
-    if tenant_id then
+function M.list_users(org_id)
+    if org_id then
         return query_all(cfg_db(), [[
-            SELECT u.id, u.tenant_id, u.email, u.name, u.role,
+            SELECT u.id, u.organization_id, u.email, u.name, u.role,
                    strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at,
-                   t.slug AS tenant_slug
-            FROM user u JOIN tenant t ON t.id = u.tenant_id
-            WHERE u.tenant_id = ? AND u.deleted_at IS NULL
+                   o.slug AS org_slug
+            FROM user u LEFT JOIN organization o ON o.id = u.organization_id
+            WHERE u.organization_id = ? AND u.deleted_at IS NULL
             ORDER BY u.created_at DESC
-        ]], tenant_id) or {}
+        ]], org_id) or {}
     end
     return query_all(cfg_db(), [[
-        SELECT u.id, u.tenant_id, u.email, u.name, u.role,
+        SELECT u.id, u.organization_id, u.email, u.name, u.role,
                strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at,
-               t.slug AS tenant_slug
-        FROM user u JOIN tenant t ON t.id = u.tenant_id
+               o.slug AS org_slug
+        FROM user u LEFT JOIN organization o ON o.id = u.organization_id
         WHERE u.deleted_at IS NULL
         ORDER BY u.created_at DESC
     ]]) or {}
@@ -1019,10 +1193,20 @@ function M.reset_spend(entity_type, entity_id, period)
     ]], entity_type, entity_id)
 end
 
+function M.tenant_in_org(tenant_id, org_id)
+    return query_one(cfg_db(),
+        "SELECT 1 FROM tenant WHERE id = ? AND organization_id = ? AND deleted_at IS NULL",
+        tenant_id, org_id) ~= nil
+end
+
 function M.list_logs(filters)
     filters = filters or {}
     local where = {"1=1"}
     local params = {}
+    if filters.org_id then
+        where[#where+1] = "tenant_id IN (SELECT id FROM cfg.tenant WHERE organization_id = ? AND deleted_at IS NULL)"
+        params[#params+1] = filters.org_id
+    end
     if filters.tenant_id then
         where[#where+1] = "tenant_id = ?"
         params[#params+1] = filters.tenant_id
@@ -1104,7 +1288,7 @@ end
 -- Monitor / reporting queries (uses already-open handles)
 -- ---------------------------------------------------------------------------
 
-function M.get_usage_stats(tenant_id)
+function M.get_usage_stats(tenant_id, org_id)
     local ldb = log_db()
 
     -- Period thresholds in milliseconds
@@ -1120,6 +1304,8 @@ function M.get_usage_stats(tenant_id)
     if tenant_id and tenant_id ~= "" then
         if not tenant_id:match("^[0-9a-fA-F%-]+$") then tenant_id = nil
         else tenant_clause = " AND tenant_id = '" .. tenant_id .. "'" end
+    elseif org_id and org_id ~= "" then
+        tenant_clause = " AND tenant_id IN (SELECT id FROM cfg.tenant WHERE organization_id = '" .. org_id .. "' AND deleted_at IS NULL)"
     end
 
     -- Build one SELECT with conditional aggregates for all 5 periods.
@@ -1197,7 +1383,7 @@ function M.get_usage_stats(tenant_id)
         LEFT JOIN cfg.tenant t ON t.id = r.tenant_id
         %s
         ORDER BY r.ts DESC LIMIT 10
-    ]], tenant_id and ("WHERE r.tenant_id = '" .. tenant_id .. "'") or "")
+    ]], tenant_clause ~= "" and ("WHERE 1=1" .. tenant_clause) or "")
     local recent = query_all(ldb, recent_sql) or {}
 
     local recent_blocked_sql = string.format([[
@@ -1237,7 +1423,7 @@ end
 -- Returns n buckets of (requests, blocked, cost_usd) aggregated per bucket_sec
 -- seconds, ordered oldest → newest, zero-filling any empty buckets.
 -- Supported bucket_sec values: 300, 900, 1800, 3600, 21600, 86400.
-function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
+function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id, org_id)
     local ldb      = log_db()
     local ref      = end_sec or math.floor(ngx.now())
     local bms      = bucket_sec * 1000   -- bucket size in milliseconds
@@ -1249,7 +1435,12 @@ function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
     -- bms is embedded as a literal (not a bind param) to ensure SQLite uses
     -- integer division. Binding it as a Lua number causes real-number division,
     -- making every row its own unique bucket.
-    local tenant_clause = tenant_id and " AND tenant_id = ?" or ""
+    local extra_clause = ""
+    if tenant_id then
+        extra_clause = " AND tenant_id = ?"
+    elseif org_id then
+        extra_clause = " AND tenant_id IN (SELECT id FROM cfg.tenant WHERE organization_id = '" .. org_id .. "' AND deleted_at IS NULL)"
+    end
     local sql = string.format([[
         SELECT (ts / %d) * %d AS bucket_ts,
                COUNT(*) AS requests,
@@ -1259,7 +1450,7 @@ function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
         WHERE ts >= ?%s
         GROUP BY bucket_ts
         ORDER BY bucket_ts ASC
-    ]], bms, bms, tenant_clause)
+    ]], bms, bms, extra_clause)
     local rows
     if tenant_id then
         rows = query_all(ldb, sql, since_ms, tenant_id) or {}
@@ -1368,6 +1559,7 @@ function M.get_analytics_depth(since_ms)
     -- Usage by authenticated user (user_id populated by auth middleware from token)
     local by_user = query_all(ldb, [[
         SELECT r.user_id, r.tenant_id,
+               u.email,
                COUNT(*)                                                            AS requests,
                SUM(CASE WHEN r.blocked=1 OR r.scrub_applied=1 THEN 1 ELSE 0 END) AS blocked,
                SUM(CASE WHEN r.cached=1 THEN 1 ELSE 0 END)                        AS cached,
@@ -1378,6 +1570,7 @@ function M.get_analytics_depth(since_ms)
                ROUND(AVG(CASE WHEN r.blocked=0 THEN r.latency_ms END),0)          AS avg_latency_ms,
                SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
         FROM request_log r
+        LEFT JOIN cfg.user u ON u.id = r.user_id
         WHERE r.ts >= ? AND r.user_id IS NOT NULL
         GROUP BY r.user_id, r.tenant_id ORDER BY cost_usd DESC
         LIMIT 50
@@ -1434,12 +1627,12 @@ end
 -- Audit log
 -- ---------------------------------------------------------------------------
 
-function M.insert_audit_log(actor_ip, method, path, status)
+function M.insert_audit_log(actor_ip, method, path, status, actor_id)
     -- Best-effort: ignore errors so audit failures never affect the response.
     pcall(exec_one, cfg_db(), [[
-        INSERT INTO audit_log (actor_ip, method, path, status)
-        VALUES (?, ?, ?, ?)
-    ]], actor_ip, method, path, status)
+        INSERT INTO audit_log (actor_ip, actor_id, method, path, status)
+        VALUES (?, ?, ?, ?, ?)
+    ]], actor_ip, actor_id, method, path, status)
 end
 
 function M.list_audit_logs(limit, offset)
@@ -1448,7 +1641,7 @@ function M.list_audit_logs(limit, offset)
     return query_all(cfg_db(), [[
         SELECT id,
                strftime('%Y-%m-%dT%H:%M:%SZ', ts/1000, 'unixepoch') AS ts,
-               actor_ip, method, path, status
+               actor_id, actor_ip, method, path, status
         FROM   audit_log
         ORDER  BY id DESC
         LIMIT  ? OFFSET ?
@@ -1599,4 +1792,126 @@ function M.increment_semantic_hit(id)
     ]], id)
 end
 
+-- ---------------------------------------------------------------------------
+-- Organization CRUD
+-- ---------------------------------------------------------------------------
+
+function M.create_org(id, name, slug)
+    return exec_one(cfg_db(), [[
+        INSERT OR IGNORE INTO organization (id, name, slug) VALUES (?,?,?)
+    ]], id, name, slug)
+end
+
+function M.list_orgs()
+    return query_all(cfg_db(), [[
+        SELECT id, name, slug,
+               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
+        FROM organization WHERE deleted_at IS NULL ORDER BY name
+    ]]) or {}
+end
+
+function M.get_org(id)
+    return query_one(cfg_db(), [[
+        SELECT id, name, slug,
+               strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
+        FROM organization WHERE id = ? AND deleted_at IS NULL
+    ]], id)
+end
+
+function M.update_org(id, name, slug)
+    return exec_one(cfg_db(), [[
+        UPDATE organization SET name = ?, slug = ? WHERE id = ?
+    ]], name, slug, id)
+end
+
+function M.delete_org(id)
+    return exec_one(cfg_db(), [[
+        UPDATE organization SET deleted_at = ? WHERE id = ?
+    ]], os.time(), id)
+end
+
+-- ---------------------------------------------------------------------------
+-- Admin user lookup
+-- ---------------------------------------------------------------------------
+
+-- Returns the active user with the given email (any role can log in).
+function M.find_admin_user_by_email(email)
+    return query_one(cfg_db(), [[
+        SELECT id, email, name, role, organization_id
+        FROM user
+        WHERE email = ? AND deleted_at IS NULL
+        LIMIT 1
+    ]], email)
+end
+
+-- Bootstrap: create the first admin user if none exists and env var is set.
+function M.bootstrap_admin()
+    local email = os.getenv("AIG_BOOTSTRAP_ADMIN_EMAIL")
+    if not email or email == "" then return end
+
+    local existing = query_one(cfg_db(), [[
+        SELECT id FROM user WHERE role = 'admin' AND deleted_at IS NULL LIMIT 1
+    ]])
+    if existing then return end  -- already have an admin
+
+    local id = uuid_lib.v4()
+    local name = os.getenv("AIG_BOOTSTRAP_ADMIN_NAME") or "Admin"
+    exec_one(cfg_db(), [[
+        INSERT OR IGNORE INTO user (id, organization_id, email, name, role)
+        VALUES (?, NULL, ?, ?, 'admin')
+    ]], id, email, name)
+    ngx.log(ngx.NOTICE, "auth: bootstrap admin created — ", email,
+            " — use email OTP or Google SSO to log in")
+end
+
+-- ---------------------------------------------------------------------------
+-- Email OTP
+-- ---------------------------------------------------------------------------
+
+function M.insert_email_otp(id, email, code_hash, expires_at, ip_addr)
+    -- Purge stale OTPs for this email first (best-effort)
+    pcall(exec_one, cfg_db(), [[
+        DELETE FROM email_otp WHERE email = ? AND (used_at IS NOT NULL OR expires_at < ?)
+    ]], email, os.time())
+    return exec_one(cfg_db(), [[
+        INSERT INTO email_otp (id, email, code_hash, expires_at, ip_addr) VALUES (?,?,?,?,?)
+    ]], id, email, code_hash, expires_at, ip_addr)
+end
+
+-- Validate and consume an OTP. Returns nil on success, error string on failure.
+function M.consume_email_otp(email, code_hash)
+    local row = query_one(cfg_db(), [[
+        SELECT id FROM email_otp
+        WHERE email = ? AND code_hash = ? AND used_at IS NULL AND expires_at > ?
+        LIMIT 1
+    ]], email, code_hash, os.time())
+    if not row then return "invalid or expired code" end
+    exec_one(cfg_db(), [[
+        UPDATE email_otp SET used_at = ? WHERE id = ?
+    ]], os.time(), row.id)
+    return nil
+end
+
+-- ---------------------------------------------------------------------------
+-- OAuth links
+-- ---------------------------------------------------------------------------
+
+function M.upsert_oauth_link(user_id, provider, subject, email)
+    return exec_one(cfg_db(), [[
+        INSERT OR REPLACE INTO oauth_link (user_id, provider, subject, email)
+        VALUES (?,?,?,?)
+    ]], user_id, provider, subject, email)
+end
+
+function M.get_user_by_oauth(provider, subject)
+    return query_one(cfg_db(), [[
+        SELECT u.id, u.email, u.name, u.role, u.organization_id
+        FROM oauth_link l
+        JOIN user u ON u.id = l.user_id
+        WHERE l.provider = ? AND l.subject = ? AND u.deleted_at IS NULL
+        LIMIT 1
+    ]], provider, subject)
+end
+
 return M
+

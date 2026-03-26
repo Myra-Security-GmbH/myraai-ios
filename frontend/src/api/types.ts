@@ -30,6 +30,13 @@ export interface SiemConfig {
   format?: "cef" | "rfc5424";
 }
 
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
+}
+
 export interface Tenant {
   id: string;
   slug: string;
@@ -37,6 +44,7 @@ export interface Tenant {
   budget_usd: number | null;
   budget_period: BudgetPeriod;
   siem?: SiemConfig;
+  organization_id: string | null;
   created_at: string;
 }
 
@@ -188,8 +196,8 @@ export interface Gateway {
 
 export interface User {
   id: string;
-  tenant_id: string;
-  tenant_slug: string;
+  organization_id: string | null;
+  org_slug: string | null;
   email: string;
   name: string | null;
   role: "admin" | "member" | "viewer";
@@ -341,6 +349,7 @@ export interface GatewayStats {
 export interface UserStats {
   user_id: string;
   tenant_id: string;
+  email: string | null;
   requests: number;
   blocked: number;
   cached: number;

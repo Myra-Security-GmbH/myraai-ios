@@ -715,7 +715,7 @@ export default function TenantAnalytics() {
                       const cacheRate = row.requests > 0 ? ((row.cached / row.requests) * 100).toFixed(0) : null;
                       return (
                         <tr key={row.user_id}>
-                          <td><span className={s.code}>{row.user_id}</span></td>
+                          <td><span className={s.code}>{row.email ?? row.user_id}</span></td>
                           <td>{fmt(row.requests)}</td>
                           <td>{fmtCost(row.cost_usd)}</td>
                           <td><ProportionBar value={row.cost_usd} max={maxUserCost} /></td>

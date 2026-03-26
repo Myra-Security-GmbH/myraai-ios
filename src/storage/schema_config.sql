@@ -8,9 +8,10 @@ CREATE TABLE IF NOT EXISTS tenant (
     slug          TEXT UNIQUE NOT NULL,
     plan          TEXT NOT NULL DEFAULT 'free',
     budget_usd    REAL,
-    budget_period TEXT NOT NULL DEFAULT 'monthly',    -- 'monthly' | 'daily' | 'total'
-    siem_config   TEXT,                              -- JSON {type, url, token, ...} or NULL
-    deleted_at    INTEGER,                            -- Unix seconds, NULL = active
+    budget_period TEXT NOT NULL DEFAULT 'monthly',
+    siem_config   TEXT,
+    organization_id TEXT REFERENCES organization(id) ON DELETE SET NULL,
+    deleted_at    INTEGER,
     created_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
 );
 
@@ -35,16 +36,26 @@ CREATE TABLE IF NOT EXISTS provider_config (
     UNIQUE(gateway_id, provider, alias)
 );
 
--- Users belonging to a tenant (human identities, as opposed to service tokens)
+-- Organizations group tenants and admin users (platform multi-tenancy).
+CREATE TABLE IF NOT EXISTS organization (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    slug       TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    deleted_at INTEGER
+);
+
+-- Users: one org per user, role scoped to that org.
+-- Platform admins (role='admin') may have organization_id NULL.
+-- role: 'admin' (platform superadmin) | 'member' (org full access) | 'viewer' (read-only, no inference)
 CREATE TABLE IF NOT EXISTS user (
-    id          TEXT PRIMARY KEY,                   -- UUID
-    tenant_id   TEXT NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
-    email       TEXT NOT NULL,
-    name        TEXT,
-    role        TEXT NOT NULL DEFAULT 'member',     -- 'admin' | 'member' | 'viewer'
-    deleted_at  INTEGER,                            -- Unix seconds, NULL = active
-    created_at  INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
-    UNIQUE(tenant_id, email)
+    id              TEXT PRIMARY KEY,
+    organization_id TEXT REFERENCES organization(id) ON DELETE CASCADE,
+    email           TEXT NOT NULL UNIQUE,
+    name            TEXT,
+    role            TEXT NOT NULL DEFAULT 'member',
+    deleted_at      INTEGER,
+    created_at      INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
 );
 
 -- Fine-grained per-user gateway access (only enforced for role='member')
@@ -150,13 +161,34 @@ CREATE INDEX IF NOT EXISTS idx_pgt_gateway    ON playground_trace(gateway_id, cr
 CREATE INDEX IF NOT EXISTS idx_pgts_trace_seq ON playground_trace_step(trace_id, seq);
 
 -- Admin API audit log: records every mutating admin request (POST/PATCH/DELETE).
--- actor_id is NULL until admin API authentication is implemented (Sprint 1a).
 CREATE TABLE IF NOT EXISTS audit_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     ts         INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER) * 1000),
+    actor_id   TEXT,
     actor_ip   TEXT,
     method     TEXT NOT NULL,
     path       TEXT NOT NULL,
     status     INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
+
+-- Email one-time-codes for admin login.
+CREATE TABLE IF NOT EXISTS email_otp (
+    id         TEXT PRIMARY KEY,
+    email      TEXT NOT NULL,
+    code_hash  TEXT NOT NULL,   -- SHA-256 hex of 6-digit code
+    expires_at INTEGER NOT NULL,
+    used_at    INTEGER,
+    ip_addr    TEXT,
+    created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+);
+CREATE INDEX IF NOT EXISTS idx_otp_email ON email_otp(email, expires_at);
+
+-- OAuth provider identity links (Google SSO).
+CREATE TABLE IF NOT EXISTS oauth_link (
+    user_id    TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    provider   TEXT NOT NULL,   -- 'google'
+    subject    TEXT NOT NULL,   -- provider's user id (Google sub)
+    email      TEXT,
+    PRIMARY KEY (provider, subject)
+);

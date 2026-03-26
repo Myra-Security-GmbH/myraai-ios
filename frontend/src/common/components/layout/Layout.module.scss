@@ -17,7 +17,7 @@
 .page-title {
   font-family: $primary-font-family;
   font-size: tools.pixelToRem(24);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
   margin: 0;
 }
@@ -79,7 +79,7 @@
 .stat-value {
   font-family: $primary-font-family;
   font-size: tools.pixelToRem(28);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
   line-height: 1;
 
@@ -178,7 +178,7 @@
 .hero-value {
   font-family: $primary-font-family;
   font-size: tools.pixelToRem(36);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
   line-height: 1;
   margin-bottom: tools.pixelToRem(8);
@@ -216,7 +216,7 @@
 .period-card-header {
   font-family: $primary-font-family;
   font-size: tools.pixelToRem(13);
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text-primary);
@@ -458,7 +458,7 @@ table.table tbody tr.blocked td {
 .modal-title {
   font-family: $primary-font-family;
   font-size: tools.pixelToRem(18);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
   margin: 0;
 }
@@ -503,7 +503,7 @@ table.table tbody tr.blocked td {
 }
 
 .code {
-  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-family: monospace;
   font-size: tools.pixelToRem(12);
   background: var(--section-bg);
   padding: tools.pixelToRem(2) tools.pixelToRem(6);
@@ -512,7 +512,7 @@ table.table tbody tr.blocked td {
 }
 
 .mono {
-  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-family: monospace;
   font-size: tools.pixelToRem(12);
 }
 

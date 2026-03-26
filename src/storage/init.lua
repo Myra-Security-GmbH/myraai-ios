@@ -8,6 +8,8 @@ if cfg.storage == "sqlite" then
     return require("storage.sqlite")
 elseif cfg.storage == "postgres" then
     return require("storage.postgres")
+elseif cfg.storage == "mysql" then
+    return require("storage.mysql")
 else
     error("storage/init: unknown backend '" .. tostring(cfg.storage) .. "'")
 end

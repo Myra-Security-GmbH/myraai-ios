@@ -5,7 +5,6 @@
 local storage = require("storage")
 local json    = require("utils.json")
 local uuid    = require("utils.uuid")
-local trace   = require("utils.trace")
 
 local M = {}
 
@@ -80,16 +79,23 @@ function M.emit(ctx)
     -- Derive blocked flag from blocked_by (set by guardrails/detector/rate_limit/etc.)
     fields.blocked = fields.blocked_by ~= nil
 
-    local err = storage.insert_log(fields)
-    if err then
-        ngx.log(ngx.ERR, "logger: insert_log error: ", err)
-    end
+    -- Defer the DB write via timer so it runs outside log_by_lua* context,
+    -- which is required for resty.mysql (MySQL API is disabled in log phase).
+    ngx.timer.at(0, function(_, f)
+        local s = require("storage")
+        local e = s.insert_log(f)
+        if e then ngx.log(ngx.ERR, "logger: insert_log error: ", e) end
+    end, fields)
 
     -- Finalise trace for blocked/error paths that did not reach send_response.lua
-    -- or the streaming handlers (idempotent — already called for normal completions)
+    -- or the streaming handlers (idempotent — already called for normal completions).
+    -- Must be deferred: MySQL API is disabled in log_by_lua* phase.
     if ctx.trace_id then
-        trace.done(ctx, fields.blocked and "blocked" or "done",
-                   fields.blocked and fields.block_reason or nil)
+        local trace_status = fields.blocked and "blocked" or "done"
+        local trace_err    = fields.blocked and fields.block_reason or nil
+        ngx.timer.at(0, function(_, tid, st, er)
+            require("storage").complete_playground_trace(tid, st, er)
+        end, ctx.trace_id, trace_status, trace_err)
     end
 
     -- Fire "blocked" webhook asynchronously when the request was blocked
@@ -108,14 +114,14 @@ function M.emit(ctx)
 
     -- Stream to SIEM (gateway.config.siem overrides tenant-level siem, already merged)
     local siem_cfg = ctx.gateway_config and ctx.gateway_config.siem
-    if siem_cfg then
+    if type(siem_cfg) == "table" then
         local ok, siem = pcall(require, "observability.siem")
         if ok then siem.emit(siem_cfg, fields) end
     end
 
     -- Fire OTel span export asynchronously
     local tracing = ctx.gateway_config and ctx.gateway_config.tracing
-    if tracing and tracing.otlp_endpoint then
+    if type(tracing) == "table" and tracing.otlp_endpoint then
         local ok, tracer = pcall(require, "observability.tracer")
         if ok then tracer.emit(ctx, tracing) end
     end

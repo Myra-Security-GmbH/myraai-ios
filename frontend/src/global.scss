@@ -1,0 +1,5 @@
+@use "@myraui/styles/scss/variables/typography" as *;
+
+body {
+  font-family: $primary-font-family;
+}

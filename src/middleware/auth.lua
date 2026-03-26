@@ -85,13 +85,7 @@ function M.run(ctx)
         if user.role == "viewer" then
             errors.send("FORBIDDEN", "Viewer role cannot make inference requests")
         end
-        -- member role: check per-gateway access
-        if user.role == "member" then
-            local has_access = storage.check_user_gateway_access(user.id, ctx.gateway_id)
-            if not has_access then
-                errors.send("FORBIDDEN", "Gateway not accessible to this user")
-            end
-        end
+        -- member role has access to all gateways in their org (no per-gateway check)
         ctx.user_id   = user.id
         ctx.user_role = user.role
     end

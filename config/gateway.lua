@@ -1,10 +1,12 @@
 -- config/gateway.lua — AI Gateway runtime configuration
 --
--- storage: "sqlite" | "postgres"
+-- storage: "sqlite" | "postgres" | "mysql"
 -- state:   "shared_dict" | "redis"
 --
--- AIG_DATA_DIR env var sets the SQLite data directory.
--- Defaults to the directory containing this config file.
+-- Bootstrap admin: set AIG_BOOTSTRAP_ADMIN_EMAIL to auto-create the first
+-- admin user on startup. Subsequent starts are no-ops if an admin exists.
+--   AIG_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+--   AIG_BOOTSTRAP_ADMIN_NAME=Admin  (optional)
 
 local _cfg_dir = debug.getinfo(1,"S").source:sub(2):match("^(.*/)") or "./"
 local _data_dir = os.getenv("AIG_DATA_DIR") or (_cfg_dir .. "../data")
@@ -12,9 +14,28 @@ local _data_dir = os.getenv("AIG_DATA_DIR") or (_cfg_dir .. "../data")
 return {
 
     -- -------------------------------------------------------------------------
+    -- Admin authentication (JWT + Google SSO + Email OTP)
+    -- -------------------------------------------------------------------------
+    auth = {
+        -- HS256 secret — MUST be changed in production.
+        jwt_secret           = os.getenv("AIG_JWT_SECRET") or "dev-change-me",
+        -- Session lifetime in seconds (default 8 h).
+        jwt_expiry_secs      = tonumber(os.getenv("AIG_JWT_EXPIRY_SECS")) or 28800,
+        -- Google OAuth 2.0 credentials (optional; leave nil to disable Google SSO).
+        google_client_id     = os.getenv("AIG_GOOGLE_CLIENT_ID"),
+        google_client_secret = os.getenv("AIG_GOOGLE_CLIENT_SECRET"),
+        google_redirect_uri  = os.getenv("AIG_GOOGLE_REDIRECT_URI")
+                               or "http://localhost:8081/admin/auth/google/callback",
+        -- From-address used in OTP emails.
+        otp_from_email       = os.getenv("AIG_OTP_FROM_EMAIL") or "noreply@localhost",
+        -- OTP code lifetime in seconds (default 15 min).
+        otp_expiry_secs      = tonumber(os.getenv("AIG_OTP_EXPIRY_SECS")) or 900,
+    },
+
+    -- -------------------------------------------------------------------------
     -- Storage backend (persistent: tenants, gateways, keys, tokens, rules)
     -- -------------------------------------------------------------------------
-    storage = "sqlite",
+    storage = os.getenv("AIG_STORAGE") or "mysql",
 
     sqlite = {
         config_db = _data_dir .. "/config.db",
@@ -27,6 +48,16 @@ return {
         database = "ai_gateway",
         user     = "gateway",
         password = "",
+        pool_size    = 50,
+        pool_timeout = 10000,
+    },
+
+    mysql = {
+        host         = os.getenv("AIG_MYSQL_HOST") or "127.0.0.1",
+        port         = tonumber(os.getenv("AIG_MYSQL_PORT")) or 3306,
+        database     = os.getenv("AIG_MYSQL_DB")   or "gateway_dev",
+        user         = os.getenv("AIG_MYSQL_USER")  or "gateway",
+        password     = os.getenv("AIG_MYSQL_PASS")  or "gateway",
         pool_size    = 50,
         pool_timeout = 10000,
     },
