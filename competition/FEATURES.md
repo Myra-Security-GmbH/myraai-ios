@@ -47,8 +47,8 @@ Requests flow through a fixed middleware chain in phase order:
 6. `ip_allowlist` — CIDR allowlist enforcement
 
 **Content phase** (body available):
-1. `cache_check` — SHA-256 exact-match lookup; serve immediately on hit
-2. `guardrails` — Guardrail pipeline: Tier 1 (regex, keyword, jailbreak) then Tier 2 (presidio, prompt_guard, pii_protector) on request
+1. `cache_check` — SHA-256 exact-match lookup; serve immediately on hit; falls back to semantic embedding similarity check if configured
+2. `guardrails` — Guardrail pipeline: Tier 1 (regex, keyword, jailbreak, json_schema, contains_code, gibberish, language) then Tier 2 (presidio, prompt_guard, pii_protector) on request
 3. `transform` — Parse and normalize request body
 4. `routing` — Rules engine (provider, model, fallback chain)
 5. `byok` — Decrypt and inject provider API key
@@ -62,6 +62,8 @@ Requests flow through a fixed middleware chain in phase order:
 **Log phase** (best-effort, after response sent):
 1. Structured JSON request log
 2. Prometheus metrics update
+3. SIEM export (Splunk HEC / Elasticsearch / Vector / Syslog-CEF) — if configured
+4. OpenTelemetry span export (OTLP/HTTP JSON) — if `tracing.otlp_endpoint` is set
 
 ---
 
@@ -279,7 +281,54 @@ Automatically opens when a provider accumulates failures, then probes after a co
 
 ### Semantic Cache
 
-Planned (pgvector / Redis vector similarity) — not yet implemented.
+Embedding-based similarity cache that serves near-duplicate and rephrased prompts from cache without calling the upstream model.
+
+**How it works:**
+
+1. On cache miss, the incoming prompt is embedded via a configurable embedding API
+2. Cosine similarity is computed against stored embeddings for the same gateway + model
+3. If the best match exceeds the configured threshold, the cached response is returned
+4. On upstream success, the prompt embedding and response are stored asynchronously via `ngx.timer.at(0, ...)` — never blocking the response path
+
+**Configuration:**
+
+```json
+"semantic_cache": {
+  "enabled": true,
+  "threshold": 0.95,
+  "embedding_url": "https://api.openai.com/v1/embeddings",
+  "embedding_api_key": "sk-...",
+  "embedding_model": "text-embedding-3-small",
+  "max_candidates": 100,
+  "ttl": 86400
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Enable semantic cache for this gateway |
+| `threshold` | `0.95` | Cosine similarity threshold (0.0–1.0); lower = more aggressive caching |
+| `embedding_url` | — | OpenAI-compatible embeddings endpoint |
+| `embedding_api_key` | — | API key for the embedding service |
+| `embedding_model` | — | Embedding model name (e.g. `text-embedding-3-small`) |
+| `max_candidates` | `100` | Maximum stored embeddings to compare per lookup |
+| `ttl` | `86400` | Cache entry TTL in seconds (default: 24 h) |
+
+**Response headers on semantic hit:**
+- `X-AIG-Cache: SEMANTIC_HIT`
+- `X-AIG-Similarity: <score>` (e.g. `0.9823`)
+
+**Threshold guidance:**
+- `0.97–1.00` — strict (exact or near-exact phrasing only)
+- `0.95` — balanced (recommended starting point)
+- `0.92–0.94` — loose (rephrased or expanded questions; higher false-positive risk)
+
+**Storage:** `semantic_cache` table in the logs SQLite database. Entries indexed by `(gateway_id, model, created_at DESC)`.
+
+**Constraints:**
+- Streaming responses are not semantically cached
+- Embedding API call adds ~50 ms on cache miss (negligible vs 500 ms–3 s LLM latency)
+- Works with any OpenAI-compatible embedding endpoint, including Ollama (`/api/embeddings`) for on-premise deployments
 
 ---
 
@@ -393,10 +442,15 @@ Guardrails are configured as an ordered array on each gateway. The orchestrator 
 
 Runs synchronously in the Lua middleware with no external dependencies.
 
-| Detector | Method | Key config fields |
-|---|---|---|
-| `regex` | Named pattern sets + custom regex | `patterns` (built-in sets), `custom_patterns` (regex strings) |
-| `keyword` | String search with optional whole-word matching | `keywords`, `case_sensitive`, `whole_word` |
+| Detector | Method | Phase | Key config fields |
+|---|---|---|---|
+| `regex` | Named pattern sets + custom regex | both | `patterns` (built-in sets), `custom_patterns` (regex strings) |
+| `keyword` | String search with optional whole-word matching | both | `keywords`, `case_sensitive`, `whole_word` |
+| `jailbreak` | Regex + heuristic pattern matching for prompt injection | request | `sensitivity` (`low`/`medium`/`high`) |
+| `json_schema` | Validates response body against a JSON Schema draft-7 spec | response | `schema` (inline JSON Schema object); strips code fences before validation |
+| `contains_code` | Detects code blocks via fence markers and heuristics across 6 languages | both | `languages` (array: `python`, `javascript`, `bash`, `sql`, `html`, `css`), `min_signals` (default 2) |
+| `gibberish` | Three-signal model: Shannon entropy + word repetition ratio + alpha ratio | response | `entropy_threshold` (default 2.5), `repetition_threshold` (default 0.15), `alpha_threshold` (default 0.6) |
+| `language` | UTF-8 byte-range heuristics across 7 writing systems | both | `allowed` (array of script names), `blocked` (array), `min_ratio` (default 0.1) |
 
 ### Tier 2 — Sidecar HTTP (Accurate)
 
@@ -420,7 +474,7 @@ Calls external HTTP services. Each detector has a configurable `url`, `timeout_m
 
 | Field | Description |
 |---|---|
-| `type` | Detector type: `regex`, `keyword`, `presidio`, `prompt_guard`, `pii_protector` |
+| `type` | Detector type: `regex`, `keyword`, `jailbreak`, `json_schema`, `contains_code`, `gibberish`, `language`, `presidio`, `prompt_guard`, `pii_protector` |
 | `name` | Human-readable label (appears in block messages and logs) |
 | `action` | `block`, `flag`, or `scrub` |
 | `target` | `request`, `response`, or `both` |
@@ -649,6 +703,73 @@ Written after each request completes. Fields:
 ### Client Error Reporting
 
 Frontend JavaScript errors are reported to `POST /admin/v1/client-errors` and stored in the `client_errors` table. Queryable via `GET /admin/v1/client-errors?limit=N`.
+
+### SIEM Integration
+
+Structured log events forwarded to external security and observability platforms. Configured per gateway under `siem` in gateway config. Delivery is asynchronous via `ngx.timer.at(0, ...)`.
+
+| Backend | Protocol | Notes |
+|---|---|---|
+| Splunk HEC | HTTPS POST | `Authorization: Splunk <token>`; event wrapped in `{"event": ...}` |
+| Elasticsearch | HTTPS POST | `/_doc` index endpoint; Basic Auth or API key |
+| Vector | HTTP JSON | Compatible with Vector's HTTP source |
+| Syslog/CEF | Syslog UDP/TCP | Common Event Format; `DeviceVendor=AIGateway`, `DeviceProduct=RequestLog` |
+
+```json
+"siem": {
+  "type": "splunk_hec",
+  "url": "https://splunk.corp.example.com:8088/services/collector",
+  "token": "xxx",
+  "timeout_ms": 3000,
+  "fail_open": true
+}
+```
+
+- `fail_open: true` (default) — SIEM delivery errors do not affect the request log
+- Fields forwarded: full structured log entry (identity, routing, status, cache, tokens, cost, timing, guardrails, meta)
+
+### OpenTelemetry Distributed Tracing
+
+W3C `traceparent` propagation with OTLP/HTTP JSON span export. Enabled by setting `tracing.otlp_endpoint`.
+
+**Config:**
+
+```json
+"tracing": {
+  "otlp_endpoint": "http://otel-collector:4318",
+  "service_name": "ai-gateway",
+  "headers": {},
+  "sample_rate": 1.0,
+  "include_bodies": false
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `otlp_endpoint` | — | OTLP/HTTP collector URL; required to enable export |
+| `service_name` | `"ai-gateway"` | `service.name` resource attribute |
+| `headers` | `{}` | Extra headers injected into every OTLP POST (e.g. auth) |
+| `sample_rate` | `1.0` | Fraction of requests exported (0.0–1.0) |
+| `include_bodies` | `false` | Include prompt/response text in span attributes |
+
+**Span model:**
+
+| Span | Kind | Name | Parent |
+|---|---|---|---|
+| Root span | SERVER (2) | `inference` | Incoming `traceparent` (if present) |
+| Upstream span | CLIENT (3) | `upstream.<provider>` | Root span |
+
+**Root span attributes (GenAI semantic conventions):**
+
+`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.request.cost_usd`, `http.status_code`, `aig.tenant_id`, `aig.gateway_id`, `aig.cached`, `aig.blocked`
+
+**Upstream span attributes:**
+
+`gen_ai.system`, `gen_ai.request.model`, `http.status_code`, `aig.upstream_latency_ms`, `aig.upstream_attempts`, `aig.fallback_provider` (when fallback was used)
+
+**W3C traceparent forwarding:**
+
+Incoming `traceparent` header is parsed and propagated. If present, its `trace_id` is reused and the gateway's root span becomes a child. The `traceparent` header is also injected into every upstream provider call for end-to-end correlation.
 
 ---
 
@@ -926,6 +1047,23 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
     "mode": "opt-in"
   },
   "ollama": {"think": false},
+  "semantic_cache": {
+    "enabled": false,
+    "threshold": 0.95,
+    "embedding_url": null,
+    "embedding_api_key": null,
+    "embedding_model": null,
+    "max_candidates": 100,
+    "ttl": 86400
+  },
+  "siem": null,
+  "tracing": {
+    "otlp_endpoint": null,
+    "service_name": "ai-gateway",
+    "headers": {},
+    "sample_rate": 1.0,
+    "include_bodies": false
+  },
   "azure_endpoint": null,
   "azure_deployment": null,
   "azure_api_version": "2024-02-01",
