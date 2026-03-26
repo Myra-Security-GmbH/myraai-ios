@@ -1,0 +1,71 @@
+services:
+  gateway:
+    build:
+      context: .
+      args:
+        VITE_ADMIN_URL: "https://ai-api-admin.myra.eu/admin/v1"
+        VITE_AUTH_URL:  "https://ai-api-admin.myra.eu/admin/auth"
+    ports:
+      - "[2a02:cb43:3014::505a:f89]:443:443"
+    environment:
+      # --- secrets (set in run_docker_production.sh) ---
+      AIG_MASTER_KEY:           "${AIG_MASTER_KEY}"
+      AIG_JWT_SECRET:           "${AIG_JWT_SECRET}"
+      AIG_MYSQL_PASS:           "${AIG_MYSQL_PASS}"
+      # --- routing ---
+      AIG_ADMIN_CORS_ORIGIN:    "https://ai.myra.eu"
+      # --- storage ---
+      AIG_STORAGE:              "mysql"
+      AIG_MYSQL_HOST:           "172.17.0.1"
+      AIG_MYSQL_PORT:           "3306"
+      AIG_MYSQL_DB:             "ai_gateway"
+      AIG_MYSQL_USER:           "gateway"
+      # --- email OTP ---
+      AIG_OTP_FROM_EMAIL:       "${AIG_OTP_FROM_EMAIL}"
+      # --- bootstrap (first start only; ignored once an admin exists) ---
+      AIG_BOOTSTRAP_ADMIN_EMAIL: "${AIG_BOOTSTRAP_ADMIN_EMAIL}"
+      # --- SMTP relay for OTP emails ---
+      AIG_SMTP_HOST:            "${AIG_SMTP_HOST}"
+      AIG_SMTP_PORT:            "${AIG_SMTP_PORT:-587}"
+      AIG_SMTP_USER:            "${AIG_SMTP_USER}"
+      AIG_SMTP_PASS:            "${AIG_SMTP_PASS}"
+      # --- optional: Google SSO ---
+      # AIG_GOOGLE_CLIENT_ID:     "${AIG_GOOGLE_CLIENT_ID}"
+      # AIG_GOOGLE_CLIENT_SECRET: "${AIG_GOOGLE_CLIENT_SECRET}"
+      # --- optional: guardrail sidecars ---
+      PRESIDIO_ANALYZER_URL:    "http://presidio:5002"
+      PRESIDIO_ANONYMIZER_URL:  "http://presidio:5001"
+      PROMPT_GUARD_URL:         "http://prompt-guard:8083"
+    volumes:
+      - gateway-data:/data                                           # SQLite persistence (unused when AIG_STORAGE=mysql)
+      - /etc/letsencrypt/live/myra.eu.crt:/certs/fullchain.pem:ro  # TLS certificate
+      - /etc/letsencrypt/live/myra.eu.key:/certs/privkey.pem:ro    # TLS private key
+    depends_on:
+      presidio:
+        condition: service_started
+        required: false
+
+  presidio:
+    build:
+      context: .
+      dockerfile: config/Dockerfile.presidio
+    profiles: ["pii"]              # opt-in: docker compose --profile pii up
+
+  # MySQL — uncomment if using AIG_STORAGE=mysql
+  # mysql:
+  #   image: mysql:8.0
+  #   environment:
+  #     MYSQL_DATABASE: ai_gateway
+  #     MYSQL_USER: gateway
+  #     MYSQL_PASSWORD: "${MYSQL_PASSWORD}"
+  #     MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+  #   volumes:
+  #     - mysql-data:/var/lib/mysql
+
+  # prompt-guard:
+  #   image: <llama-guard-openai-server>
+  #   profiles: ["guardrails"]
+
+volumes:
+  gateway-data:
+  # mysql-data:
