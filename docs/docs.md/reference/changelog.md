@@ -4,6 +4,44 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ---
 
+## Chat
+
+**New: Persistent multi-turn chat** — The **Chat** page provides a full conversation UI that routes every message through the gateway. Conversations are saved per user, support multi-turn history, and are completely isolated — no user can access another user's conversations. See [Chat](../admin-ui/chat.md).
+
+**New: File attachments in chat** — Attach images (JPEG, PNG, GIF, WebP), PDFs, and plain text files to any message. Each file type is sent as the appropriate Anthropic content block (image, document, or text).
+
+**New: Word document (.docx) support** — `.docx` files are uploaded to the Anthropic Files API and processed by the Anthropic docx Agent Skill. Claude reads and analyses the document content server-side. The skill header is automatically re-sent on follow-up turns in the same conversation.
+
+**New: Unsupported file error** — Attaching a file type that the gateway cannot forward now shows an explicit error message listing supported formats. Previously, unsupported files were silently ignored.
+
+**New: Chat localStorage persistence** — Tenant, gateway, and model selections are saved to local storage and restored when you return to the Chat page or navigate away and back.
+
+---
+
+## Gateway detail view
+
+**New: Collapsible cards** — Each card on the gateway detail page (Gateway config, Provider Keys, Auth Tokens, Guardrails, Routing Rules, Circuit Breaker) can be individually collapsed and expanded using the ▼/▶ toggle in the card header. Collapsed state is persisted per gateway in local storage.
+
+---
+
+## SIEM Integration
+
+**New: SIEM event streaming** — Security events can now be forwarded asynchronously to an external SIEM. Supported backends: Splunk HEC, Elasticsearch / OpenSearch, Vector HTTP source, and Syslog (CEF or RFC 5424). SIEM config can be set at tenant level (default for all gateways) or overridden per gateway. Delivery is fire-and-forget and never adds latency to inference requests. See [SIEM Integration](../configuration/siem.md).
+
+---
+
+## Admin UI — Role-based navigation
+
+**New: Management section hidden from member and viewer roles** — The **Management** sidebar section (Tenants, Gateways, Users) is now visible only to `admin` and `tenant_admin` users. `member` and `viewer` users see only the Observability, Config, and Account sections.
+
+---
+
+## Users
+
+**New: Tenant reassignment** — `admin` users can now reassign a user to a different tenant from the Edit User dialog. `tenant_admin` users cannot change another user's tenant.
+
+---
+
 ## Analytics Dashboard
 
 **New: Analytics tabs** — The analytics view now breaks down activity across five tabs: By Tenant, By Gateway, By Provider, By Model, and By User. Each tab has a filter bar for searching by name or ID.

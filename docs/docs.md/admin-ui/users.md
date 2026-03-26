@@ -34,6 +34,8 @@ Click **+ New User**. Fill in email, name (optional), and role, then click **Cre
 
 Open the user detail panel and click **Edit**. You can update the email, name, and role.
 
+`admin` users can additionally reassign the user to a different **tenant** from the edit dialog. `tenant_admin` users cannot change a user's tenant (they can only manage users within their own tenant).
+
 ---
 
 ## Deleting a user

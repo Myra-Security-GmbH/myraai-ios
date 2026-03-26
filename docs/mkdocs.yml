@@ -76,6 +76,7 @@ nav:
     - admin-ui/authentication.md
     - admin-ui/users.md
     - admin-ui/my-tokens.md
+    - admin-ui/chat.md
   - Core Concepts:
     - concepts/request-pipeline.md
     - concepts/multi-tenancy.md

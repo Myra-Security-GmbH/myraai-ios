@@ -20,6 +20,7 @@ Browse all documentation topics by category.
     - [Admin Panel Authentication](../admin-ui/authentication.md)
     - [User Management](../admin-ui/users.md)
     - [My Tokens](../admin-ui/my-tokens.md)
+    - [Chat](../admin-ui/chat.md)
 
 -   **Core Concepts**
 

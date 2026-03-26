@@ -22,6 +22,9 @@ The config is **merged at the top level** on each PATCH — only the fields you 
   "rate_limit": null,
   "ip_allowlist": [],
   "guardrails": [],
+  "circuit_breaker": null,
+  "webhooks": null,
+  "siem": null,
   "azure_endpoint": null,
   "azure_deployment": null,
   "azure_api_version": "2024-02-01",
@@ -95,7 +98,7 @@ Each guardrail object has a common set of fields plus type-specific fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `type` | string | Guardrail type: `regex`, `keyword`, `presidio`, `prompt_guard`, `pii_protector`. |
+| `type` | string | Guardrail type: `regex`, `keyword`, `jailbreak`, `json_schema`, `contains_code`, `gibberish`, `language`, `presidio`, `prompt_guard`, `pii_protector`. |
 | `name` | string | Human-readable name used in block messages and logs. |
 | `action` | string | One of `block`, `scrub`, or `flag`. |
 | `target` | string | One of `request`, `response`, or `both`. |
@@ -141,6 +144,58 @@ Example:
   "openai": "https://my-openai-proxy.internal"
 }
 ```
+
+---
+
+## Circuit breaker
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `circuit_breaker` | object \| null | `null` | Set to enable the per-provider circuit breaker. `null` disables it entirely. |
+| `circuit_breaker.enabled` | boolean | `false` | Must be `true` to activate the breaker. |
+| `circuit_breaker.failure_threshold` | integer | `5` | Number of failures within `window_sec` before the breaker opens. |
+| `circuit_breaker.window_sec` | integer | `60` | Sliding window in seconds over which failures are counted. |
+| `circuit_breaker.cooldown_ms` | integer | `30000` | Milliseconds to wait in the Open state before allowing a probe request. |
+| `circuit_breaker.failure_status_codes` | array | `[500,502,503,504]` | HTTP status codes that count as failures. Connection and timeout errors always count. |
+
+See [Circuit Breaker](../routing/circuit-breaker.md) for state machine details and examples.
+
+---
+
+## Webhooks
+
+Webhooks deliver structured event payloads to an external HTTP endpoint for integration with alerting, ITSM, and automation systems.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `webhooks` | object \| null | `null` | Set to enable outgoing webhooks. `null` disables them. |
+| `webhooks.url` | string | — | HTTPS endpoint that receives POST requests for each event. |
+| `webhooks.secret` | string | — | Optional shared secret included as `X-Webhook-Secret` on every delivery. Use to verify origin in your receiver. |
+| `webhooks.events` | array | `["blocked","budget_exceeded","circuit_open"]` | Event types to deliver. Supported values: `blocked`, `budget_exceeded`, `circuit_open`. |
+
+Example:
+
+```json
+"webhooks": {
+  "url": "https://hooks.slack.com/services/...",
+  "secret": "mysecret",
+  "events": ["blocked", "budget_exceeded"]
+}
+```
+
+---
+
+## SIEM (gateway-level override)
+
+A gateway-level `siem` key overrides the tenant-level SIEM config for that specific gateway. All fields are identical to the tenant-level config.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `siem` | object \| null | `null` | SIEM backend config for this gateway. Overrides the tenant default. Set `null` to remove the override and fall back to the tenant config. |
+| `siem.type` | string | — | Backend: `splunk_hec`, `elasticsearch`, `vector`, `syslog`. |
+| `siem.events` | array | `["blocked"]` | Event filter. Values: `blocked`, `guardrail`, `scrubbed`, `all`. |
+
+See [SIEM Integration](../configuration/siem.md) for the full field reference and per-backend examples.
 
 ---
 
