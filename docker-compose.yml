@@ -14,6 +14,7 @@ services:
       AIG_MYSQL_PASS:           "${AIG_MYSQL_PASS}"
       # --- routing ---
       AIG_ADMIN_CORS_ORIGIN:    "https://ai.myra.eu"
+      AIG_FRONTEND_URL:         "https://ai.myra.eu"
       # --- storage ---
       AIG_STORAGE:              "mysql"
       AIG_MYSQL_HOST:           "172.17.0.1"
@@ -33,13 +34,20 @@ services:
       # AIG_GOOGLE_CLIENT_ID:     "${AIG_GOOGLE_CLIENT_ID}"
       # AIG_GOOGLE_CLIENT_SECRET: "${AIG_GOOGLE_CLIENT_SECRET}"
       # --- optional: guardrail sidecars ---
-      PRESIDIO_ANALYZER_URL:    "http://presidio:5002"
-      PRESIDIO_ANONYMIZER_URL:  "http://presidio:5001"
+      PRESIDIO_ANALYZER_URL:    "http://presidio:3000"
+      PRESIDIO_ANONYMIZER_URL:  "http://presidio-anonymizer:3000"
       PROMPT_GUARD_URL:         "http://prompt-guard:8083"
     volumes:
       - gateway-data:/data                                           # SQLite persistence (unused when AIG_STORAGE=mysql)
       - /etc/letsencrypt/live/myra.eu.crt:/certs/fullchain.pem:ro  # TLS certificate
       - /etc/letsencrypt/live/myra.eu.key:/certs/privkey.pem:ro    # TLS private key
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "-H", "Host: ai-api.myra.eu", "https://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
       presidio:
         condition: service_started

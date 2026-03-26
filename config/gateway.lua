@@ -35,7 +35,7 @@ return {
     -- -------------------------------------------------------------------------
     -- Storage backend (persistent: tenants, gateways, keys, tokens, rules)
     -- -------------------------------------------------------------------------
-    storage = os.getenv("AIG_STORAGE") or "mysql",
+    storage = os.getenv("AIG_STORAGE") or "sqlite",
 
     sqlite = {
         config_db = _data_dir .. "/config.db",

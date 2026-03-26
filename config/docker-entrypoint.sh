@@ -50,7 +50,7 @@ auth           on
 tls            on
 tls_starttls   on
 tls_certcheck  off
-logfile        /dev/stderr
+logfile        /proc/1/fd/2
 
 account        default
 host           ${SMTP_HOST}
@@ -60,11 +60,18 @@ user           ${SMTP_USER}
 password       ${SMTP_PASS}
 EOF
     chmod 644 /etc/msmtprc
+
+    # Verify TCP connectivity to the SMTP relay so failures are visible at startup.
+    if curl -sf --max-time 5 "smtp://${SMTP_HOST}:${SMTP_PORT}" -o /dev/null 2>/dev/null; then
+        echo "SMTP: relay ${SMTP_HOST}:${SMTP_PORT} reachable" >&2
+    else
+        echo "WARNING: cannot reach SMTP relay ${SMTP_HOST}:${SMTP_PORT} — OTP email delivery will fail" >&2
+    fi
 else
     # No SMTP configured — write a no-op config so sendmail doesn't crash.
     cat > /etc/msmtprc <<EOF
 defaults
-logfile /dev/stderr
+logfile /proc/1/fd/2
 
 account default
 host    127.0.0.1

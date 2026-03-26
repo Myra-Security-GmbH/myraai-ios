@@ -2,6 +2,7 @@
 # Frontend must be pre-built on the host before docker build:
 #   cd frontend && VITE_ADMIN_URL=https://ai-api-admin.myra.eu/admin/v1 \
 #                  VITE_AUTH_URL=https://ai-api-admin.myra.eu/admin/auth \
+#                  VITE_GATEWAY_URL=https://ai-api.myra.eu \
 #                  npm run build
 FROM openresty/openresty:bullseye
 
@@ -10,10 +11,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         msmtp \
         msmtp-mta \
+        openresty-resty \
     && rm -rf /var/lib/apt/lists/*
 
+# Lua vendor dependencies (lua-resty-http, lua-resty-hmac)
+COPY vendor/resty/ /usr/local/openresty/lualib/resty/
+
 # Lua source (no build step — interpreted at runtime)
-COPY src/    /opt/ai-gateway/src/
+COPY src/        /opt/ai-gateway/src/
+COPY templates/  /opt/ai-gateway/templates/
 COPY config/gateway.docker.lua    /opt/ai-gateway/config/gateway.lua
 COPY config/nginx.docker.conf     /etc/openresty/nginx.conf
 COPY config/docker-entrypoint.sh  /docker-entrypoint.sh
