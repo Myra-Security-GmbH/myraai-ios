@@ -438,10 +438,10 @@ describe("Playground — ModelPicker", () => {
 // ---------------------------------------------------------------------------
 
 describe("Playground — system prompt", () => {
-  it("system prompt textarea shown by default with default prompt", async () => {
+  it("system prompt textarea visible by default", async () => {
     setupDefaultMocks();
     renderPlayground();
-    await waitFor(() => expect(screen.getByLabelText("System prompt")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hide system" })).toBeInTheDocument());
     expect(screen.getByLabelText("System prompt")).toBeInTheDocument();
   });
 
@@ -1285,6 +1285,60 @@ describe("Playground — web search", () => {
     expect(Array.isArray(leg2.tools)).toBe(true);
     expect(leg2.tools.length).toBeGreaterThan(0);
     expect(leg2.tools[0].name).toBe("web_search");
+  });
+
+  it("regression: leg 1 text-only response (no tool_use) renders directly — previously caused 400 'non-empty content'", async () => {
+    // When the model decides not to search (e.g. the question is self-contained),
+    // leg 1 returns a plain text response: content = [{type:"text", text:"..."}]
+    // with no tool_use blocks (toolUseBlocks = []).
+    //
+    // Bug: the code fell through to leg 2 and sent:
+    //   { role: "user", content: [] }   ← Anthropic rejects with 400
+    //   "messages.2: user messages must have non-empty content"
+    //
+    // Fix: when toolUseBlocks.length === 0, use leg 1 text response directly
+    // and skip leg 2 entirely.
+    let leg2Called = false;
+
+    mockApi.get.mockImplementation((path: string) => {
+      if (path === "/tenants") return Promise.resolve([TENANT1]);
+      if (path === "/models") return Promise.resolve(MODELS_WITH_CLAUDE);
+      if (path === "/tenants/t1/gateways") return Promise.resolve([GW1]);
+      return Promise.resolve([]);
+    });
+    mockApi.post.mockResolvedValue(PLAY_TOKEN);
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+      const urlStr = String(url);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      if (urlStr.includes("/anthropic/v1/messages") && body && !body.stream) {
+        // Leg 1: model answers directly with no tool_use blocks
+        return makeAnthropicTextResponse("The answer is 42. No search needed.");
+      }
+      if (urlStr.includes("/anthropic/v1/messages") && body?.stream) {
+        leg2Called = true;
+        return makeAnthropicSseResponse("should not be reached");
+      }
+      return new Response("", { status: 404 });
+    });
+
+    renderPlayground();
+    await waitFor(() => expect(screen.getByText("token active")).toBeInTheDocument());
+    const pickerBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Select model"))!;
+    await userEvent.click(pickerBtn);
+    await waitFor(() => expect(screen.getByRole("option", { name: "claude-haiku-4-5" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("option", { name: "claude-haiku-4-5" }));
+    await userEvent.click(screen.getByRole("button", { name: "Web Search" }));
+    await userEvent.type(screen.getByLabelText("User message"), "What is 6 times 7?");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).not.toBeDisabled());
+    await userEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    // Leg 1 text must be shown directly in the response panel
+    await waitFor(() =>
+      expect(screen.getByLabelText("Response").textContent).toContain("The answer is 42. No search needed.")
+    );
+    // Leg 2 must NOT have been called — sending content:[] caused the 400
+    expect(leg2Called).toBe(false);
   });
 
   it("regression: multiple tool_use blocks (Opus parallel calls) all get tool_result entries", async () => {

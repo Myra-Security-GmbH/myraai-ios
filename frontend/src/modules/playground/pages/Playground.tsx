@@ -786,7 +786,7 @@ export default function Playground() {
   // Prompt
   const [systemPrompt, setSystemPrompt] = useState(persisted.current.systemPrompt ?? DEFAULT_SYSTEM_PROMPT);
   const [userMessage, setUserMessage] = useState("");
-  const [showSystem, setShowSystem] = useState(true);
+  const [showSystem, setShowSystem] = useState(false);
 
   // Params
   const [temperature, setTemperature] = useState(persisted.current.temperature ?? 0.3);
@@ -983,9 +983,10 @@ export default function Playground() {
     );
     setGlobalError(null);
 
-    const compatBase = `/v1/${tok.tenant_slug}/${tok.gateway_slug}/compat`;
+    const gwBase = import.meta.env.VITE_GATEWAY_URL ?? "";
+    const compatBase = `${gwBase}/v1/${tok.tenant_slug}/${tok.gateway_slug}/compat`;
 
-    const anthropicBase = `/v1/${tok.tenant_slug}/${tok.gateway_slug}/anthropic/v1/messages`;
+    const anthropicBase = `${gwBase}/v1/${tok.tenant_slug}/${tok.gateway_slug}/anthropic/v1/messages`;
 
     const runPanel = async (panel: PanelState) => {
       if (!panel.model) {
@@ -1069,6 +1070,23 @@ export default function Playground() {
             const leg1Data = await leg1Res.json();
             const toolUseBlocks: Array<{ id: string; name: string; input: { query?: string } }> =
               (leg1Data.content ?? []).filter((b: { type: string }) => b.type === "tool_use");
+
+            // Model decided not to use web search — render leg1 text response directly
+            if (toolUseBlocks.length === 0) {
+              const textContent = (leg1Data.content ?? [])
+                .filter((b: { type: string }) => b.type === "text")
+                .map((b: { type: string; text?: string }) => b.text ?? "")
+                .join("") || "(no content)";
+              const latencyMs = Math.round(performance.now() - start);
+              setPanels((prev) => prev.map((p) =>
+                p.id === panel.id
+                  ? { ...p, loading: false, content: textContent, latencyMs,
+                      inputTokens: leg1Data.usage?.input_tokens ?? null,
+                      outputTokens: leg1Data.usage?.output_tokens ?? null }
+                  : p
+              ));
+              return;
+            }
 
             // Show "searching" chip
             setPanels((prev) => prev.map((p) =>
