@@ -558,12 +558,19 @@ function M.insert_user(tenant_id, email, name, role)
     return id
 end
 
-function M.update_user(id, email, name, role)
+function M.update_user(id, email, name, role, tenant_id)
     local db, err = get_conn()
     if not db then return err end
-    local e = exec_one(db, [[
-        UPDATE `user` SET email = ?, name = ?, role = ? WHERE id = ?
-    ]], email, name, role, id)
+    local e
+    if tenant_id ~= nil then
+        e = exec_one(db, [[
+            UPDATE `user` SET email = ?, name = ?, role = ?, tenant_id = ? WHERE id = ?
+        ]], email, name, role, tenant_id, id)
+    else
+        e = exec_one(db, [[
+            UPDATE `user` SET email = ?, name = ?, role = ? WHERE id = ?
+        ]], email, name, role, id)
+    end
     release(db)
     return e
 end

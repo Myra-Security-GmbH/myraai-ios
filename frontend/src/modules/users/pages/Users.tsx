@@ -36,7 +36,9 @@ function UserModal({ tenants, tenantId: defaultTenantId, user, onClose, onSaved 
     setLoading(true); setError(null);
     try {
       if (isEdit) {
-        await api.patch(`/users/${user!.id}`, { email, name: name || null, role });
+        const payload: Record<string, unknown> = { email, name: name || null, role };
+        if (canChangeTenant) payload.tenant_id = tenantId;
+        await api.patch(`/users/${user!.id}`, payload);
       } else {
         await api.post(`/tenants/${tenantId}/users`, { email, name: name || null, role });
       }
@@ -45,7 +47,7 @@ function UserModal({ tenants, tenantId: defaultTenantId, user, onClose, onSaved 
     finally { setLoading(false); }
   }
 
-  const canChangeTenant = !isEdit && me?.role === "admin";
+  const canChangeTenant = me?.role === "admin";
   const canAssignTenantAdmin = me?.role === "admin" || me?.role === "tenant_admin";
   const availableRoles: Array<{ value: User["role"]; label: string }> = [
     ...(canAssignTenantAdmin ? [{ value: "tenant_admin" as User["role"], label: "tenant admin — manages tenant users & settings" }] : []),
@@ -57,18 +59,16 @@ function UserModal({ tenants, tenantId: defaultTenantId, user, onClose, onSaved 
   return (
     <Modal title={isEdit ? `Edit: ${user!.email}` : "New User"} onClose={onClose} error={error}>
       <form onSubmit={handleSubmit}>
-          {!isEdit && (
-            <div className={s["form-group"]}>
-              <label className={s["form-label"]}>Tenant *</label>
-              {canChangeTenant ? (
-                <select className={s["form-select"]} value={tenantId} onChange={(e) => setTenantId(e.target.value)} required>
-                  {tenants.map((t) => <option key={t.id} value={t.id}>{t.slug}</option>)}
-                </select>
-              ) : (
-                <input className={s["form-input"]} value={tenants.find((t) => t.id === tenantId)?.slug ?? tenantId} readOnly />
-              )}
-            </div>
-          )}
+          <div className={s["form-group"]}>
+            <label className={s["form-label"]}>Tenant *</label>
+            {canChangeTenant ? (
+              <select className={s["form-select"]} value={tenantId} onChange={(e) => setTenantId(e.target.value)} required>
+                {tenants.map((t) => <option key={t.id} value={t.id}>{t.slug}</option>)}
+              </select>
+            ) : (
+              <input className={s["form-input"]} value={tenants.find((t) => t.id === tenantId)?.slug ?? tenantId} readOnly />
+            )}
+          </div>
           <div className={s["form-group"]}>
             <label className={s["form-label"]}>Email *</label>
             <input className={s["form-input"]} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="alice@example.com" required />
@@ -563,7 +563,7 @@ export default function Users() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
+              {[...users].sort((a, b) => a.email.localeCompare(b.email)).map((u) => (
                 <tr key={u.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/users/${u.id}`)}>
                   <td>{u.email}</td>
                   <td style={{ color: u.name ? undefined : "var(--text-secondary)" }}>{u.name ?? "—"}</td>

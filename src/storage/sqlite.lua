@@ -896,7 +896,12 @@ function M.insert_user(tenant_id, email, name, role)
     return id
 end
 
-function M.update_user(id, email, name, role)
+function M.update_user(id, email, name, role, tenant_id)
+    if tenant_id ~= nil then
+        return exec_one(cfg_db(), [[
+            UPDATE user SET email = ?, name = ?, role = ?, tenant_id = ? WHERE id = ?
+        ]], email, name, role, tenant_id, id)
+    end
     return exec_one(cfg_db(), [[
         UPDATE user SET email = ?, name = ?, role = ? WHERE id = ?
     ]], email, name, role, id)

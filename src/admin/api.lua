@@ -694,7 +694,18 @@ route("PATCH", "^/admin/v1/users/([^/]+)$", function(user_id)
         local role_err = validate_role_assignment(b.role)
         if role_err then return send(403, { error = role_err }) end
     end
-    local err = storage.update_user(user_id, nullable(b.email), nullable(b.name), b.role)
+    -- tenant_id change is admin-only; non-admins may not reassign users to other tenants
+    local new_tenant_id = nil
+    if b.tenant_id ~= nil then
+        local u = ngx.ctx.admin_user
+        if u.role ~= "admin" then
+            return send(403, { error = "only platform admins may change a user's tenant" })
+        end
+        local t = storage.get_tenant(b.tenant_id)
+        if not t then return send(404, { error = "tenant not found" }) end
+        new_tenant_id = b.tenant_id
+    end
+    local err = storage.update_user(user_id, nullable(b.email), nullable(b.name), b.role, new_tenant_id)
     if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
