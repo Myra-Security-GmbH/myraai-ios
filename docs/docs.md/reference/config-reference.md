@@ -28,7 +28,9 @@ The config is **merged at the top level** on each PATCH — only the fields you 
   "bedrock_region": "us-east-1",
   "vertex_project": null,
   "vertex_region": "us-central1",
-  "provider_base_urls": {}
+  "provider_base_urls": {},
+  "tracing": null,
+  "web_search": null
 }
 ```
 
@@ -139,6 +141,36 @@ Example:
   "openai": "https://my-openai-proxy.internal"
 }
 ```
+
+---
+
+## Tracing
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `tracing` | object \| null | `null` | Set to enable request tracing. `null` disables tracing entirely. |
+| `tracing.enabled` | boolean | `false` | Activate internal pipeline tracing (Traces API + Playground traces). |
+| `tracing.include_bodies` | boolean | `false` | Store the full request message array in the `request_received` trace step. Enable only for debugging. |
+| `tracing.otlp_endpoint` | string | — | Base URL of an OpenTelemetry collector (e.g. `http://otel-collector:4318`). Setting this enables OTLP span export. |
+| `tracing.service_name` | string | `"ai-gateway"` | `service.name` resource attribute on all emitted OTLP spans. |
+| `tracing.headers` | object | `{}` | Extra HTTP headers to include in the OTLP request (e.g. auth tokens for managed collectors). |
+| `tracing.sample_rate` | number | `1.0` | Fraction of requests to export via OTLP (0.0 = never, 1.0 = always). |
+
+See [Request Tracing](../observability/tracing.md) for the full pipeline step reference and OTLP integration guide.
+
+---
+
+## Web search
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `web_search` | object \| null | `null` | Set to enable web-search augmentation. `null` disables the feature. |
+| `web_search.enabled` | boolean | `false` | Activate web search on this gateway. |
+| `web_search.api_key` | string | — | Brave Search API key. Required for all providers except Google Gemini. |
+| `web_search.max_results` | integer | `5` | Maximum number of search results to retrieve per query. |
+| `web_search.mode` | string | `"opt-in"` | `"opt-in"` — only triggered when the client sends `X-Web-Search: 1`. `"always"` — attempted on every request. |
+
+See [Web Search](../features/web-search.md) for provider support details and usage examples.
 
 ---
 

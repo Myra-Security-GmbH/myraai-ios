@@ -38,6 +38,7 @@ Browse all documentation topics by category.
     - [Gateway configuration](../configuration/gateway-config.md)
     - [Rate limiting](../configuration/rate-limiting.md)
     - [Budget and quota enforcement](../configuration/budgets.md)
+    - [Model Prices](../configuration/model-prices.md)
     - [SIEM Integration](../configuration/siem.md)
 
 -   **Security**
@@ -93,6 +94,7 @@ Browse all documentation topics by category.
 
     - [Request Logging](../observability/logging.md)
     - [Admin Dashboard](../observability/dashboard.md)
+    - [Live Monitor](../observability/monitor.md)
     - [Cost Analytics](../observability/analytics.md)
     - [Request Tracing](../observability/tracing.md)
     - [Playground](../observability/playground.md)

@@ -86,6 +86,7 @@ nav:
     - configuration/gateway-config.md
     - configuration/rate-limiting.md
     - configuration/budgets.md
+    - configuration/model-prices.md
     - configuration/siem.md
   - Security:
     - security/authentication.md
@@ -121,6 +122,7 @@ nav:
   - Observability:
     - observability/logging.md
     - observability/dashboard.md
+    - observability/monitor.md
     - observability/analytics.md
     - observability/tracing.md
     - observability/playground.md

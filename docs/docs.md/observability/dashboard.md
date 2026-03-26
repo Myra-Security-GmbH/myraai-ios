@@ -22,13 +22,16 @@ The top-right of the hero section contains a timeframe selector. Choosing a time
 
 ## Hero cards
 
-Three cards summarise the selected timeframe at a glance. Each card includes a sparkline chart of the underlying timeseries.
+Six cards summarise the selected timeframe at a glance. Each card includes a sparkline chart of the underlying timeseries.
 
 | Card | Primary metric | Sub-metric |
 |------|---------------|------------|
-| Requests | Total request count | Cache hit rate (%) |
-| Cost | Total cost in USD | Cache savings in USD |
-| Guardrail Hits | Total guardrail events (blocked + scrubbed + flagged) | Blocked / scrubbed / flagged breakdown |
+| Total Spend | Cumulative cost in USD | Cache savings in USD |
+| Cache Savings | Cost avoided by serving cached responses | — |
+| Total Requests | Total request count | Cache hit rate (%) |
+| Error Rate | Percentage of requests with a 4xx/5xx upstream response | — |
+| Top Spender | Tenant with the highest spend in the period | — |
+| Budget Warnings | Number of tenants at or above 80 % of their configured budget | — |
 
 ---
 
@@ -70,6 +73,7 @@ A live table of the last 20 requests across all gateways:
 |--------|-------------|
 | Time | Timestamp |
 | Tenant | Tenant slug |
+| Gateway | Gateway slug |
 | Provider | Provider that handled the request |
 | Model | Model name |
 | Status | HTTP status code badge |

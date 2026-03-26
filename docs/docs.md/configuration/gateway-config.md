@@ -36,6 +36,8 @@ Every gateway has a `config` object that controls caching, timeouts, security, r
 | `vertex_project` | string \| null | `null` | Google Cloud project ID for Vertex AI. |
 | `vertex_region` | string | `"us-central1"` | Google Cloud region for Vertex AI. |
 | `provider_base_urls` | object | `{}` | Map of `provider → base URL` for overriding default provider endpoints. |
+| `tracing` | object \| null | `null` | Request tracing configuration. See [Request Tracing](../observability/tracing.md). |
+| `web_search` | object \| null | `null` | Web search augmentation settings. See [Web Search](../features/web-search.md). |
 
 ## Full default configuration
 
@@ -56,7 +58,9 @@ Every gateway has a `config` object that controls caching, timeouts, security, r
   "bedrock_region": "us-east-1",
   "vertex_project": null,
   "vertex_region": "us-central1",
-  "provider_base_urls": {}
+  "provider_base_urls": {},
+  "tracing": null,
+  "web_search": null
 }
 ```
 
