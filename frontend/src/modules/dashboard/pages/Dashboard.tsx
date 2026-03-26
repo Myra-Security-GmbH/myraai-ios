@@ -352,6 +352,7 @@ export default function Dashboard() {
                 <tr>
                   <th>Time</th>
                   <th>Tenant</th>
+                  <th>Gateway</th>
                   <th>Provider</th>
                   <th>Model</th>
                   <th>Status</th>
@@ -366,6 +367,7 @@ export default function Dashboard() {
                   <tr key={i} className={row.blocked ? s.blocked : ""}>
                     <td className={s.mono}>{fmtDateTime(row.ts)}</td>
                     <td><span className={s.code}>{row.tenant}</span></td>
+                    <td><span className={s.code}>{row.gateway ?? row.gateway_id}</span></td>
                     <td>{row.provider}</td>
                     <td className={s.mono} style={{ fontSize: 11 }}>{row.model}</td>
                     <td>

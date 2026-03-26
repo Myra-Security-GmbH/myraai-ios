@@ -61,6 +61,28 @@ test.describe("Dashboard page", () => {
     await expect(page.getByRole("columnheader", { name: /Avg Latency/i })).toBeVisible();
   });
 
+  test("Recent Requests table has Gateway column", async ({ page }) => {
+    await expect(page.getByText(/Recent Requests/i)).toBeVisible();
+    // Scope to the Recent Requests table by its unique "Tokens" column header
+    // (GuardrailEventsTable also has a Gateway column but no Tokens column)
+    const recentTable = page.locator("table").filter({
+      has: page.locator("th", { hasText: "Tokens" }),
+    });
+    await expect(recentTable.getByRole("columnheader", { name: /^Gateway$/i })).toBeVisible();
+  });
+
+  test("Recent Requests Gateway column shows gateway values when rows exist", async ({ page }) => {
+    const recentTable = page.locator("table").filter({
+      has: page.locator("th", { hasText: "Tokens" }),
+    });
+    const rows = recentTable.locator("tbody tr");
+    const count = await rows.count();
+    if (count === 0) { test.skip(); return; }
+    // Gateway is the 3rd cell (index 2, after Time and Tenant)
+    const gatewayCell = rows.first().locator("td").nth(2);
+    await expect(gatewayCell).not.toBeEmpty();
+  });
+
   test("timeframe tabs exist and switching does not crash", async ({ page }) => {
     const todayBtn = page.getByRole("button", { name: /^Today$/i });
     await expect(todayBtn).toBeVisible();
