@@ -727,12 +727,13 @@ describe("get_analytics_depth: by_user breakdown", function()
         assert.equal(0, #d.by_user)
     end)
 
-    it("returns a row for each distinct user_id", function()
+    it("returns a row for each distinct (user_id, tenant_id) pair", function()
+        -- alice in two different tenants → two separate rows (GROUP BY user_id, tenant_id)
         insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-alice" })
         insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-bob" })
         insert_req2(TENANT_B, GATEWAY_2, { user_id = "user-alice" })
         local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(2, #d.by_user)
+        assert.equal(3, #d.by_user)
     end)
 
     it("excludes rows where user_id is NULL", function()
@@ -744,12 +745,14 @@ describe("get_analytics_depth: by_user breakdown", function()
         assert.equal("user-x", d.by_user[1].user_id)
     end)
 
-    it("aggregates cost across tenants for the same user", function()
+    it("same user in two tenants produces two separate rows (per-tenant breakdown)", function()
+        -- by_user is GROUP BY user_id, tenant_id — each tenant row is separate
         insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-x", cost_usd = 1.0 })
         insert_req2(TENANT_B, GATEWAY_2, { user_id = "user-x", cost_usd = 2.0 })
         local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(1, #d.by_user)
-        assert.near(3.0, d.by_user[1].cost_usd, 0.001)
+        assert.equal(2, #d.by_user)
+        local total = d.by_user[1].cost_usd + d.by_user[2].cost_usd
+        assert.near(3.0, total, 0.001)
     end)
 
     it("counts requests correctly", function()

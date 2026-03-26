@@ -17,12 +17,23 @@
 -- or set COVERAGE=1 and let the Makefile / test script handle it.
 local _luacov_runner = nil
 if os.getenv("COVERAGE") == "1" then
+    -- LuaJIT (used by resty) has global debug hooks, not per-thread.
+    -- luacov's has_hook_per_thread() tests this by creating a coroutine via
+    -- coroutine.wrap(...)() — but that fails under OpenResty's ngx.timer
+    -- context with "attempt to yield across C-call boundary".
+    -- Patch coroutine.wrap temporarily so has_hook_per_thread() returns false
+    -- (correct for LuaJIT) without actually spawning a new coroutine.
+    local _saved_wrap = coroutine.wrap
+    coroutine.wrap = function(_f)
+        return function() return debug.gethook() end
+    end
     local ok, lcov = pcall(require, "luacov")
+    coroutine.wrap = _saved_wrap
     if ok then
         _luacov_runner = require("luacov.runner")
         io.write("[coverage] luacov active — stats → luacov.stats.out\n")
     else
-        io.write("[coverage] WARNING: luacov not found (set LUA_PATH to your luarocks tree)\n")
+        io.write("[coverage] WARNING: luacov not found: " .. tostring(lcov) .. "\n")
     end
 end
 

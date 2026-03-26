@@ -85,7 +85,10 @@ end
 
 -- Reset module cache between tests
 local function clear(names)
-    for _, n in ipairs(names) do package.loaded[n] = nil end
+    for _, n in ipairs(names) do
+        package.loaded[n]  = nil
+        package.preload[n] = nil  -- clear stubs left by other test files
+    end
     -- reset shared dict store
     shared_store = {}
 end

@@ -55,7 +55,7 @@ run_backend() {
 
 # ── backend: Lua unit tests with luacov coverage ──────────────────────────────
 run_backend_coverage() {
-    local lr_path
+    local lr_path lr_inc
     lr_path="$(luarocks path --lr-path 2>/dev/null)" || true
 
     if [[ -z "$lr_path" ]]; then
@@ -63,46 +63,31 @@ run_backend_coverage() {
         return 1
     fi
 
-    bold "Running Lua tests under lua5.1 + luacov …"
+    # Build resty -I include path from the first luarocks dir (strip the /?.lua suffix).
+    lr_inc="${lr_path%%/?.lua*}"
+
+    bold "Running Lua unit tests under resty + luacov …"
     cd "$REPO"
     rm -f luacov.stats.out luacov.report.out
 
-    # Only include test files that run under plain lua5.1 (no OpenResty C extensions
-    # like cjson.safe or resty.sha256). Tag a file as coverage-eligible by adding
-    # the comment "-- lua5.1-compatible" on any line near the top.
     local files=()
     for f in "$REPO/tests/unit"/test_*.lua; do
-        if head -5 "$f" | grep -q "lua5.1-compatible"; then
-            files+=("$f")
-        fi
+        files+=("$f")
     done
 
-    if [[ ${#files[@]} -eq 0 ]]; then
-        yellow "No lua5.1-compatible test files found."
-        yellow "Add '-- lua5.1-compatible' in the first 5 lines of eligible test files."
-        return 1
-    fi
-
-    yellow "Coverage files: ${files[*]##*/}"
+    yellow "Running ${#files[@]} unit test files with coverage …"
     local any_fail=0
-    if COVERAGE=1 LUA_PATH="${lr_path};;" lua5.1 "$REPO/tests/runner.lua" "${files[@]}" 2>&1; then
+    if COVERAGE=1 resty -I "$lr_inc" "$REPO/tests/runner.lua" "${files[@]}" 2>&1; then
         :
     else
         any_fail=1
     fi
 
     if [[ -s luacov.stats.out ]]; then
-        local luacov_bin
-        luacov_bin="$(luarocks which luacov 2>/dev/null | head -1)" || true
-        [[ -z "$luacov_bin" ]] && luacov_bin="$(luarocks path --lr-bin 2>/dev/null)/luacov" || true
-        if [[ -n "$luacov_bin" && -x "$luacov_bin" ]]; then
-            "$luacov_bin" 2>/dev/null || true
-        else
-            lua5.1 -e "require('luacov.reporter').report()" 2>/dev/null || true
-        fi
+        LUA_PATH="${lr_path};;" lua5.1 -e "require('luacov.runner').run_report()" 2>/dev/null || true
         if [[ -f luacov.report.out ]]; then
             green "Coverage report → $REPO/luacov.report.out"
-            grep -E "^src/" luacov.report.out | head -40 || true
+            grep -E "\.(lua)\s+[0-9]" luacov.report.out | tail -20 || true
         fi
     else
         yellow "No coverage stats written (luacov.stats.out is empty)"

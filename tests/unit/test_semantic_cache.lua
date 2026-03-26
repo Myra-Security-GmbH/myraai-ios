@@ -122,6 +122,13 @@ local function reload()
     _storage_error = false
     package.loaded["cache.semantic"] = nil
     package.loaded["storage"]        = nil
+    package.loaded["utils.http"]     = nil  -- clear stubs left by other test files
+    -- force reload so package.preload stubs are used (not real modules cached by earlier tests)
+    package.loaded["resty.http"]     = nil
+    package.loaded["resty.sha256"]   = nil
+    package.loaded["resty.string"]   = nil
+    package.loaded["utils.json"]     = nil
+    package.loaded["utils.uuid"]     = nil
 end
 
 reload()
