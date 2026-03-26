@@ -6,15 +6,8 @@ import { api } from "src/api/client";
 import { User, Tenant, Gateway, AuthToken } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
 import { DocLink } from "src/common/components/DocLink";
+import { Modal } from "src/common/components/Modal";
 import s from "src/common/components/layout/Layout.module.scss";
-
-// ---------------------------------------------------------------------------
-// Icons
-// ---------------------------------------------------------------------------
-
-function CloseIcon() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
-}
 
 // ---------------------------------------------------------------------------
 // User modal (create / edit)
@@ -60,14 +53,8 @@ function UserModal({ tenants, tenantId: defaultTenantId, user, onClose, onSaved 
   ];
 
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal}>
-        <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>{isEdit ? `Edit: ${user!.email}` : "New User"}</h2>
-          <button className={s["modal-close"]} onClick={onClose}><CloseIcon /></button>
-        </div>
-        {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
-        <form onSubmit={handleSubmit}>
+    <Modal title={isEdit ? `Edit: ${user!.email}` : "New User"} onClose={onClose} error={error}>
+      <form onSubmit={handleSubmit}>
           {!isEdit && (
             <div className={s["form-group"]}>
               <label className={s["form-label"]}>Tenant *</label>
@@ -103,8 +90,7 @@ function UserModal({ tenants, tenantId: defaultTenantId, user, onClose, onSaved 
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -154,17 +140,12 @@ function TokenModal({ user, gateways, onClose, onCreated }: {
   }
 
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal}>
-        <div className={s["modal-header"]}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <h2 className={s["modal-title"]}>New Token for {user.email}</h2>
-            <DocLink path="/api-reference/users-tokens/" label="Token docs" />
-          </div>
-          <button className={s["modal-close"]} onClick={onClose}><CloseIcon /></button>
-        </div>
-        {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
-        <form onSubmit={handleSubmit}>
+    <Modal
+      title={<><span>New Token for {user.email}</span><DocLink path="/api-reference/users-tokens/" label="Token docs" /></>}
+      onClose={onClose}
+      error={error}
+    >
+      <form onSubmit={handleSubmit}>
           <div className={s["form-group"]}>
             <label className={s["form-label"]}>Gateway *</label>
             <select className={s["form-select"]} value={gatewayId} onChange={(e) => setGatewayId(e.target.value)} required>
@@ -214,8 +195,7 @@ function TokenModal({ user, gateways, onClose, onCreated }: {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -231,24 +211,18 @@ function TokenRevealModal({ token, onClose }: { token: string; onClose: () => vo
     setTimeout(() => setCopied(false), 2000);
   }
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal}>
-        <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>Token Created</h2>
-          <button className={s["modal-close"]} onClick={onClose}><CloseIcon /></button>
-        </div>
-        <div className={`${s.alert} ${s["alert--warning"]}`} style={{ marginBottom: 12 }}>
-          Copy this token now — it will not be shown again.
-        </div>
-        <div className={s.mono} style={{ background: "var(--bg-secondary)", padding: "10px 14px", borderRadius: 6, wordBreak: "break-all", fontSize: 13, marginBottom: 14, cursor: "pointer" }} title="Click to copy" onClick={copy}>
-          {token}
-        </div>
-        <div className={s["form-actions"]}>
-          <button className={`${s.btn} ${s["btn--primary"]}`} onClick={copy}>{copied ? "Copied!" : "Copy"}</button>
-          <button className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Done</button>
-        </div>
+    <Modal title="Token Created" onClose={onClose}>
+      <div className={`${s.alert} ${s["alert--warning"]}`} style={{ marginBottom: 12 }}>
+        Copy this token now — it will not be shown again.
       </div>
-    </div>
+      <div className={s.mono} style={{ background: "var(--bg-secondary)", padding: "10px 14px", borderRadius: 6, wordBreak: "break-all", fontSize: 13, marginBottom: 14, cursor: "pointer" }} title="Click to copy" onClick={copy}>
+        {token}
+      </div>
+      <div className={s["form-actions"]}>
+        <button className={`${s.btn} ${s["btn--primary"]}`} onClick={copy}>{copied ? "Copied!" : "Copy"}</button>
+        <button className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Done</button>
+      </div>
+    </Modal>
   );
 }
 

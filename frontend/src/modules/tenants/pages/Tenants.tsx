@@ -6,6 +6,7 @@ import { api } from "src/api/client";
 import { Tenant, Gateway, BudgetPeriod } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
 import { fmtCost } from "src/common/utils/format";
+import { Modal } from "src/common/components/Modal";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -44,16 +45,8 @@ function TenantModal({ tenant, onClose, onSaved }: {
   }
 
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal}>
-        <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>{isEdit ? `Edit: ${tenant!.slug}` : "New Tenant"}</h2>
-          <button className={s["modal-close"]} onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
-        <form onSubmit={handleSubmit}>
+    <Modal title={isEdit ? `Edit: ${tenant!.slug}` : "New Tenant"} onClose={onClose} error={error}>
+      <form onSubmit={handleSubmit}>
           {!isEdit && (
             <div className={s["form-group"]}>
               <label htmlFor="slug" className={s["form-label"]}>Slug *</label>
@@ -90,8 +83,7 @@ function TenantModal({ tenant, onClose, onSaved }: {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

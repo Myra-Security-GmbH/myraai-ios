@@ -3,6 +3,7 @@ import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { ModelPrice } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
+import { Modal } from "src/common/components/Modal";
 import s from "src/common/components/layout/Layout.module.scss";
 
 const PROVIDERS = ["anthropic", "openai", "gemini", "mistral", "groq", "deepseek", "xai"];
@@ -38,16 +39,8 @@ function PriceModal({ price, onClose, onSaved }: {
   }
 
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal}>
-        <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>{isEdit ? `Edit: ${price!.provider}/${price!.model}` : "New Model Price"}</h2>
-          <button className={s["modal-close"]} onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
-        <form onSubmit={handleSubmit}>
+    <Modal title={isEdit ? `Edit: ${price!.provider}/${price!.model}` : "New Model Price"} onClose={onClose} error={error}>
+      <form onSubmit={handleSubmit}>
           <div className={s["form-row"]}>
             <div className={s["form-group"]}>
               <label htmlFor="provider" className={s["form-label"]}>Provider</label>
@@ -87,8 +80,7 @@ function PriceModal({ price, onClose, onSaved }: {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

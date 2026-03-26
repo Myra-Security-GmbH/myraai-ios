@@ -7,6 +7,7 @@ import { GuardrailBuilder } from "src/modules/guardrails/GuardrailBuilder";
 import { fmtDate, fmtDateTime } from "src/common/utils/date";
 import { fmtNumber, fmtCost, fmtMs, fmtSec } from "src/common/utils/format";
 import { DocLink, docsUrl } from "src/common/components/DocLink";
+import { Modal } from "src/common/components/Modal";
 import s from "src/common/components/layout/Layout.module.scss";
 
 // ---------------------------------------------------------------------------
@@ -48,16 +49,8 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
   }
 
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal}>
-        <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>New Gateway</h2>
-          <button className={s["modal-close"]} onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
-        <form onSubmit={handleSubmit}>
+    <Modal title="New Gateway" onClose={onClose} error={error}>
+      <form onSubmit={handleSubmit}>
           <div className={s["form-group"]}>
             <label htmlFor="slug" className={s["form-label"]}>Slug *</label>
             <input id="slug" className={s["form-input"]} value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="prod" required />
@@ -98,8 +91,7 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -220,16 +212,8 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
   }
 
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal}>
-        <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>Edit Gateway: {gw.slug}</h2>
-          <button className={s["modal-close"]} onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
-        <form onSubmit={handleSubmit}>
+    <Modal title={`Edit Gateway: ${gw.slug}`} onClose={onClose} error={error}>
+      <form onSubmit={handleSubmit}>
           <div className={s["form-row"]}>
             <div className={s["form-group"]}>
               <label htmlFor="budgetusd" className={s["form-label"]} style={{ display: "flex", alignItems: "center", gap: 6 }}>Budget (USD) <DocLink path="/configuration/budgets/" label="Budget docs" /></label>
@@ -522,8 +506,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -556,16 +539,8 @@ function AddKeyModal({ gatewayId, onClose, onAdded }: { gatewayId: string; onClo
   }
 
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal}>
-        <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>Add / Rotate Provider Key</h2>
-          <button className={s["modal-close"]} onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
-        {success ? (
+    <Modal title="Add / Rotate Provider Key" onClose={onClose} error={error}>
+      {success ? (
           <div className={`${s.alert} ${s["alert--success"]}`}>Key stored and encrypted successfully.</div>
         ) : (
           <form onSubmit={handleSubmit}>
@@ -625,8 +600,7 @@ function AddKeyModal({ gatewayId, onClose, onAdded }: { gatewayId: string; onClo
             </div>
           </form>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -665,15 +639,7 @@ function CreateTokenModal({ gatewayId, onClose, onCreated }: {
   }
 
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && !newToken && onClose()}>
-      <div className={s.modal}>
-        <div className={s["modal-header"]}>
-          <h2 className={s["modal-title"]}>{newToken ? "Token Created" : "Create Auth Token"}</h2>
-          <button className={s["modal-close"]} onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
+    <Modal title={newToken ? "Token Created" : "Create Auth Token"} onClose={onClose} error={error} disableOverlayClose={!!newToken}>
         {newToken ? (
           <>
             <p style={{ color: "var(--text-secondary)", marginBottom: 12, fontSize: 14 }}>
@@ -721,8 +687,7 @@ function CreateTokenModal({ gatewayId, onClose, onCreated }: {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -809,19 +774,13 @@ function RuleModal({ gatewayId, rule, onClose, onSaved }: {
   }
 
   return (
-    <div className={s["modal-overlay"]} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal} style={{ maxWidth: 640 }}>
-        <div className={s["modal-header"]}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <h2 className={s["modal-title"]}>{isEdit ? "Edit Rule" : "New Routing Rule"}</h2>
-            <DocLink path="/routing/routing-rules/" label="Routing rules docs" />
-          </div>
-          <button className={s["modal-close"]} onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
-        <form onSubmit={handleSubmit}>
+    <Modal
+      title={<><span>{isEdit ? "Edit Rule" : "New Routing Rule"}</span><DocLink path="/routing/routing-rules/" label="Routing rules docs" /></>}
+      onClose={onClose}
+      error={error}
+      modalStyle={{ maxWidth: 640 }}
+    >
+      <form onSubmit={handleSubmit}>
           <div className={s["form-row"]}>
             <div className={s["form-group"]}>
               <label htmlFor="priority" className={s["form-label"]}>Priority (higher = first)</label>
@@ -957,8 +916,7 @@ function RuleModal({ gatewayId, rule, onClose, onSaved }: {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
