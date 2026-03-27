@@ -373,6 +373,15 @@ INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_wri
 VALUES ('groq',      'llama-3.3-70b-versatile',     0.00059,  0.00079,  NULL,      NULL,      UNIX_TIMESTAMP())
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), updated_at=VALUES(updated_at);
 
+-- vLLM / self-hosted
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('vllm',      'qwen3-235b',                  0.0,      0.0,      NULL,      NULL,      UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), updated_at=VALUES(updated_at);
+
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('vllm',      'qwen3-30b-a3b',               0.0,      0.0,      NULL,      NULL,      UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), updated_at=VALUES(updated_at);
+
 -- ---------------------------------------------------------------------------
 -- Chat tables
 -- ---------------------------------------------------------------------------

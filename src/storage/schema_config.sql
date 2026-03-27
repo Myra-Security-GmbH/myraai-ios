@@ -152,7 +152,8 @@ CREATE TABLE IF NOT EXISTS playground_trace (
     created_at   INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
     completed_at INTEGER,
     status       TEXT NOT NULL DEFAULT 'running',  -- running|done|error
-    error        TEXT
+    error        TEXT,
+    source       TEXT NOT NULL DEFAULT 'playground'  -- playground|gateway
 );
 
 -- Ordered event log for each trace step
