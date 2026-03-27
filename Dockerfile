@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpangocairo-1.0-0 \
         libcairo2 \
         libgdk-pixbuf2.0-0 \
-    && pip3 install --no-cache-dir weasyprint \
+    && pip3 install --no-cache-dir weasyprint pymupdf \
     && rm -rf /var/lib/apt/lists/*
 
 # Lua vendor dependencies (lua-resty-http, lua-resty-hmac)

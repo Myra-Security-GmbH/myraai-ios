@@ -278,10 +278,13 @@ function M.register(route)
     end)
 
     -- ── Document file processor ───────────────────────────────────────────────
-    -- POST /admin/v1/chat/files  { gateway_id, filename, mime_type, data }
+    -- POST /admin/v1/chat/files  { gateway_id, filename, mime_type, data, [extract_text] }
     -- For .docx files: extracts plain text from the Word document on the server
     -- and returns { text: "..." } so the frontend can include it as a text block.
-    -- For PDF/text: uploads to Anthropic Files API and returns { file_id: "..." }.
+    -- For PDF + extract_text=true: text-based pages extracted directly via fitz (fast path);
+    --   scanned pages rendered at 300 DPI, contrast-enhanced, then processed by MinerU.
+    --   Returns { text: "..." }.
+    -- For PDF/text (Anthropic path): uploads to Anthropic Files API and returns { file_id: "..." }.
     route("POST", "^/admin/v1/chat/files$", function()
         local body = read_body()
         if not body.data or body.data == "" then
@@ -400,13 +403,291 @@ except Exception as e:
                 return send(422, { error = "Could not convert .ods to CSV" })
             end
 
-            -- Replace bin/mime so the Files API upload below sends the CSV
+            -- Replace bin/mime so the Files API upload below sends the CSV as plain text
+            -- (Anthropic Files API only accepts PDF and text/plain for document blocks)
             bin  = csv_data
-            mime = "text/csv"
+            mime = "text/plain"
             body.filename = body.filename:gsub("%.ods$", ".csv")
         end
 
-        -- PDF / plain text / spreadsheets: upload to Anthropic Files API
+        -- .xlsx / .xlsm: extract sheet data as CSV text, then upload as text/plain
+        if mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        or mime == "application/vnd.ms-excel.sheet.macroenabled.12" then
+            local tmpfile = "/tmp/aig_xlsx_" .. ngx.now() .. "_" .. math.random(100000) .. ".xlsx"
+            local f = io.open(tmpfile, "wb")
+            if not f then
+                return send(500, { error = "Failed to create temp file for xlsx conversion" })
+            end
+            f:write(bin)
+            f:close()
+
+            local csvfile = tmpfile .. ".csv"
+            local script  = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, zipfile, csv, io, re
+import xml.etree.ElementTree as ET
+NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+def col_index(ref):
+    col = re.sub(r'\d+', '', ref)
+    result = 0
+    for c in col:
+        result = result * 26 + (ord(c.upper()) - ord('A') + 1)
+    return result - 1
+try:
+    xlsx_path, out_path = sys.argv[1], sys.argv[2]
+    with zipfile.ZipFile(xlsx_path) as z:
+        names = z.namelist()
+        shared = []
+        if 'xl/sharedStrings.xml' in names:
+            root = ET.fromstring(z.read('xl/sharedStrings.xml'))
+            for si in root.findall('{' + NS + '}si'):
+                parts = [t.text or '' for t in si.iter('{' + NS + '}t')]
+                shared.append(''.join(parts))
+        sheets = sorted([n for n in names if re.match(r'xl/worksheets/sheet\d+\.xml', n)])
+        with io.open(out_path, 'w', newline='', encoding='utf-8') as fout:
+            w = csv.writer(fout)
+            for sp in sheets:
+                root = ET.fromstring(z.read(sp))
+                for row in root.findall('.//{' + NS + '}row'):
+                    cmap = {}
+                    for cell in row.findall('{' + NS + '}c'):
+                        r = cell.get('r', '')
+                        col = col_index(r) if r else len(cmap)
+                        t = cell.get('t', '')
+                        v_el = cell.find('{' + NS + '}v')
+                        val = ''
+                        if t == 's' and v_el is not None:
+                            idx = int(v_el.text or 0)
+                            val = shared[idx] if 0 <= idx < len(shared) else ''
+                        elif t == 'inlineStr':
+                            is_el = cell.find('.//{' + NS + '}t')
+                            val = (is_el.text or '') if is_el is not None else ''
+                        elif v_el is not None:
+                            val = v_el.text or ''
+                        cmap[col] = val
+                    if cmap:
+                        mx = max(cmap.keys())
+                        rd = [cmap.get(i, '') for i in range(mx + 1)]
+                        while rd and rd[-1] == '':
+                            rd.pop()
+                        if rd:
+                            w.writerow(rd)
+except Exception:
+    sys.exit(1)
+]])
+                sf:close()
+            end
+            local cmd = "python3 " .. script .. " " .. tmpfile .. " " .. csvfile .. " 2>/dev/null"
+            os.execute(cmd)
+            os.remove(tmpfile)
+            os.remove(script)
+
+            local cf = io.open(csvfile, "rb")
+            local csv_data = cf and cf:read("*a") or ""
+            if cf then cf:close() end
+            os.remove(csvfile)
+
+            csv_data = csv_data:gsub("^%s+", ""):gsub("%s+$", "")
+            if csv_data == "" then
+                return send(422, { error = "Could not convert .xlsx to CSV" })
+            end
+
+            bin  = csv_data
+            mime = "text/plain"
+            body.filename = body.filename:gsub("%.xlsx?$", ".csv"):gsub("%.xlsm$", ".csv")
+        end
+
+        -- CSV/TSV uploaded directly: Anthropic only accepts text/plain for document blocks
+        if mime == "text/csv" or mime == "text/tab-separated-values" then
+            mime = "text/plain"
+        end
+
+        -- Image via MinerU: send directly (no rasterization needed).
+        -- Triggered when extract_text=true for non-vision-capable vLLM models.
+        if mime:match("^image/") and body.extract_text then
+            local ext = mime:match("^image/(.+)$") or "png"
+            local tmpfile = "/tmp/aig_img_" .. math.floor(ngx.now()) .. "_" .. math.random(100000) .. "." .. ext
+            local f = io.open(tmpfile, "wb")
+            if not f then
+                return send(500, { error = "Failed to create temp file for image extraction" })
+            end
+            f:write(bin)
+            f:close()
+
+            local script = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, base64, json
+from urllib.request import urlopen, Request
+
+MINERU_URL = "http://172.28.0.1:8084/v1/chat/completions"
+
+imgfile, mime_type = sys.argv[1], sys.argv[2]
+with open(imgfile, "rb") as fh:
+    b64 = base64.b64encode(fh.read()).decode()
+
+payload = json.dumps({
+    "model": "mineru2",
+    "messages": [{"role": "user", "content": [
+        {"type": "image_url", "image_url": {"url": "data:" + mime_type + ";base64," + b64}},
+        {"type": "text", "text": "Describe this image in detail, extracting all visible text, data, and content."}
+    ]}],
+    "max_tokens": 2048
+}).encode()
+req = Request(MINERU_URL, data=payload, headers={"Content-Type": "application/json"})
+try:
+    with urlopen(req, timeout=120) as r:
+        data = json.loads(r.read())
+    print(data["choices"][0]["message"]["content"])
+except Exception as e:
+    print("ERROR:" + str(e), file=sys.stderr)
+    sys.exit(1)
+]])
+                sf:close()
+            end
+
+            local cmd = "python3 " .. script .. " " .. tmpfile .. " " .. mime .. " 2>/dev/null"
+            local pipe = io.popen(cmd, "r")
+            local text = pipe and pipe:read("*a") or ""
+            if pipe then pipe:close() end
+            os.remove(tmpfile)
+            os.remove(script)
+
+            text = text:gsub("^%s+", ""):gsub("%s+$", "")
+            if text == "" then
+                return send(422, { error = "MinerU could not describe the image" })
+            end
+            return send(200, { text = text })
+        end
+
+        -- PDF via MinerU: render each page to PNG and convert to Markdown.
+        -- Triggered when extract_text=true (sent by non-Anthropic model paths).
+        if mime == "application/pdf" and body.extract_text then
+            local tmpfile = "/tmp/aig_pdf_" .. math.floor(ngx.now()) .. "_" .. math.random(100000) .. ".pdf"
+            local f = io.open(tmpfile, "wb")
+            if not f then
+                return send(500, { error = "Failed to create temp file for PDF extraction" })
+            end
+            f:write(bin)
+            f:close()
+
+            local script = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, base64, json, io, fitz
+from urllib.request import urlopen, Request
+from PIL import Image, ImageEnhance, ImageFilter
+
+MINERU_URL    = "http://172.28.0.1:8084/v1/chat/completions"
+MAX_PAGES     = 20
+TEXT_THRESHOLD = 50   # chars/page — below this we treat the page as a scan
+STRIPS        = 2     # horizontal strips per scanned page (halves keeps ~1392 prompt tokens)
+FOOTER_RATIO  = 0.91  # blocks below this fraction of page height = company letterhead
+
+def extract_page_text(page):
+    """Spatially-aware text extraction with footer labeling.
+
+    sort=True orders blocks geometrically so multi-column layouts (form labels
+    next to their filled values) are interleaved correctly.  Blocks in the
+    bottom 9% of the page are tagged [Briefkopf/Letterhead] so the LLM does not
+    confuse the company IBAN printed there with form fields belonging to the
+    Verkäufer.
+    """
+    footer_y = page.rect.height * FOOTER_RATIO
+    blocks = page.get_text("blocks", sort=True)
+    main_parts, footer_parts = [], []
+    for b in blocks:
+        _x0, y0, _x1, _y1, text = b[0], b[1], b[2], b[3], b[4]
+        txt = text.strip()
+        if not txt:
+            continue
+        if y0 >= footer_y:
+            footer_parts.append(txt)
+        else:
+            main_parts.append(txt)
+    result = "\n".join(main_parts)
+    if footer_parts:
+        result += "\n\n[Briefkopf/Letterhead]\n" + "\n".join(footer_parts)
+    return result
+
+def enhance_scan(pil_img):
+    """Greyscale + contrast boost + sharpen for a scanned strip."""
+    img = pil_img.convert("L")
+    img = ImageEnhance.Contrast(img).enhance(1.8)
+    img = img.filter(ImageFilter.SHARPEN)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+def call_mineru(png_bytes):
+    b64 = base64.b64encode(png_bytes).decode()
+    payload = json.dumps({
+        "model": "mineru2",
+        "messages": [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}},
+            {"type": "text", "text": "Convert this document page to markdown."}
+        ]}],
+        "max_tokens": 2048
+    }).encode()
+    req = Request(MINERU_URL, data=payload, headers={"Content-Type": "application/json"})
+    with urlopen(req, timeout=120) as r:
+        data = json.loads(r.read())
+    return data["choices"][0]["message"]["content"]
+
+try:
+    doc = fitz.open(sys.argv[1])
+    pages_md = []
+    for i, page in enumerate(doc):
+        if i >= MAX_PAGES:
+            break
+        # Fast path: digital PDF with extractable text
+        text = extract_page_text(page)
+        if len(text) >= TEXT_THRESHOLD:
+            pages_md.append(text)
+            continue
+        # Scanned page: render at 150 DPI and process in horizontal strips.
+        # Sending the full page saturates MinerU's ~2042 prompt-token limit,
+        # leaving almost no budget for generation. Halves (~1392 tokens each)
+        # produce dramatically more output.
+        pix = page.get_pixmap(dpi=150)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        strip_h = img.height // STRIPS
+        strip_parts = []
+        for s in range(STRIPS):
+            y0 = s * strip_h
+            y1 = img.height if s == STRIPS - 1 else y0 + strip_h
+            strip = img.crop((0, y0, img.width, y1))
+            md = call_mineru(enhance_scan(strip))
+            if md.strip():
+                strip_parts.append(md)
+        pages_md.append("\n".join(strip_parts))
+    print("\n\n---\n\n".join(pages_md))
+except Exception as e:
+    print("ERROR:" + str(e), file=sys.stderr)
+    sys.exit(1)
+]])
+                sf:close()
+            end
+
+            local cmd = "python3 " .. script .. " " .. tmpfile .. " 2>/dev/null"
+            local pipe = io.popen(cmd, "r")
+            local text = pipe and pipe:read("*a") or ""
+            if pipe then pipe:close() end
+            os.remove(tmpfile)
+            os.remove(script)
+
+            text = text:gsub("^%s+", ""):gsub("%s+$", "")
+            if text == "" then
+                return send(422, { error = "MinerU could not extract text from PDF" })
+            end
+            return send(200, { text = text })
+        end
+
+        -- PDF / plain text / spreadsheets (converted above): upload to Anthropic Files API
         if not body.gateway_id or body.gateway_id == "" then
             return send(400, { error = "gateway_id is required for PDF/text uploads" })
         end

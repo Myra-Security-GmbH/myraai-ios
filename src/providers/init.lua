@@ -21,6 +21,7 @@ local REGISTRY = {
     perplexity  = { module = "providers.perplexity",  requires_key = true  },
     openrouter  = { module = "providers.openrouter",  requires_key = true  },
     ollama      = { module = "providers.ollama",      requires_key = false },
+    vllm        = { module = "providers.vllm",        requires_key = false },
     -- OpenAI-compatible (new)
     azure       = { module = "providers.azure",       requires_key = true  },
     huggingface = { module = "providers.huggingface", requires_key = true  },

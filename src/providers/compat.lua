@@ -80,6 +80,9 @@ local MODEL_EXACT_MAP = {
     ["Meta-Llama-3.3-70B-Instruct"]                     = "sambanova",
     ["Meta-Llama-3.1-8B-Instruct"]                      = "sambanova",
     ["DeepSeek-R1"]                                     = "sambanova",
+    -- vLLM local models
+    ["qwen3-235b"]                                      = "vllm",
+    ["qwen3-30b-a3b"]                                   = "vllm",
 }
 
 -- Model prefix → provider mapping (fallback when exact match fails).
@@ -123,6 +126,8 @@ local MODEL_PREFIX_MAP = {
     ["nvidia/"]              = "nvidia",
     -- Ollama local models use ollama/ prefix
     ["ollama/"]              = "ollama",
+    -- vLLM local models use vllm/ prefix
+    ["vllm/"]                = "vllm",
     -- Cloudflare models use @cf/ prefix
     ["@cf/"]                 = "cloudflare",
     -- HuggingFace hosted inference — org/model format.
