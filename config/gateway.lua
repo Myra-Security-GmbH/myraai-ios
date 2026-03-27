@@ -58,7 +58,7 @@ return {
         database     = os.getenv("AIG_MYSQL_DB")   or "gateway_dev",
         user         = os.getenv("AIG_MYSQL_USER")  or "gateway",
         password     = os.getenv("AIG_MYSQL_PASS")  or "gateway",
-        pool_size    = 50,
+        pool_size    = 200,
         pool_timeout = 10000,
     },
 

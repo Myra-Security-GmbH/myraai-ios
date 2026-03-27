@@ -38,7 +38,7 @@ return {
         database     = env("AIG_MYSQL_DB",   "ai_gateway"),
         user         = env("AIG_MYSQL_USER",  "gateway"),
         password     = env("AIG_MYSQL_PASS",  ""),
-        pool_size    = 50,
+        pool_size    = 200,
         pool_timeout = 10000,
     },
 

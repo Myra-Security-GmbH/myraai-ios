@@ -20,28 +20,47 @@ local _cfg  -- set by M.init()
 -- Connection helpers
 -- ---------------------------------------------------------------------------
 
+-- Retry parameters for transient connection failures (pool exhaustion, brief
+-- network blip, MySQL max_connections spike).
+local CONN_RETRIES   = 3          -- attempts after the first failure
+local CONN_RETRY_MS  = { 20, 50, 120 }  -- wait before each retry (ms)
+
 local function get_conn()
-    local db, err = mysql_lib:new()
-    if not db then return nil, "mysql:new: " .. tostring(err) end
-    db:set_timeout(_cfg.pool_timeout or 10000)
-    local ok, err2, errno, sqlstate = db:connect({
-        host        = _cfg.host     or "127.0.0.1",
-        port        = _cfg.port     or 3306,
-        database    = _cfg.database or "ai_gateway",
-        user        = _cfg.user     or "gateway",
-        password    = _cfg.password or "",
-        charset     = "utf8mb4",
+    local connect_opts = {
+        host            = _cfg.host     or "127.0.0.1",
+        port            = _cfg.port     or 3306,
+        database        = _cfg.database or "ai_gateway",
+        user            = _cfg.user     or "gateway",
+        password        = _cfg.password or "",
+        charset         = "utf8mb4",
         max_packet_size = 1024 * 1024,
-    })
-    if not ok then
-        return nil, string.format("mysql connect: %s (errno=%s sqlstate=%s)",
-            tostring(err2), tostring(errno), tostring(sqlstate))
+    }
+
+    local last_err, last_errno, last_sqlstate
+    for attempt = 1, CONN_RETRIES + 1 do
+        local db, err = mysql_lib:new()
+        if not db then return nil, "mysql:new: " .. tostring(err) end
+        db:set_timeout(_cfg.pool_timeout or 10000)
+
+        local ok, err2, errno, sqlstate = db:connect(connect_opts)
+        if ok then return db end
+
+        last_err, last_errno, last_sqlstate = err2, errno, sqlstate
+
+        if attempt <= CONN_RETRIES then
+            ngx.log(ngx.WARN, string.format(
+                "mysql connect attempt %d/%d failed (%s) — retrying in %dms",
+                attempt, CONN_RETRIES + 1, tostring(err2), CONN_RETRY_MS[attempt]))
+            pcall(ngx.sleep, CONN_RETRY_MS[attempt] / 1000)
+        end
     end
-    return db
+
+    return nil, string.format("mysql connect: %s (errno=%s sqlstate=%s)",
+        tostring(last_err), tostring(last_errno), tostring(last_sqlstate))
 end
 
 local function release(db)
-    if db then db:set_keepalive(0, _cfg.pool_size or 50) end
+    if db then db:set_keepalive(0, _cfg.pool_size or 100) end
 end
 
 -- ---------------------------------------------------------------------------
