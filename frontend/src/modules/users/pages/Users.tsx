@@ -270,11 +270,12 @@ function UserDetail({ user: initialUser, tenants, onBack, onDeleted, onUpdated }
   }
 
   function handleSaved() {
-    if (!user.tenant_id) return;
-    api.get<User[]>(`/tenants/${user.tenant_id}/users`).then((us) => {
-      const updated = us.find((u) => u.id === user.id);
-      if (updated) { setUser(updated); onUpdated(updated); }
-    });
+    // Fetch the user by ID directly so that tenant changes are reflected
+    // (fetching via old tenant_id would miss the user after a tenant move).
+    api.get<User>(`/users/${user.id}`).then((updated) => {
+      setUser(updated);
+      onUpdated(updated);
+    }).catch(() => {});
   }
 
   const canEdit = me?.role === "admin" || me?.tenant_id === user.tenant_id;
@@ -497,7 +498,7 @@ export default function Users() {
           key={userId}
           user={selected}
           tenants={tenants}
-          onBack={() => navigate("/users")}
+          onBack={() => { loadUsers(filterTenantId || undefined); navigate("/users"); }}
           onDeleted={() => { navigate("/users"); loadUsers(filterTenantId || undefined); }}
           onUpdated={(u) => setUsers((us) => us.map((x) => x.id === u.id ? u : x))}
         />

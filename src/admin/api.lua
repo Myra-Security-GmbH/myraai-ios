@@ -690,15 +690,27 @@ route("POST", "^/admin/v1/users/([^/]+)/resend%-invite$", function(user_id)
     send(200, { ok = true })
 end)
 
+route("GET", "^/admin/v1/users/([^/]+)$", function(user_id)
+    if not require_user_access(user_id) then return end
+    local u = storage.get_user(user_id)
+    if not u then return send(404, { error = "user not found" }) end
+    send(200, u)
+end)
+
 route("PATCH", "^/admin/v1/users/([^/]+)$", function(user_id)
     if not require_tenant_admin() then return end
-    if not require_user_access(user_id) then return end
+    local existing = require_user_access(user_id)
+    if not existing then return end
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
     if b.role then
         local role_err = validate_role_assignment(b.role)
         if role_err then return send(403, { error = role_err }) end
     end
+    -- Use existing values for fields not included in the PATCH body
+    local new_email = nullable(b.email) or existing.email
+    local new_name  = (b.name  ~= nil) and nullable(b.name)  or existing.name
+    local new_role  = b.role or existing.role
     -- tenant_id change is admin-only; non-admins may not reassign users to other tenants
     local new_tenant_id = nil
     if b.tenant_id ~= nil then
@@ -710,9 +722,10 @@ route("PATCH", "^/admin/v1/users/([^/]+)$", function(user_id)
         if not t then return send(404, { error = "tenant not found" }) end
         new_tenant_id = b.tenant_id
     end
-    local err = storage.update_user(user_id, nullable(b.email), nullable(b.name), b.role, new_tenant_id)
+    local err = storage.update_user(user_id, new_email, new_name, new_role, new_tenant_id)
     if err then return send(500, { error = tostring(err) }) end
-    send(200, { ok = true })
+    local updated = storage.get_user(user_id)
+    send(200, updated or { ok = true })
 end)
 
 route("DELETE", "^/admin/v1/users/([^/]+)$", function(user_id)
