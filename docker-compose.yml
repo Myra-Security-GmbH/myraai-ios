@@ -8,6 +8,8 @@ services:
     ports:
       - "[2a02:cb43:3014::505a:f89]:443:443"
     environment:
+      # --- launch guard (set by run_docker_production.sh) ---
+      AIG_LAUNCHED_BY_SCRIPT:   "${AIG_LAUNCHED_BY_SCRIPT}"
       # --- secrets (set in run_docker_production.sh) ---
       AIG_MASTER_KEY:           "${AIG_MASTER_KEY}"
       AIG_JWT_SECRET:           "${AIG_JWT_SECRET}"

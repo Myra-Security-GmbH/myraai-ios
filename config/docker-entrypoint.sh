@@ -7,6 +7,13 @@
 
 set -e
 
+# ── Launch guard ───────────────────────────────────────────────────────────────
+if [ "${AIG_LAUNCHED_BY_SCRIPT:-}" != "1" ]; then
+    echo "ERROR: start the container via run_docker_production.sh, not directly." >&2
+    echo "       run_docker_production.sh sets required secrets and AIG_LAUNCHED_BY_SCRIPT=1." >&2
+    exit 1
+fi
+
 # ── Required env var validation ────────────────────────────────────────────────
 _fail=0
 
