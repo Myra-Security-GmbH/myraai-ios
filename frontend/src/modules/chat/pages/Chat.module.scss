@@ -325,6 +325,10 @@
   th, td { border: 1px solid var(--card-border); padding: 6px 10px; text-align: left; }
   th { background: var(--table-row-hover); font-weight: 600; }
   strong { font-weight: 600; }
+
+  // KaTeX math — bump size slightly above body text; center display blocks
+  :global(.katex) { font-size: 1.18em; }
+  :global(.katex-display) { font-size: 1.25em; margin: 0.75em 0; text-align: center; }
 }
 
 .bubble-meta {

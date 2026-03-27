@@ -1,6 +1,13 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, isValidElement } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import remarkBreaks from "remark-breaks";
+import remarkEmoji from "remark-emoji";
+import rehypeKatex from "rehype-katex";
+import rehypeHighlight from "rehype-highlight";
+import "katex/dist/katex.min.css";
+import "highlight.js/styles/github-dark-dimmed.css";
 import type { Components } from "react-markdown";
 import type { ChatMessage } from "src/api/types";
 import AttachmentChip from "./AttachmentChip";
@@ -53,9 +60,16 @@ function SparkIcon() {
   );
 }
 
+function extractText(node: React.ReactNode): string {
+  if (typeof node === "string") return node;
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (isValidElement(node)) return extractText((node.props as { children?: React.ReactNode }).children);
+  return "";
+}
+
 function CodeBlock({ inline, className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
   const lang = /language-(\w+)/.exec(className ?? "")?.[1] ?? "";
-  const code = String(children).replace(/\n$/, "");
+  const code = extractText(children).replace(/\n$/, "");
   const [codeCopied, setCodeCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -82,8 +96,8 @@ function CodeBlock({ inline, className, children }: { inline?: boolean; classNam
           {codeCopied ? "Copied!" : "Copy"}
         </button>
       </div>
-      <pre style={{ margin: 0, padding: "12px 16px", overflowX: "auto", background: "var(--section-bg)" }}>
-        <code>{code}</code>
+      <pre style={{ margin: 0, padding: "12px 16px", overflowX: "auto" }}>
+        <code className={className}>{children}</code>
       </pre>
     </div>
   );
@@ -257,7 +271,11 @@ const MessageBubble = memo(function MessageBubble({
               {isUser ? (
                 <span style={{ whiteSpace: "pre-wrap" }}>{textContent}</span>
               ) : (
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkEmoji]}
+                  rehypePlugins={[rehypeKatex, rehypeHighlight]}
+                  components={MD_COMPONENTS}
+                >
                   {textContent}
                 </ReactMarkdown>
               )}
