@@ -117,7 +117,12 @@ export default function Chat() {
     "- Be direct and confident. State your view clearly rather than hedging everything.\n" +
     "- If you're uncertain about a fact, say so — don't fabricate.\n" +
     "- When something is ambiguous, make a reasonable assumption and proceed rather than asking multiple clarifying questions. Ask at most one follow-up question at the end if genuinely needed.\n" +
-    "- Don't moralize or add unsolicited ethical commentary unless the topic directly calls for it.";
+    "- Don't moralize or add unsolicited ethical commentary unless the topic directly calls for it.\n\n" +
+    "Decision tables:\n" +
+    "- When evaluating, comparing, or rating options across multiple dimensions or criteria (Bewertung), always present the results as a markdown table.\n" +
+    "- Use ✅ (meets / strong), 🟡 (partial / acceptable), ❌ (does not meet / weak) as the rating symbols — never substitute with text or other symbols.\n" +
+    "- Include a summary row or concluding sentence after the table.\n" +
+    "- For priority, urgency, or risk level (Ampel / traffic light), use 🟢 (low / on track), 🟡 (medium / at risk), 🔴 (high / critical / blocked) — both inline and in tables.";
 
   const [drawerSettings, setDrawerSettings] = useState<DrawerSettings>({
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
