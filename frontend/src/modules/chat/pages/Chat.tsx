@@ -302,8 +302,14 @@ export default function Chat() {
       const json = await res.json();
       const raw: string | undefined = json?.choices?.[0]?.message?.content?.trim();
       if (!raw) { console.warn("[generateTitle] empty content in response", json); return; }
+      // Strip <think>...</think> blocks that reasoning models (e.g. local Qwen) leak into
+      // their output. Remove both complete blocks and any unclosed opening tag + trailing text.
+      const stripped = raw
+        .replace(/<think>[\s\S]*?<\/think>/gi, "")   // complete <think>…</think>
+        .replace(/<think>[\s\S]*/gi, "")              // unclosed <think>… to end of string
+        .trim();
       // Strip surrounding quotes and trailing sentence-ending punctuation models sometimes add
-      const title = raw.replace(/^["'「]|["'」]$/g, "").replace(/[.!?]$/, "").trim();
+      const title = stripped.replace(/^["'「]|["'」]$/g, "").replace(/[.!?]$/, "").trim();
       if (!title) return;
       await renameConversation(convId, title);
     } catch (err) {
