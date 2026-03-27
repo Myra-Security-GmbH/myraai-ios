@@ -71,8 +71,10 @@ function M.run(ctx)
         end)
     end
 
-    -- User-bound token checks
-    if row.user_id then
+    -- User-bound token checks.
+    -- Playground tokens carry user_id for audit attribution only — the admin
+    -- session already authenticated the user, so skip account validation.
+    if row.user_id and row.label ~= "playground" then
         local user, uerr = storage.get_user(row.user_id)
         if uerr then
             ngx.log(ngx.ERR, "auth user lookup error: ", uerr)
@@ -88,6 +90,9 @@ function M.run(ctx)
         -- member role has access to all gateways in their org (no per-gateway check)
         ctx.user_id   = user.id
         ctx.user_role = user.role
+    elseif row.user_id then
+        -- playground token: record user_id for cost attribution without re-validating
+        ctx.user_id = row.user_id
     end
 end
 
