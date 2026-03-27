@@ -120,6 +120,8 @@ The chat backend is a set of REST endpoints under `/admin/v1/`. All data is scop
 
 ## See also
 
+- [Prompt examples (English)](prompts.md) — ready-to-use prompts for legal, marketing, sales, and finance documents
+- [Prompt-Beispiele (Deutsch)](prompts-de.md) — einsatzbereite Prompts auf Deutsch
 - [Playground](../observability/playground.md) — side-by-side multi-model comparison without conversation history
 - [Provider Key Management (BYOK)](../security/byok.md) — adding provider keys to a gateway
 - [Guardrail Pipeline](../security/guardrails.md) — content policies applied to every message
