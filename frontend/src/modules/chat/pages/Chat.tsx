@@ -9,10 +9,12 @@ import type {
   PlaygroundToken,
   ProviderMeta,
   Tenant,
+  TenantPreset,
 } from "src/api/types";
 import ModelPicker from "src/common/components/ModelPicker/ModelPicker";
 import s from "src/common/components/layout/Layout.module.scss";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
+import { useAuth } from "src/common/contexts/AuthContext";
 import ChatInput, { type PendingAttachment } from "../components/ChatInput";
 import ConversationList from "../components/ConversationList";
 import MessageThread from "../components/MessageThread";
@@ -39,6 +41,16 @@ function DownloadIcon() {
   );
 }
 
+function GlobeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  );
+}
+
 function PdfIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -52,8 +64,22 @@ function PdfIcon() {
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "";
 
+/** Models that support native vision (image_url blocks) via vLLM.
+ *  Text-only models not listed here have images routed through MinerU instead.
+ *  Extend this set as vision-capable models are deployed. */
+const VLLM_VISION_MODELS = new Set<string>([
+  // e.g. "qwen2.5-vl-7b-instruct",
+]);
+
+function isVisionCapable(model: string): boolean {
+  const bare = model.startsWith("vllm/") ? model.slice(5) : model;
+  return VLLM_VISION_MODELS.has(bare) || /[-_]vl[-_\d]/i.test(bare);
+}
+
 export default function Chat() {
   useDocumentTitle("Chat");
+
+  const { user: me } = useAuth();
 
   // ── Data ───────────────────────────────────────────────────────────────────
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -67,10 +93,12 @@ export default function Chat() {
   const [tenantId, setTenantId] = useState(() => localStorage.getItem("aig-chat-tenant") ?? "");
   const [gatewayId, setGatewayId] = useState(() => localStorage.getItem("aig-chat-gateway") ?? "");
   const [model, setModel] = useState(() => localStorage.getItem("aig-chat-model") ?? "");
+  const [selectedPresetId, setSelectedPresetId] = useState(() => localStorage.getItem("aig-chat-preset") ?? "");
 
   useEffect(() => { localStorage.setItem("aig-chat-tenant",  tenantId);  }, [tenantId]);
   useEffect(() => { localStorage.setItem("aig-chat-gateway", gatewayId); }, [gatewayId]);
   useEffect(() => { localStorage.setItem("aig-chat-model",   model);     }, [model]);
+  useEffect(() => { localStorage.setItem("aig-chat-preset",  selectedPresetId); }, [selectedPresetId]);
 
   // ── Active conversation ────────────────────────────────────────────────────
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -95,11 +123,17 @@ export default function Chat() {
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     temperature: 0.7,
     maxTokens: 8192,
+    webSearch: false,
   });
 
   // ── Chat input ─────────────────────────────────────────────────────────────
   const [inputValue, setInputValue] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+
+  // ── Drag-and-drop ──────────────────────────────────────────────────────────
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
 
   // ── Streaming state ────────────────────────────────────────────────────────
   const [isStreaming, setIsStreaming] = useState(false);
@@ -143,13 +177,15 @@ export default function Chat() {
   }, [tenants, tenantId]);
 
   // ── Fetch play token when gateway changes ──────────────────────────────────
-  const refreshToken = useCallback(async (gId: string) => {
+  const refreshToken = useCallback(async (gId: string): Promise<PlaygroundToken | null> => {
     try {
       const tok = await api.post<PlaygroundToken>("/playground/token", { gateway_id: gId });
       setPlayToken(tok);
       tokenExpiresAt.current = new Date(tok.expires_at);
+      return tok;
     } catch (e) {
       setError("Could not create gateway token: " + String(e));
+      return null;
     }
   }, []);
 
@@ -166,6 +202,23 @@ export default function Chat() {
   const freeProviders = new Set(providerMeta.filter((p) => !p.requires_key).map((p) => p.name));
   const runnableProviders = new Set<string>([...freeProviders, ...configuredProviders]);
 
+  // ── Tenant presets (member/viewer restriction) ────────────────────────────
+  const selectedTenant = tenants.find((t) => t.id === tenantId);
+  const tenantPresets: TenantPreset[] = selectedTenant?.chat_presets ?? [];
+  const usePresetMode = tenantPresets.length > 0;
+
+  // When preset mode activates or tenant changes, sync gateway+model from preset
+  useEffect(() => {
+    if (!usePresetMode || tenantPresets.length === 0) return;
+    const preset = tenantPresets.find((p) => p.id === selectedPresetId) ?? tenantPresets[0];
+    if (preset) {
+      setSelectedPresetId(preset.id);
+      setGatewayId(preset.gateway_id);
+      setModel(preset.model);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usePresetMode, tenantId]);
+
   // ── Load conversation messages ─────────────────────────────────────────────
   async function loadConversation(id: string) {
     try {
@@ -178,6 +231,7 @@ export default function Chat() {
         systemPrompt: conv.system_prompt ?? "",
         temperature: conv.temperature ?? 0.7,
         maxTokens: conv.max_tokens ?? 2048,
+        webSearch: false,
       });
       if (conv.gateway_id && conv.gateway_id !== gatewayId) {
         // Find tenant for this gateway
@@ -280,6 +334,8 @@ export default function Chat() {
               if (t) parts.push(t);                              // skip empty text blocks
             } else if (b.type === "image_url") {
               parts.push("*[Image attached]*");
+            } else if (b.type === "image") {
+              parts.push(`*[Image: ${b.filename}]*`);
             } else if (b.type === "docx") {
               parts.push(`*[Document: ${b.filename}]*`);        // reference only — no inline text dump
             } else if (b.type === "document" && b.source?.type === "file") {
@@ -359,13 +415,15 @@ export default function Chat() {
     if (!model) { setError("Select a model first"); return; }
     if (!playToken) { setError("No gateway token — select a gateway"); return; }
 
-    // Refresh token if expiring soon
+    // Refresh token if expiring soon; use the returned token directly to avoid stale state
     const tokenAge = tokenExpiresAt.current
       ? tokenExpiresAt.current.getTime() - Date.now()
       : null;
+    let currentTok: PlaygroundToken | null = playToken;
     if (tokenAge !== null && tokenAge < 60_000) {
-      await refreshToken(gatewayId);
+      currentTok = await refreshToken(gatewayId);
     }
+    if (!currentTok) { setError("No gateway token — could not refresh"); return; }
 
     // Track whether this is the very first message (for auto-title)
     const isFirstMessage = messages.length === 0;
@@ -403,19 +461,62 @@ export default function Chat() {
       const unsupported: string[] = [];
       for (const att of pendingAttachments) {
         if (att.mime_type.startsWith("image/")) {
-          blocks.push({
-            type: "image_url",
-            image_url: { url: `data:${att.mime_type};base64,${att.data}` },
-          });
+          if (model.startsWith("claude-") || isVisionCapable(model)) {
+            // Anthropic and vision-capable vLLM models: send image_url directly
+            blocks.push({
+              type: "image_url",
+              image_url: { url: `data:${att.mime_type};base64,${att.data}` },
+            });
+          } else {
+            // Text-only vLLM model: describe image via MinerU
+            let description: string;
+            try {
+              setProcessingStatus(`Analyzing image "${att.filename}" with MinerU…`);
+              const res = await api.post<{ text: string }>("/chat/files", {
+                gateway_id: gatewayId,
+                filename: att.filename,
+                mime_type: att.mime_type,
+                data: att.data,
+                extract_text: true,
+              });
+              description = res.text;
+            } catch (e) {
+              setError("Failed to process image: " + String(e));
+              return;
+            }
+            blocks.push({ type: "image", filename: att.filename, text: description });
+          }
         } else if (att.mime_type === "application/pdf" || att.mime_type === "text/plain") {
-          blocks.push({
-            type: "document",
-            source: { type: "base64", media_type: att.mime_type, data: att.data },
-          });
+          if (att.mime_type === "application/pdf" && !model.startsWith("claude-")) {
+            // Non-Anthropic model: extract PDF text via MinerU
+            let extractedText: string;
+            try {
+              setProcessingStatus(`Extracting text from "${att.filename}" with MinerU…`);
+              const res = await api.post<{ text: string }>("/chat/files", {
+                gateway_id: gatewayId,
+                filename: att.filename,
+                mime_type: att.mime_type,
+                data: att.data,
+                extract_text: true,
+              });
+              extractedText = res.text;
+            } catch (e) {
+              setError("Failed to extract PDF: " + String(e));
+              return;
+            }
+            blocks.push({ type: "pdf", filename: att.filename, text: extractedText });
+          } else {
+            // Anthropic-native path: inline base64 document block
+            blocks.push({
+              type: "document",
+              source: { type: "base64", media_type: att.mime_type, data: att.data },
+            });
+          }
         } else if (att.mime_type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
           // Gateway extracts plain text from the docx server-side and returns { text }
           let extractedText: string;
           try {
+            setProcessingStatus(`Extracting text from "${att.filename}"…`);
             const res = await api.post<{ text: string }>("/chat/files", {
               gateway_id: gatewayId,
               filename: att.filename,
@@ -441,6 +542,7 @@ export default function Chat() {
         ) {
           let fileId: string;
           try {
+            setProcessingStatus(`Uploading "${att.filename}"…`);
             const res = await api.post<{ file_id: string }>("/chat/files", {
               gateway_id: gatewayId,
               filename: att.filename,
@@ -531,10 +633,13 @@ export default function Chat() {
         try {
           const parsed = JSON.parse(m.content);
           if (Array.isArray(parsed)) {
-            // Convert docx blocks back to plain text for the LLM
+            // Convert docx/pdf blocks back to plain text for the LLM
             content = parsed.map((b: { type: string; filename?: string; text?: string; [k: string]: unknown }) => {
-              if (b.type === "docx") {
+              if (b.type === "docx" || b.type === "pdf") {
                 return { type: "text", text: `[Document: ${b.filename}]\n\n${b.text ?? ""}` };
+              }
+              if (b.type === "image") {
+                return { type: "text", text: `[Image: ${b.filename}]\n\n${b.text ?? ""}` };
               }
               return b;
             });
@@ -553,11 +658,12 @@ export default function Chat() {
     }) ? "xlsx" : null);
 
     // Stream inference
-    const tok = playToken;
+    const tok = currentTok;
     const compatUrl = `${GATEWAY_URL}/v1/${tok.tenant_slug}/${tok.gateway_slug}/compat/chat/completions`;
     const abort = new AbortController();
     abortRef.current = abort;
 
+    setProcessingStatus("Waiting for model response…");
     setIsStreaming(true);
     setStreamingContent("");
 
@@ -572,6 +678,7 @@ export default function Chat() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${tok.token}`,
         ...(needsSkill ? { "x-aig-skill": needsSkill } : {}),
+        ...(drawerSettings.webSearch ? { "x-aig-web-search": "1" } : {}),
       }).filter(([, v]) => v !== undefined)
     ) as Record<string, string>;
 
@@ -624,6 +731,7 @@ export default function Chat() {
               const chunk = JSON.parse(data);
               const delta = chunk?.choices?.[0]?.delta?.content;
               if (delta != null) {
+                if (!accumulated) setProcessingStatus(null); // first token — hide status
                 accumulated += delta;
                 setStreamingContent(accumulated);
               }
@@ -642,6 +750,7 @@ export default function Chat() {
         if ((err as Error)?.name === "AbortError") {
           break streaming; // User stopped — save partial content
         } else {
+          setProcessingStatus(null);
           setError(String(err));
           setIsStreaming(false);
           setStreamingContent(null);
@@ -658,6 +767,7 @@ export default function Chat() {
     }
 
     const latencyMs = Math.round(performance.now() - start);
+    setProcessingStatus(null);
     setIsStreaming(false);
     setStreamingContent(null);
 
@@ -705,6 +815,42 @@ export default function Chat() {
 
   function stopStreaming() {
     abortRef.current?.abort();
+  }
+
+  // ── Drag-and-drop handlers ─────────────────────────────────────────────────
+  function handleDragEnter(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current++;
+    if (dragCounterRef.current === 1) setIsDragOver(true);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleDragLeave() {
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) setIsDragOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      setPendingAttachments((prev) => [
+        ...prev,
+        { filename: file.name, mime_type: file.type, data: base64 },
+      ]);
+    };
+    reader.readAsDataURL(file);
   }
 
   // ── Edit message ───────────────────────────────────────────────────────────
@@ -775,6 +921,7 @@ export default function Chat() {
       systemPrompt: preset.system_prompt ?? "",
       temperature: preset.temperature ?? 0.7,
       maxTokens: preset.max_tokens ?? 2048,
+      webSearch: false,
     });
   }
 
@@ -807,32 +954,78 @@ export default function Chat() {
           </select>
         </div>
 
-        <span className={chatS["config-label"]}>Gateway</span>
-        <div className={chatS["config-select"]}>
-          <select
-            className={s["form-select"]}
-            value={gatewayId}
-            onChange={(e) => setGatewayId(e.target.value)}
-            style={{ margin: 0 }}
-          >
-            <option value="">— select —</option>
-            {gateways.map((g) => (
-              <option key={g.id} value={g.id}>{(g as any).slug ?? g.id}</option>
-            ))}
-          </select>
-        </div>
+        {usePresetMode ? (
+          <>
+            <span className={chatS["config-label"]}>Mode</span>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+              {tenantPresets.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPresetId(p.id);
+                    setGatewayId(p.gateway_id);
+                    setModel(p.model);
+                  }}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "6px",
+                    border: selectedPresetId === p.id
+                      ? "2px solid var(--accent, #0052cc)"
+                      : "1px solid var(--border, #ccc)",
+                    background: selectedPresetId === p.id
+                      ? "var(--accent-light, #e8f0fe)"
+                      : "transparent",
+                    fontWeight: selectedPresetId === p.id ? 600 : 400,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <span className={chatS["config-label"]}>Gateway</span>
+            <div className={chatS["config-select"]}>
+              <select
+                className={s["form-select"]}
+                value={gatewayId}
+                onChange={(e) => setGatewayId(e.target.value)}
+                style={{ margin: 0 }}
+              >
+                <option value="">— select —</option>
+                {gateways.map((g) => (
+                  <option key={g.id} value={g.id}>{(g as any).slug ?? g.id}</option>
+                ))}
+              </select>
+            </div>
 
-        <span className={chatS["config-label"]}>Model</span>
-        <div className={chatS["config-model"]}>
-          <ModelPicker
-            models={models}
-            value={model}
-            onChange={setModel}
-            runnableProviders={runnableProviders}
-          />
-        </div>
+            <span className={chatS["config-label"]}>Model</span>
+            <div className={chatS["config-model"]}>
+              <ModelPicker
+                models={models}
+                value={model}
+                onChange={setModel}
+                runnableProviders={runnableProviders}
+              />
+            </div>
+          </>
+        )}
 
         <div className={chatS["config-spacer"]} />
+
+        <button
+          className={chatS["icon-btn"]}
+          title={drawerSettings.webSearch ? "Web search: ON (click to disable)" : "Enable web search"}
+          onClick={() => setDrawerSettings(s => ({ ...s, webSearch: !s.webSearch }))}
+          style={drawerSettings.webSearch ? { color: "var(--accent, #0052cc)" } : {}}
+        >
+          <GlobeIcon />
+        </button>
 
         <button
           className={chatS["icon-btn"]}
@@ -897,11 +1090,30 @@ export default function Chat() {
         </div>
 
         {/* Message area */}
-        <div className={chatS["message-area"]}>
+        <div
+          className={chatS["message-area"]}
+          style={{ position: "relative" }}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDragOver && (
+            <div className={chatS["drop-overlay"]}>
+              <div className={chatS["drop-zone"]}>
+                <span className={chatS["drop-icon"]}>📎</span>
+                <span className={chatS["drop-label"]}>Drop file here</span>
+                <span className={chatS["drop-hint"]}>
+                  Images · PDF · DOCX · XLSX · ODS · CSV · TXT
+                </span>
+              </div>
+            </div>
+          )}
           <MessageThread
             messages={messages}
             streamingContent={streamingContent}
             isStreaming={isStreaming}
+            processingStatus={processingStatus}
             onCopy={copyToClipboard}
             onEdit={editMessage}
             onRegenerate={regenerate}

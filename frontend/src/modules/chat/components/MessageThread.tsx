@@ -7,6 +7,7 @@ interface Props {
   messages: ChatMessage[];
   streamingContent: string | null;
   isStreaming: boolean;
+  processingStatus?: string | null;
   onCopy: (text: string) => void;
   onEdit?: (id: string, content: string) => void;
   onRegenerate?: () => void;
@@ -25,6 +26,7 @@ export default function MessageThread({
   messages,
   streamingContent,
   isStreaming,
+  processingStatus,
   onCopy,
   onEdit,
   onRegenerate,
@@ -38,7 +40,7 @@ export default function MessageThread({
     if (!isUserScrolled.current) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, processingStatus]);
 
   // Detect manual scroll
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function MessageThread({
     if (isStreaming) isUserScrolled.current = false;
   }, [isStreaming]);
 
-  if (messages.length === 0 && !isStreaming) {
+  if (messages.length === 0 && !isStreaming && !processingStatus) {
     return (
       <div className={s.thread}>
         <div className={s["thread-empty"]}>
@@ -100,6 +102,12 @@ export default function MessageThread({
           onRegenerate={idx === allMessages.length - 1 && msg.role === "assistant" ? onRegenerate : undefined}
         />
       ))}
+      {processingStatus && !isStreaming && (
+        <div className={s["processing-row"]}>
+          <span className={s["processing-spinner"]} />
+          <span className={s["processing-text"]}>{processingStatus}</span>
+        </div>
+      )}
       <div ref={bottomRef} />
     </div>
   );

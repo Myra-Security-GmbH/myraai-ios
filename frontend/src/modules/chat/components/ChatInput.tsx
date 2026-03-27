@@ -69,10 +69,8 @@ export default function ChatInput({
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        if (!isStreaming && !disabled && value.trim()) onSend();
-      }
+      e.preventDefault();
+      if (!isStreaming && !disabled && value.trim()) onSend();
     }
   }
 
@@ -134,7 +132,7 @@ export default function ChatInput({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message… (Ctrl+Enter to send)"
+            placeholder="Message… (Enter to send)"
             disabled={disabled && !isStreaming}
             rows={1}
             aria-label="Message input"
@@ -152,7 +150,7 @@ export default function ChatInput({
         </div>
 
         <div className={s["input-hint"]}>
-          Ctrl+Enter to send · Shift+Enter for newline
+          Enter to send · Shift+Enter for newline
         </div>
       </div>
     </div>
