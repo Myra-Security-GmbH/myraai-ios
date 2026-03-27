@@ -138,16 +138,7 @@ This error is returned only when all of the following are true:
 }
 ```
 
-### 502 — all providers failed
-
-```json
-{
-  "error": {
-    "code": "all_providers_failed",
-    "message": "All configured providers failed"
-  }
-}
-```
+**502 — all providers failed** — returned when every provider in the fallback chain has been exhausted. The JSON envelope is identical to the above; only `code` and `message` differ.
 
 ---
 

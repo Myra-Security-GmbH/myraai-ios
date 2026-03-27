@@ -100,9 +100,7 @@ Reduces false positives on discussions about programming topics where no actual 
 
 ## Pipeline position
 
-The code detection guardrail is **Tier 1** — it runs in-process with no external calls. It can run in both the request and response phases depending on the configured `target`.
-
-A `block` verdict from this guardrail stops the pipeline immediately. No subsequent guardrails run.
+The code detection guardrail is **Tier 1** — it runs in-process with no external calls. It can run in both the request and response phases depending on the configured `target`. A `block` verdict from this guardrail stops the pipeline immediately. No subsequent guardrails run.
 
 ---
 

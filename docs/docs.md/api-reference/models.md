@@ -1,6 +1,6 @@
 # Models & Pricing API
 
-The Models API exposes the gateway's model catalog. The Pricing API lets you read and manage per-model cost data used for spend tracking and budget enforcement.
+The Models API exposes the gateway's model catalog. The Pricing API lets you read and manage per-model cost data used for spend tracking and budget enforcement. Model pricing data is maintained by Myra Security.
 
 **Base URL:** `https://<your-gateway-host>/admin/v1`
 
@@ -161,8 +161,6 @@ curl -X DELETE "https://<your-gateway-host>/admin/v1/model-prices/openai/gpt-4o"
 
 !!! note
     URL-encode the model name if it contains slashes. For example, `accounts/fireworks/models/llama-v3-70b` becomes `accounts%2Ffireworks%2Fmodels%2Fllama-v3-70b`.
-
-Model pricing data is maintained by Myra Security. Use the API below to view pricing and override individual entries.
 
 ---
 

@@ -94,13 +94,7 @@ Use `action: "flag"` during a rollout to measure how often the model produces no
 
 ↳ Violations are recorded in `detectors_fired` and `block_reason` on the log entry. The response is not modified and the caller receives it unchanged.
 
----
-
-## Pipeline position
-
-The JSON schema guardrail is **Tier 1** — it runs in-process with no external calls. It runs in the response phase only; request-phase guardrails are not affected.
-
-A `block` verdict from this guardrail stops the pipeline immediately. No subsequent guardrails run.
+The JSON schema guardrail is **Tier 1** — it runs in-process with no external calls. It runs in the response phase only; request-phase guardrails are not affected. A `block` verdict from this guardrail stops the pipeline immediately. No subsequent guardrails run.
 
 ---
 

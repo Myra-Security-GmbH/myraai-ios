@@ -111,15 +111,13 @@ These fields are recorded in the request log alongside `input_tokens` and `outpu
 
 ### Cache pricing
 
-Cache pricing differs from standard input pricing:
+Cache pricing differs from standard input pricing. The gateway records `cost_usd` using these rates when cache token counts are present in the response.
 
 | Token type | Relative price |
 |---|---|
 | Standard input | 1× |
 | Cache write | 1.25× input |
 | Cache read | 0.1× input |
-
-The gateway records `cost_usd` using these rates when cache token counts are present in the response.
 
 ---
 

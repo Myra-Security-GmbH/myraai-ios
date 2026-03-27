@@ -127,7 +127,7 @@ curl -s -X POST \
 
 ## Prerequisites
 
-Ollama must be installed and the target model pulled before making requests:
+Ollama must be installed and the target model pulled before making requests. If the model is not pulled, Ollama returns a 404 which the gateway surfaces as-is — run `ollama list` to see available models.
 
 ```bash
 # Install Ollama (Linux)
@@ -138,9 +138,6 @@ ollama pull llama3.2
 ollama pull mistral
 ollama pull qwen2.5:14b
 ```
-
-!!! warning "Model must be pulled first"
-    If the model is not pulled, Ollama returns a 404 which the gateway surfaces as-is. Run `ollama list` to see available models.
 
 ---
 
