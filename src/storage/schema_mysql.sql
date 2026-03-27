@@ -284,8 +284,13 @@ INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_wri
 VALUES ('openai',    'gpt-3.5-turbo',               0.0005,   0.0015,   NULL,      NULL,      UNIX_TIMESTAMP())
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), updated_at=VALUES(updated_at);
 
+-- Anthropic — Claude 4.6 (latest)
 INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
-VALUES ('anthropic', 'claude-opus-4-6',             0.015,    0.075,    0.01875,   0.0015,    UNIX_TIMESTAMP())
+VALUES ('anthropic', 'claude-opus-4-6',             0.005,    0.025,    0.00625,   0.0005,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-opus-4-6-20260205',    0.005,    0.025,    0.00625,   0.0005,    UNIX_TIMESTAMP())
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
 
 INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
@@ -293,23 +298,62 @@ VALUES ('anthropic', 'claude-sonnet-4-6',           0.003,    0.015,    0.00375,
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
 
 INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
-VALUES ('anthropic', 'claude-haiku-4-5-20251001',   0.0008,   0.004,    0.001,     0.00008,   UNIX_TIMESTAMP())
+VALUES ('anthropic', 'claude-haiku-4-5',            0.001,    0.005,    0.00125,   0.0001,    UNIX_TIMESTAMP())
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
 
 INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
-VALUES ('anthropic', 'claude-haiku-4-5',            0.0008,   0.004,    0.001,     0.00008,   UNIX_TIMESTAMP())
+VALUES ('anthropic', 'claude-haiku-4-5-20251001',   0.001,    0.005,    0.00125,   0.0001,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+-- Anthropic — Claude 4.5
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-opus-4-5',             0.005,    0.025,    0.00625,   0.0005,    UNIX_TIMESTAMP())
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
 
 INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
-VALUES ('anthropic', 'claude-3-5-sonnet-20241022',  0.003,    0.015,    0.00375,   0.0003,    UNIX_TIMESTAMP())
+VALUES ('anthropic', 'claude-opus-4-5-20251101',    0.005,    0.025,    0.00625,   0.0005,    UNIX_TIMESTAMP())
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
 
 INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
-VALUES ('anthropic', 'claude-3-5-haiku-20241022',   0.0008,   0.004,    0.001,     0.00008,   UNIX_TIMESTAMP())
+VALUES ('anthropic', 'claude-sonnet-4-5',           0.003,    0.015,    0.00375,   0.0003,    UNIX_TIMESTAMP())
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
 
 INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
-VALUES ('anthropic', 'claude-3-opus-20240229',      0.015,    0.075,    0.01875,   0.0015,    UNIX_TIMESTAMP())
+VALUES ('anthropic', 'claude-sonnet-4-5-20250929',  0.003,    0.015,    0.00375,   0.0003,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+-- Anthropic — Claude 4.1 / 4.0 (legacy)
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-opus-4-1',             0.015,    0.075,    0.01875,   0.0015,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-opus-4-1-20250805',    0.015,    0.075,    0.01875,   0.0015,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-opus-4-0',             0.015,    0.075,    0.01875,   0.0015,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-opus-4-20250514',      0.015,    0.075,    0.01875,   0.0015,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-sonnet-4-0',           0.003,    0.015,    0.00375,   0.0003,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-sonnet-4-20250514',    0.003,    0.015,    0.00375,   0.0003,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+-- Anthropic — Claude 3.x (legacy/deprecated)
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-3-7-sonnet-20250219',  0.003,    0.015,    0.00375,   0.0003,    UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
+
+INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
+VALUES ('anthropic', 'claude-3-haiku-20240307',     0.00025,  0.00125,  0.0003,    0.00003,   UNIX_TIMESTAMP())
 ON DUPLICATE KEY UPDATE input_per_1k=VALUES(input_per_1k), output_per_1k=VALUES(output_per_1k), cache_write_per_1k=VALUES(cache_write_per_1k), cache_read_per_1k=VALUES(cache_read_per_1k), updated_at=VALUES(updated_at);
 
 INSERT INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
