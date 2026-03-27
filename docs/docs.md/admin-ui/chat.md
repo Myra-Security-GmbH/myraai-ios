@@ -26,8 +26,8 @@ The left panel shows all your saved conversations, ordered by most recently upda
 
 | Action | How |
 |---|---|
-| New conversation | Click **+ New Conversation** at the top of the list |
-| Rename | Click the conversation title to edit it inline |
+| New conversation | Click **+ New Chat** at the top of the list |
+| Rename | Double-click the conversation title to edit it inline |
 | Delete | Click the **×** button on a conversation row |
 
 Conversations are private — only the user who created them can see them.
@@ -50,15 +50,17 @@ Click the gear (⚙) icon to open the settings drawer. Changes apply to the curr
 
 Type a message in the input field at the bottom and press **Enter** or click **Send**.
 
+While the message is being processed, a status indicator appears in the message area showing what the system is doing — for example, extracting text from a document or waiting for the model to respond.
+
 Responses stream in real time. While streaming, a **Stop** button appears — click it to abort the current response.
 
-Long responses complete automatically without any action required. Each assistant response shows the token counts (input + output) and cost for that turn.
+Each assistant response shows the token counts (input + output) and cost for that turn.
 
 ---
 
 ## File attachments
 
-Click the paperclip icon to attach a file to your message. The following file types are supported:
+Click the paperclip icon to attach a file to your message, or drag a file from your desktop and drop it anywhere on the message area. A blue drop target appears while the file is dragged over the panel. The following file types are supported:
 
 | Format | Extensions |
 |---|---|
@@ -93,28 +95,6 @@ Two export buttons appear in the configuration bar when a conversation with mess
 | **Download PDF** | Downloads the conversation as a formatted `.pdf` file. |
 
 Both buttons are disabled when no conversation is selected or the conversation has no messages.
-
----
-
-## API
-
-The chat backend is a set of REST endpoints under `/admin/v1/`. All data is scoped to the authenticated user — no user can read or modify another user's conversations.
-
-| Endpoint | Description |
-|---|---|
-| `GET /admin/v1/conversations` | List all conversations (paginated) |
-| `POST /admin/v1/conversations` | Create a conversation |
-| `GET /admin/v1/conversations/{id}` | Get a conversation with its messages |
-| `PATCH /admin/v1/conversations/{id}` | Update title, model, system prompt, temperature, max tokens |
-| `DELETE /admin/v1/conversations/{id}` | Delete a conversation and all its messages |
-| `POST /admin/v1/conversations/{id}/messages` | Append a message |
-| `PATCH /admin/v1/conversations/{id}/messages/{mid}` | Edit a message |
-| `DELETE /admin/v1/conversations/{id}/messages/{mid}` | Delete a message |
-| `POST /admin/v1/conversations/{id}/attachments` | Upload an attachment |
-| `GET /admin/v1/attachments/{id}` | Download an attachment |
-| `DELETE /admin/v1/attachments/{id}` | Delete an attachment |
-| `POST /admin/v1/chat/files` | Upload a document or spreadsheet for use in a conversation |
-| `POST /admin/v1/chat/export-pdf` | Export a conversation transcript as a PDF |
 
 ---
 

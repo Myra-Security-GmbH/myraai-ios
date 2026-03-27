@@ -6,6 +6,10 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ## Chat
 
+**New: Drag-and-drop file upload** — Drag any supported file from your desktop and drop it anywhere on the message area. A blue drop target appears while the file is dragged over the panel. The file is attached exactly as if selected via the paperclip button. See [Chat — File attachments](../admin-ui/chat.md#file-attachments).
+
+**New: Processing status indicator** — A spinner and status label appear in the message area between the moment you send a message and the moment the first response token arrives. The label shows what is happening — for example, extracting text from a document or waiting for the model.
+
 **New: Spreadsheet file upload** — Attach spreadsheet files (`.csv`, `.tsv`, `.xlsx`, `.xlsm`, `.ods`) to any chat message. Claude reads and analyses the content and can answer questions about it. Spreadsheet files require an Anthropic provider key on the selected gateway. See [Chat — File attachments](../admin-ui/chat.md#file-attachments).
 
 **New: Conversation export** — Download a conversation as a Markdown or PDF file using the export buttons in the chat configuration bar. Both buttons are disabled when no conversation is active. See [Chat — Exporting conversations](../admin-ui/chat.md#exporting-conversations).

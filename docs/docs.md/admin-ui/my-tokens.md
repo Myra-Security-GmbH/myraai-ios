@@ -53,16 +53,3 @@ See [Endpoint URL formats](../routing/compat-endpoint.md) for provider-specific 
 
 Click **Revoke** next to any token in the table. Revocation is immediate — the token is rejected on the next request. You can only revoke tokens that belong to your own account.
 
----
-
-## API
-
-The underlying endpoints are available for programmatic use:
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/admin/v1/me/tokens` | List own tokens |
-| `POST` | `/admin/v1/me/tokens` | Create a token |
-| `DELETE` | `/admin/v1/me/tokens/{id}` | Revoke a token |
-
-See [Users & Tokens API](../api-reference/users-tokens.md#self-service-tokens-metokens) for full request/response details.

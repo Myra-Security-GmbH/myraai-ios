@@ -16,19 +16,8 @@ Navigate to `http://<your-gateway>/login`. You will be redirected here automatic
 
 Click **Continue with Google**. You will be redirected to Google's consent screen and returned to the dashboard on success.
 
-**Requirements:**
-- The gateway must be configured with `AIG_GOOGLE_CLIENT_ID` and `AIG_GOOGLE_CLIENT_SECRET`
-- Your email must already exist as a user in the database (users are not auto-provisioned on first SSO login)
-
-**Environment variables:**
-
-| Variable | Description |
-|---|---|
-| `AIG_GOOGLE_CLIENT_ID` | OAuth 2.0 client ID from Google Cloud Console |
-| `AIG_GOOGLE_CLIENT_SECRET` | OAuth 2.0 client secret |
-| `AIG_GOOGLE_REDIRECT_URI` | Callback URL (default: `http://localhost:8081/admin/auth/google/callback`) |
-
-In Google Cloud Console, add the redirect URI to the list of **Authorised redirect URIs** for your OAuth 2.0 credential.
+!!! note
+    Your email must already exist as a user in the system. Accounts are not created automatically on first login. Contact your administrator if you do not have access.
 
 ---
 
@@ -65,16 +54,3 @@ You will be redirected to the login page automatically when your session expires
 | `viewer` | Own tenant — read-only access to the admin panel; cannot make inference requests |
 
 Any user in the database can log in to the admin panel regardless of role. Create users via **Users → New User** or the [Users API](../api-reference/users-tokens.md).
-
----
-
-## API reference
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/admin/auth/me` | Return current user from JWT (used by frontend on load) |
-| `POST` | `/admin/auth/logout` | Expire the session cookie |
-| `POST` | `/admin/auth/otp/request` | Send 6-digit OTP to email |
-| `POST` | `/admin/auth/otp/verify` | Verify OTP; set session cookie. Pass `remember_me: true` in the request body to request a 30-day session. |
-| `GET` | `/admin/auth/google` | Start Google OAuth flow |
-| `GET` | `/admin/auth/google/callback` | OAuth callback; set session cookie |

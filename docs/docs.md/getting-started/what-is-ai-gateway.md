@@ -14,8 +14,8 @@ AI Gateway is a multi-tenant reverse proxy built upon the Global Myra Security C
 - **Guardrail pipeline** — two-tier system: fast in-process regex/keyword (Tier 1) then optional HTTP sidecars — NLP PII Detector, Prompt Guard, and PII Protector (Tier 2)
 - **BYOK key vault** — provider API keys encrypted at rest with AES-256
 - **Routing rules** — ordered rule engine that can rewrite provider, model, and attach fallback chains based on request metadata
-- **Prometheus metrics** — four counters/histograms with `provider`, `tenant_id`, `status`, `cached` labels; exposed at `/metrics`
-- **Admin UI + Playground** — React SPA for managing tenants, gateways, users, routing rules, pricing, and running multi-model comparisons
+- **Prometheus metrics** — request counters and latency histograms with provider, tenant, status, and cache labels; exposed at `/metrics`
+- **Admin UI + Playground** — web-based interface for managing tenants, gateways, users, routing rules, and running side-by-side multi-model comparisons
 
 ---
 
@@ -64,8 +64,8 @@ All policy enforcement — authentication, rate limiting, caching, and security 
 | Providers | 21 AI providers via a unified API |
 | Security | Authentication, rate limiting, budget enforcement, and guardrail pipeline (regex, NLP PII Detector, Prompt Guard, PII Protector) — all enforced in-process |
 | Encryption | Provider API keys encrypted at rest with AES-256 |
-| Observability | Structured request logs, Prometheus metrics, real-time admin dashboard |
-| Admin UI | React-based admin interface with playground for model testing |
+| Observability | Structured request logs, metrics, real-time admin dashboard |
+| Admin UI | Web-based admin interface with playground for model testing |
 
 ---
 
