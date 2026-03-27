@@ -6,6 +6,36 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ## Chat
 
+**New: Spreadsheet file upload** — Attach spreadsheet files (`.csv`, `.tsv`, `.xlsx`, `.xlsm`, `.ods`) to any chat message. Claude reads and analyses the content and can answer questions about it. Spreadsheet files require an Anthropic provider key on the selected gateway. See [Chat — File attachments](../admin-ui/chat.md#file-attachments).
+
+**New: Conversation export** — Download a conversation as a Markdown or PDF file using the export buttons in the chat configuration bar. Both buttons are disabled when no conversation is active. See [Chat — Exporting conversations](../admin-ui/chat.md#exporting-conversations).
+
+**Improved: Long response handling** — Long responses complete automatically without any action required.
+
+**Improved: Conversation auto-title** — Conversation titles generated after the first exchange are more accurate and consistently formatted.
+
+**New: Default system prompt** — The settings drawer opens with a default system prompt already filled in. Edit or clear it as needed.
+
+**New: Code-block copy button** — Code blocks in assistant messages show a language label and a **Copy** button.
+
+**Improved: Chat UI** — Updated message layout, avatar styling, and Markdown typography.
+
+---
+
+## Authentication
+
+**New: Stay logged in** — A **Stay logged in for 30 days on this device** checkbox is available on the Email OTP login step. When selected, the session remains active for 30 days instead of the default 8 hours. See [Authentication — Session](../admin-ui/authentication.md#session).
+
+---
+
+## Model prices
+
+**Updated: Anthropic model support** — Pricing is now included for the Claude 4.5 and Claude 4.6 model families, including all dated model aliases. Prices for existing models have been updated to current rates. See [Model Prices](../configuration/model-prices.md).
+
+---
+
+## Chat
+
 **New: Persistent multi-turn chat** — The **Chat** page provides a full conversation UI that routes every message through the gateway. Conversations are saved per user, support multi-turn history, and are completely isolated — no user can access another user's conversations. See [Chat](../admin-ui/chat.md).
 
 **New: File attachments in chat** — Attach images (JPEG, PNG, GIF, WebP), PDFs, and plain text files to any message. Each file type is sent as the appropriate Anthropic content block (image, document, or text).

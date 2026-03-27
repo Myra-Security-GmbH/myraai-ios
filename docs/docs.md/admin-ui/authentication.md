@@ -38,11 +38,20 @@ Click **Continue with Email code**, enter your email address, and wait for a 6-d
 
 The code is delivered by email to the address you entered.
 
+Before clicking **Send code**, you can check **Stay logged in for 30 days on this device**. When checked, your session remains active for 30 days instead of the default 8 hours.
+
 ---
 
 ## Session
 
-After a successful login a secure session is created. Sessions expire after 8 hours; you will be redirected to the login page when yours expires.
+After a successful login, a secure session is created.
+
+| Login method | Default session duration | With **Stay logged in** |
+|---|---|---|
+| Email OTP | 8 hours | 30 days |
+| Google SSO | 8 hours | — |
+
+You will be redirected to the login page automatically when your session expires. If you are already logged in and navigate to the login page, you are redirected to the dashboard immediately.
 
 ---
 
@@ -66,6 +75,6 @@ Any user in the database can log in to the admin panel regardless of role. Creat
 | `GET` | `/admin/auth/me` | Return current user from JWT (used by frontend on load) |
 | `POST` | `/admin/auth/logout` | Expire the session cookie |
 | `POST` | `/admin/auth/otp/request` | Send 6-digit OTP to email |
-| `POST` | `/admin/auth/otp/verify` | Verify OTP; set session cookie |
+| `POST` | `/admin/auth/otp/verify` | Verify OTP; set session cookie. Pass `remember_me: true` in the request body to request a 30-day session. |
 | `GET` | `/admin/auth/google` | Start Google OAuth flow |
 | `GET` | `/admin/auth/google/callback` | OAuth callback; set session cookie |

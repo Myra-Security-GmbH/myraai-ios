@@ -1,6 +1,6 @@
 # Chat
 
-The **Chat** page provides a persistent, multi-turn conversation interface that routes through the gateway. It is available to all authenticated users and supports text, images, PDFs, plain text files, and Word documents.
+The **Chat** page provides a persistent, multi-turn conversation interface that routes through the gateway. It is available to all authenticated users and supports text, images, PDFs, plain text files, Word documents, and spreadsheets.
 
 Navigate to **Chat** in the sidebar.
 
@@ -40,9 +40,9 @@ Click the gear (⚙) icon to open the settings drawer. Changes apply to the curr
 
 | Setting | Description |
 |---|---|
-| **System prompt** | Initial instruction sent to the model before any user messages |
+| **System prompt** | Initial instruction sent to the model before any user messages. A default prompt is pre-filled — edit or clear it as needed. |
 | **Temperature** | Controls response randomness. Range: 0 – 2. Default: 0.7. |
-| **Max tokens** | Maximum number of tokens the model may generate per response |
+| **Max tokens** | Maximum number of tokens the model may generate per response. Default: 8 192. |
 
 ---
 
@@ -52,25 +52,26 @@ Type a message in the input field at the bottom and press **Enter** or click **S
 
 Responses stream in real time. While streaming, a **Stop** button appears — click it to abort the current response.
 
-Each assistant response shows the token counts (input + output) and cost for that turn.
+Long responses complete automatically without any action required. Each assistant response shows the token counts (input + output) and cost for that turn.
 
 ---
 
 ## File attachments
 
-Click the paperclip icon to attach files to your message. Supported types:
+Click the paperclip icon to attach a file to your message. The following file types are supported:
 
-| Format | How it is sent |
+| Format | Extensions |
 |---|---|
-| Images (JPEG, PNG, GIF, WebP) | Sent as an inline base64 image block |
-| PDF | Sent as an inline base64 document block |
-| Plain text (`.txt`) | Sent as an inline text document block |
-| Word document (`.docx`) | Uploaded via the Anthropic Files API; processed by the **docx Agent Skill** |
+| Images | `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp` |
+| PDF | `.pdf` |
+| Plain text | `.txt` |
+| Word document | `.docx` |
+| Spreadsheet | `.csv`, `.tsv`, `.xlsx`, `.xlsm`, `.ods` |
 
-!!! note "Word document support"
-    `.docx` files require an **Anthropic** provider key on the selected gateway. The file is uploaded to Anthropic's Files API and analysed using Anthropic's server-side docx skill. Claude can then answer questions about the document's content.
+!!! note "Document and spreadsheet support"
+    Word and spreadsheet files require an **Anthropic** provider key on the selected gateway. Claude reads and analyses the document content and can answer questions about it.
 
-Unsupported file types show an error — they are never silently discarded.
+Attaching an unsupported file type shows an error message listing the supported formats.
 
 ---
 
@@ -78,7 +79,20 @@ Unsupported file types show an error — they are never silently discarded.
 
 All messages in the current conversation are sent to the model on every turn, giving the model full context of the conversation. This is the standard multi-turn behaviour expected by chat models.
 
-If a `.docx` file was attached in an earlier turn, the `docx` skill header is automatically re-sent on subsequent turns in the same conversation so Claude retains document access.
+Documents and spreadsheets attached in earlier turns remain accessible to Claude throughout the conversation — no re-upload is required.
+
+---
+
+## Exporting conversations
+
+Two export buttons appear in the configuration bar when a conversation with messages is active:
+
+| Button | Description |
+|---|---|
+| **Download Markdown** | Downloads the conversation as a `.md` file. Attached images and documents appear as labelled references. |
+| **Download PDF** | Downloads the conversation as a formatted `.pdf` file. |
+
+Both buttons are disabled when no conversation is selected or the conversation has no messages.
 
 ---
 
@@ -99,7 +113,8 @@ The chat backend is a set of REST endpoints under `/admin/v1/`. All data is scop
 | `POST /admin/v1/conversations/{id}/attachments` | Upload an attachment |
 | `GET /admin/v1/attachments/{id}` | Download an attachment |
 | `DELETE /admin/v1/attachments/{id}` | Delete an attachment |
-| `POST /admin/v1/chat/files` | Upload a file to Anthropic Files API (used for `.docx` skill) |
+| `POST /admin/v1/chat/files` | Upload a document or spreadsheet for use in a conversation |
+| `POST /admin/v1/chat/export-pdf` | Export a conversation transcript as a PDF |
 
 ---
 
