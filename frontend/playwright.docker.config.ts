@@ -48,9 +48,21 @@ export default defineConfig({
         "**/tenant-admin-scoping.spec.ts",
         "**/login.spec.ts",
         "**/input-perf.spec.ts",
-        "**/screenshots.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"], storageState: SESSION },
+    },
+
+    // Screenshots — authenticated, wider viewport, 2× DPI
+    {
+      name: "screenshots",
+      dependencies: ["docker-setup"],
+      testMatch: "**/screenshots.spec.ts",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: SESSION,
+        viewport: { width: 1440, height: 900 },
+        deviceScaleFactor: 2,
+      },
     },
   ],
 });

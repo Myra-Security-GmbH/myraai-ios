@@ -9,7 +9,7 @@ import path from "path";
 
 const CONTAINER = "ai-gateway-gateway-1";
 const DB        = "/data/config.db";
-const EMAIL     = "sascha@schumann.net";
+const EMAIL     = "info@schumann.net";
 const CODE      = "999888";
 const SESSION   = path.resolve(__dirname, ".auth/docker-session.json");
 

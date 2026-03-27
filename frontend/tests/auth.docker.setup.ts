@@ -11,7 +11,7 @@ const DB_HOST = "172.17.0.1";
 const DB_USER = "gateway";
 const DB_PASS = "gateway";
 const DB_NAME = "ai_gateway";
-const EMAIL   = "sascha@schumann.net";
+const EMAIL   = "info@schumann.net";
 const CODE    = "999888";
 const SESSION = path.resolve(__dirname, ".auth/docker-session.json");
 

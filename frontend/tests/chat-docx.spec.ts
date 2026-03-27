@@ -7,13 +7,14 @@ import { test, expect, Page } from "@playwright/test";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 
-/** Delete all conversations for the current user via the admin API (best-effort cleanup). */
-async function deleteAllConversations(page: Page) {
+/** Delete conversations created during this test run (best-effort cleanup). */
+async function deleteAllConversations(page: Page, createdAfter?: number) {
   try {
     const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
     if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string }>;
+    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
     for (const conv of convs) {
+      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
       await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
     }
   } catch {
@@ -81,13 +82,15 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
 test.describe("Chat page — .docx upload and summarisation", () => {
   test.setTimeout(90000); // allow up to 90 s for streaming responses
   const FIXTURE = path.resolve(__dirname, "fixtures/eiffel-tower.docx");
+  let testStartTime: number;
 
   test.beforeEach(async ({ page }) => {
+    testStartTime = Date.now();
     await gotoChatPage(page);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page);
+    await deleteAllConversations(page, testStartTime);
   });
 
   test("attach button accepts a .docx file and shows it as a chip", async ({ page }) => {

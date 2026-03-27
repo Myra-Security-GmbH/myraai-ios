@@ -12,7 +12,7 @@ import { test, expect, BrowserContext } from "@playwright/test";
 import { execSync } from "child_process";
 
 const DB    = "/opt/ai-gateway/data/config.db";
-const EMAIL = "sascha@schumann.net";
+const EMAIL = "info@schumann.net";
 
 // ---------------------------------------------------------------------------
 // Helpers
