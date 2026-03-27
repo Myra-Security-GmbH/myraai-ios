@@ -13,6 +13,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         msmtp-mta \
         openresty-resty \
         python3 \
+        python3-pip \
+        pandoc \
+        fonts-liberation \
+        libpango-1.0-0 \
+        libpangocairo-1.0-0 \
+        libcairo2 \
+        libgdk-pixbuf2.0-0 \
+    && pip3 install --no-cache-dir weasyprint \
     && rm -rf /var/lib/apt/lists/*
 
 # Lua vendor dependencies (lua-resty-http, lua-resty-hmac)

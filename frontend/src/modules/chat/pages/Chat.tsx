@@ -29,6 +29,27 @@ function GearIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function PdfIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="9" y1="15" x2="15" y2="15" />
+      <line x1="9" y1="11" x2="11" y2="11" />
+    </svg>
+  );
+}
+
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "";
 
 export default function Chat() {
@@ -57,10 +78,23 @@ export default function Chat() {
 
   // ── Settings drawer ────────────────────────────────────────────────────────
   const [showSettings, setShowSettings] = useState(false);
+  const DEFAULT_SYSTEM_PROMPT =
+    "Today's date is " + new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) + ".\n\n" +
+    "You are Claude, an AI assistant made by Anthropic.\n\n" +
+    "Respond in the language the user writes in.\n\n" +
+    "Formatting:\n" +
+    "- Use markdown (headers, bold, lists, code blocks) when it genuinely aids clarity — not for simple conversational replies.\n" +
+    "- Calibrate length to the question: short answers for simple questions, detailed answers for complex ones. Avoid padding.\n\n" +
+    "Behavior:\n" +
+    "- Be direct and confident. State your view clearly rather than hedging everything.\n" +
+    "- If you're uncertain about a fact, say so — don't fabricate.\n" +
+    "- When something is ambiguous, make a reasonable assumption and proceed rather than asking multiple clarifying questions. Ask at most one follow-up question at the end if genuinely needed.\n" +
+    "- Don't moralize or add unsolicited ethical commentary unless the topic directly calls for it.";
+
   const [drawerSettings, setDrawerSettings] = useState<DrawerSettings>({
-    systemPrompt: "",
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
     temperature: 0.7,
-    maxTokens: 2048,
+    maxTokens: 8192,
   });
 
   // ── Chat input ─────────────────────────────────────────────────────────────
@@ -182,9 +216,7 @@ export default function Chat() {
   }
 
   // ── Auto-title generation (fires after first exchange, non-blocking) ────────
-  async function generateTitle(convId: string, firstUserText: string) {
-    const tok = playToken;
-    if (!tok || !model) return;
+  async function generateTitle(convId: string, firstUserText: string, firstAssistantText: string, tok: PlaygroundToken, currentModel: string) {
     try {
       const compatUrl = `${GATEWAY_URL}/v1/${tok.tenant_slug}/${tok.gateway_slug}/compat/chat/completions`;
       const res = await fetch(compatUrl, {
@@ -194,29 +226,121 @@ export default function Chat() {
           Authorization: `Bearer ${tok.token}`,
         },
         body: JSON.stringify({
-          model,
+          model: currentModel,
           messages: [
             {
               role: "system",
               content:
-                "Generate a short title (4-5 words, no quotes, no trailing punctuation) for a conversation that starts with the following message. Reply with only the title.",
+                "Write a short title (3-6 words) for this conversation. Use natural, conversational phrasing — like a topic someone would jot down in a notebook, not a document heading. No quotes. No punctuation at the end. Reply with only the title.",
             },
-            { role: "user", content: firstUserText.slice(0, 500) },
+            { role: "user",      content: firstUserText.slice(0, 500) },
+            { role: "assistant", content: firstAssistantText.slice(0, 500) },
           ],
-          max_tokens: 20,
+          max_tokens: 30,
           temperature: 0,
           stream: false,
         }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.warn("[generateTitle] title request failed:", res.status, await res.text().catch(() => ""));
+        return;
+      }
       const json = await res.json();
-      const title: string | undefined = json?.choices?.[0]?.message?.content?.trim();
+      const raw: string | undefined = json?.choices?.[0]?.message?.content?.trim();
+      if (!raw) { console.warn("[generateTitle] empty content in response", json); return; }
+      // Strip surrounding quotes and trailing sentence-ending punctuation models sometimes add
+      const title = raw.replace(/^["'「]|["'」]$/g, "").replace(/[.!?]$/, "").trim();
       if (!title) return;
       await renameConversation(convId, title);
-    } catch { /* best-effort — ignore errors */ }
+    } catch (err) {
+      console.warn("[generateTitle] error:", err);
+    }
   }
 
   // ── Delete conversation ────────────────────────────────────────────────────
+  function buildExportMarkdown(): { markdown: string; slug: string } | null {
+    const conv = conversations.find((c) => c.id === activeConvId);
+    if (!conv || messages.length === 0) return null;
+
+    const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const lines: string[] = [`# ${conv.title}`, ``, `*Exported on ${today}*`, ``, `---`];
+
+    for (const msg of messages) {
+      const label = msg.role === "user" ? "**You**" : "**Claude**";
+      lines.push("", label, "");
+
+      let text = msg.content;
+      try {
+        const parsed = JSON.parse(msg.content);
+        if (Array.isArray(parsed)) {
+          const parts: string[] = [];
+          for (const b of parsed as any[]) {
+            if (b.type === "text") {
+              const t = (b.text ?? "").trim();
+              if (t) parts.push(t);                              // skip empty text blocks
+            } else if (b.type === "image_url") {
+              parts.push("*[Image attached]*");
+            } else if (b.type === "docx") {
+              parts.push(`*[Document: ${b.filename}]*`);        // reference only — no inline text dump
+            } else if (b.type === "document" && b.source?.type === "file") {
+              parts.push(`*[Spreadsheet: ${b.filename ?? "file"}]*`);
+            } else if (b.type === "document") {
+              parts.push(`*[File: ${b.filename ?? "file"}]*`);
+            }
+          }
+          text = parts.join("\n\n");
+        }
+      } catch { /* plain text — keep as-is */ }
+
+      lines.push(text, "", "---");
+    }
+
+    const slug = conv.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "conversation";
+    return { markdown: lines.join("\n"), slug };
+  }
+
+  function exportMarkdown() {
+    const result = buildExportMarkdown();
+    if (!result) return;
+    const date = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([result.markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${result.slug}-${date}.md`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportPdf() {
+    const result = buildExportMarkdown();
+    if (!result) return;
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `${result.slug}-${date}`;
+    try {
+      const res = await fetch(`${import.meta.env.VITE_ADMIN_URL ?? "/admin/v1"}/chat/export-pdf`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(document.cookie.match(/aig_session=([^;]+)/)
+            ? {} : {}),                                         // auth handled by cookie / existing session
+        },
+        credentials: "include",
+        body: JSON.stringify({ markdown: result.markdown, filename }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        setError("PDF export failed: " + (err.error ?? res.status));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${filename}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError("PDF export failed: " + String(e));
+    }
+  }
+
   async function deleteConversation(id: string) {
     if (!window.confirm("Delete this conversation?")) return;
     await api.delete(`/conversations/${id}`).catch(() => {});
@@ -308,6 +432,28 @@ export default function Chat() {
             filename: att.filename,
             text: extractedText,
           });
+        } else if (
+          att.mime_type === "text/csv" ||
+          att.mime_type === "text/tab-separated-values" ||
+          att.mime_type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+          att.mime_type === "application/vnd.ms-excel.sheet.macroenabled.12" ||
+          att.mime_type === "application/vnd.oasis.opendocument.spreadsheet"
+        ) {
+          let fileId: string;
+          try {
+            const res = await api.post<{ file_id: string }>("/chat/files", {
+              gateway_id: gatewayId,
+              filename: att.filename,
+              mime_type: att.mime_type,
+              data: att.data,
+            });
+            fileId = res.file_id;
+          } catch (e) {
+            setError("Failed to upload file: " + String(e));
+            return;
+          }
+          blocks.push({ type: "document", source: { type: "file", file_id: fileId } });
+          hasSkill = "xlsx";
         } else {
           unsupported.push(att.filename);
         }
@@ -315,7 +461,7 @@ export default function Chat() {
       if (unsupported.length > 0) {
         setError(
           `Unsupported file type(s): ${unsupported.join(", ")}. ` +
-          `Supported: images (JPEG, PNG, GIF, WebP), PDF, plain text, Word (.docx).`
+          `Supported: images (JPEG, PNG, GIF, WebP), PDF, plain text, Word (.docx), CSV, TSV, Excel (.xlsx, .xlsm), OpenDocument (.ods).`
         );
         return;
       }
@@ -398,8 +544,13 @@ export default function Chat() {
       }),
     ];
 
-    // No skill headers needed — docx is now sent as extracted plain text
-    const needsSkill = hasSkill;
+    // Re-apply skill header if this or any prior message in the conversation used the Files API
+    const needsSkill = hasSkill ?? (history.some((m) => {
+      try {
+        const p = JSON.parse(m.content);
+        return Array.isArray(p) && p.some((b: any) => b?.source?.type === "file");
+      } catch { return false; }
+    }) ? "xlsx" : null);
 
     // Stream inference
     const tok = playToken;
@@ -416,72 +567,94 @@ export default function Chat() {
     let outputTokens: number | null = null;
     let costUsd: number | null = null;
 
-    try {
-      const res = await fetch(compatUrl, {
-        method: "POST",
-        signal: abort.signal,
-        headers: Object.fromEntries(
-          Object.entries({
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${tok.token}`,
-            ...(needsSkill ? { "x-aig-skill": needsSkill } : {}),
-          }).filter(([, v]) => v !== undefined)
-        ) as Record<string, string>,
-        body: JSON.stringify({
-          model,
-          messages: apiMessages,
-          temperature: drawerSettings.temperature,
-          max_tokens: drawerSettings.maxTokens,
-          stream: true,
-        }),
-      });
+    const reqHeaders = Object.fromEntries(
+      Object.entries({
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tok.token}`,
+        ...(needsSkill ? { "x-aig-skill": needsSkill } : {}),
+      }).filter(([, v]) => v !== undefined)
+    ) as Record<string, string>;
 
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        let msg = `HTTP ${res.status}`;
-        try { msg = JSON.parse(body)?.error?.message ?? JSON.parse(body)?.error ?? msg; } catch { /* */ }
-        throw new Error(msg);
-      }
+    let continueCount = 0;
+    const MAX_CONTINUATIONS = 10;
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
+    streaming: while (true) {
+      const reqMessages = continueCount === 0
+        ? apiMessages
+        : [...apiMessages, { role: "assistant", content: accumulated }, { role: "user", content: "Continue" }];
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6).trim();
-          if (data === "[DONE]") continue;
-          try {
-            const chunk = JSON.parse(data);
-            const delta = chunk?.choices?.[0]?.delta?.content;
-            if (delta != null) {
-              accumulated += delta;
-              setStreamingContent(accumulated);
-            }
-            const usage = chunk?.usage;
-            if (usage) {
-              inputTokens = usage.prompt_tokens ?? null;
-              outputTokens = usage.completion_tokens ?? null;
-              costUsd = usage.cost_usd ?? null;
-            }
-          } catch { /* skip malformed */ }
+      let finishReason: string | null = null;
+
+      try {
+        const res = await fetch(compatUrl, {
+          method: "POST",
+          signal: abort.signal,
+          headers: reqHeaders,
+          body: JSON.stringify({
+            model,
+            messages: reqMessages,
+            temperature: drawerSettings.temperature,
+            max_tokens: drawerSettings.maxTokens,
+            stream: true,
+          }),
+        });
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          let msg = `HTTP ${res.status}`;
+          try { msg = JSON.parse(body)?.error?.message ?? JSON.parse(body)?.error ?? msg; } catch { /* */ }
+          throw new Error(msg);
+        }
+
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6).trim();
+            if (data === "[DONE]") continue;
+            try {
+              const chunk = JSON.parse(data);
+              const delta = chunk?.choices?.[0]?.delta?.content;
+              if (delta != null) {
+                accumulated += delta;
+                setStreamingContent(accumulated);
+              }
+              const reason = chunk?.choices?.[0]?.finish_reason;
+              if (reason) finishReason = reason;
+              const usage = chunk?.usage;
+              if (usage) {
+                inputTokens  = (inputTokens  ?? 0) + (usage.prompt_tokens     ?? 0);
+                outputTokens = (outputTokens ?? 0) + (usage.completion_tokens ?? 0);
+                costUsd      = (costUsd      ?? 0) + (usage.cost_usd          ?? 0);
+              }
+            } catch { /* skip malformed */ }
+          }
+        }
+      } catch (err: unknown) {
+        if ((err as Error)?.name === "AbortError") {
+          break streaming; // User stopped — save partial content
+        } else {
+          setError(String(err));
+          setIsStreaming(false);
+          setStreamingContent(null);
+          return;
         }
       }
-    } catch (err: unknown) {
-      if ((err as Error)?.name === "AbortError") {
-        // User stopped — save partial content
-      } else {
-        setError(String(err));
-        setIsStreaming(false);
-        setStreamingContent(null);
-        return;
+
+      // Auto-continue if the model hit the token limit and user hasn't aborted
+      if (finishReason === "max_tokens" && !abort.signal.aborted && continueCount < MAX_CONTINUATIONS) {
+        continueCount++;
+        continue streaming;
       }
+      break streaming;
     }
 
     const latencyMs = Math.round(performance.now() - start);
@@ -523,7 +696,7 @@ export default function Chat() {
 
       // Auto-generate title after the first exchange (fire-and-forget)
       if (isFirstMessage && convId) {
-        generateTitle(convId, text);
+        generateTitle(convId, text, accumulated, tok, model);
       }
     } catch (e) {
       setError("Failed to save assistant message: " + String(e));
@@ -660,6 +833,24 @@ export default function Chat() {
         </div>
 
         <div className={chatS["config-spacer"]} />
+
+        <button
+          className={chatS["icon-btn"]}
+          title="Download PDF"
+          onClick={exportPdf}
+          disabled={!activeConvId || messages.length === 0}
+        >
+          <PdfIcon />
+        </button>
+
+        <button
+          className={chatS["icon-btn"]}
+          title="Download Markdown"
+          onClick={exportMarkdown}
+          disabled={!activeConvId || messages.length === 0}
+        >
+          <DownloadIcon />
+        </button>
 
         <button
           className={chatS["icon-btn"]}
