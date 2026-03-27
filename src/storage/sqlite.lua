@@ -66,7 +66,8 @@ local function migrate_columns(cfg)
 
     local tcols = {}
     for row in db:nrows("PRAGMA table_info(tenant)") do tcols[row.name] = true end
-    if not tcols.budget_period then db:exec("ALTER TABLE tenant ADD COLUMN budget_period TEXT NOT NULL DEFAULT 'monthly'") end
+    if not tcols.budget_period       then db:exec("ALTER TABLE tenant ADD COLUMN budget_period TEXT NOT NULL DEFAULT 'monthly'") end
+    if not tcols.chat_presets_config then db:exec("ALTER TABLE tenant ADD COLUMN chat_presets_config TEXT") end
 
     local ucols = {}
     for row in db:nrows("PRAGMA table_info(user)") do ucols[row.name] = true end
@@ -822,20 +823,23 @@ local function decode_detectors(row)
     end
 end
 
-function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config)
+function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config, chat_presets_config)
     local id = uuid()
     exec_one(cfg_db(), [[
-        INSERT OR IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config) VALUES (?,?,?,?,?,?)
-    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config)
+        INSERT OR IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config) VALUES (?,?,?,?,?,?,?)
+    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config, chat_presets_config)
     local row = query_one(cfg_db(), "SELECT id FROM tenant WHERE slug = ?", slug)
     return row and row.id
 end
 
-function M.update_tenant(id, plan, budget_usd, budget_period, siem_config)
+function M.update_tenant(id, plan, budget_usd, budget_period, siem_config, chat_presets_config)
     return exec_one(cfg_db(), [[
-        UPDATE tenant SET plan = ?, budget_usd = ?, budget_period = COALESCE(?, budget_period),
-               siem_config = ? WHERE id = ?
-    ]], plan, budget_usd, budget_period, siem_config, id)
+        UPDATE tenant SET plan = COALESCE(?, plan), budget_usd = ?,
+               budget_period = COALESCE(?, budget_period),
+               siem_config = COALESCE(?, siem_config),
+               chat_presets_config = COALESCE(?, chat_presets_config)
+        WHERE id = ?
+    ]], plan, budget_usd, budget_period, siem_config, chat_presets_config, id)
 end
 
 function M.delete_tenant(id)
@@ -931,7 +935,7 @@ end
 
 function M.get_tenant(id)
     return query_one(cfg_db(), [[
-        SELECT id, slug, plan, budget_usd, budget_period, siem_config,
+        SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config,
                strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
         FROM tenant WHERE id = ? AND deleted_at IS NULL
     ]], id)
@@ -940,14 +944,14 @@ end
 function M.list_tenants(tenant_id_filter)
     if tenant_id_filter then
         return query_all(cfg_db(), [[
-            SELECT id, slug, plan, budget_usd, budget_period, siem_config,
+            SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config,
                    strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
             FROM tenant WHERE deleted_at IS NULL AND id = ?
             ORDER BY created_at DESC
         ]], tenant_id_filter) or {}
     end
     return query_all(cfg_db(), [[
-        SELECT id, slug, plan, budget_usd, budget_period, siem_config,
+        SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config,
                strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch') AS created_at
         FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
     ]]) or {}

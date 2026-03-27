@@ -21,6 +21,8 @@ Browse all documentation topics by category.
     - [User Management](../admin-ui/users.md)
     - [My Tokens](../admin-ui/my-tokens.md)
     - [Chat](../admin-ui/chat.md)
+    - [Prompt examples](../admin-ui/prompts.md)
+    - [Prompt-Beispiele](../admin-ui/prompts-de.md)
 
 -   **Core Concepts**
 

@@ -251,6 +251,8 @@ function M.migrate(cfg)
 
     -- Add last_login_at column if not present (idempotent)
     db:query("ALTER TABLE `user` ADD COLUMN IF NOT EXISTS last_login_at BIGINT")
+    -- Add chat_presets_config column if not present (idempotent)
+    db:query("ALTER TABLE tenant ADD COLUMN IF NOT EXISTS chat_presets_config TEXT")
 
     db:set_keepalive(0, 5)
 end
@@ -420,28 +422,29 @@ end
 -- Tenant write helpers
 -- ---------------------------------------------------------------------------
 
-function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config)
+function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config, chat_presets_config)
     local id = uuid()
     local db, err = get_conn()
     if not db then return nil end
     exec_one(db, [[
-        INSERT IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config)
-        VALUES (?,?,?,?,?,?)
-    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config)
+        INSERT IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config)
+        VALUES (?,?,?,?,?,?,?)
+    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config, chat_presets_config)
     local row = query_one(db, "SELECT id FROM tenant WHERE slug = ?", slug)
     release(db)
     return row and row.id
 end
 
-function M.update_tenant(id, plan, budget_usd, budget_period, siem_config)
+function M.update_tenant(id, plan, budget_usd, budget_period, siem_config, chat_presets_config)
     local db, err = get_conn()
     if not db then return err end
     local e = exec_one(db, [[
-        UPDATE tenant SET plan = ?, budget_usd = ?,
+        UPDATE tenant SET plan = COALESCE(?, plan), budget_usd = ?,
                budget_period = COALESCE(?, budget_period),
-               siem_config = ?
+               siem_config = COALESCE(?, siem_config),
+               chat_presets_config = COALESCE(?, chat_presets_config)
         WHERE id = ?
-    ]], plan, budget_usd, budget_period, siem_config, id)
+    ]], plan, budget_usd, budget_period, siem_config, chat_presets_config, id)
     release(db)
     return e
 end
@@ -755,7 +758,7 @@ function M.get_tenant(id)
     local db, err = get_conn()
     if not db then return nil end
     local row = query_one(db, [[
-        SELECT id, slug, plan, budget_usd, budget_period, siem_config,
+        SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
         FROM tenant WHERE id = ? AND deleted_at IS NULL
     ]], id)
@@ -769,14 +772,14 @@ function M.list_tenants(tenant_id_filter)
     local rows
     if tenant_id_filter then
         rows = query_all(db, [[
-            SELECT id, slug, plan, budget_usd, budget_period, siem_config,
+            SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config,
                    DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
             FROM tenant WHERE deleted_at IS NULL AND id = ?
             ORDER BY created_at DESC
         ]], tenant_id_filter) or {}
     else
         rows = query_all(db, [[
-            SELECT id, slug, plan, budget_usd, budget_period, siem_config,
+            SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config,
                    DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
             FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
         ]]) or {}

@@ -4,14 +4,15 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS tenant (
-    id            TEXT PRIMARY KEY,                   -- UUID
-    slug          TEXT UNIQUE NOT NULL,
-    plan          TEXT NOT NULL DEFAULT 'free',
-    budget_usd    REAL,
-    budget_period TEXT NOT NULL DEFAULT 'monthly',
-    siem_config   TEXT,
-    deleted_at    INTEGER,
-    created_at    INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+    id                   TEXT PRIMARY KEY,                   -- UUID
+    slug                 TEXT UNIQUE NOT NULL,
+    plan                 TEXT NOT NULL DEFAULT 'free',
+    budget_usd           REAL,
+    budget_period        TEXT NOT NULL DEFAULT 'monthly',
+    siem_config          TEXT,
+    chat_presets_config  TEXT,
+    deleted_at           INTEGER,
+    created_at           INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
 );
 
 CREATE TABLE IF NOT EXISTS gateway (
@@ -126,6 +127,8 @@ INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('gemini',    'gemini-1.5-flash',            0.000075, 0.0003,  NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('mistral',   'mistral-large-latest',        0.002,    0.006,   NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('groq',      'llama-3.3-70b-versatile',     0.00059,  0.00079, NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
+INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('vllm',      'qwen3-235b',                  0.0,      0.0,     NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
+INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('vllm',      'qwen3-30b-a3b',               0.0,      0.0,     NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 
 -- Period-aware spend ledger — replaces ephemeral shared-dict budget counters.
 -- entity_type: 'gateway' | 'tenant' | 'token'

@@ -1,6 +1,6 @@
 [Unit]
-Description=vLLM – Llama Guard 3 8B (GPU 1, RTX PRO 6000 Blackwell)
-Documentation=https://docs.vllm.ai
+Description=vLLM – MinerU2.5 1.2B document parsing (GPU 1, port 8084)
+Documentation=https://github.com/opendatalab/MinerU
 After=network.target
 Wants=network.target
 
@@ -12,31 +12,32 @@ WorkingDirectory=/home/vllm
 
 # ── Model cache and Python environment ────────────────────────────────────────
 Environment=HF_HOME=/opt/models/huggingface
+Environment=HF_HUB_CACHE=/opt/models/huggingface/hub
+Environment=HF_HUB_DISABLE_XET=1
 Environment=PATH=/home/vllm/.vllm/bin:/usr/local/cuda/bin:/usr/bin:/bin
 
-# ── GPU selection: GPU 1 (Blackwell, RTX PRO 6000) ───────────────────────────
+# ── GPU selection: GPU 1 only ─────────────────────────────────────────────────
 Environment=CUDA_VISIBLE_DEVICES=1
 Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
 
 # ── HuggingFace download ──────────────────────────────────────────────────────
-Environment=HF_HUB_CACHE=/opt/models/huggingface/hub
-# Disable xet protocol (causes 416 errors on large shards)
-Environment=HF_HUB_DISABLE_XET=1
-
 # Gated model — HF_TOKEN must be set in /etc/vllm/secrets.env
 EnvironmentFile=/etc/vllm/secrets.env
 
-# ── Compilation cache (saves several minutes on restart after first run) ──────
-Environment=TORCHINDUCTOR_CACHE_DIR=/opt/models/cache/inductor
-Environment=VLLM_CACHE_ROOT=/opt/models/cache/vllm
+# ── Compilation cache (separate from llama-guard) ─────────────────────────────
+Environment=TORCHINDUCTOR_CACHE_DIR=/opt/models/cache/inductor-mineru
+Environment=VLLM_CACHE_ROOT=/opt/models/cache/vllm-mineru
 
-# ── Loading optimizations ─────────────────────────────────────────────────────
-Environment=OMP_NUM_THREADS=16
+# ── Loading optimisations ─────────────────────────────────────────────────────
+Environment=OMP_NUM_THREADS=8
 Environment=SAFETENSORS_FAST_GPU=1
 Environment=PYTORCH_ALLOC_CONF=max_split_size_mb:512,expandable_segments:True
 
 # ── vLLM serve ────────────────────────────────────────────────────────────────
-ExecStart=/home/vllm/.vllm/bin/vllm serve meta-llama/Llama-Guard-3-8B \
+ExecStart=/home/vllm/.vllm/bin/vllm serve opendatalab/MinerU2.5-2509-1.2B \
+    \
+    # MinerU structured-output logits processor (vLLM ≥ 0.10.1)
+    --logits-processors mineru_vl_utils:MinerULogitsProcessor \
     \
     # Parallelism — single GPU
     --tensor-parallel-size 1 \
@@ -45,27 +46,24 @@ ExecStart=/home/vllm/.vllm/bin/vllm serve meta-llama/Llama-Guard-3-8B \
     --dtype bfloat16 \
     --load-format safetensors \
     \
-    # Memory — 0.80 × 94.97 GiB = 75.97 GiB available on GPU 1
-    --gpu-memory-utilization 0.80 \
+    # Memory — 0.17 × 94.97 GiB ≈ 16 GiB (leaves room for llama-guard at 0.80)
+    --gpu-memory-utilization 0.17 \
     \
     # Context / throughput
     --max-model-len 4096 \
-    --max-num-seqs 512 \
-    --max-num-batched-tokens 32768 \
-    --enable-chunked-prefill \
+    --max-num-seqs 8 \
     \
-    # Prefix caching — the ~400-token Llama Guard system prompt is
-    # identical on every request; caching it cuts TTFT ~30-40% under load
+    # Prefix caching — system prompt is identical on every request
     --enable-prefix-caching \
     \
     # API
     --host 127.0.0.1 \
-    --port 8083 \
-    --served-model-name llama-guard-3-8b \
+    --port 8084 \
+    --served-model-name mineru2 \
     \
     # Misc
     --download-dir /opt/models/huggingface/hub \
-    --compilation-config '{"cache_dir":"/opt/models/cache/vllm"}' \
+    --compilation-config '{"cache_dir":"/opt/models/cache/vllm-mineru"}' \
     --enforce-eager \
     --disable-log-requests
 
@@ -76,15 +74,13 @@ LimitMEMLOCK=infinity
 # ── Restart policy ────────────────────────────────────────────────────────────
 Restart=on-failure
 RestartSec=30
-
-# Model loading on Blackwell takes several minutes on first run
-TimeoutStartSec=600
+TimeoutStartSec=300
 TimeoutStopSec=60
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=vllm-llama-guard
+SyslogIdentifier=vllm-mineru2
 
 [Install]
 WantedBy=multi-user.target

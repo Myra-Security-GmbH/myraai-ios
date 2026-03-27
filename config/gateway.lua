@@ -102,6 +102,7 @@ return {
     -- -------------------------------------------------------------------------
     provider_base_urls = {
         ollama = os.getenv("OLLAMA_BASE_URL") or "http://10.232.10.252:11439",
+        vllm   = os.getenv("VLLM_BASE_URL")   or "http://127.0.0.1:8001",
     },
 
     -- Ollama provider options
