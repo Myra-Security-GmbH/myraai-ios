@@ -244,7 +244,7 @@
 // ── Message bubble ────────────────────────────────────────────────────────────
 .bubble-row {
   display: flex;
-  padding: 4px 24px;
+  padding: 6px 24px;
   max-width: 900px;
   width: 100%;
   margin: 0 auto;
@@ -256,54 +256,75 @@
   }
 }
 
+// Extra breathing room when speaker changes
+.bubble-row.user-row + .bubble-row:not(.user-row),
+.bubble-row:not(.user-row) + .bubble-row.user-row {
+  margin-top: 20px;
+}
+
 .bubble-avatar {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   flex-shrink: 0;
-  margin-top: 4px;
+  margin-top: 6px;
 
   .bubble-row.user-row & {
-    background: var(--accent, #0052cc);
-    color: #fff;
+    background: var(--section-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--card-border);
   }
 
   .bubble-row:not(.user-row) & {
-    background: var(--card-border);
-    color: var(--text-primary);
+    background: none;
+    color: var(--accent, #0052cc);
   }
 }
 
 .bubble-content {
   flex: 1;
   min-width: 0;
+
+  // User messages: filled bubble
+  .bubble-row.user-row & {
+    background: var(--section-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 18px 18px 4px 18px;
+    padding: 10px 14px;
+    max-width: 78%;
+  }
 }
 
 .bubble-text {
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.65;
   color: var(--text-primary);
-  white-space: pre-wrap;
   word-break: break-word;
 
   // Markdown elements
-  p { margin: 0 0 0.5em; &:last-child { margin-bottom: 0; } }
-  h1, h2, h3, h4 { margin: 0.75em 0 0.35em; font-weight: 600; }
-  ul, ol { padding-left: 1.4em; margin: 0.35em 0; }
-  li { margin-bottom: 0.2em; }
-  code { font-family: var(--font-mono, monospace); font-size: 0.875em; background: var(--table-row-hover); padding: 1px 4px; border-radius: 3px; }
-  pre { background: var(--table-row-hover); border-radius: 6px; padding: 10px 12px; overflow-x: auto; margin: 0.5em 0;
-    code { background: none; padding: 0; } }
-  blockquote { border-left: 3px solid var(--card-border); padding-left: 12px; margin: 0.5em 0; color: var(--text-secondary); }
-  a { color: var(--accent, #0052cc); }
-  table { border-collapse: collapse; width: 100%; margin: 0.5em 0; font-size: 13px; }
-  th, td { border: 1px solid var(--card-border); padding: 4px 8px; text-align: left; }
+  p { margin: 0 0 0.85em; &:last-child { margin-bottom: 0; } }
+  h1 { font-size: 1.3em;  font-weight: 700; margin: 1.1em 0 0.5em; }
+  h2 { font-size: 1.15em; font-weight: 700; margin: 1em 0 0.45em; }
+  h3 { font-size: 1.05em; font-weight: 600; margin: 0.9em 0 0.4em; }
+  h4 { font-size: 1em;    font-weight: 600; margin: 0.8em 0 0.35em; }
+  ul, ol { padding-left: 1.5em; margin: 0.5em 0 0.85em; }
+  li { margin-bottom: 0.35em; }
+  li > ul, li > ol { margin: 0.25em 0 0.25em; }
+  code { font-family: var(--font-mono, monospace); font-size: 0.875em; background: var(--table-row-hover); padding: 2px 5px; border-radius: 4px; }
+  pre { background: var(--table-row-hover); border-radius: 8px; padding: 12px 16px; overflow-x: auto; margin: 0.75em 0;
+    code { background: none; padding: 0; font-size: 0.85em; } }
+  blockquote { border-left: 3px solid var(--card-border); padding-left: 14px; margin: 0.75em 0; color: var(--text-secondary); }
+  a { color: var(--accent, #0052cc); text-decoration: underline; text-underline-offset: 2px; }
+  hr { border: none; border-top: 1px solid var(--card-border); margin: 1em 0; }
+  table { border-collapse: collapse; width: 100%; margin: 0.75em 0; font-size: 14px; }
+  th, td { border: 1px solid var(--card-border); padding: 6px 10px; text-align: left; }
   th { background: var(--table-row-hover); font-weight: 600; }
+  strong { font-weight: 600; }
 }
 
 .bubble-meta {
@@ -382,12 +403,12 @@
 
 .chat-textarea {
   flex: 1;
-  padding: 10px 12px;
+  padding: 12px 16px;
   font-size: 14px;
   font-family: inherit;
   line-height: 1.5;
   border: 1px solid var(--card-border);
-  border-radius: 8px;
+  border-radius: 20px;
   background: var(--input-bg);
   color: var(--text-primary);
   resize: none;
@@ -409,7 +430,7 @@
   flex-shrink: 0;
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: 50%;
   border: none;
   display: flex;
   align-items: center;

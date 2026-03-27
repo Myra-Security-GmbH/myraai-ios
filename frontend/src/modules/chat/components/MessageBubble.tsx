@@ -1,6 +1,7 @@
-import { memo, useState } from "react";
+import { memo, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
 import type { ChatMessage } from "src/api/types";
 import AttachmentChip from "./AttachmentChip";
 import s from "../pages/Chat.module.scss";
@@ -43,6 +44,54 @@ function RegenerateIcon() {
     </svg>
   );
 }
+
+function SparkIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2 L13.5 9 L20 10 L13.5 11 L12 18 L10.5 11 L4 10 L10.5 9 Z" />
+    </svg>
+  );
+}
+
+function CodeBlock({ inline, className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
+  const lang = /language-(\w+)/.exec(className ?? "")?.[1] ?? "";
+  const code = String(children).replace(/\n$/, "");
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(code);
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 1500);
+  }, [code]);
+
+  if (inline) {
+    return <code className={className}>{children}</code>;
+  }
+  return (
+    <div style={{ borderRadius: 8, overflow: "hidden", margin: "0.75em 0", border: "1px solid var(--card-border)" }}>
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "4px 12px", background: "var(--table-row-hover)", fontSize: 11,
+        color: "var(--text-secondary)", borderBottom: "1px solid var(--card-border)",
+      }}>
+        <span>{lang || "code"}</span>
+        <button
+          onClick={handleCopy}
+          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", padding: "2px 6px" }}
+        >
+          {codeCopied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+      <pre style={{ margin: 0, padding: "12px 16px", overflowX: "auto", background: "var(--section-bg)" }}>
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+const MD_COMPONENTS: Components = {
+  code: CodeBlock as Components["code"],
+};
 
 type ContentBlock =
   | { type: "text"; text?: string }
@@ -109,7 +158,7 @@ const MessageBubble = memo(function MessageBubble({
   return (
     <div className={[s["bubble-row"], isUser ? s["user-row"] : ""].filter(Boolean).join(" ")}>
       <div className={s["bubble-avatar"]}>
-        {isUser ? "U" : "AI"}
+        {isUser ? "U" : <SparkIcon />}
       </div>
       <div className={s["bubble-content"]}>
         {editing ? (
@@ -208,7 +257,7 @@ const MessageBubble = memo(function MessageBubble({
               {isUser ? (
                 <span style={{ whiteSpace: "pre-wrap" }}>{textContent}</span>
               ) : (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
                   {textContent}
                 </ReactMarkdown>
               )}
