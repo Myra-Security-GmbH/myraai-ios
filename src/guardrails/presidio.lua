@@ -11,22 +11,23 @@ local M = {}
 local DEFAULT_ANALYZER_URL   = os.getenv("PRESIDIO_ANALYZER_URL")  or "http://127.0.0.1:5002"
 local DEFAULT_ANONYMIZER_URL = os.getenv("PRESIDIO_ANONYMIZER_URL") or "http://127.0.0.1:5001"
 local DEFAULT_SCORE_THRESHOLD = 0.7
-local DEFAULT_LANGUAGE        = "en"
+local DEFAULT_LANGUAGE        = "auto"
 
--- Entity types known to produce high false positive rates on legitimate text.
+-- Entity types known to produce elevated false positive rates on legitimate text.
 -- Benchmarked on OR-Bench 500, XSTest 250, and Dolly 500 prompts:
 --   PERSON   → 52 FPs in XSTest (historical figures, celebrities in educational queries)
 --   LOCATION → 253 detections in Dolly (geographic questions: "What is the capital of X?")
 --   DATE_TIME→ 28-44 FPs in handcrafted (any date/time mention)
---   NRP      → unmeasured but structurally similar to PERSON
+--   ORG      → company/brand names in normal business text; threshold raised to 0.85
+-- NRP (nationality/religion/politics) was a spaCy entity; no longer produced by GLiNER.
 -- When entity_score_thresholds is not explicitly configured, these entities
--- require 0.9 confidence before they trigger.  Users can lower the bar via
+-- require an elevated confidence before they trigger.  Users can lower the bar via
 --   entity_score_thresholds: { PERSON: 0.7 }
 local HIGH_FP_ENTITY_THRESHOLDS = {
     PERSON    = 0.9,
     LOCATION  = 0.9,
     DATE_TIME = 0.9,
-    NRP       = 0.9,
+    ORG       = 0.85,
 }
 
 -- Determine which body text to scan based on phase.

@@ -14,11 +14,15 @@ The NLP PII Detector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail
 | `name` | string | — | Human-readable label for this guardrail instance |
 | `action` | string | `"flag"` | What to do when PII is detected: `block`, `scrub`, or `flag` |
 | `target` | string | `"request"` | Which phase to inspect: `request`, `response`, or `both` |
-| `language` | string | `"en"` | Language used for entity recognition |
 | `entities` | array \| null | `null` | Entity types to detect; `null` detects all supported entity types |
 | `score_threshold` | number | `0.7` | Minimum confidence score for a detection to count (0.0–1.0) |
+| `allow_list` | array \| null | `null` | Values that are never flagged as PII, regardless of confidence score |
+| `allow_list_match` | string | `"exact"` | How allow-list entries are matched: `"exact"` (full string) or `"partial"` (substring) |
 | `timeout_ms` | integer | `3000` | Timeout for the sidecar call in milliseconds |
 | `fail_open` | boolean | `true` | If `true`, sidecar errors allow the request to pass through; if `false`, they block it |
+
+!!! note "Automatic language detection"
+    The detection engine automatically identifies the language of each request and applies the appropriate NLP model. English and German are fully supported; other Latin-script languages are handled on a best-effort basis. No `language` field is required.
 
 ---
 
@@ -47,20 +51,21 @@ The NLP PII Detector supports 50+ entity types. The following are commonly confi
 | `CREDIT_CARD` | Credit card numbers (Luhn-validated) | Low |
 | `US_BANK_NUMBER` | US bank account numbers | Low |
 | `IBAN_CODE` | IBAN bank account codes | Low |
-| `US_PASSPORT` | US passport numbers | Low |
-| `US_DRIVER_LICENSE` | US driver's license numbers | Low |
+| `US_PASSPORT` | US passport numbers (regex, US format only) | Low |
+| `PASSPORT` | Passport numbers in any format — detected via NER (multilingual) | Low |
+| `US_DRIVER_LICENSE` | US driver's licence numbers | Low |
 | `US_ITIN` | Individual Taxpayer Identification Numbers | Low |
 | `CRYPTO` | Cryptocurrency wallet addresses | Low |
 | `IP_ADDRESS` | IPv4 and IPv6 addresses | Low |
-| `MEDICAL_LICENSE` | Medical license numbers | Low |
+| `MEDICAL_LICENSE` | Medical licence numbers | Low |
 | `URL` | Web URLs | Low |
+| `ORG` | Company and organisation names — detected via NER (multilingual) | **Medium** — threshold auto-raised to 0.85 |
 | `PERSON` | Full or partial person names | **High** — ~20% FP; threshold auto-raised to 0.9 |
 | `LOCATION` | Location names | **High** — ~18% FP; threshold auto-raised to 0.9 |
 | `DATE_TIME` | Dates and times | **High** — ~7–14% FP; threshold auto-raised to 0.9 |
-| `NRP` | Nationality, religion, or political affiliation | **High** — ~5% FP; threshold auto-raised to 0.9 |
 
 !!! tip "Focused PII preset"
-    For `action: block` or `action: scrub`, restrict `entities` to the 13 low-FP types and omit `PERSON`, `LOCATION`, `DATE_TIME`, and `NRP`. This set produces 0% false positives across benchmarks. The gateway automatically raises `score_threshold` to 0.9 for high-FP entities when they are included.
+    For `action: block` or `action: scrub`, restrict `entities` to the 14 low-FP types and omit `ORG`, `PERSON`, `LOCATION`, and `DATE_TIME`. This set produces 0% false positives across benchmarks. The gateway automatically raises `score_threshold` to 0.85 for `ORG` and to 0.9 for the other named-entity types when they are included.
 
 To restrict detection to specific entity types, provide them in the `entities` array. Set `entities` to `null` (or omit it) to detect all supported types.
 
@@ -113,6 +118,22 @@ To restrict detection to specific entity types, provide them in the `entities` a
   "name": "flag-pii-responses",
   "action": "flag",
   "target": "response"
+}
+```
+
+### Exempt specific values from detection
+
+Use `allow_list` to prevent known non-PII values from triggering a detection. The example below exempts the company name and a product name that the NLP model may otherwise classify as a person or organisation.
+
+```json
+{
+  "type": "presidio",
+  "name": "block-pii",
+  "action": "block",
+  "target": "request",
+  "entities": ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER"],
+  "allow_list": ["Myra Security", "AI Gateway"],
+  "allow_list_match": "exact"
 }
 ```
 

@@ -1,67 +1,184 @@
 # config/presidio_entrypoint.py
-# Minimal REST server for presidio-analyzer.
-# Calls spacy.prefer_gpu() BEFORE loading models so spaCy uses the GPU.
+# Presidio Analyzer — GLiNER multilingual NER + lingua language detection.
 #
-# Endpoints (same interface as the official Microsoft image):
-#   GET  /health           → "Presidio Analyzer service is up"
-#   POST /analyze          → JSON list of RecognizerResult
-#   GET  /recognizers      → list of available recognizer names
-#   GET  /supportedentities → list of supported entity types
+# Architecture
+# ────────────
+#   Presidio regex/pattern recognisers  → structured PII (email, IBAN, phone, credit card, …)
+#   GLiNER urchade/gliner_multi_pii-v1  → NER-based PII (person, org, location, …) in 6 languages
+#   lingua-language-detector            → auto-detect language when language="auto"
+#
+# /analyze language field
+# ───────────────────────
+#   "auto"  → detect with lingua; defaults to "en" when confidence is low
+#   "en"    → treat as English
+#   "de"    → treat as German
+#   (other) → passed through; GLiNER handles any Latin-script language natively
+#
+# Endpoints (same interface as the official Microsoft presidio-analyzer image):
+#   GET  /health               → "Presidio Analyzer service is up"
+#   POST /analyze              → JSON list of RecognizerResult dicts
+#   GET  /recognizers          → list of available recogniser names
+#   GET  /supportedentities    → list of supported entity types
 
-import gc, os
+import gc
+import os
+from typing import List, Optional
 
-# Cap the CuPy memory pool before spaCy loads its models onto the GPU.
-# Without a limit the pool grows unboundedly across requests, eventually
-# consuming all VRAM and raising cupy.cuda.memory.OutOfMemoryError.
-# 8 GB is well above what en_core_web_lg + de_core_news_lg need (~2 GB peak).
-try:
-    import cupy
-    cupy.get_default_memory_pool().set_limit(size=8 * 1024**3)  # 8 GB
-except Exception:
-    pass
-
-import spacy
-spacy.prefer_gpu()
+import torch
 
 from flask import Flask, request, jsonify
-from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
 from presidio_analyzer.context_aware_enhancers import ContextAwareEnhancer
+from presidio_analyzer.nlp_engine import NlpEngineProvider
+from presidio_analyzer.predefined_recognizers import SpacyRecognizer
+
+from gliner import GLiNER
+from lingua import Language, LanguageDetectorBuilder
+
 
 app = Flask(__name__)
 
-# Passing None to context_aware_enhancer is falsy, so Presidio creates a
-# LemmaContextAwareEnhancer anyway (if not context_aware_enhancer: ...).
-# We need a real object that is a no-op to actually skip the O(n²) enhancer.
+
+# ── Language detection ────────────────────────────────────────────────────────
+# Distinguish English from German.  with_minimum_relative_distance(0.1) means
+# we require at least a 10 % confidence edge before committing; below that we
+# default to "en" rather than guessing.
+_lang_detector = (
+    LanguageDetectorBuilder
+    .from_languages(Language.ENGLISH, Language.GERMAN)
+    .with_minimum_relative_distance(0.1)
+    .build()
+)
+
+
+def detect_language(text: str) -> str:
+    """Return 'de' if German is detected with sufficient confidence, else 'en'."""
+    lang = _lang_detector.detect_language_of(text)
+    return "de" if lang == Language.GERMAN else "en"
+
+
+# ── GLiNER multilingual NER ───────────────────────────────────────────────────
+_device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"[presidio] Loading GLiNER model on {_device}…", flush=True)
+_gliner = GLiNER.from_pretrained("urchade/gliner_multi_pii-v1").to(_device).eval()
+print("[presidio] GLiNER ready.", flush=True)
+
+# GLiNER entity label → Presidio entity type
+# gliner_multi_pii-v1 was fine-tuned on these exact label strings.
+_GLINER_LABEL_MAP: dict[str, str] = {
+    "person":                     "PERSON",
+    "organization":               "ORG",
+    "phone number":               "PHONE_NUMBER",
+    "mobile phone number":        "PHONE_NUMBER",
+    "address":                    "LOCATION",
+    "email":                      "EMAIL_ADDRESS",
+    "credit card number":         "CREDIT_CARD",
+    "social security number":     "US_SSN",
+    "passport number":            "PASSPORT",
+    "health insurance id number": "MEDICAL_LICENSE",
+    "date of birth":              "DATE_TIME",
+}
+_GLINER_LABELS = list(_GLINER_LABEL_MAP.keys())
+
+
+def _run_gliner(
+    text: str,
+    entities: Optional[List[str]],
+    threshold: float,
+    allow_list: Optional[List[str]],
+    allow_list_match: str,
+) -> list:
+    """
+    Run GLiNER on *text* and return results in Presidio RecognizerResult dict format.
+
+    GLiNER is language-agnostic — the same model handles en, de, fr, es, it, pt
+    without any language hint.  Results are filtered against *entities* (if given)
+    and *allow_list* (if given) before being returned.
+    """
+    labels = _GLINER_LABELS
+    if entities:
+        requested = set(entities)
+        labels = [lbl for lbl, etype in _GLINER_LABEL_MAP.items() if etype in requested]
+    if not labels:
+        return []
+
+    with torch.no_grad():
+        preds = _gliner.predict_entities(text, labels, threshold=threshold)
+
+    results = []
+    for p in preds:
+        ptype = _GLINER_LABEL_MAP.get(p["label"])
+        if not ptype:
+            continue
+        # Allow-list filtering (mirrors Presidio's own allow_list behaviour)
+        if allow_list:
+            span_text = text[p["start"]:p["end"]]
+            if allow_list_match == "exact" and span_text in allow_list:
+                continue
+            if allow_list_match != "exact" and any(
+                a in span_text or span_text in a for a in allow_list
+            ):
+                continue
+        results.append({
+            "entity_type": ptype,
+            "start": p["start"],
+            "end": p["end"],
+            "score": round(float(p["score"]), 4),
+            "recognition_metadata": {"recognizer_name": "GlinerRecognizer"},
+        })
+    return results
+
+
+# ── Presidio engine (regex / pattern recognisers only) ───────────────────────
+# SpacyRecognizer is removed — all NER is handled by GLiNER above.
+# The remaining recognisers are pattern-based (email, IBAN, phone, credit card,
+# IP address, URL, …) and work on any language without modification.
+
 class _NoOpEnhancer(ContextAwareEnhancer):
+    """Skip the O(n²) LemmaContextAwareEnhancer — not needed with GLiNER."""
     def __init__(self):
-        pass  # skip super().__init__() which requires 4 positional args
+        pass  # skip super().__init__() which requires positional args
+
     def enhance_using_context(self, text, raw_results, nlp_artifacts, recognizers, context):
         return raw_results
 
-engine = AnalyzerEngine(context_aware_enhancer=_NoOpEnhancer())
 
-# Warm up: trigger model loading so the first real request is fast.
-for lang in os.environ.get("PRESIDIO_SUPPORTED_LANGUAGES", "en").split(","):
-    try:
-        engine.analyze(text="warmup", language=lang.strip())
-    except Exception:
-        pass  # language may not have recognizers configured — skip silently
+# Minimal NLP engine — en_core_web_sm is used only for tokenisation by the
+# pattern recognisers' context lookup (which is itself a no-op via _NoOpEnhancer).
+_nlp_config = {
+    "nlp_engine_name": "spacy",
+    "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+}
+_nlp_engine = NlpEngineProvider(nlp_configuration=_nlp_config).create_engine()
 
-# Synchronize CUDA and free any cached-but-idle blocks accumulated during warmup.
-try:
-    import cupy
-    cupy.cuda.Stream.null.synchronize()
-    cupy.get_default_memory_pool().free_all_blocks()
-    engine.analyze(text="warmup2", language="en")
-    cupy.cuda.Stream.null.synchronize()
-except Exception:
-    pass
+_registry = RecognizerRegistry()
+_registry.load_predefined_recognizers(nlp_engine=_nlp_engine)
+# Remove SpacyRecognizer — its NER output is replaced by GLiNER
+_registry.recognizers = [
+    r for r in _registry.recognizers if not isinstance(r, SpacyRecognizer)
+]
 
-# Freeze model objects into the permanent GC generation so they are never
-# collected. New per-request objects (spaCy Docs, result lists) are created
-# after this point and remain in generation 0, collected explicitly per request.
+engine = AnalyzerEngine(
+    nlp_engine=_nlp_engine,
+    registry=_registry,
+    context_aware_enhancer=_NoOpEnhancer(),
+)
+
+# ── Warm-up ───────────────────────────────────────────────────────────────────
+# Trigger model loading and any one-shot JIT / CUDA kernel compilation so the
+# first real request is fast.
+engine.analyze(text="warmup test@example.com +49-30-1234567", language="en")
+_run_gliner("John Smith, Berlin, john@example.com", None, 0.1, None, "exact")
+_run_gliner(
+    "Herr Müller, München. IBAN DE89 3704 0044 0532 0130 00. Geb. 12.03.1980.",
+    None, 0.1, None, "exact",
+)
+
 gc.freeze()
+print("[presidio] Warm-up complete.", flush=True)
 
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
@@ -70,41 +187,60 @@ def health():
 
 @app.post("/analyze")
 def analyze():
-    body = request.get_json(force=True)
-    text = body.get("text", "")
-    language = body.get("language", "en")
-    entities = body.get("entities") or None
-    score_threshold = body.get("score_threshold", 0.35)
-    allow_list = body.get("allow_list") or None
+    body             = request.get_json(force=True)
+    text             = body.get("text", "")
+    language         = body.get("language", "auto")
+    entities         = body.get("entities") or None
+    score_threshold  = body.get("score_threshold", 0.35)
+    allow_list       = body.get("allow_list") or None
     allow_list_match = body.get("allow_list_match") or "exact"
-    results = engine.analyze(text=text, language=language,
-                             entities=entities, score_threshold=score_threshold,
-                             allow_list=allow_list, allow_list_match=allow_list_match)
-    response = jsonify([r.to_dict() for r in results])
-    # Break reference cycles in spaCy Doc objects created during this request
-    # so CuPy can reclaim their GPU tensors back into the pool's free list.
-    # (gc.freeze() above protects model objects; only gen-0 request objects are collected.)
+
+    if not text:
+        return jsonify([])
+
+    # Auto language detection
+    if language == "auto":
+        language = detect_language(text)
+
+    # Presidio regex/pattern recognisers.
+    # Always run without an entity filter — after removing SpacyRecognizer the
+    # remaining recognisers only cover pattern-based types (EMAIL_ADDRESS, IBAN_CODE,
+    # CREDIT_CARD, …).  Passing GLiNER-only types such as PERSON would raise a
+    # ValueError inside Presidio.  We filter the merged results in Python instead.
+    presidio_results = engine.analyze(
+        text=text, language="en",
+        entities=None, score_threshold=score_threshold,
+        allow_list=allow_list, allow_list_match=allow_list_match,
+    )
+
+    # GLiNER NER — handles all supported languages in a single pass.
+    gliner_results = _run_gliner(text, entities, score_threshold, allow_list, allow_list_match)
+
+    all_results = [r.to_dict() for r in presidio_results] + gliner_results
+
+    # Apply entity-type filter to merged results if the caller requested specific types.
+    if entities:
+        entity_set = set(entities)
+        all_results = [r for r in all_results if r["entity_type"] in entity_set]
+
+    # Release per-request objects from generation 0.
     gc.collect(0)
-    try:
-        cupy.get_default_memory_pool().free_all_blocks()
-    except Exception:
-        pass
-    return response
+    return jsonify(all_results)
 
 
 @app.get("/recognizers")
 def recognizers():
-    regs = engine.get_recognizers(language="en")
-    return jsonify([r.name for r in regs])
+    names = [r.name for r in engine.get_recognizers(language="en")] + ["GlinerRecognizer"]
+    return jsonify(names)
 
 
 @app.get("/supportedentities")
 def supported_entities():
-    entities = engine.get_supported_entities(language="en")
-    return jsonify(entities)
+    entities = set(engine.get_supported_entities(language="en"))
+    entities.update(set(_GLINER_LABEL_MAP.values()))
+    return jsonify(sorted(entities))
 
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 3000))
     app.run(host="0.0.0.0", port=port, threaded=False, use_reloader=False)

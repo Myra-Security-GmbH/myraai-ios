@@ -22,14 +22,19 @@ PII Protector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that p
 |---|---|---|---|
 | `type` | string | — | Must be `"pii_protector"` |
 | `name` | string | — | Human-readable label for this guardrail instance |
-| `language` | string | `"en"` | Language used for entity recognition |
 | `entities` | array \| null | `null` | Entity types to tokenize; `null` tokenizes all supported entity types |
 | `score_threshold` | number | `0.7` | Minimum confidence score for a detection to count (0.0–1.0) |
+| `allow_list` | array \| null | `null` | Values that are never tokenized, regardless of confidence score |
+| `allow_list_match` | string | `"exact"` | How allow-list entries are matched: `"exact"` (full string) or `"partial"` (substring) |
+| `skip_system_messages` | boolean | `true` | If `true`, only user-role messages are scanned; if `false`, system and assistant messages are also scanned |
 | `timeout_ms` | integer | `3000` | Timeout for the sidecar call in milliseconds |
 | `fail_open` | boolean | `true` | If `true`, sidecar errors allow the request to pass through without tokenization; if `false`, they block it |
 
 !!! note "No `action` or `target` fields"
     PII Protector does not have an `action` or `target` field. It always tokenizes on the request phase and restores on the response phase. Both phases are always active. Configure `target: "both"` is implicit and not required.
+
+!!! note "Automatic language detection"
+    The detection engine automatically identifies the language of each request and applies the appropriate NLP model. English and German are fully supported; other Latin-script languages are handled on a best-effort basis. No `language` field is required.
 
 ---
 
@@ -37,9 +42,11 @@ PII Protector is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that p
 
 PII Protector uses the same entity types as the [NLP PII Detector](presidio.md). See that page for the full list of supported entity types and their benchmarked false-positive rates.
 
-For `entities`, the 13 low-FP types are: `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `CREDIT_CARD`, `US_BANK_NUMBER`, `IBAN_CODE`, `US_PASSPORT`, `US_DRIVER_LICENSE`, `US_ITIN`, `CRYPTO`, `IP_ADDRESS`, `MEDICAL_LICENSE`, `URL`.
+The 14 low-FP types are: `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `CREDIT_CARD`, `US_BANK_NUMBER`, `IBAN_CODE`, `US_PASSPORT`, `PASSPORT`, `US_DRIVER_LICENSE`, `US_ITIN`, `CRYPTO`, `IP_ADDRESS`, `MEDICAL_LICENSE`, `URL`.
 
-The 4 high-FP entities — `PERSON`, `LOCATION`, `DATE_TIME`, `NRP` — are useful for contextual continuity (the model can reference names and places naturally) but produce false positives on general text. The gateway automatically raises `score_threshold` to `0.9` for these entities when they are included.
+`PASSPORT` covers passport numbers in any format or language via NER — `US_PASSPORT` covers only US-format numbers via regex. Both can be active simultaneously.
+
+The named-entity types — `ORG`, `PERSON`, `LOCATION`, `DATE_TIME` — are useful for contextual continuity (the model can reference names and places naturally) but produce more false positives on general text. The gateway automatically raises `score_threshold` to `0.85` for `ORG` and to `0.9` for `PERSON`, `LOCATION`, and `DATE_TIME` when they are included.
 
 ---
 
@@ -85,6 +92,20 @@ Use a regex guardrail (Tier 1) to block structured PCI data before PII Protector
     "entities": ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "US_SSN", "LOCATION"]
   }
 ]
+```
+
+### Exempt specific values from tokenization
+
+Use `allow_list` to prevent known non-PII values from being replaced with tokens. This is useful for company names, product names, or any value that the NLP model may incorrectly classify as PII.
+
+```json
+{
+  "type": "pii_protector",
+  "name": "protect-pii",
+  "entities": ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER"],
+  "allow_list": ["Myra Security", "AI Gateway"],
+  "allow_list_match": "exact"
+}
 ```
 
 ---

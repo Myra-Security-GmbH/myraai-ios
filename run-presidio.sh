@@ -47,7 +47,7 @@ stop_container() {
 }
 
 build_analyzer() {
-    log "Building analyzer image ($ANALYZER_IMAGE) — this downloads spaCy models once..."
+    log "Building analyzer image ($ANALYZER_IMAGE) — this downloads GLiNER model and spaCy tokeniser once..."
     docker build \
         -f "$DOCKERFILE" \
         -t "$ANALYZER_IMAGE" \
@@ -89,7 +89,7 @@ start_analyzer() {
         _t=$(curl -sf --max-time 60 -o /dev/null -w "%{time_total}" \
             -X POST "http://127.0.0.1:${ANALYZER_PORT}/analyze" \
             -H "Content-Type: application/json" \
-            -d '{"text":"My name is John, email john@example.com","language":"en"}' 2>/dev/null || echo "60")
+            -d '{"text":"My name is John, email john@example.com","language":"auto"}' 2>/dev/null || echo "60")
         log "  warmup pass ${_pass}: ${_t}s"
         # Stop once we get a sub-second response (model is warm)
         if awk "BEGIN{exit !($_t < 1.0)}"; then
@@ -155,7 +155,7 @@ case "$CMD" in
             _t=$(curl -sf --max-time 90 -o /dev/null -w "%{time_total}" \
                 -X POST "http://127.0.0.1:${ANALYZER_PORT}/analyze" \
                 -H "Content-Type: application/json" \
-                -d '{"text":"My name is John, email john@example.com, SSN 123-45-6789","language":"en"}' 2>/dev/null || echo "90")
+                -d '{"text":"Herr Müller, Berlin. My name is John, email john@example.com, SSN 123-45-6789","language":"auto"}' 2>/dev/null || echo "90")
             log "  pass ${_pass}: ${_t}s"
             if awk "BEGIN{exit !($_t < 1.0)}"; then
                 _fast_streak=$((_fast_streak + 1))

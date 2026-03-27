@@ -35,16 +35,17 @@ local M = {}
 
 local DEFAULT_ANALYZER_URL    = os.getenv("PRESIDIO_ANALYZER_URL") or "http://127.0.0.1:5002"
 local DEFAULT_SCORE_THRESHOLD = 0.7
-local DEFAULT_LANGUAGE        = "en"
+local DEFAULT_LANGUAGE        = "auto"
 
--- Entity types known to produce high false positive rates on legitimate text.
+-- Entity types known to produce elevated false positive rates on legitimate text.
 -- Applied as defaults when entity_score_thresholds is not explicitly configured.
 -- See benchmarks in tests/false_positives/ for measured FP rates.
+-- NRP (nationality/religion/politics) was a spaCy entity; no longer produced by GLiNER.
 local HIGH_FP_ENTITY_THRESHOLDS = {
     PERSON    = 0.9,
     LOCATION  = 0.9,
     DATE_TIME = 0.9,
-    NRP       = 0.9,
+    ORG       = 0.85,
 }
 
 -- Post-filter Presidio results through per-entity score thresholds.
