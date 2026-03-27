@@ -6,6 +6,7 @@ export interface ModelPickerProps {
   models: ModelPrice[];
   value: string;
   onChange: (model: string) => void;
+  onChangeEntry?: (entry: ModelPrice) => void;
   runnableProviders: Set<string>;
   id?: string;
 }
@@ -14,6 +15,7 @@ const ModelPicker = memo(function ModelPicker({
   models,
   value,
   onChange,
+  onChangeEntry,
   runnableProviders,
   id,
 }: ModelPickerProps) {
@@ -172,13 +174,14 @@ const ModelPicker = memo(function ModelPicker({
                 </div>
                 {byProvider[prov].map((m) => (
                   <div
-                    key={m.model}
+                    key={`${prov}/${m.model}`}
                     role="option"
                     aria-selected={m.model === value}
                     className={s["model-option"]}
                     data-selected={m.model === value ? "true" : undefined}
                     onClick={() => {
                       onChange(m.model);
+                      onChangeEntry?.(m);
                       setOpen(false);
                       setSearch("");
                     }}

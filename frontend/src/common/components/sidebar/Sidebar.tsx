@@ -183,6 +183,8 @@ export default function Sidebar() {
         <div className={styles["nav-sections"]}>
           <SectionLabel label="MAIN" collapsed={effectiveCollapsed} />
           <NavItem to="/dashboard" label="Dashboard" icon={<DashboardIcon />} {...navProps} />
+          <NavItem to="/chat" label="Chat" icon={<ChatIcon />} {...navProps} />
+          <NavItem to="/playground" label="Playground" icon={<PlaygroundIcon />} {...navProps} />
 
           {(user?.role === "admin" || user?.role === "tenant_admin") && (<>
             <SectionLabel label="MANAGEMENT" collapsed={effectiveCollapsed} />
@@ -193,8 +195,6 @@ export default function Sidebar() {
 
           <SectionLabel label="OBSERVABILITY" collapsed={effectiveCollapsed} />
           <NavItem to="/analytics" label="Cost Analytics" icon={<AnalyticsIcon />} {...navProps} />
-          <NavItem to="/chat" label="Chat" icon={<ChatIcon />} {...navProps} />
-          <NavItem to="/playground" label="Playground" icon={<PlaygroundIcon />} {...navProps} />
           <NavItem to="/monitor" label="Live Monitor" icon={<MonitorIcon />} {...navProps} />
           <NavItem to="/logs" label="Request Logs" icon={<LogsIcon />} {...navProps} />
 

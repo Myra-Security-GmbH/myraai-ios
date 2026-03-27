@@ -33,6 +33,15 @@ function M.build_headers(ctx, api_key)
             headers["anthropic-beta"] = skill_betas
         end
     end
+    -- Anthropic native web search
+    if req_headers["x-aig-web-search"] == "1" then
+        local ws_beta = "web-search-2025-03-05"
+        if headers["anthropic-beta"] then
+            headers["anthropic-beta"] = headers["anthropic-beta"] .. "," .. ws_beta
+        else
+            headers["anthropic-beta"] = ws_beta
+        end
+    end
     -- Forward any x-aig-provider-* overrides as raw provider headers
     for k, v in pairs(req_headers) do
         local fwd = k:match("^x%-aig%-provider%-(.+)$")
@@ -54,7 +63,20 @@ function M.build_request(ctx)
     if not ctx.is_compat then
         -- Native Anthropic path: forward raw body, stripping lone surrogates that
         -- cjson allows but Anthropic's strict UTF-8 parser rejects.
-        return json.sanitize_surrogates(ctx.raw_request_body)
+        local raw = ctx.raw_request_body
+        local body = json.decode(raw)
+        if body then
+            body.tools = body.tools or {}
+            local already = false
+            for _, t in ipairs(body.tools) do
+                if t.type == "web_search_20250305" then already = true; break end
+            end
+            if not already then
+                body.tools[#body.tools + 1] = { type = "web_search_20250305", name = "web_search" }
+            end
+            return json.sanitize_surrogates(json.encode(body))
+        end
+        return json.sanitize_surrogates(raw)
     end
 
     -- Compat path: convert OpenAI chat/completions → Anthropic Messages
@@ -137,6 +159,17 @@ function M.build_request(ctx)
     if skill == "docx" or skill == "xlsx" or skill == "pptx" or skill == "pdf" then
         body.container = { skills = {{ type = "anthropic", skill_id = skill, version = "latest" }} }
         body.tools = {{ type = "code_execution_20250825", name = "code_execution" }}
+    end
+
+    -- Anthropic native web search — always injected; Anthropic executes searches
+    -- server-side with no external API key required.
+    if not body.tools then body.tools = {} end
+    local already = false
+    for _, t in ipairs(body.tools) do
+        if t.type == "web_search_20250305" then already = true; break end
+    end
+    if not already then
+        body.tools[#body.tools + 1] = { type = "web_search_20250305", name = "web_search" }
     end
 
     return json.sanitize_surrogates(json.encode(body))

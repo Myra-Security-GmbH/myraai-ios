@@ -280,12 +280,12 @@ describe("GuardrailBuilder — regex editor", () => {
 // ---------------------------------------------------------------------------
 
 describe("GuardrailBuilder — presidio editor", () => {
-  it("shows URL and language fields when expanded", async () => {
+  it("shows URL, allow list, and score threshold fields when expanded", async () => {
     const det: DetectorConfig = { type: "presidio", name: "presidio-check", action: "block" };
     setup([det]);
     await userEvent.click(screen.getAllByText("presidio-check")[0]); // expand
     expect(screen.getByText("Presidio URL")).toBeInTheDocument();
-    expect(screen.getByText("Language")).toBeInTheDocument();
+    expect(screen.getByText("Allow list")).toBeInTheDocument();
     expect(screen.getByText("Score threshold")).toBeInTheDocument();
   });
 
@@ -378,7 +378,6 @@ describe("GuardrailBuilder — pii_protector card", () => {
     name: "pii-protect",
     target: "both",
     analyzer_url: "http://127.0.0.1:5002",
-    language: "en",
     entities: [],
     score_threshold: 0.7,
     fail_open: true,
@@ -422,17 +421,16 @@ describe("GuardrailBuilder — pii_protector editor", () => {
     name: "pii-protect",
     target: "both",
     analyzer_url: "http://127.0.0.1:5002",
-    language: "en",
     entities: [],
     score_threshold: 0.7,
     fail_open: true,
   };
 
-  it("shows Analyzer URL and Language fields when expanded", async () => {
+  it("shows Analyzer URL and Allow list fields when expanded", async () => {
     setup([piiDet]);
     await userEvent.click(screen.getAllByText("pii-protect")[0]); // expand
     expect(screen.getByText("Analyzer URL")).toBeInTheDocument();
-    expect(screen.getByText("Language")).toBeInTheDocument();
+    expect(screen.getByText("Allow list")).toBeInTheDocument();
   });
 
   it("shows Score threshold field when expanded", async () => {

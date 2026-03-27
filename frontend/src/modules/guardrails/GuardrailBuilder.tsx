@@ -86,7 +86,8 @@ const PRESIDIO_ENTITY_CATALOG: Array<{
   { entity: "CREDIT_CARD",       label: "Credit Card",                        fp_risk: "low",    description: "Credit/debit card numbers (Luhn-validated)" },
   { entity: "US_BANK_NUMBER",    label: "US Bank Account",                    fp_risk: "low",    description: "US bank account numbers" },
   { entity: "IBAN_CODE",         label: "IBAN",                               fp_risk: "low",    description: "International Bank Account Numbers" },
-  { entity: "US_PASSPORT",       label: "US Passport",                        fp_risk: "low",    description: "US passport numbers" },
+  { entity: "US_PASSPORT",       label: "US Passport",                        fp_risk: "low",    description: "US passport numbers (regex, US format only)" },
+  { entity: "PASSPORT",          label: "Passport (multilingual)",            fp_risk: "low",    description: "Passport numbers in any format — detected via NER (GLiNER)" },
   { entity: "US_DRIVER_LICENSE", label: "US Driver License",                  fp_risk: "low",    description: "US driver license numbers" },
   { entity: "US_ITIN",           label: "ITIN",                               fp_risk: "low",    description: "Individual Taxpayer Identification Numbers" },
   { entity: "CRYPTO",            label: "Crypto Address",                     fp_risk: "low",    description: "Cryptocurrency wallet addresses" },
@@ -94,14 +95,15 @@ const PRESIDIO_ENTITY_CATALOG: Array<{
   { entity: "IP_ADDRESS",        label: "IP Address",                         fp_risk: "low",    description: "IPv4 and IPv6 addresses (0% FP benchmarked)" },
   { entity: "MEDICAL_LICENSE",   label: "Medical License",                    fp_risk: "low",    description: "US medical license numbers (0% FP benchmarked)" },
   { entity: "URL",               label: "URL",                                fp_risk: "low",    description: "Web URLs (0% FP benchmarked)" },
+  // ── Medium FP — gateway auto-raises score threshold to 0.85 ──────────────
+  { entity: "ORG",               label: "Organisation",                       fp_risk: "medium", description: "Company and organisation names — detected via NER (GLiNER); threshold auto-raised to 0.85" },
   // ── High FP — gateway auto-raises score threshold to 0.9 ─────────────────
   { entity: "PERSON",            label: "Person Name",                        fp_risk: "high",   description: "Personal names — ~20% FP on XSTest/Dolly; threshold auto-raised to 0.9" },
   { entity: "LOCATION",          label: "Location",                           fp_risk: "high",   description: "Cities, countries — ~18% FP on Dolly/XSTest; threshold auto-raised to 0.9" },
   { entity: "DATE_TIME",         label: "Date / Time",                        fp_risk: "high",   description: "Dates and times — ~7–14% FP on general text; threshold auto-raised to 0.9" },
-  { entity: "NRP",               label: "Nationality / Religion / Politics",  fp_risk: "high",   description: "Nationalities, religions, politics — ~5% FP on XSTest/Dolly; threshold auto-raised to 0.9" },
 ];
 
-// "pii_focused" = all 13 low-FP entities; achieves 0% FP on OR-Bench-hard, XSTest-safe, and Dolly-15k.
+// "pii_focused" = all 14 low-FP entities; achieves 0% FP on OR-Bench-hard, XSTest-safe, and Dolly-15k.
 const PII_FOCUSED_ENTITIES = PRESIDIO_ENTITY_CATALOG
   .filter((e) => e.fp_risk === "low")
   .map((e) => e.entity);
@@ -152,7 +154,7 @@ function emptyJailbreak(): JailbreakDetector {
 }
 
 function emptyPresidio(): PresidioDetector {
-  return { type: "presidio", name: "presidio-pii", action: "block", target: "request", url: "http://127.0.0.1:5002", language: "en", entities: [...PII_FOCUSED_ENTITIES], score_threshold: 0.7, fail_open: true };
+  return { type: "presidio", name: "presidio-pii", action: "block", target: "request", url: "http://127.0.0.1:5002", entities: [...PII_FOCUSED_ENTITIES], score_threshold: 0.7, fail_open: true };
 }
 
 function emptyPromptGuard(): PromptGuardDetector {
@@ -161,7 +163,7 @@ function emptyPromptGuard(): PromptGuardDetector {
 }
 
 function emptyPiiProtector(): PiiProtectorDetector {
-  return { type: "pii_protector", name: "pii-protect", target: "both", analyzer_url: "http://127.0.0.1:5002", language: "en", entities: [...PII_FOCUSED_ENTITIES], score_threshold: 0.7, fail_open: true };
+  return { type: "pii_protector", name: "pii-protect", target: "both", analyzer_url: "http://127.0.0.1:5002", entities: [...PII_FOCUSED_ENTITIES], score_threshold: 0.7, fail_open: true };
 }
 
 // Type guard: guardrails that carry an action field
@@ -544,7 +546,7 @@ function EntityEditor({
             type="button"
             className={`${s.btn} ${isFocused ? s["btn--primary"] : s["btn--secondary"]}`}
             style={{ fontSize: 11, padding: "2px 8px" }}
-            title="Email, phone, SSN, credit card, IBAN, passport, driver license, ITIN, crypto — 0% FP on all corpora"
+            title="Email, phone, SSN, credit card, IBAN, passport (US+multilingual), driver license, ITIN, crypto, IP, medical license, URL — 0% FP on all corpora"
             onClick={() => onChange([...PII_FOCUSED_ENTITIES])}
           >
             Focused PII (0% FP)
@@ -633,28 +635,20 @@ function EntityEditor({
 }
 
 function PresidioEditor({ det, onChange }: { det: PresidioDetector; onChange: (d: PresidioDetector) => void }) {
+  const allowListRaw = (det.allow_list ?? []).join(", ");
+  function onAllowListChange(raw: string) {
+    const items = raw.split(",").map(s => s.trim()).filter(Boolean);
+    onChange({ ...det, allow_list: items.length ? items : undefined });
+  }
   return (
     <>
-      <div className={s["form-row"]}>
-        <div className={s["form-group"]}>
-          <label className={s["form-label"]}>Presidio URL</label>
-          <input
-            className={s["form-input"]}
-            value={det.url ?? "http://127.0.0.1:5002"}
-            onChange={(e) => onChange({ ...det, url: e.target.value })}
-          />
-        </div>
-        <div className={s["form-group"]}>
-          <label className={s["form-label"]}>Language</label>
-          <select
-            className={s["form-select"]}
-            value={det.language ?? "en"}
-            onChange={(e) => onChange({ ...det, language: e.target.value })}
-          >
-            <option value="en">en</option>
-            <option value="de">de</option>
-          </select>
-        </div>
+      <div className={s["form-group"]}>
+        <label className={s["form-label"]}>Presidio URL</label>
+        <input
+          className={s["form-input"]}
+          value={det.url ?? "http://127.0.0.1:5002"}
+          onChange={(e) => onChange({ ...det, url: e.target.value })}
+        />
       </div>
       <div className={s["form-group"]}>
         <label className={s["form-label"]}>Score threshold</label>
@@ -668,15 +662,38 @@ function PresidioEditor({ det, onChange }: { det: PresidioDetector; onChange: (d
           onChange={(e) => onChange({ ...det, score_threshold: parseFloat(e.target.value) })}
         />
         <p className={s["form-hint"]}>
-          Global minimum confidence (0–1). High-FP entities (PERSON, LOCATION, DATE_TIME, NRP)
-          automatically use 0.9 regardless — raising the global threshold above 0.9 will also
-          filter those. Values below 0.85 have little effect on high-FP entities.
+          Global minimum confidence (0–1). High-FP entities (PERSON, LOCATION, DATE_TIME)
+          automatically use 0.9 and ORG uses 0.85 — raising the global threshold above these
+          values will also filter them. Values below 0.85 have little effect on high-FP entities.
         </p>
       </div>
       <EntityEditor
         entities={det.entities ?? []}
         onChange={(e) => onChange({ ...det, entities: e })}
       />
+      <div className={s["form-row"]}>
+        <div className={s["form-group"]} style={{ flex: "3 1 200px" }}>
+          <label className={s["form-label"]}>Allow list</label>
+          <input
+            className={s["form-input"]}
+            placeholder="e.g. Myra Security, John Doe"
+            value={allowListRaw}
+            onChange={(e) => onAllowListChange(e.target.value)}
+          />
+          <p className={s["form-hint"]}>Comma-separated values that will never be flagged as PII.</p>
+        </div>
+        <div className={s["form-group"]} style={{ flex: "1 1 100px" }}>
+          <label className={s["form-label"]}>Match mode</label>
+          <select
+            className={s["form-select"]}
+            value={det.allow_list_match ?? "exact"}
+            onChange={(e) => onChange({ ...det, allow_list_match: e.target.value as "exact" | "partial" })}
+          >
+            <option value="exact">exact</option>
+            <option value="partial">partial</option>
+          </select>
+        </div>
+      </div>
       <div className={s["form-group"]}>
         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
           <input
@@ -836,6 +853,11 @@ function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChan
 }
 
 function PiiProtectorEditor({ det, onChange }: { det: PiiProtectorDetector; onChange: (d: PiiProtectorDetector) => void }) {
+  const allowListRaw = (det.allow_list ?? []).join(", ");
+  function onAllowListChange(raw: string) {
+    const items = raw.split(",").map(s => s.trim()).filter(Boolean);
+    onChange({ ...det, allow_list: items.length ? items : undefined });
+  }
   return (
     <>
       <div style={{ fontSize: 12, color: "var(--text-muted, #888)", padding: "6px 0 10px", lineHeight: 1.5 }}>
@@ -844,26 +866,13 @@ function PiiProtectorEditor({ det, onChange }: { det: PiiProtectorDetector; onCh
         Tokens are swapped back to the original values in the response before the client sees it —
         so the LLM never processes real PII while the user still receives meaningful output.
       </div>
-      <div className={s["form-row"]}>
-        <div className={s["form-group"]}>
-          <label className={s["form-label"]}>Analyzer URL</label>
-          <input
-            className={s["form-input"]}
-            value={det.analyzer_url ?? "http://127.0.0.1:5002"}
-            onChange={(e) => onChange({ ...det, analyzer_url: e.target.value })}
-          />
-        </div>
-        <div className={s["form-group"]}>
-          <label className={s["form-label"]}>Language</label>
-          <select
-            className={s["form-select"]}
-            value={det.language ?? "en"}
-            onChange={(e) => onChange({ ...det, language: e.target.value })}
-          >
-            <option value="en">en</option>
-            <option value="de">de</option>
-          </select>
-        </div>
+      <div className={s["form-group"]}>
+        <label className={s["form-label"]}>Analyzer URL</label>
+        <input
+          className={s["form-input"]}
+          value={det.analyzer_url ?? "http://127.0.0.1:5002"}
+          onChange={(e) => onChange({ ...det, analyzer_url: e.target.value })}
+        />
       </div>
       <div className={s["form-group"]}>
         <label className={s["form-label"]}>Score threshold</label>
@@ -877,15 +886,48 @@ function PiiProtectorEditor({ det, onChange }: { det: PiiProtectorDetector; onCh
           onChange={(e) => onChange({ ...det, score_threshold: parseFloat(e.target.value) })}
         />
         <p className={s["form-hint"]}>
-          Global minimum confidence (0–1). High-FP entities (PERSON, LOCATION, DATE_TIME, NRP)
-          automatically use 0.9 regardless — raising the global threshold above 0.9 will also
-          filter those. Values below 0.85 have little effect on high-FP entities.
+          Global minimum confidence (0–1). High-FP entities (PERSON, LOCATION, DATE_TIME)
+          automatically use 0.9 and ORG uses 0.85 — raising the global threshold above these
+          values will also filter them. Values below 0.85 have little effect on high-FP entities.
         </p>
       </div>
       <EntityEditor
         entities={det.entities ?? []}
         onChange={(e) => onChange({ ...det, entities: e })}
       />
+      <div className={s["form-row"]}>
+        <div className={s["form-group"]} style={{ flex: "3 1 200px" }}>
+          <label className={s["form-label"]}>Allow list</label>
+          <input
+            className={s["form-input"]}
+            placeholder="e.g. Myra Security, John Doe"
+            value={allowListRaw}
+            onChange={(e) => onAllowListChange(e.target.value)}
+          />
+          <p className={s["form-hint"]}>Comma-separated values that will never be tokenized as PII.</p>
+        </div>
+        <div className={s["form-group"]} style={{ flex: "1 1 100px" }}>
+          <label className={s["form-label"]}>Match mode</label>
+          <select
+            className={s["form-select"]}
+            value={det.allow_list_match ?? "exact"}
+            onChange={(e) => onChange({ ...det, allow_list_match: e.target.value as "exact" | "partial" })}
+          >
+            <option value="exact">exact</option>
+            <option value="partial">partial</option>
+          </select>
+        </div>
+      </div>
+      <div className={s["form-group"]}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={det.skip_system_messages !== false}
+            onChange={(e) => onChange({ ...det, skip_system_messages: e.target.checked || undefined })}
+          />
+          <span className={s["form-label"]} style={{ margin: 0 }}>Skip system &amp; assistant messages (scan user turns only)</span>
+        </label>
+      </div>
       <div className={s["form-group"]}>
         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
           <input

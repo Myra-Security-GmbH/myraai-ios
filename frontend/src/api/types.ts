@@ -30,6 +30,14 @@ export interface SiemConfig {
   format?: "cef" | "rfc5424";
 }
 
+export interface TenantPreset {
+  id: string;
+  name: string;
+  gateway_id: string;
+  provider: string;
+  model: string;
+}
+
 export interface Tenant {
   id: string;
   slug: string;
@@ -37,6 +45,7 @@ export interface Tenant {
   budget_usd: number | null;
   budget_period: BudgetPeriod;
   siem?: SiemConfig;
+  chat_presets?: TenantPreset[];
   created_at: string;
 }
 
@@ -96,9 +105,10 @@ export interface PresidioDetector {
   action: DetectorAction;
   target?: DetectorTarget;
   url?: string;
-  language?: string;
   entities?: string[];
   score_threshold?: number;
+  allow_list?: string[];
+  allow_list_match?: "exact" | "partial";
   fail_open?: boolean;
 }
 
@@ -120,9 +130,11 @@ export interface PiiProtectorDetector {
   /** Always runs on both request and response phases. */
   target?: DetectorTarget;
   analyzer_url?: string;
-  language?: string;
   entities?: string[];
   score_threshold?: number;
+  allow_list?: string[];
+  allow_list_match?: "exact" | "partial";
+  skip_system_messages?: boolean;
   fail_open?: boolean;
 }
 

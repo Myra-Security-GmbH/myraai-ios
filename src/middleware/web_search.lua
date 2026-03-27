@@ -83,7 +83,10 @@ local OPENAI_TOOL = {
 local function inject_tool(ctx)
     local rb   = ctx.request_body
     rb.tools   = rb.tools or {}
-    local tool = ctx.is_compat and OPENAI_TOOL or ANTHROPIC_TOOL
+    -- Use provider, not ctx.is_compat: by the time web_search runs, transform
+    -- has already converted the body to the provider's native format, so the
+    -- compat flag no longer reflects the current body schema.
+    local tool = (ctx.provider == "anthropic") and ANTHROPIC_TOOL or OPENAI_TOOL
     for _, t in ipairs(rb.tools) do
         local name = t.name or (t["function"] and t["function"].name)
         if name == "web_search" then return end  -- already present
@@ -180,7 +183,7 @@ function M.run(ctx)
 
     -- Default mode is opt-in: client must send X-Web-Search: 1
     if ws.mode ~= "always" then
-        local h = ngx.req.get_headers()["x-web-search"]
+        local h = ngx.req.get_headers()["x-aig-web-search"]
         if not h or h == "0" or h == "false" then return end
     end
 
@@ -202,10 +205,6 @@ function M.run(ctx)
         ctx.raw_request_body    = json.encode(rb)
         return  -- upstream.run() handles the rest
     end
-
-    -- ── Compat Anthropic: skip for now (request is OpenAI format but response
-    --    is Anthropic format, requiring non-trivial bidirectional conversion)
-    if ctx.is_compat and provider == "anthropic" then return end
 
     -- Remaining supported providers
     local is_anthropic = (provider == "anthropic")

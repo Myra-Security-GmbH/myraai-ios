@@ -3,7 +3,8 @@ import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { useAuth } from "src/common/contexts/AuthContext";
 import { api } from "src/api/client";
-import { Tenant, Gateway, BudgetPeriod } from "src/api/types";
+import { Tenant, Gateway, BudgetPeriod, TenantPreset, ModelPrice, ProviderMeta } from "src/api/types";
+import ModelPicker from "src/common/components/ModelPicker/ModelPicker";
 import { fmtDate } from "src/common/utils/date";
 import { fmtCost } from "src/common/utils/format";
 import { Modal } from "src/common/components/Modal";
@@ -89,18 +90,109 @@ function TenantModal({ tenant, onClose, onSaved }: {
 }
 
 // ---------------------------------------------------------------------------
+// PresetModal — add or edit a single chat preset
+// ---------------------------------------------------------------------------
+
+function PresetModal({ preset, gateways, onClose, onSaved }: {
+  preset?: TenantPreset;
+  gateways: Gateway[];
+  onClose: () => void;
+  onSaved: (p: TenantPreset) => void;
+}) {
+  const isEdit = !!preset;
+  const [name, setName]           = useState(preset?.name       ?? "");
+  const [gatewayId, setGatewayId] = useState(preset?.gateway_id ?? (gateways[0]?.id ?? ""));
+  const [model, setModel]         = useState(preset?.model       ?? "");
+  const [provider, setProvider]   = useState(preset?.provider    ?? "");
+  const [models, setModels]       = useState<ModelPrice[]>([]);
+  const [providerMeta, setProviderMeta] = useState<ProviderMeta[]>([]);
+  const [error, setError]         = useState<string | null>(null);
+
+  useEffect(() => {
+    api.get<ModelPrice[]>("/models").then(setModels).catch(() => {});
+    api.get<ProviderMeta[]>("/providers").then(setProviderMeta).catch(() => {});
+  }, []);
+
+  const selectedGateway = gateways.find((g) => g.id === gatewayId);
+  const configuredProviders = new Set<string>(
+    ((selectedGateway as any)?.configured_providers ?? []) as string[]
+  );
+  const freeProviders = new Set(providerMeta.filter((p) => !p.requires_key).map((p) => p.name));
+  const runnableProviders = new Set<string>([...freeProviders, ...configuredProviders]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim())      { setError("Name is required"); return; }
+    if (!gatewayId)        { setError("Gateway is required"); return; }
+    if (!model.trim())     { setError("Model is required"); return; }
+    if (!provider.trim())  { setError("Select a model from the picker"); return; }
+    onSaved({
+      id:         preset?.id ?? crypto.randomUUID(),
+      name:       name.trim(),
+      gateway_id: gatewayId,
+      provider:   provider.trim(),
+      model:      model.trim(),
+    });
+    onClose();
+  }
+
+  return (
+    <Modal title={isEdit ? `Edit preset: ${preset!.name}` : "Add Chat Preset"} onClose={onClose} error={error}>
+      <form onSubmit={handleSubmit}>
+        <div className={s["form-group"]}>
+          <label className={s["form-label"]}>Name *</label>
+          <input className={s["form-input"]} value={name} onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Safe PII" required />
+          <p className={s["form-hint"]}>Shown to member users as the mode label.</p>
+        </div>
+        <div className={s["form-group"]}>
+          <label className={s["form-label"]}>Gateway *</label>
+          <select className={s["form-select"]} value={gatewayId}
+            onChange={(e) => { setGatewayId(e.target.value); setModel(""); setProvider(""); }} required>
+            {gateways.map((g) => (
+              <option key={g.id} value={g.id}>{g.slug}</option>
+            ))}
+          </select>
+        </div>
+        <div className={s["form-group"]}>
+          <label className={s["form-label"]}>Model *</label>
+          <ModelPicker
+            models={models}
+            value={model}
+            onChange={setModel}
+            onChangeEntry={(entry) => { setModel(entry.model); setProvider(entry.provider); }}
+            runnableProviders={runnableProviders}
+          />
+          {provider && <p className={s["form-hint"]}>Provider: <strong>{provider}</strong></p>}
+        </div>
+        <div className={s["form-actions"]}>
+          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
+          <button type="submit" className={`${s.btn} ${s["btn--primary"]}`}>
+            {isEdit ? "Save Changes" : "Add Preset"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tenant detail view
 // ---------------------------------------------------------------------------
 
 function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
   tenant: Tenant; onBack: () => void; onDeleted: () => void; onUpdated: (t: Tenant) => void;
 }) {
+  const { user: me } = useAuth();
   const [tenant, setTenant] = useState(initialTenant);
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [loadingGateways, setLoadingGateways] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editingPreset, setEditingPreset] = useState<TenantPreset | null | "new">(null);
+  const [savingPresets, setSavingPresets] = useState(false);
   const navigate = useNavigate();
+  const canEditPresets = me?.role === "admin" || me?.role === "tenant_admin";
 
   function loadGateways() {
     setLoadingGateways(true);
@@ -130,10 +222,44 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
     });
   }
 
+  async function savePresets(presets: TenantPreset[]) {
+    setSavingPresets(true);
+    try {
+      await api.patch(`/tenants/${tenant.id}`, { chat_presets: presets });
+      const updated = { ...tenant, chat_presets: presets };
+      setTenant(updated);
+      onUpdated(updated);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSavingPresets(false);
+    }
+  }
+
+  function handlePresetSaved(p: TenantPreset) {
+    const current = tenant.chat_presets ?? [];
+    const exists = current.find((x) => x.id === p.id);
+    const next = exists ? current.map((x) => x.id === p.id ? p : x) : [...current, p];
+    savePresets(next);
+  }
+
+  function handlePresetDelete(id: string) {
+    if (!confirm("Remove this preset?")) return;
+    savePresets((tenant.chat_presets ?? []).filter((p) => p.id !== id));
+  }
+
 
   return (
     <>
       {showEdit && <TenantModal tenant={tenant} onClose={() => setShowEdit(false)} onSaved={handleSaved} />}
+      {editingPreset !== null && (
+        <PresetModal
+          preset={editingPreset === "new" ? undefined : editingPreset}
+          gateways={gateways}
+          onClose={() => setEditingPreset(null)}
+          onSaved={handlePresetSaved}
+        />
+      )}
 
       <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={onBack} style={{ marginBottom: 16 }}>
         ← Tenants
@@ -243,6 +369,72 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
           </div>
         )}
       </div>
+
+      {/* Chat Presets card — visible to admin and tenant_admin only */}
+      {canEditPresets && (
+        <div className={s.card}>
+          <div className={s["card-header"]}>
+            <h2 className={s["card-title"]}>Chat Presets</h2>
+            <button
+              className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`}
+              onClick={() => setEditingPreset("new")}
+              disabled={savingPresets || loadingGateways}
+            >
+              + Add Preset
+            </button>
+          </div>
+
+          {(tenant.chat_presets ?? []).length === 0 ? (
+            <div className={s.empty}>
+              No presets yet. When presets are defined, member and viewer users will see only these
+              gateway / model combinations in /chat instead of the full selector.
+            </div>
+          ) : (
+            <div className={s["table-wrapper"]}>
+              <table className={s.table}>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Gateway</th>
+                    <th>Provider</th>
+                    <th>Model</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(tenant.chat_presets ?? []).map((p) => {
+                    const gw = gateways.find((g) => g.id === p.gateway_id);
+                    return (
+                      <tr key={p.id}>
+                        <td><strong>{p.name}</strong></td>
+                        <td><span className={s.code}>{gw?.slug ?? p.gateway_id}</span></td>
+                        <td><span className={s.code}>{p.provider}</span></td>
+                        <td><span className={s.code}>{p.model}</span></td>
+                        <td style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <button
+                            className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
+                            onClick={() => setEditingPreset(p)}
+                            disabled={savingPresets}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`}
+                            onClick={() => handlePresetDelete(p.id)}
+                            disabled={savingPresets}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

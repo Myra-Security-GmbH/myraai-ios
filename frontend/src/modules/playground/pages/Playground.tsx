@@ -29,7 +29,7 @@ interface PanelState {
   fetchingUrls: number | null;     // set to URL count while gateway is fetching pages
 }
 
-function makePanel(model = ""): PanelState {
+function makePanel(model = "claude-sonnet-4-6"): PanelState {
   return {
     id: Math.random().toString(36).slice(2),
     model,
