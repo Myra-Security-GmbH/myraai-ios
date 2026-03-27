@@ -124,6 +124,126 @@ def strip_inline_toc(content: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Compact terminal-section rendering
+# ---------------------------------------------------------------------------
+#
+# WeasyPrint 68 does not honour page-break-before:avoid on block elements, so
+# wrapping See Also sections in a div (our earlier approach) does not prevent
+# them from being pushed onto their own near-blank page.
+#
+# Instead we convert each trailing section into compact inline form:
+#
+#   ## API                          →  <div class="terminal-block">
+#   <p>…one sentence…</p>               <p class="api-note"><strong>API:</strong> …</p>
+#   ## See also                         <p class="see-also-compact">
+#   - Link1                               <strong>See also:</strong> Link1 · Link2
+#   - Link2                             </p>
+#                                     </div>
+#
+# The entire block is ~8–14 mm tall vs the original 35–50 mm, so it fits in
+# the remaining whitespace on the preceding page.  page-break-inside:avoid on
+# the wrapper ensures the block is never split across pages.
+
+_LI_RE = re.compile(r'<li[^>]*>(.*?)</li>', re.DOTALL)
+
+def _ul_to_inline(ul_html: str) -> str:
+    """Convert <ul>…</ul> items to "item1 · item2 · item3" inline HTML."""
+    items = [m.group(1).strip() for m in _LI_RE.finditer(ul_html)]
+    return ' &nbsp;·&nbsp; '.join(items)
+
+
+# Matches an optional short API h2+p, then the See Also / Next steps h2+ul.
+# Group 1: API h2 tag (with id)
+# Group 2: API paragraph text (content inside <p>…</p>)
+# Group 3: See Also h2 tag (with id, any case of "also"; or "Next steps")
+# Group 4: See Also ul inner HTML
+_TERMINAL_RE = re.compile(
+    r'(?:'
+    r'(?P<api_h2><h2[^>]*>API</h2>)\s*'
+    r'<p>(?P<api_body>.*?)</p>\s*'
+    r')?'
+    r'(?P<sa_h2><h2[^>]*>(?:See [Aa]lso|Next steps|Siehe auch)</h2>)\s*'
+    r'<ul>(?P<sa_ul>.*?)</ul>',
+    re.DOTALL,
+)
+
+
+def compact_terminal_sections(content: str) -> str:
+    """
+    Convert trailing See Also (and optional API) sections to compact inline form.
+
+    The compact block uses ~8–14 mm of vertical space instead of ~35–50 mm,
+    dramatically increasing the chance that it stays on the preceding page.
+    """
+    n_sa = 0
+    n_api = 0
+
+    def _replace(m: re.Match) -> str:
+        nonlocal n_sa, n_api
+        n_sa += 1
+
+        parts: list[str] = []
+
+        api_body = m.group('api_body')
+        if api_body:
+            n_api += 1
+            parts.append(
+                f'<p class="api-note"><strong>API:</strong> {api_body.strip()}</p>'
+            )
+
+        # Extract the heading text to use as the compact label
+        sa_h2_html = m.group('sa_h2')
+        label_m = re.search(r'>([^<]+)</h2>', sa_h2_html)
+        label = label_m.group(1).strip() if label_m else 'See also'
+
+        inline_links = _ul_to_inline(m.group('sa_ul'))
+        parts.append(
+            f'<p class="see-also-compact">'
+            f'<strong>{label}:</strong> {inline_links}'
+            f'</p>'
+        )
+
+        return (
+            '<div class="terminal-block">'
+            + ''.join(parts)
+            + '</div>'
+        )
+
+    content = _TERMINAL_RE.sub(_replace, content)
+    if n_sa:
+        print(f"  Compacted {n_sa} See Also section(s) to inline ({n_api} with API note)")
+    return content
+
+
+# ---------------------------------------------------------------------------
+# Small-table marking
+# ---------------------------------------------------------------------------
+
+# Tables with few rows risk orphaning a single row on a blank page.
+# We mark tables with ≤ _SMALL_TABLE_MAX_ROWS as class="small-table" so CSS
+# can apply page-break-inside:avoid to them.
+_SMALL_TABLE_MAX_ROWS = 8
+_TABLE_BLOCK_RE = re.compile(r'<table>(.*?)</table>', re.DOTALL | re.IGNORECASE)
+
+def mark_small_tables(content: str) -> str:
+    """Add class="small-table" to table elements with ≤ _SMALL_TABLE_MAX_ROWS rows."""
+    count = 0
+
+    def _repl(m: re.Match) -> str:
+        nonlocal count
+        rows = m.group(0).count('<tr')
+        if rows <= _SMALL_TABLE_MAX_ROWS:
+            count += 1
+            return '<table class="small-table">' + m.group(1) + '</table>'
+        return m.group(0)
+
+    content = _TABLE_BLOCK_RE.sub(_repl, content)
+    if count:
+        print(f"  Marked {count} small table(s) with page-break-inside:avoid")
+    return content
+
+
+# ---------------------------------------------------------------------------
 # Static ToC injection
 # ---------------------------------------------------------------------------
 
@@ -500,6 +620,138 @@ def set_open_action(pdf_path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Two-pass orphan detection — remove terminal blocks that land on blank pages
+# ---------------------------------------------------------------------------
+# WeasyPrint 68 does not honour page-break-before:avoid, so compact terminal
+# blocks sometimes end up alone on a near-blank page.  We detect this after a
+# first-pass render and remove the orphaned divs before the final render.
+# ---------------------------------------------------------------------------
+
+_TERMINAL_PREFIXES = ('See also:', 'See Also:', 'Next steps:', 'Siehe auch:', 'API:')
+_SKIP_PDF_LINES    = frozenset({'AI Gateway by Myra Security', 'Documentation'})
+
+
+def _detect_orphaned_terminal_blocks(pdf_path: str,
+                                     threshold: float = 2.0) -> list[str]:
+    """
+    Scan *pdf_path* for near-blank pages (< threshold % pixel fill) that
+    contain an orphaned compact terminal block (See-also / API-note div).
+
+    Returns a list of normalised text snippets — one per orphaned block —
+    that _remove_terminal_blocks_by_snippets() can use to locate the divs.
+    """
+    try:
+        import fitz                       # PyMuPDF
+        from PIL import Image
+        import io
+        import numpy as np
+    except ImportError:
+        print("  (skipping orphan detection — pip install pymupdf pillow numpy)",
+              file=sys.stderr)
+        return []
+
+    doc    = fitz.open(pdf_path)
+    found: list[str] = []
+
+    for pg in doc:
+        # ── Quick fill check ─────────────────────────────────────────────
+        mat = fitz.Matrix(0.5, 0.5)
+        pix = pg.get_pixmap(matrix=mat, colorspace=fitz.csGRAY)
+        img = Image.open(io.BytesIO(pix.tobytes('png'))).convert('L')
+        arr = np.array(img)
+        pct = (arr < 240).sum() / arr.size * 100
+        if pct >= threshold:
+            continue
+
+        # ── Near-blank page: extract meaningful lines ─────────────────────
+        lines = []
+        for raw in pg.get_text().split('\n'):
+            s = raw.strip()
+            if not s:
+                continue
+            if s in _SKIP_PDF_LINES:
+                continue
+            if re.match(r'^v\d{8}', s):       # version stamp
+                continue
+            if re.match(r'^\d{1,5}$', s):     # page number
+                continue
+            lines.append(s)
+
+        if not lines:
+            continue
+
+        # Only act on pages whose first content line starts with a known
+        # terminal-block prefix — regular content paragraphs are left alone.
+        if any(lines[0].startswith(p) for p in _TERMINAL_PREFIXES):
+            snippet = ' '.join(lines[:3])   # use up to 3 lines for a distinctive key
+            # Normalise non-breaking spaces and middle dots
+            snippet = snippet.replace('\xa0', ' ').replace('\u00b7', '·')
+            found.append(snippet)
+
+    return found
+
+
+def _remove_terminal_blocks_by_snippets(content: str,
+                                        snippets: list[str]) -> tuple[str, int]:
+    """
+    Remove every <div class="terminal-block">…</div> whose stripped plain-text
+    starts with one of the supplied *snippets*.
+
+    Returns (modified_content, n_removed).
+    """
+    _OPEN  = '<div class="terminal-block">'
+    _CLOSE = '</div>'
+    n_removed = 0
+
+    for snippet in snippets:
+        key = re.sub(r'\s+', ' ',
+                     snippet.replace('\xa0', ' ')).strip()[:80]
+        if not key:
+            continue
+
+        start = 0
+        while True:
+            tb_start = content.find(_OPEN, start)
+            if tb_start == -1:
+                break
+
+            # terminal-block divs contain only <p> elements — no nested <div>
+            tb_end_pos = content.find(_CLOSE, tb_start)
+            if tb_end_pos == -1:
+                break
+            tb_end = tb_end_pos + len(_CLOSE)
+            block_html = content[tb_start:tb_end]
+
+            # Strip tags and normalise for comparison
+            block_text = re.sub(r'<[^>]+>', '',
+                                html_module.unescape(block_html))
+            block_text = block_text.replace('\xa0', ' ').replace('\u00b7', '·')
+            block_norm = re.sub(r'\s+', ' ', block_text).strip()
+
+            if key[:60] and (block_norm.startswith(key[:60])
+                             or key[:60] in block_norm[:90]):
+                # Also remove the <hr /> separator immediately before the
+                # terminal block — it's the markdown --- divider before
+                # "## See also" and creates a trailing orphan without the block.
+                remove_from = tb_start
+                for hr_pat in ('<hr />', '<hr/>', '<hr>'):
+                    hr_pos = content.rfind(hr_pat, max(0, tb_start - 80), tb_start)
+                    if hr_pos != -1:
+                        between = content[hr_pos + len(hr_pat):tb_start]
+                        if not between.strip():   # only whitespace between hr and block
+                            remove_from = hr_pos
+                            break
+
+                content = content[:remove_from] + content[tb_end:]
+                n_removed += 1
+                break          # move on to next snippet
+
+            start = tb_end
+
+    return content, n_removed
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -544,6 +796,8 @@ def main():
     content = inject_toc(content)
     content = strip_nav_section_dividers(content)
     content = strip_inline_toc(content)
+    content = compact_terminal_sections(content)
+    content = mark_small_tables(content)
     content = inject_version_into_cover(content, _version)
     content = render_mermaid_diagrams(content)
 
@@ -553,17 +807,57 @@ def main():
 
     standalone = build_standalone_html(content, css_url, base_url, version=_version)
 
-    # ── Render ───────────────────────────────────────────────────────────────
-    print(f"→ Output : {args.out}")
-    print("→ Rendering … (this takes 10–30 seconds)")
-
-    t0 = time.monotonic()
-
+    # ── Render (iterative orphan removal, then final render) ─────────────────
+    # WeasyPrint 68 does not honour page-break-before:avoid, so compact
+    # terminal blocks can land on their own blank page.  We detect them
+    # after a detection pass and remove them before the final render.
+    # Removing blocks may shift page boundaries, creating new orphans, so we
+    # iterate until stable (usually 2–3 passes).
     import logging
     logging.getLogger("weasyprint").setLevel(logging.ERROR)
-
     a4_css = weasyprint.CSS(string="@page { size: A4 portrait; }")
 
+    t0              = time.monotonic()
+    pass_num        = 0
+    total_removed   = 0
+    max_passes      = 8   # safety limit against pathological layouts
+
+    while pass_num < max_passes:
+        pass_num += 1
+        tmp_pdf = args.out + f".detect_p{pass_num}.tmp"
+        print(f"→ Detection pass {pass_num} …")
+        weasyprint.HTML(string=standalone, base_url=base_url).write_pdf(
+            tmp_pdf, stylesheets=[a4_css]
+        )
+        t_pass = time.monotonic() - t0
+        print(f"  Pass {pass_num} done in {t_pass:.1f}s")
+
+        orphan_snippets = _detect_orphaned_terminal_blocks(tmp_pdf)
+        try:
+            os.unlink(tmp_pdf)
+        except OSError:
+            pass
+
+        if not orphan_snippets:
+            print(f"  No orphaned terminal blocks — stable after {pass_num} pass(es)")
+            break
+
+        content, n_removed = _remove_terminal_blocks_by_snippets(
+            content, orphan_snippets
+        )
+        total_removed += n_removed
+        print(f"  Removed {n_removed}/{len(orphan_snippets)} orphaned "
+              f"terminal block(s) (total: {total_removed})")
+        if n_removed == 0:
+            # Snippets detected but none matched — accept as irreducible
+            print("  No HTML matches for detected orphans — accepting as irreducible")
+            break
+        standalone = build_standalone_html(
+            content, css_url, base_url, version=_version
+        )
+
+    # ── Final render ─────────────────────────────────────────────────────────
+    print(f"→ Final render → {args.out}")
     weasyprint.HTML(string=standalone, base_url=base_url).write_pdf(
         args.out, stylesheets=[a4_css]
     )

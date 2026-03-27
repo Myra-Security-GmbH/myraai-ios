@@ -79,16 +79,33 @@ def pass_c(html_path: Path) -> list[Issue]:
     content = raw[start:]   # good enough for pattern scanning
 
     # ── Long lines in code blocks ──────────────────────────────────────────
-    # Extract all <pre> inner text
+    # print.css sets white-space:pre-wrap + word-break:break-all on <pre>, so
+    # lines in fenced code blocks will always wrap — they never overflow.
+    # We only flag extreme lines (>200 chars) where a single unbreakable token
+    # (e.g. a very long URL or identifier) might genuinely escape the column.
     for pre_m in re.finditer(r'<pre[^>]*>(.*?)</pre>', content, re.DOTALL):
         text = re.sub(r'<[^>]+>', '', pre_m.group(1))
         for i, line in enumerate(text.splitlines(), 1):
-            if len(line) > 110:
+            if len(line) > 200:
                 issues.append(Issue(
                     page=0, kind="LONG_LINE",
-                    detail=f"Code block line {i} is {len(line)} chars (>110) — may overflow or wrap badly"
+                    detail=f"Code block line {i} is {len(line)} chars (>200) — single unbreakable token may overflow"
                 ))
                 break  # one warning per block
+
+    # ── Inline code inside table cells ────────────────────────────────────
+    # Unlike <pre> blocks, inline <code> inside <td> does not have word-break
+    # applied by default.  Long default values (e.g. JSON arrays) can push
+    # table columns past the right margin.  Flag any td code content > 40 chars.
+    for td_m in re.finditer(r'<td[^>]*>(.*?)</td>', content, re.DOTALL):
+        for code_m in re.finditer(r'<code[^>]*>(.*?)</code>', td_m.group(1), re.DOTALL):
+            text = re.sub(r'<[^>]+>', '', code_m.group(1)).strip()
+            if len(text) > 40:
+                issues.append(Issue(
+                    page=0, kind="TD_CODE_LONG",
+                    detail=f"Inline code in table cell is {len(text)} chars (>40) — verify word-break CSS: {text[:50]!r}"
+                ))
+                break  # one warning per td
 
     # ── Wide tables (many columns) ─────────────────────────────────────────
     for th_block in re.finditer(r'<thead[^>]*>(.*?)</thead>', content, re.DOTALL):
