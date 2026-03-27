@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCyDataId } from "@myraui/utils";
 import { authApi } from "src/api/client";
@@ -22,17 +22,23 @@ function friendlyError(raw: string): string {
 
 export default function LoginPage() {
   const navigate  = useNavigate();
-  const { login } = useAuth();
-  const [step, setStep]     = useState<Step>("choose");
-  const [email, setEmail]   = useState("");
-  const [code, setCode]     = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError]   = useState<string | null>(null);
-  const [info, setInfo]     = useState<string | null>(null);
+  const { user, loading, login } = useAuth();
+
+  // Already authenticated — forward immediately
+  useEffect(() => {
+    if (!loading && user) navigate("/", { replace: true });
+  }, [loading, user]);
+  const [step, setStep]         = useState<Step>("choose");
+  const [email, setEmail]       = useState("");
+  const [code, setCode]         = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [info, setInfo]             = useState<string | null>(null);
 
   async function handleRequestOTP(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true); setError(null);
+    setSubmitting(true); setError(null);
     try {
       const res = await authApi.otpRequest(email);
       setInfo(res.message);
@@ -40,21 +46,21 @@ export default function LoginPage() {
     } catch (err: any) {
       setError(friendlyError(err.message ?? ""));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
   async function handleVerifyOTP(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true); setError(null);
+    setSubmitting(true); setError(null);
     try {
-      const res = await authApi.otpVerify(email, code);
+      const res = await authApi.otpVerify(email, code, rememberMe);
       login(res.user);
       navigate("/", { replace: true });
     } catch (err: any) {
       setError(friendlyError(err.message ?? ""));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
@@ -101,8 +107,16 @@ export default function LoginPage() {
               className={s.input}
               data-cy={cyId("email-input")}
             />
-            <button type="submit" disabled={loading} className={s["primary-btn"]} data-cy={cyId("send-code-btn")}>
-              {loading ? "Sending…" : "Send code"}
+            <label className={s["remember-label"]}>
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+              />
+              Stay logged in for 30 days on this device
+            </label>
+            <button type="submit" disabled={submitting} className={s["primary-btn"]} data-cy={cyId("send-code-btn")}>
+              {submitting ? "Sending…" : "Send code"}
             </button>
             <button type="button" className={s["link-btn"]} onClick={() => setStep("choose")}>
               ← Back
@@ -128,8 +142,8 @@ export default function LoginPage() {
               className={s["code-input"]}
               data-cy={cyId("code-input")}
             />
-            <button type="submit" disabled={loading || code.length !== 6} className={s["primary-btn"]} data-cy={cyId("sign-in-btn")}>
-              {loading ? "Verifying…" : "Sign in"}
+            <button type="submit" disabled={submitting || code.length !== 6} className={s["primary-btn"]} data-cy={cyId("sign-in-btn")}>
+              {submitting ? "Verifying…" : "Sign in"}
             </button>
             <button type="button" className={s["link-btn"]} onClick={() => { setStep("email-input"); setCode(""); setInfo(null); }}>
               ← Back

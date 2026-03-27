@@ -66,7 +66,7 @@ export const authApi = {
   me:          () => authFetch<AdminUser>("/me"),
   logout:      () => authFetch<{ ok: boolean }>("/logout", { method: "POST" }),
   otpRequest:  (email: string) => authFetch<{ message: string }>("/otp/request", { method: "POST", body: JSON.stringify({ email }) }),
-  otpVerify:   (email: string, code: string) => authFetch<{ user: AdminUser }>("/otp/verify", { method: "POST", body: JSON.stringify({ email, code }) }),
+  otpVerify:   (email: string, code: string, rememberMe = false) => authFetch<{ user: AdminUser }>("/otp/verify", { method: "POST", body: JSON.stringify({ email, code, remember_me: rememberMe }) }),
 };
 
 export interface AdminUser {

@@ -509,9 +509,10 @@ route("POST", "^/admin/v1/playground/token$", function()
     local expires_ts = os.time() + 600
     local expires_iso = os.date("!%Y-%m-%dT%H:%M:%SZ", expires_ts)
 
+    local u = ngx.ctx.admin_user
     local _, err = storage.insert_auth_token(
         b.gateway_id, hash, {"playground"}, expires_ts,
-        nil, "playground", nil, nil)
+        u and u.id, "playground", nil, nil)
     if err then return send(500, { error = tostring(err) }) end
 
     send(201, {

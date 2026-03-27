@@ -120,6 +120,21 @@
   text-align: left;
 }
 
+.remember-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  margin: 2px 0;
+
+  input[type="checkbox"] {
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+}
+
 .error {
   background: rgba(239, 68, 68, 0.08);
   color: #dc2626;

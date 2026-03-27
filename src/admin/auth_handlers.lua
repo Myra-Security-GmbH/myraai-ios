@@ -41,9 +41,7 @@ local function read_body()
     return json.decode(raw or "{}") or {}
 end
 
-local function set_session_cookie(token)
-    local auth = cfg_auth()
-    local max_age = auth.jwt_expiry_secs or 28800
+local function set_session_cookie(token, max_age)
     ngx.header["Set-Cookie"] = "aig_admin=" .. token ..
         "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" .. max_age
 end
@@ -52,9 +50,9 @@ local function clear_session_cookie()
     ngx.header["Set-Cookie"] = "aig_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
 end
 
-local function issue_jwt_for(user)
+local function issue_jwt_for(user, remember_me)
     local auth    = cfg_auth()
-    local expiry  = auth.jwt_expiry_secs or 28800
+    local expiry  = remember_me and 2592000 or (auth.jwt_expiry_secs or 28800)
     local payload = {
         sub    = user.id,
         email  = user.email,
@@ -63,7 +61,7 @@ local function issue_jwt_for(user)
         iat    = ngx.time(),
         exp    = ngx.time() + expiry,
     }
-    return jwt.sign(payload)
+    return jwt.sign(payload), expiry
 end
 
 -- ---------------------------------------------------------------------------
@@ -175,8 +173,9 @@ route("POST", "^/admin/auth/otp/verify$", function()
     end
 
     storage.touch_last_login(user.id)
-    local token = issue_jwt_for(user)
-    set_session_cookie(token)
+    local remember_me = body.remember_me == true
+    local token, max_age = issue_jwt_for(user, remember_me)
+    set_session_cookie(token, max_age)
     send(200, {
         user = { id = user.id, email = user.email, role = user.role, tenant_id = user.tenant_id },
     })
@@ -277,8 +276,8 @@ route("GET", "^/admin/auth/google/callback$", function()
     storage.upsert_oauth_link(user.id, "google", claims.sub, claims.email)
     storage.touch_last_login(user.id)
 
-    local token = issue_jwt_for(user)
-    set_session_cookie(token)
+    local token, max_age = issue_jwt_for(user)
+    set_session_cookie(token, max_age)
     ngx.redirect("/", 302)
 end)
 
