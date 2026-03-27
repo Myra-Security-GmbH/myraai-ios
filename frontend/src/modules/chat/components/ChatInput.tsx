@@ -121,7 +121,7 @@ export default function ChatInput({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,.pdf,text/plain,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept="image/*,.pdf,text/plain,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.csv,text/csv,.tsv,text/tab-separated-values,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsm,application/vnd.ms-excel.sheet.macroenabled.12,.ods,application/vnd.oasis.opendocument.spreadsheet"
                 style={{ display: "none" }}
                 onChange={handleFileChange}
               />

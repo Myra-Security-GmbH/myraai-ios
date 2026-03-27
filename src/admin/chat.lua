@@ -340,7 +340,73 @@ except Exception as e:
             return send(200, { text = text })
         end
 
-        -- PDF / plain text: upload to Anthropic Files API
+        -- .ods: convert to CSV server-side (stdlib only), then upload CSV to Files API
+        if mime == "application/vnd.oasis.opendocument.spreadsheet" then
+            local tmpfile = "/tmp/aig_ods_" .. ngx.now() .. "_" .. math.random(100000) .. ".ods"
+            local f = io.open(tmpfile, "wb")
+            if not f then
+                return send(500, { error = "Failed to create temp file for ODS conversion" })
+            end
+            f:write(bin)
+            f:close()
+
+            local csvfile = tmpfile .. ".csv"
+            local script  = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, zipfile, csv, io
+import xml.etree.ElementTree as ET
+NS = {'t': 'urn:oasis:names:tc:opendocument:xmlns:table:1.0',
+      'o': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
+      'tx': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
+      'v': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0'}
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+    root = ET.fromstring(z.read('content.xml'))
+    out = io.open(sys.argv[2], 'w', newline='', encoding='utf-8')
+    w = csv.writer(out)
+    for sheet in root.findall('.//t:table', NS):
+        for row in sheet.findall('t:table-row', NS):
+            cells = []
+            for cell in row.findall('t:table-cell', NS):
+                repeat_n = int(cell.get('{urn:oasis:names:tc:opendocument:xmlns:table:1.0}number-columns-repeated') or 1)
+                parts = [p.text or '' for p in cell.findall('.//tx:p', NS)]
+                val = ' '.join(parts)
+                cells.extend([val] * repeat_n)
+            # trim trailing empty cells
+            while cells and cells[-1] == '':
+                cells.pop()
+            if cells:
+                w.writerow(cells)
+    out.close()
+except Exception as e:
+    sys.exit(1)
+]])
+                sf:close()
+            end
+            local cmd = "python3 " .. script .. " " .. tmpfile .. " " .. csvfile .. " 2>/dev/null"
+            os.execute(cmd)
+            os.remove(tmpfile)
+            os.remove(script)
+
+            local cf = io.open(csvfile, "rb")
+            local csv_data = cf and cf:read("*a") or ""
+            if cf then cf:close() end
+            os.remove(csvfile)
+
+            csv_data = csv_data:gsub("^%s+", ""):gsub("%s+$", "")
+            if csv_data == "" then
+                return send(422, { error = "Could not convert .ods to CSV" })
+            end
+
+            -- Replace bin/mime so the Files API upload below sends the CSV
+            bin  = csv_data
+            mime = "text/csv"
+            body.filename = body.filename:gsub("%.ods$", ".csv")
+        end
+
+        -- PDF / plain text / spreadsheets: upload to Anthropic Files API
         if not body.gateway_id or body.gateway_id == "" then
             return send(400, { error = "gateway_id is required for PDF/text uploads" })
         end
@@ -389,6 +455,82 @@ except Exception as e:
         end
 
         send(200, { file_id = parsed.id })
+    end)
+
+    -- ── PDF export ────────────────────────────────────────────────────────────
+    -- POST /admin/v1/chat/export-pdf  { markdown, filename? }
+    -- Converts a markdown chat transcript to PDF via pandoc + weasyprint.
+    route("POST", "^/admin/v1/chat/export%-pdf$", function()
+        local body = read_body()
+        if not body.markdown or body.markdown == "" then
+            return send(400, { error = "markdown is required" })
+        end
+
+        local rand   = math.random(100000)
+        local prefix = "/tmp/aig_pdf_" .. math.floor(ngx.now()) .. "_" .. rand
+        local tmpmd  = prefix .. ".md"
+        local tmpcss = prefix .. ".css"
+        local tmppdf = prefix .. ".pdf"
+
+        -- Write markdown
+        local mf = io.open(tmpmd, "w")
+        if not mf then return send(500, { error = "Failed to write temp markdown file" }) end
+        mf:write(body.markdown)
+        mf:close()
+
+        -- Write embedded CSS for clean chat-transcript formatting
+        local css = [[
+body { font-family: "Liberation Serif", Georgia, serif; font-size: 11pt; line-height: 1.65; color: #1a1a1a; max-width: 48em; margin: 0 auto; padding: 2em 1em; }
+h1 { font-size: 18pt; border-bottom: 2px solid #333; padding-bottom: 6pt; margin-bottom: 4pt; }
+em { color: #555; }
+hr { border: none; border-top: 1px solid #ccc; margin: 14pt 0; }
+p strong:only-child { font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.05em; color: #444; }
+pre { background: #f5f5f5; border-left: 3px solid #ccc; padding: 10pt 12pt; font-size: 9.5pt; white-space: pre-wrap; word-break: break-word; }
+code { font-family: "Liberation Mono", "Courier New", monospace; font-size: 9.5pt; background: #f5f5f5; padding: 1pt 3pt; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 10pt; }
+th, td { border: 1px solid #ccc; padding: 4pt 8pt; text-align: left; }
+th { background: #f0f0f0; font-weight: bold; }
+blockquote { border-left: 3px solid #aaa; margin: 0 0 0 1em; padding-left: 1em; color: #555; }
+a { color: #1a6fb5; }
+]]
+        local cf = io.open(tmpcss, "w")
+        if not cf then
+            os.remove(tmpmd)
+            return send(500, { error = "Failed to write temp CSS file" })
+        end
+        cf:write(css)
+        cf:close()
+
+        -- Run pandoc → weasyprint (cd /tmp so pandoc's own temp files land there;
+        -- use full path to weasyprint since nginx worker may have a minimal PATH)
+        local cmd = string.format(
+            "cd /tmp && pandoc --pdf-engine=/usr/local/bin/weasyprint --standalone --metadata title='Chat Export' --css=%s -o %s %s 2>&1",
+            tmpcss, tmppdf, tmpmd
+        )
+        local pipe    = io.popen(cmd, "r")
+        local out     = pipe and pipe:read("*a") or ""
+        local ok_pipe = pipe and pipe:close()
+        os.remove(tmpmd)
+        os.remove(tmpcss)
+
+        local pf = io.open(tmppdf, "rb")
+        if not pf then
+            return send(500, { error = "PDF generation failed: " .. (out or "") })
+        end
+        local pdf_data = pf:read("*a")
+        pf:close()
+        os.remove(tmppdf)
+
+        local dl_name = (body.filename or "conversation") .. ".pdf"
+        ngx.header["Access-Control-Allow-Origin"]      = cors_origin()
+        ngx.header["Access-Control-Allow-Credentials"] = "true"
+        ngx.header["Content-Type"]        = "application/pdf"
+        ngx.header["Content-Disposition"] = 'attachment; filename="' .. dl_name .. '"'
+        ngx.header["Content-Length"]      = #pdf_data
+        ngx.status = 200
+        ngx.print(pdf_data)
+        ngx.exit(200)
     end)
 
 end
