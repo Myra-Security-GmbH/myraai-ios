@@ -1,6 +1,6 @@
 # Market & Competitive Analysis
 
-_Last updated: 2026-03-24 (added Cloudflare AI Gateway, Portkey enterprise, Bifrost)_
+_Last updated: 2026-03-28 (Chat UI: thinking blocks, artifact panel, markdown import; vLLM 512K context)_
 
 ## Competitor Overview
 
@@ -475,6 +475,9 @@ Omnifact is not a gateway competitor today. Threat escalates if they ship a prop
 | **BYOK** | ✅ AES-256 vault | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ dashboard | ✅ ext vaults |
 | **Web search augmentation** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Playground UI** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Chat console (persistent, multi-turn)** | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Reasoning model UI (thinking blocks)** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Artifact panel (HTML/SVG live preview)** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Cost analytics dashboard** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
 | **SSO / SAML** | ❌ | ✅ paid | ✅ paid | ✅ paid | ✅ paid | ✅ | ✅ CF Access | ❌ |
 | **SOC2 / HIPAA certs** | ❌ | ✅ enterprise | ❌ | ❌ | ❌ | ✅ | ✅ | claimed |
@@ -493,6 +496,8 @@ Omnifact is not a gateway competitor today. Threat escalates if they ship a prop
 - **PII reversible tokenization** — Presidio-backed in-flight scrub with response restoration; no competitor (including Portkey) does reversible tokenization.
 - **LuaJIT on OpenResty** — <1 ms overhead; matches Portkey's Node.js claim; Bifrost (Go) now claims 11 µs and we should publish our own benchmark.
 - **EU data sovereignty via Myra CDN** — the only managed gateway with the entire pipeline (PII scan, content moderation) running inside an EU-certified CDN. Cloudflare is SaaS; Portkey VPC requires customer-managed infra; Bifrost is self-hosted only.
+- **Chat Console with reasoning-model UX** — built-in `/chat` interface with collapsible thinking-block rendering (duration-timed, auto-collapse on stream completion), live artifact panel for HTML/SVG code blocks, multi-format file import (images, PDF, DOCX, CSV/XLS, Markdown), and mobile-optimised input. No gateway competitor ships an end-user chat interface alongside the API layer.
+- **512K-context local vLLM** — Qwen3-30B-A3B deployed with YaRN RoPE scaling to 524,288 tokens on an RTX PRO 6000 Blackwell (96 GB VRAM); available as a local sovereign inference option with no token cost.
 
 ---
 

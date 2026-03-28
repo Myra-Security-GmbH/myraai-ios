@@ -377,26 +377,30 @@ OpenAI Agents (Python + TypeScript), AWS AgentCore, Pydantic AI, Autogen, CrewAI
 | **Self-hosted / OSS** | Yes (the whole stack) | Yes (`npx @portkey-ai/gateway`) |
 | **gRPC** | No | Yes (Enterprise self-hosted) |
 | **Multimodal** | No (text only) | Yes (vision, image-gen, TTS, STT, function calling) |
-| **Frontend / UI** | React admin UI (in progress) | Managed SaaS UI (full featured) |
+| **Frontend / UI** | React admin UI + Chat console + Playground | Managed SaaS UI (full featured) |
+| **Chat console (persistent conversations)** | Yes — full multi-turn chat with history, presets, export | Yes — basic prompt playground |
+| **Reasoning model rendering (thinking blocks)** | Yes — collapsible `<think>` panel, duration timer | Yes — thinking mode with token budget |
+| **Artifact panel (HTML/SVG live preview)** | Yes — sandboxed iframe, streaming-aware | No |
+| **File attachments in chat** | Yes — images, PDF, DOCX, CSV/XLS, TXT, Markdown | Yes — images, vision only |
 
 ---
 
 ### Major Gaps
 
 #### 1. Provider Coverage
-We support 6 providers. Portkey supports 50+ including AWS Bedrock, Google Vertex AI, Cohere, Perplexity, Stability AI, Together AI, Fireworks AI, and a long tail of regional/specialized providers. Self-hosted (Ollama, LocalAI) is explicitly supported via custom host URLs.
+We support 21 providers (OpenAI, Anthropic, Google Gemini, Vertex AI, Azure OpenAI, AWS Bedrock, Mistral, Groq, Together AI, Fireworks, Cerebras, DeepSeek, OpenRouter, Perplexity, SambaNova, xAI, NVIDIA NIM, Cloudflare AI, Cohere, HuggingFace, Ollama). Portkey supports 50+ with 1,600+ model aliases via aggregator integrations. The gap has narrowed significantly but Portkey's aggregator model allows faster long-tail coverage.
 
 #### 2. Load Balancing
 We have no load balancing. Portkey offers weighted round-robin across providers, models, and API keys — including sticky sessions (consistent routing per user/conversation) and canary rollout (gradual traffic migration). This is a significant operational gap for teams managing rate limits across multiple API keys or running A/B model tests.
 
 #### 3. Circuit Breaker
-We retry on 5xx but have no circuit breaker. Portkey automatically removes unhealthy targets from the pool and re-adds them after a configurable cooldown. Without this, a persistently failing provider continues to burn retries on every request.
+✅ **Implemented.** We have a CLOSED→OPEN→HALF_OPEN state machine with configurable `failure_threshold`, `window_sec`, `cooldown_ms`, and `failure_status_codes`. This is actually a gap for Portkey — their circuit breaker auto-closes after cooldown but lacks the HALF_OPEN probe behaviour that ours implements.
 
 #### 4. Semantic Caching
 Our cache is exact-match only. Portkey offers vector-similarity caching (configurable threshold) that catches near-identical prompts differing only in minor phrasing. This can meaningfully improve cache hit rates for conversational use cases.
 
 #### 5. Analytics & Dashboards
-We have raw Prometheus metrics and SQL logs. Portkey has a purpose-built analytics UI with 21+ metrics, latency percentiles (p50/p95/p99), cost attribution by user/metadata, and saved filter sets. The absence of a dashboard is a major UX gap for non-technical operators.
+We now have an analytics dashboard with hero cards (requests, cost, guardrail hits), sparkline charts, top models, usage-by-tenant tables, and latency percentiles (p50/p95/p99). Portkey still leads on group-by custom metadata, feedback score trends, and 365-day retention. Our gap has narrowed substantially for operational monitoring; Portkey's advantage is mainly in eval-driven analytics workflows.
 
 #### 6. Distributed Tracing (OpenTelemetry)
 We have no tracing. Portkey emits W3C-compliant OpenTelemetry spans covering the full request lifecycle including retries, fallbacks, and agentic sub-calls. This is especially important for multi-step agent workflows where understanding cost and latency per step is essential for optimization.
@@ -417,7 +421,9 @@ We have no agent-specific features. Portkey integrates with 16 frameworks (LangC
 We have a simple admin/member/viewer role model with no SSO or audit trail. Portkey has OIDC SSO, per-feature API key permissions, and full audit logging — table-stakes for enterprise sales.
 
 #### 12. Multimodal
-We are text (chat completions) only. Portkey routes vision, image generation, TTS, STT, and function calling across providers.
+At the **gateway routing layer**, we handle chat completions only (text and vision via `image_url` blocks). Portkey additionally routes image generation (DALL-E, Stable Diffusion), text-to-speech, speech-to-text, and function calling across providers.
+
+In the **Chat Console UI**, we handle a broad set of file types: images (JPEG/PNG/GIF/WebP), PDF, plain text, Markdown (.md), Word (.docx), CSV, TSV, Excel (.xlsx/.xlsm), and OpenDocument (.ods). Images are sent as `image_url` blocks for vision-capable models. This makes the chat UI practically multimodal for document and image workflows, even if the gateway routing layer is text/vision only.
 
 ---
 

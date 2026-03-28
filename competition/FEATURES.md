@@ -29,8 +29,9 @@
 18. [Admin REST API](#18-admin-rest-api)
 19. [Dashboard UI](#19-dashboard-ui)
 20. [Playground UI](#20-playground-ui)
-21. [Gateway Configuration Reference](#21-gateway-configuration-reference)
-22. [Error Handling](#22-error-handling)
+21. [Chat Console UI](#21-chat-console-ui)
+22. [Gateway Configuration Reference](#22-gateway-configuration-reference)
+23. [Error Handling](#23-error-handling)
 
 ---
 
@@ -582,6 +583,14 @@ The `ollama.think` config field controls whether the `think` parameter is inject
 - `true` — enables chain-of-thought; `<think>` tag content is stripped from the visible stream
 - Per-gateway override via `gateway_config.ollama.think`
 
+### Qwen3 / DeepSeek-R1 `<think>` Block Handling
+
+Models that embed chain-of-thought inside `<think>...</think>` tags in the response text are handled as follows:
+
+- **Gateway streaming:** `<think>` tags are passed through verbatim in the compat SSE stream — they are visible to the client if desired
+- **Auto-title generation** (Chat UI): `/no_think` prefix injected for Qwen3 models to suppress `<think>` output in the short title call; `<think>` blocks are stripped from the title response after generation
+- **Chat UI rendering:** `<think>...</think>` blocks are parsed and displayed as a collapsible "Thought process" panel above the visible response (see §21)
+
 ---
 
 ## 11. Provider Key Management (BYOK)
@@ -910,6 +919,29 @@ All endpoints are under `/admin/v1/`.
 | POST | `/playground/token` | Issue a short-lived (10-min) gateway token for the playground UI |
 | GET | `/playground/search?q=` | Web search proxy (Brave Search API) |
 
+### Chat Console
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/conversations` | List conversations (all visible to the requesting user) |
+| POST | `/conversations` | Create conversation (gateway_id, model, system_prompt, temperature, max_tokens) |
+| GET | `/conversations/{id}` | Get conversation with all messages |
+| PATCH | `/conversations/{id}` | Update title / model / settings |
+| DELETE | `/conversations/{id}` | Delete conversation and all messages |
+| POST | `/conversations/{id}/messages` | Append a message (role, content, tokens, cost, latency) |
+| PATCH | `/conversations/{id}/messages/{mid}` | Edit message content |
+| DELETE | `/conversations/{id}/messages/{mid}` | Delete a message |
+| POST | `/conversations/{id}/attachments` | Upload attachment (base64, stored in DB) |
+| GET | `/chat-presets` | List saved chat presets |
+| POST | `/chat-presets` | Create preset (name, model, system_prompt, temperature, max_tokens) |
+| PATCH | `/chat-presets/{id}` | Update preset |
+| DELETE | `/chat-presets/{id}` | Delete preset |
+| POST | `/chat/files` | Extract text from uploaded file (DOCX, PDF, image via MinerU/OCR; spreadsheet via Files API) |
+| POST | `/chat/export-pdf` | Render conversation markdown as PDF; returns binary `application/pdf` |
+| POST | `/auth/otp/request` | Request OTP email for email-code login |
+| POST | `/auth/otp/verify` | Verify OTP, issue session cookie |
+| POST | `/auth/logout` | Clear session |
+
 ### Client Error Reporting
 
 | Method | Path | Description |
@@ -1032,7 +1064,107 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
 
 ---
 
-## 21. Gateway Configuration Reference
+## 21. Chat Console UI
+
+A full-featured conversational AI interface built into the admin React SPA (`/chat`). Separate from the multi-model Playground; designed for sustained multi-turn conversations with persistent history.
+
+### Conversation Management
+
+- Sidebar lists all conversations with title, date, and rename-in-place
+- Search / filter by title
+- Create new conversation (preserves tenant/gateway/model selection across sessions via `localStorage`)
+- Delete conversation (with confirmation)
+- Each conversation stores: model, system prompt, temperature, max tokens, gateway
+
+### Configuration Bar
+
+- Tenant selector — scoped to accessible tenants
+- Gateway selector — updates available models
+- Model picker with provider-aware grouping and runnability indicators
+- **Preset mode** — when a tenant has named presets (`chat_presets`), the gateway/model dropdowns are replaced by preset buttons; preset applies a full configuration (gateway, model, system prompt, temperature, max tokens) with one click
+- Web search toggle (🌐 icon) — sends `X-Web-Search: 1` on the next request
+- Export buttons: PDF (server-side WeasyPrint) and Markdown (client-side download)
+- Settings gear — opens settings drawer
+
+### Settings Drawer
+
+- System prompt (textarea, multi-line; default includes: date, formatting rules, decision table emoji conventions, enumerated list emoji guidance)
+- Temperature slider
+- Max tokens input
+- Preset save / load / delete (user-level, shared across conversations)
+
+### Message Rendering
+
+- **Markdown** — GitHub Flavoured Markdown via `react-markdown` with:
+  - GFM tables, task lists, strikethrough
+  - KaTeX math (`$inline$` and `$$display$$`)
+  - Code blocks with syntax highlighting (highlight.js, `github-dark-dimmed` theme), language label, and per-block Copy button
+  - Emoji shortcodes (`:dog:` etc.)
+- **Thinking blocks** — `<think>...</think>` content from reasoning models (Qwen3, DeepSeek-R1) is parsed and displayed as a collapsible "Thought process" panel:
+  - Shown above the visible response
+  - While streaming: open by default with a spinner and "Thinking…" label
+  - After completion: auto-collapses; duration badge shows elapsed time (e.g. `4.2s`)
+  - User can expand/collapse independently
+- **Artifact panel** — when a response contains an `html` or `svg` fenced code block ≥ 8 lines, a live preview panel opens to the right of the thread:
+  - HTML rendered in a sandboxed `<iframe sandbox="allow-scripts">` (no external network access)
+  - SVG wrapped in minimal HTML and rendered the same way
+  - During streaming: shows "Generating…" spinner until the closing fence arrives
+  - Popout button opens the rendered result in a new browser tab
+  - Dismiss button removes the panel for the current message
+- **Streaming cursor** — animated blinking cursor at end of in-progress stream
+- **Message metadata** — input tokens, output tokens, cost (USD), latency shown below each assistant message
+- **Copy / Edit / Regenerate** actions — appear on hover:
+  - Copy: copies full message text to clipboard
+  - Edit (user messages): inline textarea with Save/Cancel
+  - Regenerate (last assistant message): deletes last assistant response, re-runs inference
+
+### File Attachments
+
+Attached via paperclip button or drag-and-drop. Supported formats:
+
+| Format | Handling |
+|---|---|
+| Images (JPEG, PNG, GIF, WebP) | Sent as `image_url` blocks for vision-capable models; OCR via MinerU for text-only models |
+| PDF | Anthropic native document block (Claude); MinerU text extraction for others |
+| Plain text (`.txt`) | Anthropic native document block |
+| **Markdown (`.md`)** | Decoded in-browser (base64 → UTF-8); injected as text block `[Document: filename]\n\ncontent`; shown as chip |
+| Word (`.docx`) | Server-side text extraction via `/chat/files`; content injected as text block; shown as chip |
+| CSV / TSV | Server-side file upload via Files API; sent as `document` with file reference |
+| Excel (`.xlsx`, `.xlsm`) | Same as CSV |
+| OpenDocument (`.ods`) | Same as CSV |
+
+- Attachments shown as chips in the input bar and in the sent user bubble (filename only, no content dump)
+- Drop zone overlay with label "Images · PDF · DOCX · XLSX · ODS · CSV · TXT · MD"
+
+### Input Box
+
+- Auto-growing textarea (44 px min, 200 px max)
+- `spellCheck=false`, `autoCorrect=off`, `autoCapitalize=off` — prevents mobile IME language-detection interference when typing in a non-keyboard-default language
+- Enter to send (Shift+Enter for newline)
+- Send / Stop button (stop aborts the active stream and saves partial content)
+
+### Auto-Title Generation
+
+After the first exchange in a new conversation, a non-blocking background request generates a 3–6 word title:
+
+- Uses the same model as the conversation (no separate model required)
+- Qwen3 models: `/no_think` prefix injected into the system prompt to suppress `<think>` output
+- `<think>` blocks stripped from title response
+- Surrounding quotes and trailing punctuation stripped
+- 90-second timeout to handle slow local vLLM models
+
+### Auto-Continue
+
+If the model returns `finish_reason: "max_tokens"`, the chat automatically continues with `"Continue"` injected as the next user message, up to 10 times. Accumulated content is stitched together into a single assistant message.
+
+### Export
+
+- **Markdown** — full conversation rendered as `# Title\n\n**You**\n\n...\n\n**Claude**\n\n...`; downloaded as `{slug}-{date}.md`
+- **PDF** — Markdown sent to `POST /chat/export-pdf` (WeasyPrint, server-side); downloaded as `{slug}-{date}.pdf`
+
+---
+
+## 22. Gateway Configuration Reference
 
 ```json
 {
@@ -1099,7 +1231,7 @@ The admin UI issues a short-lived (10-minute) playground token per-gateway via `
 
 ---
 
-## 22. Error Handling
+## 23. Error Handling
 
 All errors return a JSON body:
 
