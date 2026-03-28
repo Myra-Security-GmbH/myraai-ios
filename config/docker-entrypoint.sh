@@ -65,11 +65,12 @@ port           ${SMTP_PORT}
 from           ${SMTP_FROM}
 user           ${SMTP_USER}
 password       ${SMTP_PASS}
+source_ip      ::
 EOF
     chmod 644 /etc/msmtprc
 
     # Verify TCP connectivity to the SMTP relay so failures are visible at startup.
-    if curl -sf --max-time 5 "smtp://${SMTP_HOST}:${SMTP_PORT}" -o /dev/null 2>/dev/null; then
+    if curl -sf --max-time 5 --ipv6 "smtp://${SMTP_HOST}:${SMTP_PORT}" -o /dev/null 2>/dev/null; then
         echo "SMTP: relay ${SMTP_HOST}:${SMTP_PORT} reachable" >&2
     else
         echo "WARNING: cannot reach SMTP relay ${SMTP_HOST}:${SMTP_PORT} — OTP email delivery will fail" >&2
