@@ -19,6 +19,7 @@ import ChatInput, { type PendingAttachment } from "../components/ChatInput";
 import ConversationList from "../components/ConversationList";
 import MessageThread from "../components/MessageThread";
 import SettingsDrawer, { type DrawerSettings } from "../components/SettingsDrawer";
+import ArtifactPanel, { type Artifact } from "../components/ArtifactPanel";
 import chatS from "./Chat.module.scss";
 
 // ── Gear icon ──────────────────────────────────────────────────────────────
@@ -63,6 +64,30 @@ function PdfIcon() {
 }
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "";
+
+/** Extract the last HTML or SVG artifact from a message/streaming string.
+ *  Returns null if none found or the code block is shorter than 8 lines. */
+function extractArtifact(text: string): Artifact | null {
+  if (!text) return null;
+  // 1. Try complete fenced block: ```html … ```
+  const completeRe = /```(html|svg)\n([\s\S]+?)```/gi;
+  let last: Artifact | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = completeRe.exec(text)) !== null) {
+    const code = m[2];
+    if (code.split("\n").length >= 8) {
+      last = { lang: m[1].toLowerCase() as "html" | "svg", code, complete: true };
+    }
+  }
+  if (last) return last;
+  // 2. Try incomplete (streaming) block: ```html … (no closing ```)
+  const incompleteRe = /```(html|svg)\n([\s\S]+)$/i;
+  const im = incompleteRe.exec(text);
+  if (im && im[2].split("\n").length >= 4) {
+    return { lang: im[1].toLowerCase() as "html" | "svg", code: im[2], complete: false };
+  }
+  return null;
+}
 
 /** Models that support native vision (image_url blocks) via vLLM.
  *  Text-only models not listed here have images routed through MinerU instead.
@@ -122,7 +147,11 @@ export default function Chat() {
     "- When evaluating, comparing, or rating options across multiple dimensions or criteria (Bewertung), always present the results as a markdown table.\n" +
     "- Use ✅ (meets / strong), 🟡 (partial / acceptable), ❌ (does not meet / weak) as the rating symbols — never substitute with text or other symbols.\n" +
     "- Include a summary row or concluding sentence after the table.\n" +
-    "- For priority, urgency, or risk level (Ampel / traffic light), use 🟢 (low / on track), 🟡 (medium / at risk), 🔴 (high / critical / blocked) — both inline and in tables.";
+    "- For priority, urgency, or risk level (Ampel / traffic light), use 🟢 (low / on track), 🟡 (medium / at risk), 🔴 (high / critical / blocked) — both inline and in tables.\n\n" +
+    "Enumerated lists:\n" +
+    "- When a numbered list covers distinct topics, categories, or properties, prefix each entry with a single emoji that iconically represents the subject of that specific item — not a generic or decorative one.\n" +
+    "- The emoji goes immediately after the number and period: '1. 🐕 Beagles are scent hounds…', '2. 💤 Sleep contact is a warmth-seeking instinct…'\n" +
+    "- Skip the emoji for purely procedural or sequential steps where the number implies order (installation steps, recipe instructions, numbered code steps).";
 
   const [drawerSettings, setDrawerSettings] = useState<DrawerSettings>({
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -144,6 +173,14 @@ export default function Chat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // ── Thinking phase timing ──────────────────────────────────────────────────
+  const thinkBlockStartRef = useRef<number | null>(null);
+  const thinkBlockDurationRef = useRef<number | null>(null);
+  const [streamingThinkingDurationMs, setStreamingThinkingDurationMs] = useState<number | null>(null);
+
+  // ── Artifact panel ─────────────────────────────────────────────────────────
+  const [artifactDismissed, setArtifactDismissed] = useState(false);
 
   // ── Play token ─────────────────────────────────────────────────────────────
   const [playToken, setPlayToken] = useState<PlaygroundToken | null>(null);
@@ -278,8 +315,11 @@ export default function Chat() {
   async function generateTitle(convId: string, firstUserText: string, firstAssistantText: string, tok: PlaygroundToken, currentModel: string) {
     try {
       const compatUrl = `${GATEWAY_URL}/v1/${tok.tenant_slug}/${tok.gateway_slug}/compat/chat/completions`;
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 90_000); // 90s timeout for slow local models
       const res = await fetch(compatUrl, {
         method: "POST",
+        signal: abort.signal,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${tok.token}`,
@@ -289,17 +329,22 @@ export default function Chat() {
           messages: [
             {
               role: "system",
-              content:
-                "Write a short title (3-6 words) for this conversation. Use natural, conversational phrasing — like a topic someone would jot down in a notebook, not a document heading. No quotes. No punctuation at the end. Reply with only the title.",
+              // Qwen3 thinking models require /no_think to skip the <think> block;
+              // for all other models (Claude, etc.) the prefix is harmless or absent.
+              content: (currentModel.toLowerCase().includes("qwen") ? "/no_think\n" : "") +
+                "Generate a short title (3–6 words) for the conversation the user provides. Reply with only the title — no quotes, no punctuation at the end. Use natural phrasing, like a topic jotted in a notebook, not a document heading.",
             },
-            { role: "user",      content: firstUserText.slice(0, 500) },
-            { role: "assistant", content: firstAssistantText.slice(0, 500) },
+            {
+              role: "user",
+              content: "User: " + firstUserText.slice(0, 400) + "\n\nAssistant: " + firstAssistantText.slice(0, 400),
+            },
           ],
-          max_tokens: 30,
+          max_tokens: 500,
           temperature: 0,
           stream: false,
         }),
       });
+      clearTimeout(timer);
       if (!res.ok) {
         console.warn("[generateTitle] title request failed:", res.status, await res.text().catch(() => ""));
         return;
@@ -349,6 +394,8 @@ export default function Chat() {
               parts.push(`*[Image: ${b.filename}]*`);
             } else if (b.type === "docx") {
               parts.push(`*[Document: ${b.filename}]*`);        // reference only — no inline text dump
+            } else if (b.type === "md") {
+              parts.push(`*[Markdown: ${b.filename}]*`);
             } else if (b.type === "document" && b.source?.type === "file") {
               parts.push(`*[Spreadsheet: ${b.filename ?? "file"}]*`);
             } else if (b.type === "document") {
@@ -497,6 +544,13 @@ export default function Chat() {
             }
             blocks.push({ type: "image", filename: att.filename, text: description });
           }
+        } else if (att.mime_type === "text/markdown" || att.filename.endsWith(".md")) {
+          // Markdown is plain text — decode base64 → UTF-8 in-browser, no server round-trip needed
+          const raw = atob(att.data);
+          const bytes = new Uint8Array(raw.length);
+          for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+          const decoded = new TextDecoder("utf-8").decode(bytes);
+          blocks.push({ type: "md", filename: att.filename, text: decoded });
         } else if (att.mime_type === "application/pdf" || att.mime_type === "text/plain") {
           if (att.mime_type === "application/pdf" && !model.startsWith("claude-")) {
             // Non-Anthropic model: extract PDF text via MinerU
@@ -574,7 +628,7 @@ export default function Chat() {
       if (unsupported.length > 0) {
         setError(
           `Unsupported file type(s): ${unsupported.join(", ")}. ` +
-          `Supported: images (JPEG, PNG, GIF, WebP), PDF, plain text, Word (.docx), CSV, TSV, Excel (.xlsx, .xlsm), OpenDocument (.ods).`
+          `Supported: images (JPEG, PNG, GIF, WebP), PDF, plain text, Markdown (.md), Word (.docx), CSV, TSV, Excel (.xlsx, .xlsm), OpenDocument (.ods).`
         );
         return;
       }
@@ -646,7 +700,7 @@ export default function Chat() {
           if (Array.isArray(parsed)) {
             // Convert docx/pdf blocks back to plain text for the LLM
             content = parsed.map((b: { type: string; filename?: string; text?: string; [k: string]: unknown }) => {
-              if (b.type === "docx" || b.type === "pdf") {
+              if (b.type === "docx" || b.type === "pdf" || b.type === "md") {
                 return { type: "text", text: `[Document: ${b.filename}]\n\n${b.text ?? ""}` };
               }
               if (b.type === "image") {
@@ -677,6 +731,10 @@ export default function Chat() {
     setProcessingStatus("Waiting for model response…");
     setIsStreaming(true);
     setStreamingContent("");
+    thinkBlockStartRef.current = null;
+    thinkBlockDurationRef.current = null;
+    setStreamingThinkingDurationMs(null);
+    setArtifactDismissed(false);
 
     const start = performance.now();
     let accumulated = "";
@@ -745,6 +803,18 @@ export default function Chat() {
                 if (!accumulated) setProcessingStatus(null); // first token — hide status
                 accumulated += delta;
                 setStreamingContent(accumulated);
+                // Track <think> block duration
+                if (thinkBlockStartRef.current === null && accumulated.includes("<think>")) {
+                  thinkBlockStartRef.current = performance.now();
+                }
+                if (
+                  thinkBlockStartRef.current !== null &&
+                  thinkBlockDurationRef.current === null &&
+                  accumulated.includes("</think>")
+                ) {
+                  thinkBlockDurationRef.current = Math.round(performance.now() - thinkBlockStartRef.current);
+                  setStreamingThinkingDurationMs(thinkBlockDurationRef.current);
+                }
               }
               const reason = chunk?.choices?.[0]?.finish_reason;
               if (reason) finishReason = reason;
@@ -782,6 +852,12 @@ export default function Chat() {
     setIsStreaming(false);
     setStreamingContent(null);
 
+    // Auto-generate title even when accumulated is empty (thinking-only models like qwen3
+    // strip all <think> blocks, leaving an empty visible response — we still want a title).
+    if (isFirstMessage && convId && text) {
+      generateTitle(convId, text, accumulated, tok, model);
+    }
+
     if (!accumulated) return;
 
     // Persist assistant message
@@ -814,11 +890,6 @@ export default function Chat() {
           c.id === convId ? { ...c, updated_at: new Date().toISOString() } : c
         )
       );
-
-      // Auto-generate title after the first exchange (fire-and-forget)
-      if (isFirstMessage && convId) {
-        generateTitle(convId, text, accumulated, tok, model);
-      }
     } catch (e) {
       setError("Failed to save assistant message: " + String(e));
     }
@@ -944,6 +1015,12 @@ export default function Chat() {
   function copyToClipboard(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
   }
+
+  // ── Artifact panel — derived from streaming or last assistant message ───────
+  const artifactSource = isStreaming
+    ? (streamingContent ?? "")
+    : (messages.filter((m) => m.role === "assistant").at(-1)?.content ?? "");
+  const activeArtifact: Artifact | null = artifactDismissed ? null : extractArtifact(artifactSource);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -1115,20 +1192,30 @@ export default function Chat() {
                 <span className={chatS["drop-icon"]}>📎</span>
                 <span className={chatS["drop-label"]}>Drop file here</span>
                 <span className={chatS["drop-hint"]}>
-                  Images · PDF · DOCX · XLSX · ODS · CSV · TXT
+                  Images · PDF · DOCX · XLSX · ODS · CSV · TXT · MD
                 </span>
               </div>
             </div>
           )}
-          <MessageThread
-            messages={messages}
-            streamingContent={streamingContent}
-            isStreaming={isStreaming}
-            processingStatus={processingStatus}
-            onCopy={copyToClipboard}
-            onEdit={editMessage}
-            onRegenerate={regenerate}
-          />
+          <div className={chatS["thread-artifact-row"]}>
+            <MessageThread
+              messages={messages}
+              streamingContent={streamingContent}
+              isStreaming={isStreaming}
+              processingStatus={processingStatus}
+              streamingThinkingDurationMs={streamingThinkingDurationMs}
+              onCopy={copyToClipboard}
+              onEdit={editMessage}
+              onRegenerate={regenerate}
+            />
+            {activeArtifact && (
+              <ArtifactPanel
+                artifact={activeArtifact}
+                isStreaming={isStreaming}
+                onClose={() => setArtifactDismissed(true)}
+              />
+            )}
+          </div>
 
           <ChatInput
             value={inputValue}

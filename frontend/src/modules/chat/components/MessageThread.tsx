@@ -8,6 +8,7 @@ interface Props {
   streamingContent: string | null;
   isStreaming: boolean;
   processingStatus?: string | null;
+  streamingThinkingDurationMs?: number | null;
   onCopy: (text: string) => void;
   onEdit?: (id: string, content: string) => void;
   onRegenerate?: () => void;
@@ -27,6 +28,7 @@ export default function MessageThread({
   streamingContent,
   isStreaming,
   processingStatus,
+  streamingThinkingDurationMs,
   onCopy,
   onEdit,
   onRegenerate,
@@ -91,17 +93,21 @@ export default function MessageThread({
 
   return (
     <div className={s.thread} ref={threadRef}>
-      {allMessages.map((msg, idx) => (
-        <MessageBubble
-          key={msg.id}
-          message={msg}
-          isLast={idx === allMessages.length - 1}
-          isStreaming={isStreaming && idx === allMessages.length - 1}
-          onCopy={onCopy}
-          onEdit={onEdit}
-          onRegenerate={idx === allMessages.length - 1 && msg.role === "assistant" ? onRegenerate : undefined}
-        />
-      ))}
+      {allMessages.map((msg, idx) => {
+        const isThisBubbleStreaming = isStreaming && idx === allMessages.length - 1;
+        return (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            isLast={idx === allMessages.length - 1}
+            isStreaming={isThisBubbleStreaming}
+            thinkingDurationMs={isThisBubbleStreaming ? streamingThinkingDurationMs : null}
+            onCopy={onCopy}
+            onEdit={onEdit}
+            onRegenerate={idx === allMessages.length - 1 && msg.role === "assistant" ? onRegenerate : undefined}
+          />
+        );
+      })}
       {processingStatus && !isStreaming && (
         <div className={s["processing-row"]}>
           <span className={s["processing-spinner"]} />

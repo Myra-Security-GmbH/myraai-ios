@@ -11,6 +11,7 @@ import "highlight.js/styles/github-dark-dimmed.css";
 import type { Components } from "react-markdown";
 import type { ChatMessage } from "src/api/types";
 import AttachmentChip from "./AttachmentChip";
+import ThinkingBlock from "./ThinkingBlock";
 import s from "../pages/Chat.module.scss";
 
 function fmtCost(usd: number | null) {
@@ -107,6 +108,30 @@ const MD_COMPONENTS: Components = {
   code: CodeBlock as Components["code"],
 };
 
+/** Split a plain-text assistant message into its thinking block and visible text. */
+function parseThinking(text: string): {
+  thinking: string | null;
+  visible: string;
+  isThinking: boolean; // true while </think> hasn't been seen yet
+} {
+  const openIdx = text.indexOf("<think>");
+  if (openIdx === -1) return { thinking: null, visible: text, isThinking: false };
+  const closeIdx = text.indexOf("</think>", openIdx + 7);
+  if (closeIdx === -1) {
+    // Streaming: block opened but not yet closed
+    return {
+      thinking: text.slice(openIdx + 7),
+      visible: text.slice(0, openIdx).trimEnd(),
+      isThinking: true,
+    };
+  }
+  return {
+    thinking: text.slice(openIdx + 7, closeIdx).trim(),
+    visible: (text.slice(0, openIdx) + text.slice(closeIdx + 8)).trim(),
+    isThinking: false,
+  };
+}
+
 type ContentBlock =
   | { type: "text"; text?: string }
   | { type: "image_url"; image_url?: { url: string } }
@@ -126,6 +151,8 @@ interface Props {
   message: ChatMessage;
   isLast: boolean;
   isStreaming?: boolean;
+  /** Duration of the <think> phase in ms — only provided for the live streaming bubble */
+  thinkingDurationMs?: number | null;
   onCopy: (text: string) => void;
   onEdit?: (id: string, content: string) => void;
   onRegenerate?: () => void;
@@ -135,6 +162,7 @@ const MessageBubble = memo(function MessageBubble({
   message,
   isLast,
   isStreaming,
+  thinkingDurationMs,
   onCopy,
   onEdit,
   onRegenerate,
@@ -145,20 +173,28 @@ const MessageBubble = memo(function MessageBubble({
   const [copied, setCopied] = useState(false);
 
   const blocks = parseContent(message.content);
-  const docxBlocks = blocks.filter((b): b is { type: "docx"; filename: string; text?: string } => b.type === "docx");
-  const textContent = blocks
+  const docxBlocks = blocks.filter(
+    (b): b is { type: "docx" | "md"; filename: string; text?: string } =>
+      b.type === "docx" || b.type === "md"
+  );
+  const rawTextContent = blocks
     .filter((b) => b.type === "text")
     .map((b) => (b as { type: "text"; text?: string }).text ?? "")
     .join("\n");
 
+  // Parse out any <think>...</think> block from assistant messages
+  const { thinking, visible: textContent, isThinking } = isUser
+    ? { thinking: null, visible: rawTextContent, isThinking: false }
+    : parseThinking(rawTextContent);
+
   function handleCopy() {
-    onCopy(textContent);
+    onCopy(rawTextContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
 
   function startEdit() {
-    setEditValue(textContent);
+    setEditValue(rawTextContent);
     setEditing(true);
   }
 
@@ -271,13 +307,22 @@ const MessageBubble = memo(function MessageBubble({
               {isUser ? (
                 <span style={{ whiteSpace: "pre-wrap" }}>{textContent}</span>
               ) : (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkEmoji]}
-                  rehypePlugins={[rehypeKatex, rehypeHighlight]}
-                  components={MD_COMPONENTS}
-                >
-                  {textContent}
-                </ReactMarkdown>
+                <>
+                  {thinking != null && (
+                    <ThinkingBlock
+                      content={thinking}
+                      isThinking={isThinking}
+                      durationMs={thinkingDurationMs}
+                    />
+                  )}
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkEmoji]}
+                    rehypePlugins={[rehypeKatex, rehypeHighlight]}
+                    components={MD_COMPONENTS}
+                  >
+                    {textContent}
+                  </ReactMarkdown>
+                </>
               )}
               {isStreaming && isLast && <span className={s["streaming-cursor"]} />}
             </div>
