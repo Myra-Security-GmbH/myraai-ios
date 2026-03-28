@@ -881,40 +881,58 @@ function M.get_user(id)
     return row
 end
 
-function M.list_users(tenant_id)
+local USER_SORT_COLS = {
+    email         = "u.email",
+    name          = "COALESCE(u.name, '')",
+    role          = "u.role",
+    tenant        = "COALESCE(t.slug, '')",
+    last_login_at = "COALESCE(u.last_login_at, 0)",
+    created_at    = "u.created_at",
+}
+
+function M.list_users(tenant_id, opts)
     local db, err = get_conn()
     if not db then return {} end
+    opts = opts or {}
+    local col = USER_SORT_COLS[opts.sort] or "u.email"
+    local dir = (opts.dir == "desc") and "DESC" or "ASC"
+    local order = col .. " " .. dir
     local rows
     if tenant_id then
-        rows = query_all(db, [[
-            SELECT id, tenant_id, email, name, role,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   CASE WHEN last_login_at IS NOT NULL
-                        THEN DATE_FORMAT(FROM_UNIXTIME(last_login_at), '%Y-%m-%dT%H:%i:%sZ') END AS last_login_at
-            FROM `user`
-            WHERE tenant_id = ? AND deleted_at IS NULL
-            ORDER BY created_at DESC
-        ]], tenant_id) or {}
+        rows = query_all(db, string.format([[
+            SELECT u.id, u.tenant_id, u.email, u.name, u.role,
+                   t.slug AS tenant_slug,
+                   DATE_FORMAT(FROM_UNIXTIME(u.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   CASE WHEN u.last_login_at IS NOT NULL
+                        THEN DATE_FORMAT(FROM_UNIXTIME(u.last_login_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') END AS last_login_at
+            FROM `user` u
+            LEFT JOIN tenant t ON t.id = u.tenant_id
+            WHERE u.tenant_id = ? AND u.deleted_at IS NULL
+            ORDER BY %s
+        ]], order), tenant_id) or {}
     elseif tenant_id == false then
-        rows = query_all(db, [[
-            SELECT id, tenant_id, email, name, role,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   CASE WHEN last_login_at IS NOT NULL
-                        THEN DATE_FORMAT(FROM_UNIXTIME(last_login_at), '%Y-%m-%dT%H:%i:%sZ') END AS last_login_at
-            FROM `user`
-            WHERE tenant_id IS NULL AND deleted_at IS NULL
-            ORDER BY created_at DESC
-        ]]) or {}
+        rows = query_all(db, string.format([[
+            SELECT u.id, u.tenant_id, u.email, u.name, u.role,
+                   NULL AS tenant_slug,
+                   DATE_FORMAT(FROM_UNIXTIME(u.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   CASE WHEN u.last_login_at IS NOT NULL
+                        THEN DATE_FORMAT(FROM_UNIXTIME(u.last_login_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') END AS last_login_at
+            FROM `user` u
+            WHERE u.tenant_id IS NULL AND u.deleted_at IS NULL
+            ORDER BY %s
+        ]], order)) or {}
     else
-        rows = query_all(db, [[
-            SELECT id, tenant_id, email, name, role,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   CASE WHEN last_login_at IS NOT NULL
-                        THEN DATE_FORMAT(FROM_UNIXTIME(last_login_at), '%Y-%m-%dT%H:%i:%sZ') END AS last_login_at
-            FROM `user`
-            WHERE deleted_at IS NULL
-            ORDER BY created_at DESC
-        ]]) or {}
+        rows = query_all(db, string.format([[
+            SELECT u.id, u.tenant_id, u.email, u.name, u.role,
+                   t.slug AS tenant_slug,
+                   DATE_FORMAT(FROM_UNIXTIME(u.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   CASE WHEN u.last_login_at IS NOT NULL
+                        THEN DATE_FORMAT(FROM_UNIXTIME(u.last_login_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') END AS last_login_at
+            FROM `user` u
+            LEFT JOIN tenant t ON t.id = u.tenant_id
+            WHERE u.deleted_at IS NULL
+            ORDER BY %s
+        ]], order)) or {}
     end
     release(db)
     return rows

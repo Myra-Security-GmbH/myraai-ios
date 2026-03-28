@@ -299,6 +299,21 @@ table.table thead th {
   white-space: nowrap;
 }
 
+table.table thead th.th--sortable {
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    color: var(--text-primary);
+  }
+}
+
+.sort-icon {
+  margin-left: tools.pixelToRem(4);
+  font-size: tools.pixelToRem(9);
+  opacity: 0.45;
+}
+
 table.table tbody td {
   padding: tools.pixelToRem(12) tools.pixelToRem(14);
   color: var(--text-primary);

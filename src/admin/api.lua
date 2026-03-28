@@ -635,13 +635,15 @@ route("GET", "^/admin/v1/users$", function()
     local u = ngx.ctx.admin_user
     if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
     -- Returns users with no tenant (global admins)
-    send(200, storage.list_users(false))
+    local args = ngx.req.get_uri_args()
+    send(200, storage.list_users(false, { sort = args.sort, dir = args.dir }))
 end)
 
 route("GET", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
     if not require_tenant_admin() then return end
     if not auth.check_tenant(tenant_id) then return send(403, { error = "forbidden" }) end
-    send(200, storage.list_users(tenant_id))
+    local args = ngx.req.get_uri_args()
+    send(200, storage.list_users(tenant_id, { sort = args.sort, dir = args.dir }))
 end)
 
 route("POST", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)

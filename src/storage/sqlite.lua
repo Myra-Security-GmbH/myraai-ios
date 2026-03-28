@@ -1070,31 +1070,44 @@ function M.get_user(id)
     ]], id)
 end
 
-function M.list_users(tenant_id)
+local USER_SORT_COLS = {
+    email         = "u.email",
+    name          = "COALESCE(u.name, '')",
+    role          = "u.role",
+    tenant        = "COALESCE(t.slug, '')",
+    last_login_at = "COALESCE(u.last_login_at, 0)",
+    created_at    = "u.created_at",
+}
+
+function M.list_users(tenant_id, opts)
+    opts = opts or {}
+    local col = USER_SORT_COLS[opts.sort] or "u.email"
+    local dir = (opts.dir == "desc") and "DESC" or "ASC"
+    local order = col .. " " .. dir
     if tenant_id then
-        return query_all(cfg_db(), [[
+        return query_all(cfg_db(), string.format([[
             SELECT u.id, u.tenant_id, u.email, u.name, u.role,
                    t.slug AS tenant_slug,
-                   strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at,
+                   strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ', u.created_at, 'unixepoch') AS created_at,
                    CASE WHEN u.last_login_at IS NOT NULL
-                        THEN strftime('%Y-%m-%dT%H:%M:%SZ', u.last_login_at, 'unixepoch') END AS last_login_at
+                        THEN strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ', u.last_login_at, 'unixepoch') END AS last_login_at
             FROM user u
             LEFT JOIN tenant t ON t.id = u.tenant_id
             WHERE u.tenant_id = ? AND u.deleted_at IS NULL
-            ORDER BY u.created_at DESC
-        ]], tenant_id) or {}
+            ORDER BY %s
+        ]], order), tenant_id) or {}
     end
-    return query_all(cfg_db(), [[
+    return query_all(cfg_db(), string.format([[
         SELECT u.id, u.tenant_id, u.email, u.name, u.role,
                t.slug AS tenant_slug,
-               strftime('%Y-%m-%dT%H:%M:%SZ', u.created_at, 'unixepoch') AS created_at,
+               strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ', u.created_at, 'unixepoch') AS created_at,
                CASE WHEN u.last_login_at IS NOT NULL
-                    THEN strftime('%Y-%m-%dT%H:%M:%SZ', u.last_login_at, 'unixepoch') END AS last_login_at
+                    THEN strftime('%%Y-%%m-%%dT%%H:%%M:%%SZ', u.last_login_at, 'unixepoch') END AS last_login_at
         FROM user u
         LEFT JOIN tenant t ON t.id = u.tenant_id
         WHERE u.deleted_at IS NULL
-        ORDER BY u.created_at DESC
-    ]]) or {}
+        ORDER BY %s
+    ]], order)) or {}
 end
 
 function M.touch_last_login(user_id)

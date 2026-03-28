@@ -430,6 +430,33 @@ function UserDetail({ user: initialUser, tenants, onBack, onDeleted, onUpdated }
 }
 
 // ---------------------------------------------------------------------------
+// Sorting helpers
+// ---------------------------------------------------------------------------
+
+type UserSortField = "email" | "name" | "role" | "tenant" | "last_login_at" | "created_at";
+type SortDir = "asc" | "desc";
+
+function userSortComparator(a: User, b: User, field: UserSortField, tenants: Tenant[]): number {
+  switch (field) {
+    case "email":        return a.email.localeCompare(b.email);
+    case "name":         return (a.name ?? "").localeCompare(b.name ?? "");
+    case "role":         return a.role.localeCompare(b.role);
+    case "tenant": {
+      const sa = tenants.find((t) => t.id === a.tenant_id)?.slug ?? "";
+      const sb = tenants.find((t) => t.id === b.tenant_id)?.slug ?? "";
+      return sa.localeCompare(sb);
+    }
+    case "last_login_at": return (a.last_login_at ?? "").localeCompare(b.last_login_at ?? "");
+    case "created_at":   return a.created_at.localeCompare(b.created_at);
+  }
+}
+
+function SortIndicator({ field, sortField, sortDir }: { field: UserSortField; sortField: UserSortField; sortDir: SortDir }) {
+  if (sortField !== field) return <span className={s["sort-icon"]}>⇅</span>;
+  return <span className={s["sort-icon"]}>{sortDir === "asc" ? "▲" : "▼"}</span>;
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -448,9 +475,17 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [sortField, setSortField] = useState<UserSortField>("email");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  function loadUsers(tenantId?: string) {
+  function toggleSort(field: UserSortField) {
+    if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortField(field); setSortDir("asc"); }
+  }
+
+  function loadUsers(tenantId?: string, sort = sortField, dir = sortDir) {
     setLoading(true);
+    const qs = `?sort=${sort}&dir=${dir}`;
     if (!tenantId) {
       const targetTenants = me?.role === "admin" ? tenants : tenants.filter((t) => t.id === me?.tenant_id);
       if (targetTenants.length === 0) {
@@ -459,18 +494,24 @@ export default function Users() {
         return;
       }
       const tenantFetches = targetTenants.map((t) =>
-        api.get<User[]>(`/tenants/${t.id}/users`).catch(() => [] as User[])
+        api.get<User[]>(`/tenants/${t.id}/users${qs}`).catch(() => [] as User[])
       );
       const globalFetch = me?.role === "admin"
-        ? api.get<User[]>("/users").catch(() => [] as User[])
+        ? api.get<User[]>(`/users${qs}`).catch(() => [] as User[])
         : Promise.resolve([] as User[]);
       Promise.all([...tenantFetches, globalFetch]).then((results) => {
         const all = results.flat();
         // deduplicate by id (admins may appear in multiple lists)
-        setUsers(all.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i));
+        const deduped = all.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i);
+        // merge-sort across independently-sorted arrays
+        deduped.sort((a, b) => {
+          const cmp = userSortComparator(a, b, sort, tenants);
+          return dir === "asc" ? cmp : -cmp;
+        });
+        setUsers(deduped);
       }).catch((e) => setError(e.message)).finally(() => setLoading(false));
     } else {
-      api.get<User[]>(`/tenants/${tenantId}/users`)
+      api.get<User[]>(`/tenants/${tenantId}/users${qs}`)
         .then(setUsers).catch((e) => setError(e.message)).finally(() => setLoading(false));
     }
   }
@@ -484,7 +525,7 @@ export default function Users() {
     // Without me in deps, loadUsers() would run with me=null if /tenants
     // responds before /admin/auth/me, causing it to bail with an empty list.
     if (me && tenants.length > 0) loadUsers(filterTenantId || undefined);
-  }, [me, tenants, filterTenantId]);
+  }, [me, tenants, filterTenantId, sortField, sortDir]);
 
   const selected = users.find((u) => u.id === userId) ?? null;
 
@@ -554,17 +595,17 @@ export default function Users() {
           <table className={s.table}>
             <thead>
               <tr>
-                <th>Email</th>
-                <th>Name</th>
-                <th>Role</th>
-                <th>Tenant</th>
-                <th>Last Login</th>
-                <th>Created</th>
+                {(["email", "name", "role", "tenant", "last_login_at", "created_at"] as const).map((field) => (
+                  <th key={field} className={s["th--sortable"]} onClick={() => toggleSort(field)}>
+                    {{ email: "Email", name: "Name", role: "Role", tenant: "Tenant", last_login_at: "Last Login", created_at: "Created" }[field]}
+                    {" "}<SortIndicator field={field} sortField={sortField} sortDir={sortDir} />
+                  </th>
+                ))}
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {[...users].sort((a, b) => a.email.localeCompare(b.email)).map((u) => (
+              {users.map((u) => (
                 <tr key={u.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/users/${u.id}`)}>
                   <td>{u.email}</td>
                   <td style={{ color: u.name ? undefined : "var(--text-secondary)" }}>{u.name ?? "—"}</td>
