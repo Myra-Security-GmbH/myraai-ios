@@ -651,3 +651,232 @@ test("prompts", async ({ page }) => {
   await waitReady(page);
   await page.screenshot(snap("prompts.png"));
 });
+
+// ---------------------------------------------------------------------------
+// Instruction screenshots — blue-border highlighted variants
+// Naming convention: <base>-hl.png  (hl = highlighted)
+// Used in instruction steps (Creating / Editing / Deleting sections).
+// The highlighted element shows the user exactly where to click or type.
+// ---------------------------------------------------------------------------
+
+/** Apply a blue outline to a locator, take a screenshot, then remove it. */
+async function snapHighlight(
+  page: Page,
+  locator: Locator,
+  outFile: string,
+  containerLocator?: Locator,
+) {
+  await locator.evaluate((el: HTMLElement) => {
+    el.dataset._hlPrev = el.style.outline + "|" + el.style.outlineOffset;
+    el.style.outline = "3px solid #0066CC";
+    el.style.outlineOffset = "2px";
+  });
+  await page.waitForTimeout(100);
+  if (containerLocator) {
+    await containerLocator.screenshot({ path: path.join(OUT, outFile), animations: "disabled" });
+  } else {
+    await page.screenshot(snap(outFile));
+  }
+  await locator.evaluate((el: HTMLElement) => {
+    const prev = (el.dataset._hlPrev ?? "|").split("|");
+    el.style.outline = prev[0];
+    el.style.outlineOffset = prev[1];
+    delete el.dataset._hlPrev;
+  });
+}
+
+// -- Gateway list: highlight the "+ New Gateway" button --
+test("gateway-list-hl", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  await selectMyratest(page).catch(() => {});
+  const btn = page.getByRole("button", { name: /\+ new gateway/i });
+  if (await btn.isVisible().catch(() => false)) {
+    await snapHighlight(page, btn, "gateway-list-hl.png");
+  } else {
+    await page.screenshot(snap("gateway-list-hl.png"));
+  }
+});
+
+// -- Gateway edit modal: highlight the Save button --
+test("gateway-edit-modal-hl", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (!await openFirstGateway(page)) { await page.screenshot(snap("gateway-edit-modal-hl.png")); return; }
+  const modal = await openEditModal(page);
+  if (!modal) { await page.screenshot(snap("gateway-edit-modal-hl.png")); return; }
+  const saveBtn = modal.getByRole("button", { name: /save/i }).first();
+  if (await saveBtn.isVisible().catch(() => false)) {
+    await snapHighlight(page, saveBtn, "gateway-edit-modal-hl.png", modal);
+  } else {
+    await modal.screenshot({ path: path.join(OUT, "gateway-edit-modal-hl.png"), animations: "disabled" });
+  }
+});
+
+// -- Users list: highlight the "+ New User" button --
+test("users-list-hl", async ({ page }) => {
+  await page.goto("/users");
+  await waitReady(page);
+  const btn = page.getByRole("button", { name: /\+ new user/i });
+  if (await btn.isVisible().catch(() => false)) {
+    await snapHighlight(page, btn, "users-list-hl.png");
+  } else {
+    await page.screenshot(snap("users-list-hl.png"));
+  }
+});
+
+// -- New user dialog: highlight the "Create User" submit button --
+test("user-new-hl", async ({ page }) => {
+  await page.goto("/users");
+  await waitReady(page);
+  const newBtn = page.getByRole("button", { name: /\+ new user/i });
+  if (await newBtn.isVisible().catch(() => false)) {
+    await newBtn.click();
+    await page.waitForTimeout(400);
+  }
+  const modal = page.locator("[role='dialog']").first();
+  const submitBtn = modal.getByRole("button", { name: /create user/i });
+  if (await submitBtn.isVisible().catch(() => false)) {
+    await snapHighlight(page, submitBtn, "user-new-hl.png", modal);
+  } else {
+    await page.screenshot(snap("user-new-hl.png"));
+  }
+});
+
+// -- My Tokens: highlight the "+ New Token" button --
+test("my-tokens-hl", async ({ page }) => {
+  await page.goto("/tokens");
+  await waitReady(page);
+  const btn = page.getByRole("button", { name: /\+ new token/i });
+  if (await btn.isVisible().catch(() => false)) {
+    await snapHighlight(page, btn, "my-tokens-hl.png");
+  } else {
+    await page.screenshot(snap("my-tokens-hl.png"));
+  }
+});
+
+// -- New token dialog: highlight the "Create Token" submit button --
+test("token-new-hl", async ({ page }) => {
+  await page.goto("/tokens");
+  await waitReady(page);
+  const newBtn = page.getByRole("button", { name: /\+ new token/i });
+  if (await newBtn.isVisible().catch(() => false)) {
+    await newBtn.click();
+    await page.waitForTimeout(400);
+  }
+  const modal = page.locator("[role='dialog']").first();
+  const submitBtn = modal.getByRole("button", { name: /create token/i });
+  if (await submitBtn.isVisible().catch(() => false)) {
+    await snapHighlight(page, submitBtn, "token-new-hl.png", modal);
+  } else {
+    await page.screenshot(snap("token-new-hl.png"));
+  }
+});
+
+// -- Model prices list: highlight the "+ New Price" button --
+test("model-prices-list-hl", async ({ page }) => {
+  await page.goto("/model-prices");
+  await waitReady(page);
+  const btn = page.getByRole("button", { name: /\+ new price/i });
+  if (await btn.isVisible().catch(() => false)) {
+    await snapHighlight(page, btn, "model-prices-list-hl.png");
+  } else {
+    await page.screenshot(snap("model-prices-list-hl.png"));
+  }
+});
+
+// -- Model prices edit dialog: highlight the Save button --
+test("model-prices-edit-hl", async ({ page }) => {
+  await page.goto("/model-prices");
+  await waitReady(page);
+  const editBtn = page.getByRole("button", { name: /edit/i }).first();
+  if (await editBtn.isVisible().catch(() => false)) {
+    await editBtn.click();
+    await page.waitForTimeout(400);
+  }
+  const modal = page.locator("[role='dialog']").first();
+  const saveBtn = modal.getByRole("button", { name: /save/i });
+  if (await saveBtn.isVisible().catch(() => false)) {
+    await snapHighlight(page, saveBtn, "model-prices-edit-hl.png", modal);
+  } else {
+    await page.screenshot(snap("model-prices-edit-hl.png"));
+  }
+});
+
+// -- BYOK: highlight the Add / Rotate button on the gateway detail --
+test("byok-add-key-hl", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (!await openFirstGateway(page)) { await page.screenshot(snap("byok-add-key-hl.png")); return; }
+  const addBtn = page.getByRole("button", { name: /add.*rotate|rotate.*add|\+ add/i }).first();
+  if (await addBtn.isVisible().catch(() => false)) {
+    await addBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(200);
+    await snapHighlight(page, addBtn, "byok-add-key-hl.png");
+  } else {
+    await page.screenshot(snap("byok-add-key-hl.png"));
+  }
+});
+
+// -- Guardrails builder: highlight the "+ Regex/Pattern" add-guardrail button --
+test("guardrails-builder-hl", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (!await openFirstGateway(page)) { await page.screenshot(snap("guardrails-builder-hl.png")); return; }
+  const addBtn = page.getByRole("button", { name: /regex.*pattern|\+ keyword|\+ jailbreak/i }).first();
+  if (await addBtn.isVisible().catch(() => false)) {
+    await addBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(200);
+    await snapHighlight(page, addBtn, "guardrails-builder-hl.png");
+  } else {
+    await page.screenshot(snap("guardrails-builder-hl.png"));
+  }
+});
+
+// -- IP allowlist: highlight the Add entry field or button --
+test("ip-allowlist-config-hl", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (!await openFirstGateway(page)) { await page.screenshot(snap("ip-allowlist-config-hl.png")); return; }
+  const modal = await openEditModal(page);
+  if (!modal) { await page.screenshot(snap("ip-allowlist-config-hl.png")); return; }
+  const ipTarget = modal.getByText(/ip.*allow|allowlist/i).first();
+  if (await ipTarget.isVisible().catch(() => false)) await ipTarget.scrollIntoViewIfNeeded();
+  const addBtn = modal.getByRole("button", { name: /add|save/i }).last();
+  if (await addBtn.isVisible().catch(() => false)) {
+    await snapHighlight(page, addBtn, "ip-allowlist-config-hl.png", modal);
+  } else {
+    await modal.screenshot({ path: path.join(OUT, "ip-allowlist-config-hl.png"), animations: "disabled" });
+  }
+});
+
+// -- Routing rule editor: highlight the Save / Create button --
+test("routing-rule-editor-hl", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (!await openFirstGateway(page)) { await page.screenshot(snap("routing-rule-editor-hl.png")); return; }
+  const newBtn = page.getByRole("button", { name: /\+ new rule/i });
+  if (await newBtn.isVisible().catch(() => false)) {
+    await newBtn.click();
+    await page.waitForTimeout(400);
+  }
+  const saveBtn = page.getByRole("button", { name: /save.*rule|create.*rule|save/i }).first();
+  if (await saveBtn.isVisible().catch(() => false)) {
+    await snapHighlight(page, saveBtn, "routing-rule-editor-hl.png");
+  } else {
+    await page.screenshot(snap("routing-rule-editor-hl.png"));
+  }
+});
+
+// -- Gateways list: highlight the "Open →" link for the first gateway --
+test("gateways-list-hl", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  await selectMyratest(page).catch(() => {});
+  const openBtn = page.getByRole("button", { name: /Open →/i }).first();
+  if (await openBtn.isVisible().catch(() => false)) {
+    await snapHighlight(page, openBtn, "gateways-list-hl.png");
+  } else {
+    await page.screenshot(snap("gateways-list-hl.png"));
+  }
+});
