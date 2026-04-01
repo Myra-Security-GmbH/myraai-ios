@@ -14,6 +14,7 @@ import type {
 import ModelPicker from "src/common/components/ModelPicker/ModelPicker";
 import s from "src/common/components/layout/Layout.module.scss";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
+import { useWakeLock } from "src/common/hooks/useWakeLock";
 import { useAuth } from "src/common/contexts/AuthContext";
 import ChatInput, { type PendingAttachment } from "../components/ChatInput";
 import ConversationList from "../components/ConversationList";
@@ -64,6 +65,21 @@ function PdfIcon() {
 }
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "";
+
+/** Derive a human-readable AI label from a model string.
+ *  Returns e.g. "Claude (claude-sonnet-4-6)" or "Qwen (qwen3-30b-a3b)". */
+function aiLabel(model: string): string {
+  const m = model.toLowerCase();
+  let name: string;
+  if (m.startsWith("claude"))        name = "Claude";
+  else if (m.startsWith("gpt") || m.startsWith("o1") || m.startsWith("o3")) name = "GPT";
+  else if (m.startsWith("gemini"))   name = "Gemini";
+  else if (m.startsWith("qwen"))     name = "Qwen";
+  else if (m.startsWith("llama"))    name = "Llama";
+  else if (m.startsWith("mistral"))  name = "Mistral";
+  else                               name = "Assistant";
+  return model ? `${name} (${model})` : name;
+}
 
 /** Extract the last HTML or SVG artifact from a message/streaming string.
  *  Returns null if none found or the code block is shorter than 8 lines. */
@@ -141,7 +157,8 @@ export default function Chat() {
     "Behavior:\n" +
     "- Be direct and confident. State your view clearly rather than hedging everything.\n" +
     "- If you're uncertain about a fact, say so — don't fabricate.\n" +
-    "- When something is ambiguous, make a reasonable assumption and proceed rather than asking multiple clarifying questions. Ask at most one follow-up question at the end if genuinely needed.\n" +
+    "- For critical factual or technical claims (algorithms, API behaviour, benchmarks, statistics), cross-check against what you know from multiple angles before stating them. If sources conflict or confidence is low, say so explicitly rather than picking the more plausible-sounding answer.\n" +
+    "- When the user's *intent* is ambiguous, make a reasonable assumption and proceed rather than asking multiple clarifying questions. Ask at most one follow-up question at the end if genuinely needed.\n" +
     "- Don't moralize or add unsolicited ethical commentary unless the topic directly calls for it.\n\n" +
     "Decision tables:\n" +
     "- When evaluating, comparing, or rating options across multiple dimensions or criteria (Bewertung), always present the results as a markdown table.\n" +
@@ -171,6 +188,7 @@ export default function Chat() {
 
   // ── Streaming state ────────────────────────────────────────────────────────
   const [isStreaming, setIsStreaming] = useState(false);
+  useWakeLock(isStreaming);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -375,8 +393,19 @@ export default function Chat() {
     const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
     const lines: string[] = [`# ${conv.title}`, ``, `*Exported on ${today}*`, ``, `---`];
 
+    const convModel = conv.model ?? model;
+
     for (const msg of messages) {
-      const label = msg.role === "user" ? "**You**" : "**Claude**";
+      let label: string;
+      if (msg.role === "user") {
+        label = "**You**";
+      } else {
+        const gw = msg.gateway_id ? gateways.find((g) => g.id === msg.gateway_id) : null;
+        const gwSlug = gw?.slug ?? (msg.gateway_id ?? null);
+        label = gwSlug
+          ? `**${aiLabel(convModel)} · ${gwSlug}**`
+          : `**${aiLabel(convModel)}**`;
+      }
       lines.push("", label, "");
 
       let text = msg.content;
@@ -473,12 +502,16 @@ export default function Chat() {
     if (!model) { setError("Select a model first"); return; }
     if (!playToken) { setError("No gateway token — select a gateway"); return; }
 
-    // Refresh token if expiring soon; use the returned token directly to avoid stale state
+    // Refresh token if expiring soon OR if it belongs to a different gateway
+    // (the latter can happen when the user switches presets before the async refresh completes)
     const tokenAge = tokenExpiresAt.current
       ? tokenExpiresAt.current.getTime() - Date.now()
       : null;
     let currentTok: PlaygroundToken | null = playToken;
-    if (tokenAge !== null && tokenAge < 60_000) {
+    const currentGateway = gateways.find((g) => g.id === gatewayId);
+    const tokenMismatch = currentGateway && playToken.gateway_slug !== currentGateway.slug;
+    const tokenExpiring = tokenAge !== null && tokenAge < 60_000;
+    if (tokenMismatch || tokenExpiring) {
       currentTok = await refreshToken(gatewayId);
     }
     if (!currentTok) { setError("No gateway token — could not refresh"); return; }
@@ -869,6 +902,7 @@ export default function Chat() {
         output_tokens: outputTokens,
         cost_usd: costUsd,
         latency_ms: latencyMs,
+        gateway_id: gatewayId,
       });
       const assistantMsg: ChatMessage = {
         id: res.id,
@@ -880,6 +914,7 @@ export default function Chat() {
         output_tokens: outputTokens,
         cost_usd: costUsd,
         latency_ms: latencyMs,
+        gateway_id: gatewayId,
         created_at: new Date().toISOString(),
         attachments: [],
       };
