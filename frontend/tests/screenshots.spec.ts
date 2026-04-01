@@ -1,20 +1,18 @@
 /**
  * screenshots.spec.ts — captures admin UI screenshots for the documentation.
  *
- * Run via create_snapshot.sh (project root), or directly:
- *   npx playwright test tests/screenshots.spec.ts --project=chromium
+ * Run against production:
+ *   cd frontend
+ *   npx playwright test tests/screenshots.spec.ts \
+ *     --config playwright.production.config.ts --project=chromium
  *
  * Output: docs/docs.md/assets/screenshots/*.png
- * Each test always saves a screenshot, even when there is no live data — the
- * structural UI (empty state) is still useful for new users.
  */
 
-import { test, Page } from "@playwright/test";
+import { test, expect, Page, Locator } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
-// Use a wider viewport and 2× device scale for all screenshots in this file
-// so text is crisp and cards that are rendered at full width remain readable.
 test.use({
   viewport: { width: 1440, height: 900 },
   deviceScaleFactor: 2,
@@ -32,16 +30,15 @@ function snap(name: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Navigation helpers (mirrors patterns in gateways.spec.ts)
+// Shared helpers
 // ---------------------------------------------------------------------------
 
-async function waitReady(page: Page) {
+async function waitReady(page: Page, extra = 400) {
   await page.waitForLoadState("networkidle");
-  // Dismiss any lingering loading spinners before snapping
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(extra);
 }
 
-/** Click the "myratest" tenant button on /gateways. Returns false when not found. */
+/** Select the myratest tenant on /gateways or /tenants. */
 async function selectMyratest(page: Page): Promise<boolean> {
   const btn = page.getByRole("button", { name: /^myratest$/i });
   if (!await btn.isVisible().catch(() => false)) return false;
@@ -50,19 +47,63 @@ async function selectMyratest(page: Page): Promise<boolean> {
   return true;
 }
 
-/** Open the first available gateway's detail page. Returns false when none. */
+/** Open the first available gateway detail page from /gateways. */
 async function openFirstGateway(page: Page): Promise<boolean> {
-  const ok = await selectMyratest(page);
-  if (!ok) return false;
-  const btn = page.getByRole("button", { name: /Open →/i }).first();
-  if (!await btn.isVisible().catch(() => false)) return false;
-  await btn.click();
-  await page.waitForTimeout(600);
+  await selectMyratest(page);
+  const openBtn = page.getByRole("button", { name: /Open →/i }).first();
+  if (!await openBtn.isVisible().catch(() => false)) return false;
+  await openBtn.click();
+  await page.waitForTimeout(700);
+  return true;
+}
+
+/** Open the gateway Edit modal. Returns the modal locator or null. */
+async function openEditModal(page: Page): Promise<Locator | null> {
+  const editBtn = page.getByRole("button", { name: /^Edit$/i }).first();
+  if (!await editBtn.isVisible().catch(() => false)) return null;
+  await editBtn.click();
+  await page.waitForTimeout(500);
+  const modal = page.locator("[role='dialog']").first();
+  if (!await modal.isVisible().catch(() => false)) return null;
+  return modal;
+}
+
+/** Scroll to a heading inside a container and screenshot that region. */
+async function snapSection(
+  container: Locator | Page,
+  heading: RegExp | string,
+  outFile: string,
+): Promise<boolean> {
+  const h = (container as Locator).getByText
+    ? (container as Locator).getByText(heading)
+    : (container as Page).getByText(heading);
+  if (!await h.isVisible().catch(() => false)) return false;
+  await h.scrollIntoViewIfNeeded();
+  await (container as any).page?.waitForTimeout(200) ?? await (container as Page).waitForTimeout(200);
+  if ((container as Locator).screenshot) {
+    await (container as Locator).screenshot({ path: path.join(OUT, outFile), animations: "disabled" });
+  } else {
+    await (container as Page).screenshot(snap(outFile));
+  }
   return true;
 }
 
 // ---------------------------------------------------------------------------
-// 1. Dashboard overview
+// 1. Login page (logged-out)
+// ---------------------------------------------------------------------------
+
+test("login-page", async ({ browser }) => {
+  // Fresh context so we are not logged in
+  const ctx  = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto("/login");
+  await waitReady(page);
+  await page.screenshot(snap("login-page.png"));
+  await ctx.close();
+});
+
+// ---------------------------------------------------------------------------
+// 2. Dashboard overview
 // ---------------------------------------------------------------------------
 
 test("dashboard-overview", async ({ page }) => {
@@ -72,7 +113,17 @@ test("dashboard-overview", async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Analytics tabs
+// 3. Live monitor
+// ---------------------------------------------------------------------------
+
+test("monitor-overview", async ({ page }) => {
+  await page.goto("/monitor");
+  await waitReady(page);
+  await page.screenshot(snap("monitor-overview.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 4. Analytics
 // ---------------------------------------------------------------------------
 
 test("analytics-tabs", async ({ page }) => {
@@ -82,133 +133,7 @@ test("analytics-tabs", async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Tenants list
-// ---------------------------------------------------------------------------
-
-test("tenants-list", async ({ page }) => {
-  await page.goto("/tenants");
-  await waitReady(page);
-  await page.screenshot(snap("tenants-list.png"));
-});
-
-// ---------------------------------------------------------------------------
-// 4. Gateway list (after selecting a tenant)
-// ---------------------------------------------------------------------------
-
-test("gateway-list", async ({ page }) => {
-  await page.goto("/gateways");
-  await waitReady(page);
-  // Try to select a tenant so the gateway list is visible; fall back to the
-  // initial "Select Tenant" view if no tenants exist.
-  await selectMyratest(page).catch(() => {});
-  await page.screenshot(snap("gateway-list.png"));
-});
-
-// ---------------------------------------------------------------------------
-// 5. Gateway detail
-// ---------------------------------------------------------------------------
-
-test("gateway-detail", async ({ page }) => {
-  await page.goto("/gateways");
-  await waitReady(page);
-  const opened = await openFirstGateway(page);
-  if (!opened) {
-    // No gateway available — screenshot the gateway list as fallback
-    await selectMyratest(page).catch(() => {});
-  }
-  await page.screenshot(snap("gateway-detail.png"));
-});
-
-// ---------------------------------------------------------------------------
-// 6. Gateway edit modal (config form)
-// ---------------------------------------------------------------------------
-
-test("gateway-edit-modal", async ({ page }) => {
-  await page.goto("/gateways");
-  await waitReady(page);
-  const opened = await openFirstGateway(page);
-  if (opened) {
-    const editBtn = page.getByRole("button", { name: /^Edit$/i }).first();
-    if (await editBtn.isVisible().catch(() => false)) {
-      await editBtn.click();
-      await page.waitForTimeout(500);
-      // Screenshot just the modal dialog so the background page doesn't shrink
-      // the modal into a tiny thumbnail.
-      const modal = page.locator("[role='dialog']").first();
-      if (await modal.isVisible().catch(() => false)) {
-        await modal.screenshot({ path: path.join(OUT, "gateway-edit-modal.png"), animations: "disabled" });
-        return;
-      }
-    }
-  }
-  await page.screenshot(snap("gateway-edit-modal.png"));
-});
-
-// ---------------------------------------------------------------------------
-// 7. Routing rule editor modal
-// ---------------------------------------------------------------------------
-
-test("routing-rule-editor", async ({ page }) => {
-  await page.goto("/gateways");
-  await waitReady(page);
-  const opened = await openFirstGateway(page);
-  if (opened) {
-    const newRuleBtn = page.getByRole("button", { name: /\+ New Rule/i });
-    if (await newRuleBtn.isVisible().catch(() => false)) {
-      await newRuleBtn.click();
-      await page.waitForTimeout(400);
-      // Add one condition so the modal shows a populated state
-      const addCondBtn = page.getByRole("button", { name: /^\+ Add$/i }).first();
-      if (await addCondBtn.isVisible().catch(() => false)) {
-        await addCondBtn.click();
-        await page.waitForTimeout(200);
-      }
-    }
-  }
-  await page.screenshot(snap("routing-rule-editor.png"));
-});
-
-// ---------------------------------------------------------------------------
-// 8. Guardrails builder (Guardrails card on the gateway detail page)
-// ---------------------------------------------------------------------------
-
-test("guardrails-builder", async ({ page }) => {
-  await page.goto("/gateways");
-  await waitReady(page);
-  const opened = await openFirstGateway(page);
-  if (opened) {
-    // Scroll to the "Save Guardrails" button — unique to the Guardrails card
-    // on the detail page (NOT inside the Edit modal).
-    const saveBtn = page.getByRole("button", { name: /Save Guardrails/i });
-    if (await saveBtn.isVisible().catch(() => false)) {
-      await saveBtn.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(200);
-    }
-  }
-  await page.screenshot(snap("guardrails-builder.png"));
-});
-
-// ---------------------------------------------------------------------------
-// 9. Playground layout
-// ---------------------------------------------------------------------------
-
-test("playground-layout", async ({ page }) => {
-  await page.goto("/playground");
-  await waitReady(page);
-  // Select the myratest tenant if available
-  const tenantSelect = page.locator("select").first();
-  if (await tenantSelect.isVisible().catch(() => false)) {
-    const options = await tenantSelect.locator("option").allTextContents();
-    if (options.some(o => /myratest/i.test(o))) {
-      await tenantSelect.selectOption({ label: "myratest" });
-      await page.waitForTimeout(600);
-    }
-  }
-  await page.screenshot(snap("playground-layout.png"));
-});
-
-// ---------------------------------------------------------------------------
-// 10. Request log table
+// 5. Request logs
 // ---------------------------------------------------------------------------
 
 test("logs-table", async ({ page }) => {
@@ -218,32 +143,87 @@ test("logs-table", async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// 11–16. Guardrail type expanded cards
-// Each test: opens the first gateway → clicks the "+ Type" add button →
-// expands the newly added card → screenshots just that region.
+// 6. Playground
 // ---------------------------------------------------------------------------
 
-const GUARDRAIL_TYPES: Array<{ label: string; slug: string }> = [
-  { label: "Regex / Pattern", slug: "regex" },
-  { label: "Keyword",         slug: "keyword" },
-  { label: "Jailbreak",       slug: "jailbreak" },
-  { label: "Presidio (NLP)",  slug: "presidio" },
-  { label: "Prompt Guard",    slug: "prompt_guard" },
-  { label: "PII Protector",   slug: "pii_protector" },
-];
-
-// ---------------------------------------------------------------------------
-// 17. Login page
-// ---------------------------------------------------------------------------
-
-test("login-page", async ({ page }) => {
-  await page.goto("/login");
+test("playground-layout", async ({ page }) => {
+  await page.goto("/playground");
   await waitReady(page);
-  await page.screenshot(snap("login-page.png"));
+  const sel = page.locator("select").first();
+  if (await sel.isVisible().catch(() => false)) {
+    const opts = await sel.locator("option").allTextContents();
+    if (opts.some(o => /myratest/i.test(o))) {
+      await sel.selectOption({ label: "myratest" });
+      await page.waitForTimeout(600);
+    }
+  }
+  await page.screenshot(snap("playground-layout.png"));
 });
 
 // ---------------------------------------------------------------------------
-// 18. My Tokens (self-service token management)
+// 7. Chat
+// ---------------------------------------------------------------------------
+
+test("chat", async ({ page }) => {
+  await page.goto("/chat");
+  await waitReady(page);
+  await page.screenshot(snap("chat.png"));
+});
+
+test("chat-file-attach", async ({ page }) => {
+  await page.goto("/chat");
+  await waitReady(page);
+  // Click the attach / paperclip button to reveal the file picker area
+  const attachBtn = page.locator("button[title*='ttach'], button[aria-label*='ttach'], button[title*='ile'], button[aria-label*='ile']").first();
+  if (await attachBtn.isVisible().catch(() => false)) {
+    await attachBtn.click();
+    await page.waitForTimeout(400);
+  }
+  await page.screenshot(snap("chat-file-attach.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 8. Tenants list
+// ---------------------------------------------------------------------------
+
+test("tenants-list", async ({ page }) => {
+  await page.goto("/tenants");
+  await waitReady(page);
+  await page.screenshot(snap("tenants-list.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 9. Users list
+// ---------------------------------------------------------------------------
+
+test("users-list", async ({ page }) => {
+  await page.goto("/users");
+  await waitReady(page);
+  await page.screenshot(snap("users-list.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 10. New user dialog
+// ---------------------------------------------------------------------------
+
+test("user-new", async ({ page }) => {
+  await page.goto("/users");
+  await waitReady(page);
+  const newBtn = page.getByRole("button", { name: /new user|add user|\+ user/i }).first();
+  if (await newBtn.isVisible().catch(() => false)) {
+    await newBtn.click();
+    await page.waitForTimeout(400);
+    const modal = page.locator("[role='dialog']").first();
+    if (await modal.isVisible().catch(() => false)) {
+      await modal.screenshot({ path: path.join(OUT, "user-new.png"), animations: "disabled" });
+      return;
+    }
+  }
+  await page.screenshot(snap("user-new.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 11. My tokens (profile page)
 // ---------------------------------------------------------------------------
 
 test("my-tokens", async ({ page }) => {
@@ -253,56 +233,421 @@ test("my-tokens", async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// 19. Users list
+// 12. New token dialog
 // ---------------------------------------------------------------------------
 
-test("users-list", async ({ page }) => {
-  await page.goto("/users");
+test("token-new", async ({ page }) => {
+  await page.goto("/profile");
   await waitReady(page);
-  await page.screenshot(snap("users-list.png"));
-});
-
-for (const { label, slug } of GUARDRAIL_TYPES) {
-  test(`guardrail-${slug}`, async ({ page }) => {
-    await page.goto("/gateways");
-    await waitReady(page);
-
-    const opened = await openFirstGateway(page);
-    if (!opened) {
-      // No live data — just screenshot the gateways page as fallback
-      await page.screenshot(snap(`guardrail-${slug}.png`));
+  const newBtn = page.getByRole("button", { name: /new token|add token|create token|\+ token/i }).first();
+  if (await newBtn.isVisible().catch(() => false)) {
+    await newBtn.click();
+    await page.waitForTimeout(400);
+    const modal = page.locator("[role='dialog']").first();
+    if (await modal.isVisible().catch(() => false)) {
+      await modal.screenshot({ path: path.join(OUT, "token-new.png"), animations: "disabled" });
       return;
     }
+  }
+  await page.screenshot(snap("token-new.png"));
+});
 
-    // Scroll to the Save Guardrails button so the entire builder is visible
-    const saveBtn = page.getByRole("button", { name: /Save Guardrails/i });
+// ---------------------------------------------------------------------------
+// 13. Model prices
+// ---------------------------------------------------------------------------
+
+test("model-prices-list", async ({ page }) => {
+  await page.goto("/model-prices");
+  await waitReady(page);
+  await page.screenshot(snap("model-prices-list.png"));
+});
+
+test("model-prices-edit", async ({ page }) => {
+  await page.goto("/model-prices");
+  await waitReady(page);
+  // Try to click the first Edit button on any price row
+  const editBtn = page.getByRole("button", { name: /^edit$/i }).first();
+  if (await editBtn.isVisible().catch(() => false)) {
+    await editBtn.click();
+    await page.waitForTimeout(400);
+    const modal = page.locator("[role='dialog']").first();
+    if (await modal.isVisible().catch(() => false)) {
+      await modal.screenshot({ path: path.join(OUT, "model-prices-edit.png"), animations: "disabled" });
+      return;
+    }
+  }
+  await page.screenshot(snap("model-prices-edit.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 14. Gateways list
+// ---------------------------------------------------------------------------
+
+test("gateways-list", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  await selectMyratest(page).catch(() => {});
+  await page.screenshot(snap("gateways-list.png"));
+  // gateway-list.png is the same view, referenced from quick-start docs
+  await page.screenshot(snap("gateway-list.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 15. Gateway detail
+// ---------------------------------------------------------------------------
+
+test("gateway-detail", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  await openFirstGateway(page);
+  await page.screenshot(snap("gateway-detail.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 16. Gateway edit modal
+// ---------------------------------------------------------------------------
+
+test("gateway-edit-modal", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (await openFirstGateway(page)) {
+    const modal = await openEditModal(page);
+    if (modal) {
+      await modal.screenshot({ path: path.join(OUT, "gateway-edit-modal.png"), animations: "disabled" });
+      return;
+    }
+  }
+  await page.screenshot(snap("gateway-edit-modal.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 17–21. Gateway config modal — specific sections
+// ---------------------------------------------------------------------------
+
+async function gatewayModalSection(page: Page, heading: string | RegExp, outFile: string) {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (!await openFirstGateway(page)) { await page.screenshot(snap(outFile)); return; }
+  const modal = await openEditModal(page);
+  if (!modal) { await page.screenshot(snap(outFile)); return; }
+  // Scroll inside modal to the section heading
+  const target = modal.getByText(heading, { exact: false }).first();
+  if (await target.isVisible().catch(() => false)) {
+    await target.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+  }
+  await modal.screenshot({ path: path.join(OUT, outFile), animations: "disabled" });
+}
+
+test("gateway-config-auth",      ({ page }) => gatewayModalSection(page, /auth/i,         "gateway-config-auth.png"));
+test("gateway-config-azure",     ({ page }) => gatewayModalSection(page, /azure/i,        "gateway-config-azure.png"));
+test("gateway-config-vertex",    ({ page }) => gatewayModalSection(page, /vertex/i,       "gateway-config-vertex.png"));
+test("gateway-config-base-urls", ({ page }) => gatewayModalSection(page, /base url|provider url/i, "gateway-config-base-urls.png"));
+
+// ---------------------------------------------------------------------------
+// 22–23. Gateway rate limit and budget
+// ---------------------------------------------------------------------------
+
+test("gateway-rate-limit", ({ page }) => gatewayModalSection(page, /rate limit/i, "gateway-rate-limit.png"));
+test("gateway-budget",     ({ page }) => gatewayModalSection(page, /budget/i,     "gateway-budget.png"));
+
+// ---------------------------------------------------------------------------
+// 24–25. Budget reset (screenshot the reset button area without clicking)
+// ---------------------------------------------------------------------------
+
+async function budgetResetSnap(page: Page, outFile: string) {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (!await openFirstGateway(page)) { await page.screenshot(snap(outFile)); return; }
+  const resetBtn = page.getByRole("button", { name: /reset.*budget|budget.*reset/i }).first();
+  if (await resetBtn.isVisible().catch(() => false)) {
+    await resetBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(200);
+    await page.screenshot(snap(outFile));
+  } else {
+    await page.screenshot(snap(outFile));
+  }
+}
+
+test("gateway-budget-reset", ({ page }) => budgetResetSnap(page, "gateway-budget-reset.png"));
+
+test("user-budget-reset", async ({ page }) => {
+  await page.goto("/users");
+  await waitReady(page);
+  const e2eUser = page.getByText("e2e-create-user-test@local.test").first();
+  if (await e2eUser.isVisible().catch(() => false)) {
+    await e2eUser.click();
+    await page.waitForTimeout(400);
+  }
+  const resetBtn = page.getByRole("button", { name: /reset.*budget|budget.*reset/i }).first();
+  if (await resetBtn.isVisible().catch(() => false)) {
+    await resetBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(200);
+  }
+  await page.screenshot(snap("user-budget-reset.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 26–27. Token rate limit and budget (user detail panel)
+// ---------------------------------------------------------------------------
+
+test("token-rate-limit", async ({ page }) => {
+  await page.goto("/users");
+  await waitReady(page);
+  const e2eUser = page.getByText("e2e-create-user-test@local.test").first();
+  if (await e2eUser.isVisible().catch(() => false)) {
+    await e2eUser.click();
+    await page.waitForTimeout(500);
+  }
+  const target = page.getByText(/rate limit/i).first();
+  if (await target.isVisible().catch(() => false)) await target.scrollIntoViewIfNeeded();
+  await page.screenshot(snap("token-rate-limit.png"));
+});
+
+test("token-budget", async ({ page }) => {
+  await page.goto("/users");
+  await waitReady(page);
+  const e2eUser = page.getByText("e2e-create-user-test@local.test").first();
+  if (await e2eUser.isVisible().catch(() => false)) {
+    await e2eUser.click();
+    await page.waitForTimeout(500);
+  }
+  const target = page.getByText(/budget/i).first();
+  if (await target.isVisible().catch(() => false)) await target.scrollIntoViewIfNeeded();
+  await page.screenshot(snap("token-budget.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 28. Gateway circuit breaker
+// ---------------------------------------------------------------------------
+
+test("gateway-circuit-breaker", ({ page }) => gatewayModalSection(page, /circuit breaker/i, "gateway-circuit-breaker.png"));
+
+// ---------------------------------------------------------------------------
+// 29. Gateway SIEM
+// ---------------------------------------------------------------------------
+
+test("gateway-siem", ({ page }) => gatewayModalSection(page, /siem/i, "gateway-siem.png"));
+
+// ---------------------------------------------------------------------------
+// 30. BYOK add key modal
+// ---------------------------------------------------------------------------
+
+test("byok-add-key", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (!await openFirstGateway(page)) { await page.screenshot(snap("byok-add-key.png")); return; }
+  // Scroll to Provider Keys / BYOK card
+  const byokCard = page.getByText(/provider key|byok/i).first();
+  if (await byokCard.isVisible().catch(() => false)) await byokCard.scrollIntoViewIfNeeded();
+  // Click Add / + button in BYOK section
+  const addBtn = page.getByRole("button", { name: /add key|\+ key|add provider key/i }).first();
+  if (await addBtn.isVisible().catch(() => false)) {
+    await addBtn.click();
+    await page.waitForTimeout(400);
+    const modal = page.locator("[role='dialog']").first();
+    if (await modal.isVisible().catch(() => false)) {
+      await modal.screenshot({ path: path.join(OUT, "byok-add-key.png"), animations: "disabled" });
+      return;
+    }
+  }
+  await page.screenshot(snap("byok-add-key.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 31. IP allowlist config
+// ---------------------------------------------------------------------------
+
+test("ip-allowlist-config", ({ page }) => gatewayModalSection(page, /ip allow|allowlist/i, "ip-allowlist-config.png"));
+
+// ---------------------------------------------------------------------------
+// 32. Guardrails builder (overview)
+// ---------------------------------------------------------------------------
+
+test("guardrails-builder", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (await openFirstGateway(page)) {
+    const saveBtn = page.getByRole("button", { name: /save guardrail/i });
     if (await saveBtn.isVisible().catch(() => false)) {
       await saveBtn.scrollIntoViewIfNeeded();
       await page.waitForTimeout(200);
     }
+  }
+  await page.screenshot(snap("guardrails-builder.png"));
+});
 
-    // Click the add button for this guardrail type
-    const addBtn = page.getByRole("button", { name: new RegExp(`\\+ ${label.replace(/[()]/g, "\\$&")}`, "i") });
+// ---------------------------------------------------------------------------
+// 33. Guardrails builder — showing the add-type buttons
+// ---------------------------------------------------------------------------
+
+test("guardrails-builder-add", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (await openFirstGateway(page)) {
+    // Scroll to the Add Type / + button cluster
+    const addArea = page.getByRole("button", { name: /\+ regex|\+ keyword|\+ jailbreak/i }).first();
+    if (await addArea.isVisible().catch(() => false)) {
+      await addArea.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(200);
+    } else {
+      const saveBtn = page.getByRole("button", { name: /save guardrail/i });
+      if (await saveBtn.isVisible().catch(() => false)) await saveBtn.scrollIntoViewIfNeeded();
+    }
+  }
+  await page.screenshot(snap("guardrails-builder-add.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 34–43. Individual guardrail type cards
+// ---------------------------------------------------------------------------
+
+const GUARDRAIL_TYPES: Array<{ label: string; slug: string }> = [
+  { label: "Regex",         slug: "regex" },
+  { label: "Keyword",       slug: "keyword" },
+  { label: "Jailbreak",     slug: "jailbreak" },
+  { label: "JSON Schema",   slug: "json-schema" },
+  { label: "Contains Code", slug: "contains-code" },
+  { label: "Gibberish",     slug: "gibberish" },
+  { label: "Language",      slug: "language" },
+  { label: "Presidio",      slug: "presidio" },
+  { label: "Prompt Guard",  slug: "prompt_guard" },
+  { label: "PII Protector", slug: "pii_protector" },
+];
+
+for (const { label, slug } of GUARDRAIL_TYPES) {
+  test(`guardrail-${slug}-builder`, async ({ page }) => {
+    const outFile = `guardrail-${slug}-builder.png`;
+    await page.goto("/gateways");
+    await waitReady(page);
+    if (!await openFirstGateway(page)) { await page.screenshot(snap(outFile)); return; }
+
+    const saveBtn = page.getByRole("button", { name: /save guardrail/i });
+    if (await saveBtn.isVisible().catch(() => false)) await saveBtn.scrollIntoViewIfNeeded();
+
+    // Click the "+ Type" add button for this guardrail
+    const addBtn = page.getByRole("button", {
+      name: new RegExp(`\\+\\s*${label.replace(/[()[\]]/g, "\\$&")}`, "i"),
+    });
     if (!await addBtn.isVisible().catch(() => false)) {
-      await page.screenshot(snap(`guardrail-${slug}.png`));
+      await page.screenshot(snap(outFile));
       return;
     }
     await addBtn.click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
 
-    // Expand the newly added card (last card in the list) by clicking its header
+    // Expand the last card (newly added)
     const cards = page.locator("[data-testid='detector-card']");
     const count = await cards.count();
     if (count > 0) {
-      const lastCard = cards.nth(count - 1);
-      await lastCard.click(); // click header to expand
+      const last = cards.nth(count - 1);
+      await last.click();
       await page.waitForTimeout(300);
-      await lastCard.scrollIntoViewIfNeeded();
+      await last.scrollIntoViewIfNeeded();
       await page.waitForTimeout(200);
-      // Screenshot just the expanded card for focus
-      await lastCard.screenshot({ path: path.join(OUT, `guardrail-${slug}.png`), animations: "disabled" });
+      await last.screenshot({ path: path.join(OUT, outFile), animations: "disabled" });
     } else {
-      await page.screenshot(snap(`guardrail-${slug}.png`));
+      await page.screenshot(snap(outFile));
     }
   });
+
+  // Also save without "-builder" suffix for pages that reference guardrail-{slug}.png
+  test(`guardrail-${slug}`, async ({ page }) => {
+    const outFile = `guardrail-${slug}.png`;
+    const builderFile = path.join(OUT, `guardrail-${slug}-builder.png`);
+    // Re-use the builder screenshot if it was already saved
+    await page.waitForTimeout(200);
+    if (fs.existsSync(builderFile)) {
+      fs.copyFileSync(builderFile, path.join(OUT, outFile));
+      return;
+    }
+    await page.goto("/gateways");
+    await waitReady(page);
+    await openFirstGateway(page);
+    await page.screenshot(snap(outFile));
+  });
 }
+
+// ---------------------------------------------------------------------------
+// 44. Routing rules list (on gateway detail)
+// ---------------------------------------------------------------------------
+
+test("routing-rules-list", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (await openFirstGateway(page)) {
+    const rulesHeading = page.getByText(/routing rule/i).first();
+    if (await rulesHeading.isVisible().catch(() => false)) {
+      await rulesHeading.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(200);
+    }
+  }
+  await page.screenshot(snap("routing-rules-list.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 45. Routing rule editor modal (basic)
+// ---------------------------------------------------------------------------
+
+test("routing-rule-editor", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (await openFirstGateway(page)) {
+    const newBtn = page.getByRole("button", { name: /\+ new rule/i });
+    if (await newBtn.isVisible().catch(() => false)) {
+      await newBtn.click();
+      await page.waitForTimeout(400);
+      const addCond = page.getByRole("button", { name: /^\+ add$/i }).first();
+      if (await addCond.isVisible().catch(() => false)) { await addCond.click(); await page.waitForTimeout(200); }
+    }
+  }
+  await page.screenshot(snap("routing-rule-editor.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 46. Routing rule editor — fallbacks section visible
+// ---------------------------------------------------------------------------
+
+test("routing-rule-fallbacks", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (await openFirstGateway(page)) {
+    const newBtn = page.getByRole("button", { name: /\+ new rule/i });
+    if (await newBtn.isVisible().catch(() => false)) {
+      await newBtn.click();
+      await page.waitForTimeout(400);
+      const fallbackSection = page.getByText(/fallback/i).first();
+      if (await fallbackSection.isVisible().catch(() => false)) await fallbackSection.scrollIntoViewIfNeeded();
+    }
+  }
+  await page.screenshot(snap("routing-rule-fallbacks.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 47. Routing rule editor — load balancing section visible
+// ---------------------------------------------------------------------------
+
+test("routing-rule-load-balance", async ({ page }) => {
+  await page.goto("/gateways");
+  await waitReady(page);
+  if (await openFirstGateway(page)) {
+    const newBtn = page.getByRole("button", { name: /\+ new rule/i });
+    if (await newBtn.isVisible().catch(() => false)) {
+      await newBtn.click();
+      await page.waitForTimeout(400);
+      const lbSection = page.getByText(/load balanc/i).first();
+      if (await lbSection.isVisible().catch(() => false)) await lbSection.scrollIntoViewIfNeeded();
+    }
+  }
+  await page.screenshot(snap("routing-rule-load-balance.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 48. Prompts / prompt library
+// ---------------------------------------------------------------------------
+
+test("prompts", async ({ page }) => {
+  await page.goto("/prompts");
+  await waitReady(page);
+  await page.screenshot(snap("prompts.png"));
+});

@@ -11,7 +11,7 @@ import { execSync } from "child_process";
 import path from "path";
 
 const DB      = "/opt/ai-gateway/data/config.db";
-const EMAIL   = "info@schumann.net";
+const EMAIL   = "sascha@schumann.net";
 const CODE    = "999888";
 const SESSION = path.resolve(__dirname, ".auth/session.json");
 
