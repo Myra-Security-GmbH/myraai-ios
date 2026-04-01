@@ -414,6 +414,8 @@ CREATE TABLE IF NOT EXISTS chat_message (
     output_tokens     INT,
     cost_usd          DOUBLE,
     latency_ms        INT,
+    gateway_id        VARCHAR(36),
+    model             VARCHAR(255),
     created_at        BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
     deleted_at        BIGINT,
     PRIMARY KEY (id),

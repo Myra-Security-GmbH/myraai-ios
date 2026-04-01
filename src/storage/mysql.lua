@@ -253,6 +253,10 @@ function M.migrate(cfg)
     db:query("ALTER TABLE `user` ADD COLUMN IF NOT EXISTS last_login_at BIGINT")
     -- Add chat_presets_config column if not present (idempotent)
     db:query("ALTER TABLE tenant ADD COLUMN IF NOT EXISTS chat_presets_config TEXT")
+    -- Add gateway_id to chat_message if not present (idempotent)
+    db:query("ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS gateway_id VARCHAR(36)")
+    -- Add model to chat_message if not present (idempotent)
+    db:query("ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS model VARCHAR(255)")
 
     db:set_keepalive(0, 5)
 end
@@ -1794,7 +1798,7 @@ function M.get_conversation(id, user_id)
     -- Load messages
     local msgs = query_all(db, [[
         SELECT id, parent_message_id, role, content,
-               input_tokens, output_tokens, cost_usd, latency_ms,
+               input_tokens, output_tokens, cost_usd, latency_ms, gateway_id, model,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
         FROM chat_message
         WHERE conversation_id = ? AND deleted_at IS NULL
@@ -1870,12 +1874,12 @@ function M.append_message(data)
     local e = exec_one(db, [[
         INSERT INTO chat_message
             (id, conversation_id, parent_message_id, role, content,
-             input_tokens, output_tokens, cost_usd, latency_ms, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)
+             input_tokens, output_tokens, cost_usd, latency_ms, gateway_id, model, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
     ]], id, data.conversation_id, data.parent_message_id,
         data.role, data.content,
         data.input_tokens, data.output_tokens,
-        data.cost_usd, data.latency_ms, now)
+        data.cost_usd, data.latency_ms, data.gateway_id, data.model, now)
     if not e then
         -- Touch conversation updated_at
         exec_one(db, [[

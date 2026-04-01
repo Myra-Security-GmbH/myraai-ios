@@ -133,7 +133,7 @@ function M.register(route)
 
     -- ── Messages ────────────────────────────────────────────────────────────
 
-    -- POST /admin/v1/conversations/:id/messages  { role, content, input_tokens?, output_tokens?, cost_usd?, latency_ms? }
+    -- POST /admin/v1/conversations/:id/messages  { role, content, input_tokens?, output_tokens?, cost_usd?, latency_ms?, gateway_id? }
     route("POST", "^/admin/v1/conversations/([^/]+)/messages$", function(conv_id)
         local u    = ngx.ctx.admin_user
         local body = read_body()
@@ -154,6 +154,8 @@ function M.register(route)
             output_tokens     = nullable(body.output_tokens),
             cost_usd          = nullable(body.cost_usd),
             latency_ms        = nullable(body.latency_ms),
+            gateway_id        = nullable(body.gateway_id),
+            model             = nullable(body.model),
         })
         if not mid then return send(500, { error = tostring(err) }) end
         send(201, { id = mid })

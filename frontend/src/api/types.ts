@@ -506,6 +506,8 @@ export interface ChatMessage {
   output_tokens: number | null;
   cost_usd: number | null;
   latency_ms: number | null;
+  gateway_id?: string | null;
+  model?: string | null;
   created_at: string;
   attachments?: ChatAttachment[];
 }

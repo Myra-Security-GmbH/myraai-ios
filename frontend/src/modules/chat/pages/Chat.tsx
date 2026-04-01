@@ -400,9 +400,13 @@ export default function Chat() {
       if (msg.role === "user") {
         label = "**You**";
       } else {
+        const msgModel = msg.model ?? convModel;
         const gwId = msg.gateway_id ?? conv.gateway_id;
         const gw = gwId ? gateways.find((g) => g.id === gwId) : null;
-        label = `**${gw?.slug ?? gwId ?? "Assistant"}**`;
+        const gwLabel = gw?.slug ?? gwId ?? "";
+        label = gwLabel
+          ? `**${aiLabel(msgModel)} via ${gwLabel}**`
+          : `**${aiLabel(msgModel)}**`;
       }
       lines.push("", label, "");
 
@@ -901,6 +905,7 @@ export default function Chat() {
         cost_usd: costUsd,
         latency_ms: latencyMs,
         gateway_id: gatewayId,
+        model: model,
       });
       const assistantMsg: ChatMessage = {
         id: res.id,
@@ -913,6 +918,7 @@ export default function Chat() {
         cost_usd: costUsd,
         latency_ms: latencyMs,
         gateway_id: gatewayId,
+        model: model,
         created_at: new Date().toISOString(),
         attachments: [],
       };
