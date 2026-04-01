@@ -11,9 +11,9 @@ Use the compat endpoint when you want to:
 
 - **Switch providers without changing code** — point your existing OpenAI SDK client at the gateway and change only the `base_url` and `api_key`. Route to Claude, Gemini, or any other provider by changing the model name.
 - **Access multiple providers from one endpoint** — your code always calls the same URL; the gateway determines which provider to use.
-- **Use OpenRouter as a fallback** — any model identifier that OpenRouter supports will work automatically, even if it is not listed in the gateway's built-in model registry.
+- **Use OpenRouter as a fallback** — any model identifier that OpenRouter supports will work automatically, even if it is not listed in the built-in model registry of the gateway.
 
-Use the provider-native endpoint instead if you need provider-specific features (such as Anthropic's extended thinking or AWS Bedrock's inference profiles) that are not available through the OpenAI-compatible format.
+Use the provider-native endpoint instead if you need provider-specific features (such as extended thinking of Anthropic or inference profiles of AWS Bedrock) that are not available through the OpenAI-compatible format.
 
 This page is the single authoritative reference for compat model resolution. The [Providers overview](../providers/overview.md) page cross-references this page for resolution details.
 
@@ -98,12 +98,11 @@ If no exact match is found, the model name prefix is matched:
 
 If neither an exact nor a prefix match is found, the request is forwarded to OpenRouter, which supports hundreds of models from many providers under a single API. Any model identifier that OpenRouter accepts will work through the compat endpoint without any gateway configuration.
 
-!!! note
-    OpenRouter fallback requires a valid OpenRouter API key stored as a BYOK key for the `openrouter` provider on your gateway.
+> 💡 **Note:** OpenRouter fallback requires a valid OpenRouter API key stored as a BYOK key for the `openrouter` provider on your gateway.
 
 ## Routing rules and compat resolution
 
-Routing rules apply on top of compat resolution. If a routing rule matches the incoming request before provider resolution runs, the rule's configured provider and model are used instead.
+Routing rules apply on top of compat resolution. If a routing rule matches the incoming request before provider resolution runs, the provider and model configured in the rule are used instead.
 
 ## Streaming normalisation
 

@@ -16,8 +16,7 @@ When `ip_allowlist` contains one or more entries, any request from a source IP t
 - Both IPv4 addresses and CIDR ranges are supported.
 - The check uses the connecting client IP as seen by the gateway. When the gateway is deployed behind a load balancer, IP evaluation uses the original client IP from forwarding headers automatically.
 
-!!! note
-    The IP allowlist applies only to inference endpoints. Admin API requests are subject to separate access controls and are not filtered by the gateway's `ip_allowlist` configuration.
+> 💡 **Note:** The IP allowlist applies only to inference endpoints. Admin API requests are subject to separate access controls and are not filtered by the `ip_allowlist` configuration of the gateway.
 
 ## CIDR notation
 
@@ -56,33 +55,35 @@ The `blocked_by` field identifies the IP allowlist as the reason, which distingu
 ![Screenshot: IP Allowlist field on the Config tab](../assets/screenshots/ip-allowlist-config.png)
 *IP Allowlist field on the gateway Config tab*
 
-Proceed as follows to add an IP allowlist entry:
+► Proceed as follows to add an IP allowlist entry:
 
 1. Click on **Gateways** in the left sidebar.
-    - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to restrict.
-    - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Config** tab.
 4. Locate the **IP Allowlist** field.
 5. Enter one IP address or CIDR range per line in the **IP Allowlist** field.
 6. Click on the **Save** button.
-    - -> The allowlist is saved. Requests from IP addresses that do not match any entry are rejected with `403 Forbidden`.
+
+→ The allowlist is saved. Requests from IP addresses that do not match any entry are rejected with `403 Forbidden`.
 
 ---
 
 ## Removing an IP allowlist entry
 
-Proceed as follows to remove an IP allowlist entry:
+► Proceed as follows to remove an IP allowlist entry:
 
 1. Click on **Gateways** in the left sidebar.
-    - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway whose allowlist you want to modify.
-    - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Config** tab.
 4. Locate the **IP Allowlist** field.
 5. Delete the entry or entries you want to remove.
 6. Click on the **Save** button.
-    - -> The updated allowlist is saved. To allow all source IPs, clear the IP Allowlist field completely before saving.
+
+→ The updated allowlist is saved. To allow all source IPs, clear the IP Allowlist field completely before saving.
 
 ---
 

@@ -19,7 +19,7 @@ Tenants are the top-level organisational unit. Each tenant contains one or more 
 | `GET` | `/gateways/{id}` | Get a single gateway |
 | `PATCH` | `/gateways/{id}` | Update gateway config |
 | `DELETE` | `/gateways/{id}` | Delete a gateway |
-| `DELETE` | `/gateways/{id}/budget` | Reset the gateway spend counter |
+| `DELETE` | `/gateways/{id}/budget` | Reset the spend counter of the gateway |
 
 ---
 
@@ -83,8 +83,7 @@ curl -X PATCH https://<your-gateway-host>/admin/v1/tenants/{id} \
 curl -X DELETE https://<your-gateway-host>/admin/v1/tenants/{id}
 ```
 
-!!! warning
-    Deleting a tenant permanently removes all gateways, users, tokens, routing rules, and provider keys belonging to that tenant. This action cannot be undone.
+> ⚠️ **Caution:** Deleting a tenant permanently removes all gateways, users, tokens, routing rules, and provider keys belonging to that tenant. This action cannot be undone.
 
 ---
 
@@ -173,8 +172,7 @@ curl -X PATCH https://<your-gateway-host>/admin/v1/gateways/{id} \
   }'
 ```
 
-!!! note
-    The `config` merge is shallow. To clear a nested object (e.g. to remove a rate limit), set the field to `null` explicitly: `"rate_limit": null`.
+> 💡 **Note:** The `config` merge is shallow. To clear a nested object (e.g. to remove a rate limit), set the field to `null` explicitly: `"rate_limit": null`.
 
 ### Deleting a gateway
 
@@ -184,14 +182,13 @@ curl -X DELETE https://<your-gateway-host>/admin/v1/gateways/{id}
 
 ### Resetting the gateway budget counter
 
-Clears the accumulated spend counter. Requests blocked by `QUOTA_EXCEEDED` will be allowed again (up to the configured `budget_usd`).
+Clears the accumulated spend counter. Requests blocked by `QUOTA_EXCEEDED` are allowed again (up to the configured `budget_usd`).
 
 ```bash
 curl -X DELETE https://<your-gateway-host>/admin/v1/gateways/{id}/budget
 ```
 
-!!! warning
-    Budget resets are immediate and irreversible. Automate monthly resets with a cron job rather than resetting manually.
+> ⚠️ **Caution:** Budget resets are immediate and irreversible. Automate monthly resets with a cron job rather than resetting manually.
 
 ---
 

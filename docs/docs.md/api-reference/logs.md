@@ -1,6 +1,6 @@
 # Logs API
 
-The Logs API provides access to the structured request log written by the gateway's log phase. Each entry records full identity, routing, security, token usage, cost, and timing for one inference request.
+The Logs API provides access to the structured request log written by the log phase of the gateway. Each entry records full identity, routing, security, token usage, cost, and timing for one inference request.
 
 **Base URL:** `https://<your-gateway-host>/admin/v1`
 
@@ -29,8 +29,7 @@ curl "https://<your-gateway-host>/admin/v1/logs"
 | `limit` | integer | `50` | Maximum number of entries to return. Maximum: `200`. |
 | `offset` | integer | `0` | Skip this many entries (for pagination). |
 
-!!! note
-    All filters are optional and can be combined. The result is always ordered newest-first.
+> 💡 **Note:** All filters are optional and can be combined. The result is always ordered newest-first.
 
 ---
 
@@ -74,8 +73,7 @@ The following fields are only returned by `GET /logs/{id}` (single-entry endpoin
 | `response` | string \| null | Provider response body. `null` when `log_payloads: false`. |
 | `prompt_scrubbed` | string \| null | Request messages after PII tokenization (tokens visible, original values absent). Only present when `pii_protector` detects PII. |
 
-!!! note
-    Request and response body content is only stored when `log_payloads: true` is set in the gateway config (the default). When disabled, all fields above are still logged but the prompt/response text is omitted. Individual requests can suppress payload logging with the `x-aig-collect-log-payload: false` header.
+> 💡 **Note:** Request and response body content is only stored when `log_payloads: true` is set in the gateway config (the default). When disabled, all fields above are still logged but the prompt/response text is omitted. Individual requests can suppress payload logging with the `x-aig-collect-log-payload: false` header.
 
 ---
 
@@ -92,6 +90,8 @@ Returns the same [LogEntry](#logentry-fields) object as in the list endpoint. Re
 ---
 
 ## Examples
+
+> ⭐ **Example:** The following examples show common query patterns for the Logs API.
 
 ### Fetching the last 100 requests
 

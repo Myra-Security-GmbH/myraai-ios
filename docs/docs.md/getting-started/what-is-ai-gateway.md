@@ -7,6 +7,8 @@ description: An overview of AI Gateway by Myra Security — its capabilities, ar
 
 AI Gateway by Myra Security is a multi-tenant reverse proxy built upon the Global Myra Security CDN. It sits between your applications and upstream AI provider application programming interfaces (APIs), enforcing policy, managing credentials, and recording every request — all in-process, with no external sidecar required.
 
+> 💡 **Note:** All policy enforcement — authentication, rate limiting, caching, and security checks — runs in-process with no additional network round trips, ensuring consistent low-latency enforcement at scale.
+
 ---
 
 ## Key features
@@ -60,8 +62,6 @@ flowchart TD
     B --> UP["Upstream Providers<br/>21 total"]
     C --> DB[("Config Store<br/>& Request Logs")]
 ```
-
-All policy enforcement — authentication, rate limiting, caching, and security checks — runs in-process with no additional network round trips, ensuring consistent low-latency enforcement at scale.
 
 | Capability | Description |
 |---|---|

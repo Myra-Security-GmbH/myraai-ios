@@ -52,39 +52,45 @@ The following events do not increment the failure counter:
 
 ## Interaction with retries and fallbacks
 
-The circuit breaker check runs before each upstream attempt. Consider a request with `retry_count: 2` and one fallback, where OpenAI's breaker is open:
+The circuit breaker check runs before each upstream attempt. Consider a request with `retry_count: 2` and one fallback, where the breaker of OpenAI is open:
 
-1. Check OpenAI breaker → **Open** → skip OpenAI entirely.
-2. Check Anthropic breaker → Closed → attempt Anthropic.
+1. Check the breaker of OpenAI → **Open** → skip OpenAI entirely.
+2. Check the breaker of Anthropic → Closed → attempt Anthropic.
 3. Anthropic succeeds → record success → return response.
 
 Without a circuit breaker, the gateway would exhaust two retry attempts on a failing OpenAI before trying Anthropic.
 
 ## Configuring the circuit breaker
 
-Proceed as follows to configure the circuit breaker for a gateway:
+Before you begin, ensure the following conditions are met:
+
+- ☑ You have admin access.
+- ☑ A gateway exists.
 
 ![Screenshot: Gateway configuration page with circuit breaker section](../assets/screenshots/gateway-circuit-breaker.png)
 *The circuit breaker configuration on the gateway detail page.*
 
+► Proceed as follows to configure the circuit breaker for a gateway:
+
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Configuration** tab.
-   - The configuration form opens.
+   ⇒ The configuration form opens.
 4. Toggle the **Circuit breaker enabled** toggle on.
-   - The circuit breaker configuration fields appear.
+   ⇒ The circuit breaker configuration fields appear.
 5. Enter a value in the **Failure threshold** text field.
-   - The failure threshold is set.
+   ⇒ The failure threshold is set.
 6. Enter a value in the **Window** text field (in seconds).
-   - The counting window is set.
+   ⇒ The counting window is set.
 7. Enter a value in the **Cooldown** text field (in milliseconds).
-   - The cooldown period is set.
+   ⇒ The cooldown period is set.
 8. If required, edit the **Failure status codes** field to customise which HTTP status codes count as failures.
-   - The status code list is updated.
+   ⇒ The status code list is updated.
 9. Click on the **Save** button.
-   - -> The circuit breaker configuration is saved and takes effect immediately.
+
+→ The circuit breaker configuration is saved and takes effect immediately.
 
 To configure the circuit breaker via the API:
 
@@ -102,7 +108,7 @@ To configure the circuit breaker via the API:
 
 ## Status API
 
-Check the current breaker state for all providers on a gateway:
+Check the current state of the breaker for all providers on a gateway:
 
 ```
 GET /admin/v1/gateways/{id}/circuit-breaker

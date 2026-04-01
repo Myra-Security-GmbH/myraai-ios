@@ -93,8 +93,7 @@ The `provider_base_urls` gateway config field lets you override the default upst
 }
 ```
 
-!!! note "Ollama requires a base URL"
-    Ollama has no default public endpoint. Set `provider_base_urls.ollama` to your local Ollama server URL.
+> 💡 **Note:** Ollama has no default public endpoint. Set `provider_base_urls.ollama` to your local Ollama server URL.
 
 ---
 

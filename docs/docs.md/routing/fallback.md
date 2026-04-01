@@ -35,8 +35,7 @@ flowchart LR
 
 A client error response from a provider (HTTP 4xx — for example, bad request, unauthorised, not found) is treated as a definitive failure. The gateway does not retry the request and does not attempt fallbacks. The error is returned to the caller immediately.
 
-!!! note
-    This prevents pointless retries: if your request is malformed or your API key is invalid, retrying against another provider will not help.
+> 💡 **Note:** This prevents pointless retries: if your request is malformed or your API key is invalid, retrying against another provider will not help.
 
 ## retry_count
 
@@ -81,31 +80,37 @@ Each entry in `fallbacks` is attempted once, in array order.
 
 ## Configuring fallback providers
 
-Proceed as follows to add fallback providers to a routing rule:
+Before you begin, ensure the following conditions are met:
+
+- ☑ You have admin access.
+- ☑ A gateway with at least one routing rule exists.
 
 ![Screenshot: Routing rule editor with fallbacks section visible](../assets/screenshots/routing-rule-fallbacks.png)
 *The fallbacks section of the routing rule editor.*
 
+► Proceed as follows to add fallback providers to a routing rule:
+
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Routing** tab.
-   - The rule list opens.
+   ⇒ The rule list opens.
 4. Click on the routing rule you want to edit.
-   - The rule editor opens.
+   ⇒ The rule editor opens.
 5. Scroll to the **Fallbacks** section.
-   - The fallbacks list is visible.
+   ⇒ The fallbacks list is visible.
 6. Click on the **Add Fallback** button.
-   - A new fallback row appears.
+   ⇒ A new fallback row appears.
 7. Select the fallback provider from the **Provider** drop-down list.
-   - The provider is set.
+   ⇒ The provider is set.
 8. Enter the model name in the **Model** text field.
-   - The model is set.
+   ⇒ The model is set.
 9. Repeat steps 6–8 for each additional fallback provider, in the order the gateway should try them.
-   - Each fallback is added to the list.
+   ⇒ Each fallback is added to the list.
 10. Click on the **Save** button.
-    - -> The routing rule is updated with the configured fallback chain.
+
+→ The routing rule is updated with the configured fallback chain.
 
 To create the same configuration via the API:
 
@@ -134,8 +139,7 @@ When a fallback triggers a provider change, the gateway automatically selects th
 
 A BYOK key must be stored for each provider in the fallback chain. If no key is found for a fallback provider, that fallback attempt fails with an authentication error.
 
-!!! warning
-    Ensure BYOK keys are stored for every provider in your fallback chains. A missing key for a fallback provider causes that fallback to fail with a `4xx`, which halts the chain immediately.
+> ⚠️ **Caution:** Ensure BYOK keys are stored for every provider in your fallback chains. A missing key for a fallback provider causes that fallback to fail with a `4xx`, which halts the chain immediately.
 
 ## 502 ALL_PROVIDERS_FAILED
 

@@ -44,7 +44,7 @@ This document is the Online Help for AI Gateway by Myra Security. It describes h
 - Semantic caching is not available; caching uses exact-match comparison only and requires no embedding provider
 - IPv6 addresses are not supported in the IP allowlist; only IPv4 CIDR ranges are accepted
 - Tier 2 guardrail sidecars (NLP PII Detector, Prompt Guard, PII Protector) must be separately deployed; they are not included in the base gateway installation
-- Cost tracking requires model pricing data in the gateway's internal model pricing table; requests for models without a known price are not tracked for spend
+- Cost tracking requires model pricing data in the internal model pricing table of the gateway; requests for models without a known price are not tracked for spend
 - Per-provider 4xx responses are not retried and do not trigger fallback chains
 
 ---

@@ -178,7 +178,7 @@ Up to 10 models are returned, ordered by request count descending.
 
 | **Field** | **Type** | **Description** |
 |---|---|---|
-| `user_id` | string | User UUID (from the auth token's `user_id` field). |
+| `user_id` | string | User UUID (from the `user_id` field of the auth token). |
 | `requests` | integer | Total requests attributed to this user. |
 | `blocked` | integer | Blocked request count. |
 | `cached` | integer | Cache hit count. |
@@ -256,8 +256,7 @@ curl "https://<your-gateway-host>/admin/v1/stats/timeseries?bucket=1h&n=24"
 | `blocked` | integer | Requests blocked in the bucket. |
 | `cost_usd` | number | Total cost in USD for the bucket. |
 
-!!! note
-    `ts` is in **Unix milliseconds** (not seconds) for direct compatibility with charting libraries that expect millisecond-precision timestamps (e.g. Chart.js, Recharts, Grafana).
+> 💡 **Note:** `ts` is in **Unix milliseconds** (not seconds) for direct compatibility with charting libraries that expect millisecond-precision timestamps (e.g. Chart.js, Recharts, Grafana).
 
 ### Example response
 
@@ -273,6 +272,8 @@ curl "https://<your-gateway-host>/admin/v1/stats/timeseries?bucket=1h&n=24"
 ---
 
 ## Example curl requests
+
+> ⭐ **Example:** The following examples show common query patterns for the timeseries endpoint.
 
 ### Today's requests by hour (last 24 hours)
 

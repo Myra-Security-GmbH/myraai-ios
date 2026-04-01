@@ -14,8 +14,7 @@ Routing rules let you redirect incoming requests to specific providers and model
 - All conditions within a single rule are combined with a logical AND.
 - If no rule matches, the gateway forwards the request using the provider and model specified in the original request.
 
-!!! note
-    Priority values do not need to be contiguous. Using increments of 10 (10, 20, 30 …) leaves room to insert rules between existing ones without renumbering.
+> 💡 **Note:** Priority values do not need to be contiguous. Using increments of 10 (10, 20, 30 …) leaves room to insert rules between existing ones without renumbering.
 
 ## Condition fields
 
@@ -47,74 +46,83 @@ Routing rules let you redirect incoming requests to specific providers and model
 
 ## Creating a routing rule
 
-Proceed as follows to create a routing rule:
+Before you begin, ensure the following conditions are met:
+
+- ☑ You have admin access.
+- ☑ A gateway exists.
 
 ![Screenshot: Routing rules tab with Add Rule button](../assets/screenshots/routing-rules-list.png)
 *The routing rules list on the gateway detail page.*
 
+► Proceed as follows to create a routing rule:
+
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Routing** tab.
-   - The rule list opens, showing all rules in priority order.
+   ⇒ The rule list opens, showing all rules in priority order.
 4. Click on the **Add Rule** button.
-   - The rule editor opens.
-5. Enter a value in the **Priority** text field (use increments of 10 to leave room for future insertions).
-   - The priority value is set.
-6. Click on the **Add Condition** button to add one or more conditions.
-   - A condition row appears.
-7. Select the field from the **Field** drop-down list.
-   - The field is set.
-8. Select the operator from the **Operator** drop-down list.
-   - The operator is set.
-9. Enter the match value in the **Value** text field.
-   - The condition is complete.
-10. Select the target provider from the **Provider** drop-down list in the **Actions** section.
-    - The provider is set.
-11. If required, enter a model name in the **Model** text field to rewrite the model name when forwarding.
-    - The model rewrite is set.
-12. Toggle the **Enabled** toggle on.
-    - The rule is marked active.
-13. Click on the **Save** button.
-    - -> The routing rule is created and appears in the rule list in priority order.
+   ⇒ The rule editor opens.
 
 ![Screenshot: Routing rule editor with conditions and actions filled in](../assets/screenshots/routing-rule-editor.png)
 *The routing rule editor.*
 
+5. Enter a value in the **Priority** text field (use increments of 10 to leave room for future insertions).
+   ⇒ The priority value is set.
+6. Click on the **Add Condition** button to add one or more conditions.
+   ⇒ A condition row appears.
+7. Select the field from the **Field** drop-down list.
+   ⇒ The field is set.
+8. Select the operator from the **Operator** drop-down list.
+   ⇒ The operator is set.
+9. Enter the match value in the **Value** text field.
+   ⇒ The condition is complete.
+10. Select the target provider from the **Provider** drop-down list in the **Actions** section.
+    ⇒ The provider is set.
+11. If required, enter a model name in the **Model** text field to rewrite the model name when forwarding.
+    ⇒ The model rewrite is set.
+12. Toggle the **Enabled** toggle on.
+    ⇒ The rule is marked active.
+13. Click on the **Save** button.
+
+→ The routing rule is created and appears in the rule list in priority order.
+
 ## Editing a routing rule
 
-Proceed as follows to edit a routing rule:
+► Proceed as follows to edit a routing rule:
 
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway that contains the rule.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Routing** tab.
-   - The rule list opens.
+   ⇒ The rule list opens.
 4. Click on the rule you want to edit.
-   - The rule editor opens with the current values.
+   ⇒ The rule editor opens with the current values.
 5. Edit the required fields.
-   - The fields are updated.
+   ⇒ The fields are updated.
 6. Click on the **Save** button.
-   - -> The routing rule is updated with the new values.
+
+→ The routing rule is updated with the new values.
 
 ## Deleting a routing rule
 
-Proceed as follows to delete a routing rule:
+► Proceed as follows to delete a routing rule:
 
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway that contains the rule.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Routing** tab.
-   - The rule list opens.
+   ⇒ The rule list opens.
 4. Click on the rule you want to delete.
-   - The rule editor opens.
+   ⇒ The rule editor opens.
 5. Click on the **Delete** button.
-   - A confirmation dialogue appears.
+   ⇒ A confirmation dialogue appears.
 6. Click on the **Confirm** button.
-   - -> The routing rule is deleted and removed from the rule list.
+
+→ The routing rule is deleted and removed from the rule list.
 
 ## Common patterns
 

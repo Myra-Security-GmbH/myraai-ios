@@ -22,9 +22,7 @@ Detection uses two independent layers. Each layer that produces a positive resul
 
 Setting `min_signals: 2` requires both a code fence and a structural heuristic match before the guardrail triggers. This reduces false positives in conversations that discuss programming topics without containing executable code — for example, a user asking "how does a SELECT statement work?" matches heuristics but does not produce a code fence, so it passes with `min_signals: 2`.
 
-!!! tip "Recommended values"
-    - `min_signals: 1` (default) — suitable when the traffic is not expected to contain any code discussion. Maximum sensitivity.
-    - `min_signals: 2` — suitable for general-purpose assistants where programming topics arise in natural prose. Reduces false positives on educational or explanatory content.
+> 💡 **Note:** `min_signals: 1` (default) is suitable when the traffic is not expected to contain any code discussion. Maximum sensitivity. `min_signals: 2` is suitable for general-purpose assistants where programming topics arise in natural prose. This reduces false positives on educational or explanatory content.
 
 ---
 
@@ -108,11 +106,11 @@ A message such as "explain how a for loop works in Python" matches structural he
 ![Screenshot: Code detection guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-contains-code-builder.png)
 *Code detection guardrail card — expanded view*
 
-Proceed as follows to configure the code detection guardrail in the Guardrail Builder:
+► Proceed as follows to configure the code detection guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Contains Code** button.
-    - A collapsed code detection guardrail card appears at the bottom of the list.
+   ⇒ A collapsed code detection guardrail card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block` or `flag`.
@@ -120,7 +118,8 @@ Proceed as follows to configure the code detection guardrail in the Guardrail Bu
 7. If required, select specific languages from the **Languages** list. Leave empty to detect all supported languages.
 8. If required, set the **Min Signals** field to `2` to reduce false positives on educational content.
 9. Click on the **Save Guardrails** button.
-    - -> The code detection guardrail is saved and appears in the execution plan.
+
+→ The code detection guardrail is saved and appears in the execution plan.
 
 ---
 

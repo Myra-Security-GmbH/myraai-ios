@@ -21,13 +21,12 @@ The `code` field is a stable machine-readable string. The `message` is informati
 
 ## Error codes
 
-!!! note "Admin API vs inference API error format"
-    Inference endpoint errors (`/v1/...`) use the structured format below with `code` and `message` fields. Admin API errors (`/admin/v1/...`) use a simpler flat format: `{"error": "message string"}`.
+> 💡 **Note:** Inference endpoint errors (`/v1/...`) use the structured format below with `code` and `message` fields. Admin API errors (`/admin/v1/...`) use a simpler flat format: `{"error": "message string"}`.
 
 | **Code** | **HTTP status** | **Description** |
 |---|---|---|
 | `unauthorized` | 401 | The request did not include a valid auth token, or the token has expired or been revoked. |
-| `forbidden` | 403 | The token is valid but does not have permission. Causes: `viewer` role on inference, or IP not in the gateway's `ip_allowlist`. |
+| `forbidden` | 403 | The token is valid but does not have permission. Causes: `viewer` role on inference, or IP not in the `ip_allowlist` of the gateway. |
 | `tenant_not_found` | 404 | The tenant or gateway slug in the URL does not exist. |
 | `invalid_request` | 400 | Malformed request body, missing required fields, or an unrecognised parameter value. |
 | `rate_limited` | 429 | The sliding-window rate limit was exceeded. The response includes `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `Retry-After` headers. |
@@ -53,11 +52,9 @@ data: {"id":"...","choices":[{"delta":{"content":"[Blocked: S1]"},"finish_reason
 data: [DONE]
 ```
 
-!!! note
-    Your client should inspect the chunk content for the block message if it processes streaming responses. The log entry for the request will have `blocked: true` and `blocked_by: "guardrail"` regardless of the HTTP status returned.
+> 💡 **Note:** Your client should inspect the chunk content for the block message if it processes streaming responses. The log entry for the request will have `blocked: true` and `blocked_by: "guardrail"` regardless of the HTTP status returned.
 
-!!! note "Retry-After semantics"
-    The `Retry-After` header contains the window duration in seconds (e.g. `60`), not an absolute timestamp. It represents the maximum time before the window resets — retrying after `Retry-After` seconds is guaranteed to succeed if no new requests have been made.
+> 💡 **Note:** The `Retry-After` header contains the window duration in seconds (e.g. `60`), not an absolute timestamp. It represents the maximum time before the window resets — retrying after `Retry-After` seconds is guaranteed to succeed if no new requests have been made.
 
 ### rate_limited — response headers
 
@@ -74,14 +71,15 @@ When `rate_limited` is returned, the response includes three headers:
 This error is returned only when all of the following are true:
 
 1. The primary provider returned 5xx errors on every attempt (up to `retry_count`).
-2. Every fallback provider in the routing rule's `fallbacks` array also failed.
+2. Every fallback provider in the `fallbacks` array of the routing rule also failed.
 
-4xx responses from a provider are **not** retried and are returned to the caller immediately (the provider's error is forwarded, not wrapped in `ALL_PROVIDERS_FAILED`).
+4xx responses from a provider are **not** retried and are returned to the caller immediately (the error of the provider is forwarded, not wrapped in `ALL_PROVIDERS_FAILED`).
 
-!!! warning
-    A `PROVIDER_ERROR` on a single provider with no fallbacks configured behaves identically to `ALL_PROVIDERS_FAILED` — both return `502`. Configure fallbacks in your routing rules to avoid single-provider outages surfacing as errors to your end users.
+> ⚠️ **Caution:** A `PROVIDER_ERROR` on a single provider with no fallbacks configured behaves identically to `ALL_PROVIDERS_FAILED` — both return `502`. Configure fallbacks in your routing rules to avoid single-provider outages surfacing as errors to your end users.
 
 ### invalid_request — common causes
+
+The following conditions commonly cause this error:
 
 - Missing required fields in a POST body (e.g. no `slug` when creating a tenant)
 - Unknown `bucket` value in `GET /stats/timeseries`
@@ -91,6 +89,8 @@ This error is returned only when all of the following are true:
 ---
 
 ## Example error responses
+
+> ⭐ **Example:** The following examples show the JSON body returned for common error scenarios.
 
 ### 401 — missing token
 

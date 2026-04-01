@@ -14,7 +14,7 @@ The admin dashboard is the first screen shown after logging into the admin UI. I
 
 ## Timeframe selector
 
-The top-right of the hero section contains the **Timeframe** drop-down list. Selecting a timeframe updates the hero card values and sparklines for that window.
+The top-right of the hero section contains the **Timeframe** drop-down list. Selecting a timeframe updates the values of the hero cards and the sparklines for that window.
 
 | Option | Window |
 |--------|--------|
@@ -100,8 +100,7 @@ The **Recent Guardrail Events** table shows the most recent blocked requests. It
 | Reason | Block reason string |
 | Provider | Intended provider |
 
-!!! note "Refresh behaviour"
-    The dashboard does not auto-refresh. Click the **Refresh** button to pull the latest data.
+> 💡 **Note:** The dashboard does not auto-refresh. Click the **Refresh** button to pull the latest data.
 
 ---
 

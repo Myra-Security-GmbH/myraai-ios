@@ -30,11 +30,9 @@ Three independent heuristic signals are computed against the response text. Each
 
 A single signal hit never blocks on its own, regardless of the configured action. Blocking requires at least two signals. This prevents false positives from short, terse, or numeric responses.
 
-!!! note "Short response handling"
-    Responses shorter than 20 characters are always passed without inspection. Very short responses (e.g. `"Yes."`) produce unreliable heuristic scores.
+> 💡 **Note:** Responses shorter than 20 characters are always passed without inspection. Very short responses (e.g. `"Yes."`) produce unreliable heuristic scores.
 
-!!! note "CJK text exemption"
-    The alpha-ratio check is skipped for responses where the dominant writing system is CJK (Chinese, Japanese, Korean). CJK text uses a character space that is legitimately low in Latin alpha characters.
+> 💡 **Note:** The alpha-ratio check is skipped for responses where the dominant writing system is CJK (Chinese, Japanese, Korean). CJK text uses a character space that is legitimately low in Latin alpha characters.
 
 ---
 
@@ -50,8 +48,7 @@ A single signal hit never blocks on its own, regardless of the configured action
 | `word_repeat_ratio` | number | `0.15` | Minimum unique-word ratio. Responses where fewer than this fraction of words are unique are flagged |
 | `alpha_ratio` | number | `0.6` | Minimum alphabetic character ratio. Responses that are mostly non-alphabetic are flagged |
 
-!!! note "Response-only guardrail"
-    The gibberish detector inspects model responses and cannot be targeted at `request` or `both`. The request phase always passes without inspection.
+> 💡 **Note:** The gibberish detector inspects model responses and cannot be targeted at `request` or `both`. The request phase always passes without inspection.
 
 ---
 
@@ -116,18 +113,19 @@ Tighter thresholds to catch more marginal responses — useful for structured-ou
 ![Screenshot: Gibberish detector card in the Guardrail Builder](../../assets/screenshots/guardrail-gibberish-builder.png)
 *Gibberish detector card — expanded view*
 
-Proceed as follows to configure the gibberish detector in the Guardrail Builder:
+► Proceed as follows to configure the gibberish detector in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Gibberish** button.
-    - A collapsed gibberish detector card appears at the bottom of the list.
+   ⇒ A collapsed gibberish detector card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block` or `flag`.
 6. Verify that the **Target** drop-down list is set to `response`.
 7. If required, adjust the **Entropy Threshold**, **Word Repeat Ratio**, and **Alpha Ratio** fields.
 8. Click on the **Save Guardrails** button.
-    - -> The gibberish detector is saved and appears in the execution plan.
+
+→ The gibberish detector is saved and appears in the execution plan.
 
 ---
 

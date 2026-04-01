@@ -13,20 +13,20 @@ Tracing is opt-in and has no effect on request latency. All writes are fire-and-
 
 ## Enabling tracing
 
-Proceed as follows to enable tracing on a gateway:
+► Proceed as follows to enable tracing on a gateway:
 
 1. Open the gateway in the admin UI.
-   - The gateway detail page appears.
+   ⇒ The gateway detail page appears.
 2. Click on the **Config** tab.
-   - The gateway configuration panel opens.
+   ⇒ The gateway configuration panel opens.
 3. Scroll to the **Tracing** section.
 4. Toggle the **Enabled** control to on.
 5. If required, toggle **Include bodies** to record the full message array in the `request_received` step.
-   - Enable this for debugging only. It stores prompt text in the trace table.
+   ⇒ Enable this for debugging only. It stores prompt text in the trace table.
 6. Click the **Save** button.
-   - The updated configuration is applied within seconds.
+   ⇒ The updated configuration is applied within seconds.
 
--> Tracing is active for all subsequent requests through this gateway.
+→ Tracing is active for all subsequent requests through this gateway.
 
 Alternatively, apply the configuration via the API:
 
@@ -186,18 +186,27 @@ These steps appear when web search is enabled on the gateway.
 
 ## Linking traces to log entries
 
-When gateway tracing is enabled, each log entry contains a `trace_id` field. Use it to retrieve the full execution trace:
+When gateway tracing is enabled, each log entry contains a `trace_id` field. Use it to retrieve the full execution trace.
 
-```bash
-# 1. Fetch a log entry
-curl "https://<your-gateway-host>/admin/v1/logs/log_abc789"
-# → { "trace_id": "trc_abc123", ... }
+► Proceed as follows to retrieve the trace for a log entry:
 
-# 2. Fetch the full trace
-curl "https://<your-gateway-host>/admin/v1/traces/trc_abc123"
-```
+1. Fetch the log entry to obtain the `trace_id`.
 
-`trace_id` is `null` in log entries when tracing was not active for that request.
+   ```bash
+   curl "https://<your-gateway-host>/admin/v1/logs/log_abc789"
+   ```
+
+   ⇒ The response contains a `trace_id` field, for example `"trc_abc123"`.
+
+2. Fetch the full trace using the `trace_id`.
+
+   ```bash
+   curl "https://<your-gateway-host>/admin/v1/traces/trc_abc123"
+   ```
+
+→ The full execution trace for the request is returned.
+
+> 💡 **Note:** `trace_id` is `null` in log entries when tracing was not active for that request.
 
 Playground requests always produce traces regardless of the gateway `tracing` config. Playground traces have `source: "playground"` and are accessible via the same `GET /traces/{id}` endpoint.
 
@@ -241,7 +250,7 @@ Add `otlp_endpoint` to your existing `tracing` block:
 | `sample_rate` | number | `1.0` | Fraction of requests to export (0.0 = never, 1.0 = always) |
 | `include_bodies` | boolean | `false` | When true, adds `aig.request_size_bytes` to spans |
 
-`enabled: true` alone activates only the internal pipeline trace (playground / Traces API). Setting `otlp_endpoint` enables OTLP export and implies tracing is active for that gateway.
+> 💡 **Note:** `enabled: true` alone activates only the internal pipeline trace (playground / Traces API). Setting `otlp_endpoint` enables OTLP export and implies tracing is active for that gateway.
 
 ### Span model
 
@@ -252,7 +261,7 @@ Each exported trace contains up to two spans:
 | Root span | SERVER (2) | Every request | `inference` |
 | Upstream span | CLIENT (3) | Only when an upstream LLM call was made | `upstream.<provider>` |
 
-The upstream span's `parentSpanId` is the root span's `spanId`, forming a parent-child relationship.
+The `parentSpanId` of the upstream span is the `spanId` of the root span, forming a parent-child relationship.
 
 ### Root span attributes (GenAI semantic conventions)
 
@@ -294,6 +303,8 @@ Use `sample_rate` to reduce export volume for high-traffic gateways:
 This exports roughly 10 % of requests. Sampling is applied after the request completes — the span is built and then discarded if the random draw exceeds `sample_rate`. There is no head-based sampling; every request processes normally.
 
 ### Configuration examples
+
+The following examples show how to configure OTLP export for common backends.
 
 **Jaeger (all-in-one)**
 

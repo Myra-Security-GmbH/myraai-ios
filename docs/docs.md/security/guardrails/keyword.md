@@ -24,11 +24,9 @@ The guardrail performs plain string matching. Each keyword in the `keywords` arr
 
 A single match from any keyword in the list is sufficient to trigger the configured action. All matched keyword names are recorded in the `detectors_fired` log field.
 
-!!! warning "Scrub is not supported"
-    The keyword guardrail does not support `action: "scrub"`. When `"scrub"` is configured, the guardrail treats it as `"flag"`. To redact matched content, use the [Regex guardrail](regex.md) or [NLP PII Detector](presidio.md) instead.
+> ⚠️ **Caution:** The keyword guardrail does not support `action: "scrub"`. When `"scrub"` is configured, the guardrail treats it as `"flag"`. To redact matched content, use the [Regex guardrail](regex.md) or [NLP PII Detector](presidio.md) instead.
 
-!!! tip "Reducing false positives"
-    For `action: block`, keep `whole_word: true` (the default) and use unambiguous, specific terms. Broad words such as `"attack"`, `"kill"`, or `"hack"` have high false positive rates — use `action: flag` for those.
+> 💡 **Note:** For `action: block`, keep `whole_word: true` (the default) and use unambiguous, specific terms. Broad words such as `"attack"`, `"kill"`, or `"hack"` have high false positive rates — use `action: flag` for those.
 
 ---
 
@@ -128,10 +126,7 @@ Set `whole_word: false` so inflected forms are also matched — for example `"by
 
 The Guardrail Builder includes a **Jailbreak (flag)** preset button that populates this configuration automatically.
 
-!!! warning "Limitations of keyword-based jailbreak detection"
-    Keyword matching catches only literal, unmodified phrases. Motivated users can bypass it by rephrasing, inserting characters, switching language, or injecting prompts via retrieved documents.
-
-    For coverage beyond literal phrases, combine this guardrail with [Prompt Guard](prompt-guard.md) (Llama Guard 3), which performs semantic classification of request content. Llama Guard 3 runs locally within Myra's certified infrastructure — no prompt data leaves the Myra perimeter.
+> ⚠️ **Caution:** Keyword matching catches only literal, unmodified phrases. Motivated users can bypass it by rephrasing, inserting characters, switching language, or injecting prompts via retrieved documents. For coverage beyond literal phrases, combine this guardrail with [Prompt Guard](prompt-guard.md) (Llama Guard 3), which performs semantic classification of request content. Llama Guard 3 runs locally within Myra's certified infrastructure — no prompt data leaves the Myra perimeter.
 
 ---
 
@@ -140,11 +135,11 @@ The Guardrail Builder includes a **Jailbreak (flag)** preset button that populat
 ![Screenshot: Keyword guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-keyword-builder.png)
 *Keyword guardrail card — expanded view*
 
-Proceed as follows to configure the keyword guardrail in the Guardrail Builder:
+► Proceed as follows to configure the keyword guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Keyword** button.
-    - A collapsed keyword guardrail card appears at the bottom of the list.
+   ⇒ A collapsed keyword guardrail card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block` or `flag`.
@@ -153,7 +148,8 @@ Proceed as follows to configure the keyword guardrail in the Guardrail Builder:
 8. Toggle the **Case Sensitive** switch if exact case matching is required.
 9. Toggle the **Whole Word** switch off if substring matching is required (e.g. for product codes).
 10. Click on the **Save Guardrails** button.
-    - -> The keyword guardrail is saved and appears in the execution plan.
+
+→ The keyword guardrail is saved and appears in the execution plan.
 
 ---
 

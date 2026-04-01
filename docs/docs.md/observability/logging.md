@@ -99,10 +99,10 @@ Logging happens after the response is sent. It adds no latency to the request pa
 
 ## Querying request logs
 
-Proceed as follows to query request logs via the API:
+► Proceed as follows to query request logs via the API:
 
 1. Send a `GET` request to `/admin/v1/logs` with an admin token.
-   - The endpoint accepts the following query parameters:
+   ⇒ The endpoint accepts the following query parameters:
 
    | Parameter | Description |
    |-----------|-------------|
@@ -119,19 +119,20 @@ Proceed as follows to query request logs via the API:
 
 2. If filtering blocked requests, add `blocked=true` to the query string.
 3. If filtering by time range, add `from` and `to` parameters in ISO 8601 format.
-   - The API returns a paginated list of log entries matching the filter.
+   ⇒ The API returns a paginated list of log entries matching the filter.
 
-```bash
-# Last 10 blocked requests
-curl "https://gateway.example.com/admin/v1/logs?blocked=true&limit=10" \
-  -H "x-aig-token: <admin-token>"
+> ⭐ **Example:**
+> ```bash
+> # Last 10 blocked requests
+> curl "https://gateway.example.com/admin/v1/logs?blocked=true&limit=10" \
+>   -H "x-aig-token: <admin-token>"
+>
+> # Requests for a specific gateway in the last hour
+> curl "https://gateway.example.com/admin/v1/logs?gateway_id={id}&from=2025-01-01T12:00:00Z" \
+>   -H "x-aig-token: <admin-token>"
+> ```
 
-# Requests for a specific gateway in the last hour
-curl "https://gateway.example.com/admin/v1/logs?gateway_id={id}&from=2025-01-01T12:00:00Z" \
-  -H "x-aig-token: <admin-token>"
-```
-
--> The API returns a paginated list of log entries matching the specified filters.
+→ The API returns a paginated list of log entries matching the specified filters.
 
 ---
 
@@ -141,7 +142,7 @@ Payload logging is controlled at two levels: per-gateway and per-request.
 
 ### Disabling payload logging at gateway level
 
-Proceed as follows to disable payload storage for all requests through a gateway:
+► Proceed as follows to disable payload storage for all requests through a gateway:
 
 1. Send a `PATCH` request to `/admin/v1/gateways/{id}` with the `log_payloads` field set to `false`.
 
@@ -152,13 +153,13 @@ Proceed as follows to disable payload storage for all requests through a gateway
      -d '{"config": {"log_payloads": false}}'
    ```
 
-   - The `prompt` and `response` fields are set to `null` for every subsequent request through that gateway.
+   ⇒ The `prompt` and `response` fields are set to `null` for every subsequent request through that gateway.
 
--> The gateway no longer stores prompt or response text in log entries.
+→ The gateway no longer stores prompt or response text in log entries.
 
 ### Suppressing payloads per request
 
-Proceed as follows to suppress payload logging for individual requests:
+► Proceed as follows to suppress payload logging for individual requests:
 
 1. Include the `x-aig-collect-log-payload` header set to `false` in the client request.
 
@@ -169,7 +170,7 @@ Proceed as follows to suppress payload logging for individual requests:
      ...
    ```
 
-   - The log entry is written with metadata only; `prompt` and `response` are set to `null`.
+   ⇒ The log entry is written with metadata only; `prompt` and `response` are set to `null`.
 
 2. If you want to skip the log entry entirely, include `x-aig-collect-log: false` instead.
 
@@ -180,12 +181,11 @@ Proceed as follows to suppress payload logging for individual requests:
      ...
    ```
 
-   - No log entry is written for this request.
+   ⇒ No log entry is written for this request.
 
--> The specified request is either logged without payload text, or not logged at all.
+→ The specified request is either logged without payload text, or not logged at all.
 
-!!! warning "Payload suppression is per-request"
-    `x-aig-collect-log-payload: false` only suppresses payloads for the single request that includes the header. It does not change the gateway-level `log_payloads` setting.
+> ⚠️ **Caution:** `x-aig-collect-log-payload: false` only suppresses payloads for the single request that includes the header. It does not change the gateway-level `log_payloads` setting.
 
 ---
 

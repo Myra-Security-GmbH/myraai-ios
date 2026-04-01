@@ -10,8 +10,7 @@ Admin API access is controlled at the network level. The admin interface is boun
 
 All endpoints under `/admin/v1/` are accessible to authenticated operators via your Myra Security account. The admin API is intended to be called by the admin UI or from automation scripts on your management network.
 
-!!! note "On-premise deployments"
-    For on-premise deployments, bind the admin listener to an internal network interface and restrict access to trusted hosts. Do not expose the admin API directly on a public interface without network-level controls in place.
+> 💡 **Note:** For on-premise deployments, bind the admin listener to an internal network interface and restrict access to trusted hosts. Do not expose the admin API directly on a public interface without network-level controls in place.
 
 ---
 
@@ -48,12 +47,21 @@ curl -X PATCH https://<your-gateway-host>/admin/v1/gateways/{id} \
   -d '{"config": {"auth_required": false}}'
 ```
 
-!!! warning
-    Never set `auth_required: false` in production. Any caller with network access to the gateway endpoint can make inference requests and incur provider costs.
+> ⚠️ **Caution:** Never set `auth_required: false` in production. Any caller with network access to the gateway endpoint can make inference requests and incur provider costs.
 
 ---
 
 ## Creating a token
+
+Before you begin, ensure the following conditions are met:
+
+- ☑ You have admin access to the gateway.
+- ☑ You have the gateway ID available.
+
+► Proceed as follows to create a token:
+
+1. Send a `POST` request to `/admin/v1/gateways/{gateway_id}/tokens` with the token configuration in the request body.
+   ⇒ The API creates the token and returns the plaintext value once.
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
@@ -77,10 +85,16 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
 }
 ```
 
-!!! warning
-    The `token` field in this response is the only time the plaintext value is available. Store it in your secrets manager immediately.
+> ⚠️ **Caution:** The `token` field in this response is the only time the plaintext value is available. Store it in your secrets manager immediately.
+
+→ The new token is ready for use in inference requests.
 
 ### Using the token
+
+► Proceed as follows to authenticate an inference request:
+
+1. Include one of the supported authentication headers in the request.
+   ⇒ The gateway validates the token against the stored hash.
 
 ```bash
 # x-aig-token header (preferred)
@@ -102,11 +116,13 @@ curl -X POST "https://<your-gateway-host>/v1/myapp/production/anthropic/chat/com
   -d '{"model":"claude-opus-4-6","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
+→ The API returns the requested inference response.
+
 ---
 
 ## Role-based access control
 
-Tokens are linked to a user record via `user_id`. The user's `role` determines what the token can do:
+Tokens are linked to a user record via `user_id`. The `role` of the user determines what the token can do:
 
 | **Role** | **Inference** | **Admin API** |
 |---|---|---|
@@ -114,8 +130,7 @@ Tokens are linked to a user record via `user_id`. The user's `role` determines w
 | `member` | Assigned gateways only | No access |
 | `viewer` | `403` on all requests | No access |
 
-!!! note
-    The `viewer` role is intended for operators who need read access to the admin UI dashboard only. Any inference request from a viewer-role token is rejected with `403 FORBIDDEN`.
+> 💡 **Note:** The `viewer` role is intended for operators who need read access to the admin UI dashboard only. Any inference request from a viewer-role token is rejected with `403 FORBIDDEN`.
 
 ---
 

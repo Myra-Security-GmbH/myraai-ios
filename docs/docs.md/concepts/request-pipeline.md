@@ -53,7 +53,7 @@ Accepts a token from (in priority order):
 2. `Authorization: Bearer <token>`
 3. `x-api-key` header (Anthropic SDK compatibility)
 
-Returns `401 UNAUTHORIZED` if no valid token is found, `403 FORBIDDEN` if the token's role does not permit inference requests. Skipped when the gateway's `auth_required` is `false`.
+> 💡 **Note:** Returns `401 UNAUTHORIZED` if no valid token is found, `403 FORBIDDEN` if the role of the token does not permit inference requests. Skipped when the `auth_required` setting of the gateway is `false`.
 
 ### Rate limiting
 
@@ -65,7 +65,7 @@ Checks per-token, per-tenant, and per-gateway spend budgets against the `spend_l
 
 ### IP allowlist
 
-Checks the client IP against the gateway's `ip_allowlist` CIDR list. An empty list allows all traffic. Returns `403 forbidden` on mismatch.
+Checks the client IP against the `ip_allowlist` CIDR list of the gateway. An empty list allows all traffic. Returns `403 forbidden` on mismatch.
 
 ---
 
@@ -94,7 +94,7 @@ Evaluates the ordered routing rules. The first matching rule wins and can overri
 
 Makes the HTTP call to the upstream provider. On a 5xx response, retries up to `retry_count` times (default: 2 total attempts). If all retries fail, walks the fallback chain. Returns `502 ALL_PROVIDERS_FAILED` if every option is exhausted.
 
-4xx responses from the provider are returned to the client immediately with no retry.
+> 💡 **Note:** 4xx responses from the provider are returned to the client immediately with no retry.
 
 For streaming requests (`"stream": true`), SSE chunks are flushed to the client as they arrive.
 

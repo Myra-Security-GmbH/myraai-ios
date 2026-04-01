@@ -34,7 +34,7 @@ The unified `POST /v1/{tenant}/{gateway}/compat/chat/completions` endpoint that 
 
 ## cost_usd
 
-The estimated cost of an inference request in US dollars, calculated from token counts multiplied by the model's per-token pricing in the gateway's pricing table. Stored as micro-dollars internally. Appears in log entries and in the Stats API. See [Models & Pricing API](../api-reference/models.md).
+The estimated cost of an inference request in US dollars, calculated from token counts multiplied by the per-token pricing of the model in the pricing table of the gateway. Stored as micro-dollars internally. Appears in log entries and in the Stats API. See [Models & Pricing API](../api-reference/models.md).
 
 ## DLP
 
@@ -42,7 +42,7 @@ The estimated cost of an inference request in US dollars, calculated from token 
 
 ## Exact-match cache
 
-The gateway's response caching mechanism. Responses are keyed on a SHA-256 hash of the provider name, model name, and canonicalised request body (excluding `stream`, `user`, and `metadata` fields). A cache hit returns the stored response without calling the upstream provider, saving cost and latency. Controlled by `config.cache_ttl`.
+The response caching mechanism of the gateway. Responses are keyed on a SHA-256 hash of the provider name, model name, and canonicalised request body (excluding `stream`, `user`, and `metadata` fields). A cache hit returns the stored response without calling the upstream provider, saving cost and latency. Controlled by `config.cache_ttl`.
 
 ## Fallback
 
@@ -58,7 +58,7 @@ The second-level entity in the tenant hierarchy. A gateway belongs to a tenant a
 
 ## Guardrail
 
-A configurable content inspection component in the gateway's two-tier pipeline. Tier 1 guardrails (regex, keyword) run in-process in sub-milliseconds. Tier 2 guardrails (presidio, prompt_guard, pii_protector) call external HTTP sidecars. Each guardrail has an action: `block`, `scrub`, or `flag`. See [Guardrail Pipeline](../security/guardrails.md).
+A configurable content inspection component in the two-tier pipeline of the gateway. Tier 1 guardrails (regex, keyword) run in-process in sub-milliseconds. Tier 2 guardrails (presidio, prompt_guard, pii_protector) call external HTTP sidecars. Each guardrail has an action: `block`, `scrub`, or `flag`. See [Guardrail Pipeline](../security/guardrails.md).
 
 ## Llama Guard
 
@@ -82,7 +82,7 @@ A short-lived token issued for the Playground UI. Expires after 10 minutes and i
 
 ## Provider
 
-An upstream AI inference service (e.g. OpenAI, Anthropic, Google Gemini, AWS Bedrock). The gateway supports 21 providers. Each provider has a native endpoint path and a registered adapter that translates the OpenAI-compatible request format to the provider's native wire format. See [Providers Overview](../providers/overview.md).
+An upstream AI inference service (e.g. OpenAI, Anthropic, Google Gemini, AWS Bedrock). The gateway supports 21 providers. Each provider has a native endpoint path and a registered adapter that translates the OpenAI-compatible request format to the native wire format of the provider. See [Providers Overview](../providers/overview.md).
 
 ## Quota
 
@@ -138,7 +138,7 @@ An HTTP-sidecar-based guardrail (presidio, prompt_guard, pii_protector) that sen
 
 ## Trace
 
-A structured step-by-step record of a single request's execution through the gateway pipeline. Each trace captures per-phase timing and data (auth, guardrail, upstream call, log) and is stored in the `playground_trace` table. Gateway traces are linked to log entries via the `trace_id` field. See [Traces API](../api-reference/traces.md).
+A structured step-by-step record of the execution of a single request through the gateway pipeline. Each trace captures per-phase timing and data (auth, guardrail, upstream call, log) and is stored in the `playground_trace` table. Gateway traces are linked to log entries via the `trace_id` field. See [Traces API](../api-reference/traces.md).
 
 ---
 

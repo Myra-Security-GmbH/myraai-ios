@@ -43,33 +43,39 @@ ACCESS_KEY_ID:SECRET_ACCESS_KEY:SESSION_TOKEN
 
 ## Adding AWS Bedrock credentials
 
-Proceed as follows to add AWS Bedrock credentials:
+Before you begin, ensure the following conditions are met:
+- ☑ You have an AWS IAM user or role with the `bedrock:InvokeModel` permission.
+- ☑ You have the `ACCESS_KEY_ID` and `SECRET_ACCESS_KEY` for the IAM principal.
+- ☑ The gateway exists and is accessible.
 
 ![Screenshot: BYOK key management page with Add Key form](../assets/screenshots/byok-add-key.png)
 *The key management page for a gateway.*
 
+► Proceed as follows to add AWS Bedrock credentials:
+
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Configuration** tab.
-   - The configuration form opens.
+   ⇒ The configuration form opens.
 4. Enter the AWS region in the **Bedrock region** text field (for example, `us-west-2`).
-   - The region is set.
+   ⇒ The region is set.
 5. Click on the **Save** button.
-   - The region configuration is saved.
+   ⇒ The region configuration is saved.
 6. Click on the **Keys** tab.
-   - The key management page opens.
+   ⇒ The key management page opens.
 7. Click on the **Add Key** button.
-   - The key form opens.
+   ⇒ The key form opens.
 8. Select `bedrock` from the **Provider** drop-down list.
-   - The provider is set.
+   ⇒ The provider is set.
 9. Enter `default` in the **Alias** text field (or a custom alias for multiple credential sets).
-   - The alias is set.
+   ⇒ The alias is set.
 10. Enter your AWS credentials in the **Key** text field using the format `ACCESS_KEY_ID:SECRET_ACCESS_KEY`.
-    - The key value is set.
+    ⇒ The key value is set.
 11. Click on the **Save** button.
-    - -> The credentials are encrypted and stored. The gateway uses them to sign all Bedrock requests on this gateway.
+
+→ The credentials are encrypted and stored. The gateway uses them to sign all Bedrock requests on this gateway.
 
 To configure the region and add credentials via the API:
 
@@ -105,8 +111,7 @@ curl -s -X POST "https://gateway.example.com/admin/v1/gateways/{gateway_id}/keys
   }'
 ```
 
-!!! warning "Rotate credentials regularly"
-    Bedrock credentials are stored encrypted but follow standard BYOK security practices. For production, prefer short-lived STS credentials or an IAM role if running on AWS infrastructure.
+> ⚠️ **Caution:** Bedrock credentials are stored encrypted but follow standard BYOK security practices. For production, prefer short-lived STS credentials or an IAM role if running on AWS infrastructure. Rotate credentials regularly.
 
 ## IAM requirements
 

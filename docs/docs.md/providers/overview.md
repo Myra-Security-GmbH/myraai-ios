@@ -37,13 +37,13 @@ AI Gateway by Myra Security supports 21 inference providers. Each provider is ac
 
 ### Native (provider-specific) endpoint
 
-Each provider has a dedicated path that preserves the provider's exact wire format:
+Each provider has a dedicated path that preserves the exact wire format of the provider:
 
 ```
 POST /v1/{tenant}/{gateway}/{provider}/chat/completions
 ```
 
-Examples:
+> ⭐ **Example:** The following table shows native endpoint paths per provider.
 
 | Provider | Native endpoint |
 |---|---|
@@ -54,7 +54,7 @@ Examples:
 | Azure OpenAI | `POST /v1/{tenant}/{gateway}/azure/chat/completions` |
 | Ollama | `POST /v1/{tenant}/{gateway}/ollama/chat/completions` |
 
-All providers accept the OpenAI chat completions request body. The gateway translates to each provider's native wire format automatically.
+All providers accept the OpenAI chat completions request body. The gateway translates to the native wire format of each provider automatically.
 
 ### Compat (unified) endpoint
 
@@ -103,8 +103,7 @@ When a request arrives at the compat endpoint, the gateway resolves the provider
 | `ollama/` | Ollama |
 | `command-`, `embed-` | Cohere |
 
-!!! note "OpenRouter as catch-all"
-    If no prefix matches and no `x-aig-provider` header is set, the request is forwarded to OpenRouter, which supports 300+ models. This makes the compat endpoint a universal adapter.
+> 💡 **Note:** If no prefix matches and no `x-aig-provider` header is set, the request is forwarded to OpenRouter, which supports 300+ models. This makes the compat endpoint a universal adapter.
 
 ## Provider base URL override
 
@@ -145,8 +144,7 @@ anthropic-beta: interleaved-thinking-2025-05-14
 
 This lets you pass provider-specific beta flags, versioning headers, or experimental features without waiting for gateway-level support.
 
-!!! warning "Header forwarding is unconditional"
-    All `x-aig-provider-*` headers are forwarded regardless of which provider handles the request. Sending an Anthropic-specific header to an OpenAI request is harmless but may produce unexpected upstream behaviour if the provider rejects unknown headers.
+> ⚠️ **Caution:** All `x-aig-provider-*` headers are forwarded regardless of which provider handles the request. Sending an Anthropic-specific header to an OpenAI request is harmless but may produce unexpected upstream behaviour if the provider rejects unknown headers.
 
 ## See also
 

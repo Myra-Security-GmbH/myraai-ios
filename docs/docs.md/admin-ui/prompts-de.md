@@ -14,14 +14,16 @@ Diese Ansicht enthält einsatzbereite Prompts für die **Chat**-Ansicht. Laden S
 
 Die meisten Prompts liefern bessere Ergebnisse, wenn Sie kurzen Kontext ergänzen — zum Beispiel die Branche, die Zielgruppe oder Ihre Rolle. Ersetzen Sie Platzhalter wie `[Name der Partei]` durch die tatsächlichen Angaben.
 
-Gehen Sie wie folgt vor, um einen Prompt von dieser Seite zu verwenden:
+► Gehen Sie wie folgt vor, um einen Prompt von dieser Seite zu verwenden:
 
 1. Navigieren Sie zu **Chat** in der Seitenleiste.
 2. Starten Sie ein neues Gespräch und wählen Sie Gateway und Modell aus.
 3. Hängen Sie ein Dokument über das **Büroklammer**-Symbol an oder ziehen Sie eine Datei in den Nachrichtenbereich.
 4. Kopieren Sie einen Prompt von dieser Seite und fügen Sie ihn in das Eingabefeld ein.
 5. Drücken Sie **Enter** oder klicken Sie auf **Senden**.
-   - -> Das Modell antwortet auf Basis des Dokumentinhalts.
+   ⇒ Das Modell antwortet auf Basis des Dokumentinhalts.
+
+→ Der Prompt wird an das Modell gesendet und eine Antwort erscheint im Chat.
 
 Unterstützte Dateiformate finden Sie unter [Chat — Datei importieren](chat.md#importing-a-file).
 

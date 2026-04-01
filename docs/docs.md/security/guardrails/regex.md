@@ -59,11 +59,9 @@ Reference these by name in the `patterns` array. False positive (FP) rates are b
 | `api_key` | API key patterns (key=value format) | Low — 0% FP |
 | `jwt` | JSON Web Tokens (ey... three-segment format) | Low — 0% FP |
 
-!!! tip "High-FP patterns and `action: block`"
-    `phone`, `ssn`, and `ip_address` have 11–26% false positive rates on general business text. Use `action: scrub` rather than `action: block` for these patterns, or switch to the [NLP PII Detector](presidio.md), which applies NLP context to reduce false detections.
+> 💡 **Note:** `phone`, `ssn`, and `ip_address` have 11–26% false positive rates on general business text. Use `action: scrub` rather than `action: block` for these patterns, or switch to the [NLP PII Detector](presidio.md), which applies NLP context to reduce false detections.
 
-!!! note "Credit card Luhn validation"
-    The `cc` pattern applies a Luhn checksum check in addition to format matching. This significantly reduces false positives from 16-digit numbers that happen to match a card number format but are not valid card numbers.
+> 💡 **Note:** The `cc` pattern applies a Luhn checksum check in addition to format matching. This significantly reduces false positives from 16-digit numbers that happen to match a card number format but are not valid card numbers.
 
 ---
 
@@ -79,8 +77,7 @@ Pattern sets are shorthand aliases that expand to multiple named patterns. Use t
 | `credentials` | `api_key`, `jwt` | Low — format-specific; 0% FP |
 | `pii_basic` | `email`, `phone`, `ssn` | **High** — includes `phone` and `ssn` |
 
-!!! tip "Prefer `scrub` over `block` for broad pattern sets"
-    `hipaa_structured`, `gdpr_structured`, and `pii_basic` all include high-FP patterns. Use `action: scrub` to redact matched content rather than `action: block`, which denies entire requests. `pci_pan` and `credentials` are low-FP and suitable for `action: block`.
+> 💡 **Note:** `hipaa_structured`, `gdpr_structured`, and `pii_basic` all include high-FP patterns. Use `action: scrub` to redact matched content rather than `action: block`, which denies entire requests. `pci_pan` and `credentials` are low-FP and suitable for `action: block`.
 
 ---
 
@@ -154,8 +151,7 @@ Uses `custom_patterns` to match formats not covered by the named pattern library
 }
 ```
 
-!!! note
-    `custom_patterns` and `patterns` can be combined in a single guardrail. Both lists are evaluated, and the configured `action` applies if any pattern from either list matches.
+> 💡 **Note:** `custom_patterns` and `patterns` can be combined in a single guardrail. Both lists are evaluated, and the configured `action` applies if any pattern from either list matches.
 
 ### Combine named patterns and custom patterns
 
@@ -178,11 +174,11 @@ Uses `custom_patterns` to match formats not covered by the named pattern library
 ![Screenshot: Regex guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-regex-builder.png)
 *Regex guardrail card — expanded view*
 
-Proceed as follows to configure the regex guardrail in the Guardrail Builder:
+► Proceed as follows to configure the regex guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Regex / Pattern** button.
-    - A collapsed regex guardrail card appears at the bottom of the list.
+   ⇒ A collapsed regex guardrail card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block`, `scrub`, or `flag`.
@@ -190,7 +186,8 @@ Proceed as follows to configure the regex guardrail in the Guardrail Builder:
 7. Select one or more named patterns or pattern sets from the **Patterns** list, or enter raw regex strings in the **Custom Patterns** field.
 8. If the action is `scrub` and you require a custom placeholder, enter the replacement text in the **Scrub Placeholder** text field.
 9. Click on the **Save Guardrails** button.
-    - -> The regex guardrail is saved and appears in the execution plan.
+
+→ The regex guardrail is saved and appears in the execution plan.
 
 ---
 

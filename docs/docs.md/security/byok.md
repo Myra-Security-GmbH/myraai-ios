@@ -33,8 +33,7 @@ curl https://your-gateway-host/v1/my-tenant/my-gateway/chat/completions \
   -d '{"model": "gpt-4o", "messages": [...]}'
 ```
 
-!!! note
-    If the specified alias does not exist for the provider, the gateway falls back to the `"default"` alias.
+> 💡 **Note:** If the specified alias does not exist for the provider, the gateway falls back to the `"default"` alias.
 
 ## AWS Bedrock key format
 
@@ -57,38 +56,39 @@ ACCESS_KEY_ID:SECRET_ACCESS_KEY:SESSION_TOKEN
 ![Screenshot: Add Key form on the Keys tab](../assets/screenshots/byok-add-key.png)
 *Add Key form*
 
-Proceed as follows to add a BYOK key:
+► Proceed as follows to add a BYOK key:
 
 1. Click on **Gateways** in the left sidebar.
-    - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-    - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Keys** tab.
 4. Click on the **Add Key** button.
-    - The Add Key form opens.
+   ⇒ The Add Key form opens.
 5. Select the provider from the **Provider** drop-down list.
 6. Enter an alias in the **Alias** text field. Leave the value as `default` unless you need multiple keys for the same provider.
 7. Paste the API key into the **Key** text field.
 8. Click on the **Save** button.
-    - -> The key is encrypted immediately. The plaintext is not stored. The key appears in the key list.
+
+→ The key is encrypted immediately. The plaintext is not stored. The key appears in the key list.
 
 ---
 
 ## Deleting a BYOK key
 
-Proceed as follows to delete a BYOK key:
+► Proceed as follows to delete a BYOK key:
 
 1. Click on **Gateways** in the left sidebar.
-    - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway whose key you want to delete.
-    - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Keys** tab.
-    - The key list appears.
+   ⇒ The key list appears.
 4. Click on the delete icon next to the key you want to remove.
-    - -> The key is deleted immediately.
 
-!!! warning
-    Deleting the `default` key for a provider causes all requests to that provider to fail until a new key is added.
+→ The key is deleted immediately.
+
+> ⚠️ **Caution:** Deleting the `default` key for a provider causes all requests to that provider to fail until a new key is added.
 
 ---
 

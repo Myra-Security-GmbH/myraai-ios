@@ -75,7 +75,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users \
 
 | **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
-| `email` | string | Yes | User's email address. Must be globally unique. |
+| `email` | string | Yes | Email address of the user. Must be globally unique. |
 | `name` | string | No | Display name. |
 | `role` | string | No | One of `tenant_admin`, `member`, or `viewer`. Defaults to `member`. Only platform `admin` users can create other `admin` accounts. |
 
@@ -120,8 +120,7 @@ curl -X DELETE https://<your-gateway-host>/admin/v1/users/{id}/budget
 | `rate_limit` | object \| null | `null` | Per-token sliding-window limit: `{"requests": N, "window_sec": S}`. Applied independently of the gateway-level rate limit — a request can be blocked by either. |
 | `budget_usd` | number \| null | `null` | Per-token spend cap in USD. `null` means no cap. |
 
-!!! note
-    Tokens are hashed with SHA-256 before storage. The plaintext `token` value is returned once in the creation response and cannot be retrieved later. If a token is lost, revoke it and create a new one. The list endpoint returns `token_hash`, not the plaintext value.
+> 💡 **Note:** Tokens are hashed with SHA-256 before storage. The plaintext `token` value is returned once in the creation response and cannot be retrieved later. If a token is lost, revoke it and create a new one. The list endpoint returns `token_hash`, not the plaintext value.
 
 ### Listing gateway tokens
 
@@ -197,8 +196,7 @@ curl -X DELETE https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens
 
 These endpoints are available to **any authenticated user** regardless of role (except `viewer`). They let `member` and `tenant_admin` users create and manage tokens for themselves without needing an admin to act on their behalf.
 
-!!! note
-    `viewer` users can call these endpoints but cannot create tokens with the `inference` scope because they have no inference access. Creating a token via `/me/tokens` automatically sets `scopes: ["inference"]`.
+> 💡 **Note:** `viewer` users can call these endpoints but cannot create tokens with the `inference` scope because they have no inference access. Creating a token via `/me/tokens` automatically sets `scopes: ["inference"]`.
 
 ### Listing own tokens
 
@@ -226,7 +224,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/me/tokens \
 
 | **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
-| `gateway_id` | string | Yes | Gateway the token grants access to. Must be accessible to the caller's tenant. |
+| `gateway_id` | string | Yes | Gateway the token grants access to. Must be accessible to the tenant of the caller. |
 | `label` | string | No | Human-readable name. |
 | `expires_at` | string \| null | No | ISO-8601 expiry timestamp. `null` = never. |
 | `budget_usd` | number \| null | No | Per-token spend cap in USD. |

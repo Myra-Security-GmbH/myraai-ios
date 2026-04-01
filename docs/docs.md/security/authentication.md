@@ -35,7 +35,7 @@ This order lets you use the gateway as a drop-in replacement for OpenAI-compatib
 
 ## Role-based access control
 
-Each token's `user_id` maps to a user record that has a `role` field:
+The `user_id` of each token maps to a user record that has a `role` field:
 
 | Role | Inference access | Admin panel access |
 |---|---|---|
@@ -44,8 +44,7 @@ Each token's `user_id` maps to a user record that has a `role` field:
 | `member` | All gateways in their tenant | Own tenant |
 | `viewer` | 403 on all inference requests | Own tenant (read-only) |
 
-!!! warning
-    The `viewer` role is intended for users who need read access to the admin UI only. Sending an inference request with a viewer-role token always returns `403 Forbidden`.
+> ⚠️ **Caution:** The `viewer` role is intended for users who need read access to the admin UI only. Sending an inference request with a viewer-role token always returns `403 Forbidden`.
 
 ## Token types
 
@@ -90,30 +89,29 @@ Select `inference` for standard API access.
 
 ## Creating a user
 
-!!! note "Cross-reference"
-    User creation is also covered in the [Users](../admin-ui/users.md) section of the admin UI documentation. The steps below are provided here for convenience.
+> 💡 **Note:** User creation is also covered in the [Users](../admin-ui/users.md) section of the admin UI documentation. The steps below are provided here for convenience.
 
 ![Screenshot: New User form in the admin UI](../assets/screenshots/user-new.png)
 *New User form*
 
-Proceed as follows to create a user:
+► Proceed as follows to create a user:
 
 1. Click on **Users** in the left sidebar.
-    - The user list opens.
+   ⇒ The user list opens.
 2. Click on the **New User** button.
-    - The New User form opens.
+   ⇒ The New User form opens.
 3. Select the tenant from the **Tenant** drop-down list.
 4. Enter the email address in the **Email** text field.
 5. If required, enter a display name in the **Name** text field.
 6. Select the role from the **Role** drop-down list:
-    - **tenant_admin** — manages users and settings within the tenant
-    - **member** — full access to all gateways in the tenant
-    - **viewer** — read-only admin UI access; cannot make inference requests
+   - **tenant_admin** — manages users and settings within the tenant
+   - **member** — full access to all gateways in the tenant
+   - **viewer** — read-only admin UI access; cannot make inference requests
 7. Click on the **Save** button.
-    - -> The user record is created and appears in the user list.
 
-!!! note
-    Platform `admin` users can also create other `admin` accounts.
+→ The user record is created and appears in the user list.
+
+> 💡 **Note:** Platform `admin` users can also create other `admin` accounts.
 
 ---
 
@@ -122,14 +120,14 @@ Proceed as follows to create a user:
 ![Screenshot: New Token form for a user](../assets/screenshots/token-new.png)
 *New Token form*
 
-Proceed as follows to create a token:
+► Proceed as follows to create a token:
 
 1. Click on **Users** in the left sidebar.
-    - The user list opens.
+   ⇒ The user list opens.
 2. Click on the user you want to create a token for.
-    - The user detail page opens.
+   ⇒ The user detail page opens.
 3. Click on the **New Token** button.
-    - The New Token form opens.
+   ⇒ The New Token form opens.
 4. Select the gateway from the **Gateway** drop-down list.
 5. Enter a label in the **Label** text field.
 6. If required, enter an expiry date in the **Expires At** field.
@@ -137,41 +135,43 @@ Proceed as follows to create a token:
 8. If required, configure a rate limit in the **Rate Limit** fields.
 9. Select the required scopes under **Scopes**. Select `inference` for standard API access.
 10. Click on the **Create** button.
-    - -> The token is created. The plaintext token is displayed once. Copy it now — it cannot be retrieved again.
+
+→ The token is created. The plaintext token is displayed once. Copy it now — it cannot be retrieved again.
 
 ---
 
 ## Revoking a token
 
-Proceed as follows to revoke a token:
+► Proceed as follows to revoke a token:
 
 1. Click on **Users** in the left sidebar.
-    - The user list opens.
+   ⇒ The user list opens.
 2. Click on the user whose token you want to revoke.
-    - The user detail page opens, showing the token list.
+   ⇒ The user detail page opens, showing the token list.
 3. Click on the delete icon next to the token.
-    - -> The token is revoked immediately. In-flight requests that have already passed the authentication phase complete normally.
+
+→ The token is revoked immediately. In-flight requests that have already passed the authentication phase complete normally.
 
 ---
 
 ## Disabling authentication
 
-!!! warning "Development use only"
-    Disabling authentication removes all access control from the gateway endpoint. Any caller with network access can make inference requests and incur costs. Never disable authentication in a production environment.
+> ⚠️ **Caution:** Disabling authentication removes all access control from the gateway endpoint. Any caller with network access can make inference requests and incur costs. Never disable authentication in a production environment.
 
 ![Screenshot: Config tab with Auth Required toggle](../assets/screenshots/gateway-config-auth.png)
 *Gateway Config tab — Auth Required toggle*
 
-Proceed as follows to disable authentication on a gateway:
+► Proceed as follows to disable authentication on a gateway:
 
 1. Click on **Gateways** in the left sidebar.
-    - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-    - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Config** tab.
 4. Toggle the **Auth Required** switch to off.
 5. Click on the **Save** button.
-    - -> Authentication is disabled for the gateway. All inference requests are accepted without a token.
+
+→ Authentication is disabled for the gateway. All inference requests are accepted without a token.
 
 ---
 

@@ -25,7 +25,7 @@ The configuration bar contains three selectors that determine which gateway hand
 | Control | Description |
 |---|---|
 | **Tenant** drop-down list | Selects the tenant whose gateways are available |
-| **Gateway** drop-down list | Selects a gateway within the chosen tenant. The gateway's provider keys, routing rules, and guardrails apply to every message. |
+| **Gateway** drop-down list | Selects a gateway within the chosen tenant. The provider keys, routing rules, and guardrails of the gateway apply to every message. |
 | **Model** drop-down list | Selects the model to use. Lists models from all providers with a key configured on the selected gateway. |
 
 Selections are stored in your browser's local storage and restored when you return to the view.
@@ -69,33 +69,35 @@ All messages in the active conversation are sent to the model on every turn, giv
 
 ## Starting a conversation
 
-Proceed as follows to start a new conversation:
+► Proceed as follows to start a new conversation:
 
 1. Click the **+ New Chat** button at the top of the conversation list.
-   - A new, empty conversation appears in the list and becomes active.
+   ⇒ A new, empty conversation appears in the list and becomes active.
 2. Select a tenant from the **Tenant** drop-down list in the configuration bar.
 3. Select a gateway from the **Gateway** drop-down list.
 4. Select a model from the **Model** drop-down list.
 5. Type your message in the input field at the bottom of the message area.
 6. Press **Enter** or click the **Send** button.
-   - A status indicator appears in the message area while the system processes the request.
-   - -> The model's response streams into the message area in real time.
+   ⇒ A status indicator appears in the message area while the system processes the request.
+
+→ The model's response streams into the message area in real time.
 
 ---
 
 ## Importing a file
 
-Proceed as follows to attach a file to a message:
-
 ![View: Chat — file attachment](../assets/screenshots/chat-file-attach.png)
 *View: Chat — file attachment*
 
+► Proceed as follows to attach a file to a message:
+
 1. Click the **paperclip** icon in the message input area, or drag a file from your desktop and drop it anywhere on the message area.
-   - A blue drop target appears when you drag a file over the message area.
-   - The attached file appears in the input area.
+   ⇒ A blue drop target appears when you drag a file over the message area.
+   ⇒ The attached file appears in the input area.
 2. Type a message to accompany the file, or leave the input field empty to let the model describe the file.
 3. Press **Enter** or click the **Send** button.
-   - -> The file is sent with your message. The model processes the file content and responds.
+
+→ The file is sent with your message. The model processes the file content and responds.
 
 The following file types are supported:
 
@@ -107,8 +109,7 @@ The following file types are supported:
 | Word document | `.docx` |
 | Spreadsheet | `.csv`, `.tsv`, `.xlsx`, `.xlsm`, `.ods` |
 
-!!! note "Word and spreadsheet files"
-    Word and spreadsheet files require an **Anthropic** provider key on the selected gateway. Claude reads and analyses the document content and can answer questions about it.
+> 💡 **Note:** Word and spreadsheet files require an **Anthropic** provider key on the selected gateway. Claude reads and analyses the document content and can answer questions about it.
 
 Attaching an unsupported file type shows an error message listing the supported formats.
 
@@ -116,13 +117,14 @@ Attaching an unsupported file type shows an error message listing the supported 
 
 ## Exporting a conversation
 
-Proceed as follows to export a conversation:
+► Proceed as follows to export a conversation:
 
 1. Open the conversation you want to export by clicking it in the conversation list.
 2. To export as Markdown: click the **Download Markdown** button in the configuration bar.
-   - -> The conversation downloads as a `.md` file. Attached images and documents appear as labelled references.
+   ⇒ The conversation downloads as a `.md` file. Attached images and documents appear as labelled references.
 3. To export as PDF: click the **Download PDF** button in the configuration bar.
-   - -> The conversation downloads as a formatted `.pdf` file.
+
+→ The conversation downloads as a formatted `.pdf` file.
 
 ---
 

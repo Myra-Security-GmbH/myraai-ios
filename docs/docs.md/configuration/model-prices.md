@@ -33,17 +33,17 @@ See [Cost Attribution](../concepts/cost-attribution.md) for details on how token
 
 Before you begin, ensure the following conditions are met:
 
-- You are logged in as a user with the `admin` role.
+- ☑ You are logged in as a user with the `admin` role.
 
 ![Screenshot: Model Prices page with New Price button](../assets/screenshots/model-prices-list.png)
 *The **Model Prices** page.*
 
-Proceed as follows to add a model price:
+► Proceed as follows to add a model price:
 
 1. Click on **Model Prices** in the left sidebar.
-   - The **Model Prices** page opens.
+   ⇒ The **Model Prices** page opens.
 2. Click on the **+ New Price** button.
-   - The **New Price** dialog opens.
+   ⇒ The **New Price** dialog opens.
 3. Select the provider from the **Provider** drop-down list.
 4. Enter the model name in the **Model** text field. Use the exact name as sent in inference requests.
 5. Enter the USD price per 1,000 input tokens in the **Input / 1K** text field.
@@ -51,9 +51,9 @@ Proceed as follows to add a model price:
 7. If required, enter the USD price per 1,000 prompt-cache write tokens in the **Cache Write / 1K** text field.
 8. If required, enter the USD price per 1,000 prompt-cache read tokens in the **Cache Read / 1K** text field.
 9. Click on the **Save** button.
-   - The new entry appears in the price table.
+   ⇒ The new entry appears in the price table.
 
--> The new model price is active immediately. The gateway uses it for all subsequent cost calculations for that model.
+→ The new model price is active immediately. The gateway uses it for all subsequent cost calculations for that model.
 
 ---
 
@@ -61,48 +61,46 @@ Proceed as follows to add a model price:
 
 Before you begin, ensure the following conditions are met:
 
-- You are logged in as a user with the `admin` role.
+- ☑ You are logged in as a user with the `admin` role.
 
 ![Screenshot: Model Prices page with a row selected for editing](../assets/screenshots/model-prices-edit.png)
 *A model price row open for editing.*
 
-Proceed as follows to edit a model price:
+► Proceed as follows to edit a model price:
 
 1. Click on **Model Prices** in the left sidebar.
-   - The **Model Prices** page opens.
+   ⇒ The **Model Prices** page opens.
 2. Click on the row for the model you want to update.
-   - The edit dialog opens with the current values pre-filled.
+   ⇒ The edit dialog opens with the current values pre-filled.
 3. Update the price fields as required.
 4. Click on the **Save** button.
-   - The updated prices are saved.
+   ⇒ The updated prices are saved.
 
--> The gateway uses the updated prices for all subsequent cost calculations for that model.
+→ The gateway uses the updated prices for all subsequent cost calculations for that model.
 
-!!! note
-    The provider and model name fields cannot be changed when editing. To correct a model name, delete the entry and add a new one.
+> 💡 **Note:** The provider and model name fields cannot be changed when editing. To correct a model name, delete the entry and add a new one.
 
 ---
 
 ## Deleting a model price
 
-!!! warning
-    Deleting a model price entry causes the gateway to fall back to built-in default prices for that model, or to log `cost_usd = 0` if no default is available.
+> ⚠️ **Caution:** Deleting a model price entry causes the gateway to fall back to built-in default prices for that model, or to log `cost_usd = 0` if no default is available.
 
 Before you begin, ensure the following conditions are met:
 
-- You are logged in as a user with the `admin` role.
+- ☑ You are logged in as a user with the `admin` role.
 
-Proceed as follows to delete a model price:
+► Proceed as follows to delete a model price:
 
 1. Click on **Model Prices** in the left sidebar.
-   - The **Model Prices** page opens.
+   ⇒ The **Model Prices** page opens.
 2. Select the row for the model you want to delete.
 3. Click on the delete action for that row.
-   - A confirmation prompt appears.
+   ⇒ A confirmation prompt appears.
 4. Confirm the deletion.
-   - The entry is removed from the price table.
+   ⇒ The entry is removed from the price table.
 
--> The model price entry is permanently deleted.
+→ The model price entry is permanently deleted.
 
 ---
 

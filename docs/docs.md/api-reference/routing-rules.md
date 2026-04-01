@@ -74,6 +74,8 @@ Each condition object specifies a `field`, an `op` (operator), and a `value` to 
 
 ### Examples
 
+> ⭐ **Example:** The following examples show condition objects for common matching scenarios.
+
 Match all requests for models starting with `gpt-`:
 
 ```json
@@ -108,12 +110,13 @@ Match all requests (catch-all rule, empty conditions):
 | `model` | string | Rewrite the model name sent to the provider. If omitted, the original model name is used. |
 | `fallbacks` | array | Ordered fallback chain. Each entry is `{"provider": "...", "model": "..."}`. Used when the primary fails after all retries. |
 
-!!! note
-    Fallbacks are walked in order. Each fallback in the chain is attempted once. Only the primary provider uses `retry_count`. If all fallbacks fail, the gateway returns `502 ALL_PROVIDERS_FAILED`.
+> 💡 **Note:** Fallbacks are walked in order. Each fallback in the chain is attempted once. Only the primary provider uses `retry_count`. If all fallbacks fail, the gateway returns `502 ALL_PROVIDERS_FAILED`.
 
 ---
 
 ## Examples
+
+> ⭐ **Example:** The following examples show complete API requests for common rule management operations.
 
 ### Listing rules
 
@@ -227,8 +230,7 @@ Rules are evaluated in ascending priority order. The **first matching rule wins*
 
 If no rule matches the request, the provider and model from the original request URL or body are used as-is.
 
-!!! note
-    Rules are cached for 30 seconds in in-process shared memory. Changes take effect within one cache TTL cycle. In a multi-worker deployment, each worker refreshes independently.
+> 💡 **Note:** Rules are cached for 30 seconds in in-process shared memory. Changes take effect within one cache TTL cycle. In a multi-worker deployment, each worker refreshes independently.
 
 ---
 

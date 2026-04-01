@@ -29,8 +29,7 @@ The guardrail inspects model responses only. It cannot be targeted at `request` 
 | `target` | string | `"response"` | Must be `"response"` — this guardrail only inspects model responses |
 | `schema` | object | — | JSON schema descriptor — see [Schema properties](#schema-properties) below |
 
-!!! note "Response-only guardrail"
-    Set `target: "response"` or omit `target` — `"response"` is the default. Targeting `request` or `both` is not supported.
+> 💡 **Note:** Set `target: "response"` or omit `target` — `"response"` is the default. Targeting `request` or `both` is not supported.
 
 ---
 
@@ -113,18 +112,19 @@ Violations are recorded in `detectors_fired` and `block_reason` on the log entry
 ![Screenshot: JSON Schema guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-json-schema-builder.png)
 *JSON Schema guardrail card — expanded view*
 
-Proceed as follows to configure the JSON Schema guardrail in the Guardrail Builder:
+► Proceed as follows to configure the JSON Schema guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ JSON Schema** button.
-    - A collapsed JSON Schema guardrail card appears at the bottom of the list.
+   ⇒ A collapsed JSON Schema guardrail card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block` or `flag`.
 6. Verify that the **Target** drop-down list is set to `response`.
 7. Enter the JSON schema in the **Schema** field, including the `required` array and the `properties` map.
 8. Click on the **Save Guardrails** button.
-    - -> The JSON Schema guardrail is saved and appears in the execution plan.
+
+→ The JSON Schema guardrail is saved and appears in the execution plan.
 
 ---
 

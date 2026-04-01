@@ -20,12 +20,11 @@ Use PII Protector when the AI model needs contextual continuity — the ability 
 2. **Provider call** — The upstream AI provider receives only the tokenised body. Real PII values are never transmitted.
 3. **Response phase** — All tokens present in the response are replaced with their original values before the response is sent to the client.
 
-**Example:** a prompt containing `"My SSN is 123-45-6789"` is forwarded to the provider as `"My SSN is [MYRA-REDACT-US_SSN:a3f1c2:1]"`. If the model echoes the token back, the client receives the response with `123-45-6789` restored.
+> ⭐ **Example:** A prompt containing `"My SSN is 123-45-6789"` is forwarded to the provider as `"My SSN is [MYRA-REDACT-US_SSN:a3f1c2:1]"`. If the model echoes the token back, the client receives the response with `123-45-6789` restored.
 
 The detection engine automatically identifies the language of each request and applies the appropriate NLP model. English and German are fully supported; other Latin-script languages are handled on a best-effort basis. No `language` field is required.
 
-!!! note "No `action` or `target` fields"
-    PII Protector does not have an `action` or `target` field. It always tokenises on the request phase and restores on the response phase. Both phases are always active.
+> 💡 **Note:** PII Protector does not have an `action` or `target` field. It always tokenises on the request phase and restores on the response phase. Both phases are always active.
 
 ---
 
@@ -106,13 +105,9 @@ The same original value appearing multiple times in a single request always maps
 
 ## Limitations
 
-!!! warning "Streaming responses"
-    PII Protector does not restore tokens in streaming responses. When a request is streamed, the response body is not buffered by the gateway, so token restoration is skipped. The client sees raw tokens such as `[MYRA-REDACT-US_SSN:a3f1c2:1]` in the streamed output instead of the original values.
+> ⚠️ **Caution:** PII Protector does not restore tokens in streaming responses. When a request is streamed, the response body is not buffered by the gateway, so token restoration is skipped. The client sees raw tokens such as `[MYRA-REDACT-US_SSN:a3f1c2:1]` in the streamed output instead of the original values. Privacy is fully preserved — the AI model never received the real PII — but the user experience is degraded for streaming. Use non-streaming requests (`"stream": false`) when complete token restoration is required.
 
-    Privacy is fully preserved — the AI model never received the real PII — but the user experience is degraded for streaming. Use non-streaming requests (`"stream": false`) when complete token restoration is required.
-
-!!! note "Model paraphrasing"
-    If the model paraphrases rather than echoing a token verbatim, restoration is skipped for that value. Privacy is maintained (the model never saw the real PII), but the response does not contain the original value in that position.
+> 💡 **Note:** If the model paraphrases rather than echoing a token verbatim, restoration is skipped for that value. Privacy is maintained (the model never saw the real PII), but the response does not contain the original value in that position.
 
 ---
 
@@ -181,11 +176,11 @@ Use `allow_list` to prevent known non-PII values from being replaced with tokens
 ![Screenshot: PII Protector card in the Guardrail Builder](../../assets/screenshots/guardrail-pii_protector-builder.png)
 *PII Protector card — expanded view*
 
-Proceed as follows to configure PII Protector in the Guardrail Builder:
+► Proceed as follows to configure PII Protector in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ PII Protector** button.
-    - A collapsed PII Protector card appears at the bottom of the list.
+   ⇒ A collapsed PII Protector card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. If required, select specific entity types from the **Entities** list. Leave empty to tokenise all supported types.
@@ -194,7 +189,8 @@ Proceed as follows to configure PII Protector in the Guardrail Builder:
 8. Toggle the **Skip System Messages** switch off if system and assistant messages also require scanning.
 9. Toggle the **Fail Open** switch to `false` if the sidecar must be a hard dependency.
 10. Click on the **Save Guardrails** button.
-    - -> PII Protector is saved and appears in the execution plan.
+
+→ PII Protector is saved and appears in the execution plan.
 
 ---
 

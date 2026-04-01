@@ -17,8 +17,7 @@ Three fields must be set in the gateway config before Azure requests will succee
 | `azure_deployment` | string | `null` | The deployment name created in Azure AI Studio. Overrides the `model` field in the request path. |
 | `azure_api_version` | string | `"2024-02-01"` | API version appended as `?api-version=` query parameter |
 
-!!! warning "`azure_endpoint` and `azure_deployment` are required"
-    Requests to the Azure provider will fail with a configuration error if either field is null. Ensure both are set before sending inference requests.
+> ⚠️ **Caution:** Requests to the Azure provider will fail with a configuration error if either `azure_endpoint` or `azure_deployment` is null. Ensure both are set before sending inference requests.
 
 ## Authentication
 
@@ -26,25 +25,31 @@ Azure uses an `api-key` header rather than a `Bearer` token. The gateway applies
 
 ## Configuring Azure OpenAI
 
-Proceed as follows to configure Azure OpenAI on a gateway:
+Before you begin, ensure the following conditions are met:
+- ☑ You have an Azure OpenAI resource with at least one deployment created in Azure AI Studio.
+- ☑ You have the Azure API key for the resource.
+- ☑ The gateway exists and is accessible.
 
 ![Screenshot: Gateway configuration page with Azure fields visible](../assets/screenshots/gateway-config-azure.png)
 *Azure OpenAI configuration fields on the gateway detail page.*
 
+► Proceed as follows to configure Azure OpenAI on a gateway:
+
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Configuration** tab.
-   - The configuration form opens.
+   ⇒ The configuration form opens.
 4. Enter your Azure OpenAI resource endpoint in the **Azure endpoint** text field (for example, `https://myresource.openai.azure.com`).
-   - The endpoint is set.
+   ⇒ The endpoint is set.
 5. Enter your Azure deployment name in the **Azure deployment** text field.
-   - The deployment is set.
+   ⇒ The deployment is set.
 6. Enter the API version in the **Azure API version** text field (for example, `2024-05-01-preview`).
-   - The API version is set.
+   ⇒ The API version is set.
 7. Click on the **Save** button.
-   - -> The Azure configuration is saved.
+
+→ The Azure configuration is saved.
 
 To configure the gateway via the API:
 
@@ -63,24 +68,28 @@ curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
 
 ## Adding an Azure API key
 
-Proceed as follows to add an Azure API key:
+Before you begin, ensure the following conditions are met:
+- ☑ The Azure OpenAI gateway configuration (endpoint, deployment, API version) is already saved.
+
+► Proceed as follows to add an Azure API key:
 
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Keys** tab.
-   - The key management page opens.
+   ⇒ The key management page opens.
 4. Click on the **Add Key** button.
-   - The key form opens.
+   ⇒ The key form opens.
 5. Select `azure` from the **Provider** drop-down list.
-   - The provider is set.
+   ⇒ The provider is set.
 6. Enter `default` in the **Alias** text field.
-   - The alias is set.
+   ⇒ The alias is set.
 7. Enter your Azure API key in the **Key** text field.
-   - The key value is set.
+   ⇒ The key value is set.
 8. Click on the **Save** button.
-   - -> The key is encrypted and stored. The gateway sends it as an `api-key` header to Azure.
+
+→ The key is encrypted and stored. The gateway sends it as an `api-key` header to Azure.
 
 To add the key via the API:
 

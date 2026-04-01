@@ -44,7 +44,7 @@ The guardrail performs exact string matching against a built-in list of 18 attac
 }
 ```
 
-This is the complete configuration needed. The Guardrail Builder's **+ Jailbreak** button creates this configuration and displays the active phrase list in the editor.
+This is the complete configuration needed. The **+ Jailbreak** button in the Guardrail Builder creates this configuration and displays the active phrase list in the editor.
 
 ---
 
@@ -108,18 +108,19 @@ The jailbreak guardrail catches literal, unmodified phrases only. Creative rephr
 ![Screenshot: Jailbreak guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-jailbreak-builder.png)
 *Jailbreak guardrail card — expanded view*
 
-Proceed as follows to configure the jailbreak guardrail in the Guardrail Builder:
+► Proceed as follows to configure the jailbreak guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Jailbreak** button.
-    - A collapsed jailbreak guardrail card appears at the bottom of the list, pre-configured with the 18 built-in phrases.
+   ⇒ A collapsed jailbreak guardrail card appears at the bottom of the list, pre-configured with the 18 built-in phrases.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block` or `flag`.
 6. Select the target from the **Target** drop-down list: `request`, `response`, or `both`.
 7. If required, enter custom phrases in the **Keywords** field to replace the built-in list.
 8. Click on the **Save Guardrails** button.
-    - -> The jailbreak guardrail is saved and appears in the execution plan.
+
+→ The jailbreak guardrail is saved and appears in the execution plan.
 
 ---
 

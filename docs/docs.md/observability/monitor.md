@@ -44,7 +44,7 @@ Four cards break down activity across time windows:
 | Today | From midnight UTC to now |
 | Yesterday | The previous calendar day |
 
-Each card shows:
+Each card shows the following metrics:
 
 | Metric | Description |
 |--------|-------------|

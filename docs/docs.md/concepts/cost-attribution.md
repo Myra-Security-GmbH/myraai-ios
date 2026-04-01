@@ -23,13 +23,13 @@ cost_usd += (cache_write_tokens / 1000) × cache_write_per_1k
           + (cache_read_tokens  / 1000) × cache_read_per_1k
 ```
 
-Token counts come from the provider's response. For streaming requests, they are accumulated across all chunks and recorded when the stream ends.
+Token counts come from the provider response. For streaming requests, they are accumulated across all chunks and recorded when the stream ends.
 
 ---
 
 ## Anthropic prompt caching fields
 
-Anthropic's prompt caching feature writes frequently-used content (system prompts, document context) to a cache and bills cache reads at a steep discount. AI Gateway tracks and reports these fields separately:
+The prompt caching feature of Anthropic writes frequently-used content (system prompts, document context) to a cache and bills cache reads at a steep discount. AI Gateway tracks and reports these fields separately:
 
 | **Field** | **Typical price relative to input** |
 |-----------|-------------------------------------|

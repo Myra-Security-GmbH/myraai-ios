@@ -40,29 +40,36 @@ When your session expires, the system redirects you to the login page. If you na
 
 ## Logging in with Google SSO
 
-Proceed as follows to log in with Google SSO:
+Before you begin, ensure the following conditions are met:
+
+- ☑ Your email address already exists as a user in the system. Contact your administrator if you do not have access.
+
+► Proceed as follows to log in with Google SSO:
 
 1. Navigate to `/login`.
 2. Click the **Continue with Google** button.
-   - The system redirects you to Google's consent screen.
+   ⇒ The system redirects you to Google's consent screen.
 3. Authenticate with your Google account.
-   - -> The system returns you to the dashboard.
 
-!!! note
-    Your email address must already exist as a user in the system. Contact your administrator if you do not have access.
+→ The system returns you to the dashboard.
 
 ---
 
 ## Logging in with email OTP
 
-Proceed as follows to log in with an email one-time code:
+Before you begin, ensure the following conditions are met:
+
+- ☑ Your email address already exists as a user in the system.
+
+► Proceed as follows to log in with an email one-time code:
 
 1. Navigate to `/login`.
 2. Click the **Continue with Email code** button.
 3. Enter your email address in the **Email** text field.
-4. Optional: Check **Stay logged in for 30 days on this device** to extend your session to 30 days.
+4. If required, check **Stay logged in for 30 days on this device** to extend your session to 30 days.
 5. Click the **Send code** button.
-   - The system sends a 6-digit code to your email address. The code expires after 15 minutes and can only be used once.
+   ⇒ The system sends a 6-digit code to your email address. The code expires after 15 minutes and can only be used once.
 6. Enter the code in the **One-time code** text field.
 7. Click the **Verify** button.
-   - -> The system creates your session and redirects you to the dashboard.
+
+→ The system creates your session and redirects you to the dashboard.

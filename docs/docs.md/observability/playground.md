@@ -16,11 +16,17 @@ The **Playground** view lets you send prompts to one or more models simultaneous
 
 The playground supports up to four model panels side by side. All panels receive the same prompt at the same time when you click the **Send** button.
 
-- Click the **+ Add Model** button to open a new panel (up to four).
-- Each panel has its own provider and model selector.
-- Response cards display in a horizontal scroll layout on wide screens and stack on mobile.
+► Proceed as follows to add a model panel:
 
-The multi-panel layout supports comparing:
+1. Click the **+ Add Model** button.
+   ⇒ A new panel opens (up to four panels total).
+2. Select a provider and model in the new panel.
+
+→ The new panel is ready to receive prompts.
+
+Each panel has its own provider and model selector. Response cards display in a horizontal scroll layout on wide screens and stack on mobile.
+
+The multi-panel layout supports comparing the following configurations:
 
 - Different models from the same provider (e.g. `gpt-4o` vs `gpt-4o-mini`)
 - The same model across different providers (e.g. Llama 3 on Groq vs Together AI vs Fireworks)
@@ -39,7 +45,7 @@ The following settings are shared across all panels in a session:
 | Max tokens | Integer input | Maximum output tokens per response |
 | Web search | Toggle | Enables web search grounding (when enabled by your account configuration) |
 
-Settings apply to every panel simultaneously. To set different temperatures for different panels, use separate sessions.
+> 💡 **Note:** Settings apply to every panel simultaneously. To set different temperatures for different panels, use separate sessions.
 
 ---
 
@@ -49,7 +55,7 @@ Responses stream token-by-token using server-sent events (SSE). Each panel rende
 
 ### Status bar
 
-Each panel has a status bar beneath the response that shows, after the response completes:
+Each panel has a status bar beneath the response that shows the following fields after the response completes:
 
 | Field | Description |
 |-------|-------------|
@@ -89,7 +95,7 @@ The playground saves its configuration in the browser automatically. The followi
 | Temperature | Temperature slider value |
 | Max tokens | Max tokens input value |
 
-Conversation history is **not** persisted — each page load starts with an empty conversation.
+> 💡 **Note:** Conversation history is **not** persisted — each page load starts with an empty conversation.
 
 ---
 

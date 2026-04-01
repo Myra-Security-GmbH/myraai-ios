@@ -37,23 +37,43 @@ POST /v1/{tenant}/{gateway}/compat/chat/completions
 
 with `"model": "ollama/llama3.2"`.
 
-## Configuring Ollama as a provider
+## Prerequisites
 
-Proceed as follows to configure Ollama on a gateway:
+Before you begin, ensure the following conditions are met:
+- ☑ Ollama is installed and running on the target host.
+- ☑ The required model has been pulled on the Ollama instance.
+- ☑ The gateway exists and is accessible.
+
+```bash
+# Install Ollama (Linux)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull a model
+ollama pull llama3.2
+ollama pull mistral
+ollama pull qwen2.5:14b
+```
+
+Run `ollama list` to see locally available models.
+
+## Configuring Ollama as a provider
 
 ![Screenshot: Gateway configuration page with provider base URLs section](../assets/screenshots/gateway-config-base-urls.png)
 *The provider base URL configuration on the gateway detail page.*
 
+► Proceed as follows to configure Ollama on a gateway:
+
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Configuration** tab.
-   - The configuration form opens.
+   ⇒ The configuration form opens.
 4. Enter the Ollama base URL in the **Ollama base URL** text field (default: `http://localhost:11434`).
-   - The base URL is set.
+   ⇒ The base URL is set.
 5. Click on the **Save** button.
-   - -> The Ollama configuration is saved. The gateway routes Ollama requests to the specified host.
+
+→ The Ollama configuration is saved. The gateway routes Ollama requests to the specified host.
 
 To configure via the API (local instance):
 
@@ -87,7 +107,7 @@ curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
 
 ## Authentication
 
-Ollama does not use API keys. Do not store a BYOK key for this provider. If the gateway's `auth_required` setting is `false` (common for local development), no headers are required at all:
+Ollama does not use API keys. Do not store a BYOK key for this provider. If the `auth_required` setting of the gateway is `false` (common for local development), no headers are required at all:
 
 ```bash
 curl -s -X POST \
@@ -99,8 +119,7 @@ curl -s -X POST \
   }'
 ```
 
-!!! note "`auth_required` for local development"
-    For purely local development, set `"auth_required": false` in the gateway config to avoid needing auth tokens. Do not use this setting in any internet-accessible deployment.
+> 💡 **Note:** For purely local development, set `"auth_required": false` in the gateway config to avoid needing auth tokens. Do not use this setting in any internet-accessible deployment.
 
 ## Request examples
 
@@ -135,22 +154,6 @@ curl -s -X POST \
     "stream": true
   }'
 ```
-
-## Prerequisites
-
-Ollama must be installed and the target model pulled before making requests. If the model is not pulled, Ollama returns a 404 which the gateway surfaces as-is.
-
-```bash
-# Install Ollama (Linux)
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Pull a model
-ollama pull llama3.2
-ollama pull mistral
-ollama pull qwen2.5:14b
-```
-
-Run `ollama list` to see locally available models.
 
 ## See also
 

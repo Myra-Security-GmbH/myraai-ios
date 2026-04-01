@@ -74,7 +74,7 @@ A text-input filter appears above the tab bar. Type to search by name or ID with
 | Tenant | Tenant slug |
 | Requests | Total requests |
 | Cost | Total cost in USD |
-| Share | Proportional bar showing this tenant's share of total cost |
+| Share | Proportional bar showing the share of total cost for this tenant |
 | Cache | Cache hit rate (%) |
 | Errors | Error rate as a percentage; badge shown only when errors > 0 |
 | Blocked | Blocked request count; badge shown only when > 0 |
@@ -91,7 +91,7 @@ Clicking a tenant row opens the [tenant detail panel](#tenant-detail-panel).
 | Tenant | Owning tenant |
 | Requests | Total requests |
 | Cost | Total cost in USD |
-| Share | Proportional bar showing this gateway's share of total cost |
+| Share | Proportional bar showing the share of total cost for this gateway |
 | Cache | Cache hit rate (%) |
 | Errors | Error rate; badge shown when errors > 0 |
 | Blocked | Blocked request count; badge shown when > 0 |
@@ -107,7 +107,7 @@ Aggregated client-side from the model-level data by grouping rows under their pr
 | Models | Number of distinct models used |
 | Requests | Total requests routed to this provider |
 | Cost | Total cost in USD |
-| Share | Proportional bar showing this provider's share of total cost |
+| Share | Proportional bar showing the share of total cost for this provider |
 | Avg Latency | Average end-to-end latency in milliseconds |
 
 ### By model
@@ -118,7 +118,7 @@ Aggregated client-side from the model-level data by grouping rows under their pr
 | Provider | Provider slug |
 | Requests | Total requests to this model |
 | Cost | Total cost in USD |
-| Share | Proportional bar showing this model's share of total cost |
+| Share | Proportional bar showing the share of total cost for this model |
 | Avg Latency | Average end-to-end latency in milliseconds |
 
 ### By user
@@ -130,7 +130,7 @@ This tab includes only requests made with auth tokens that have a `user_id` set.
 | User | User ID |
 | Requests | Total requests |
 | Cost | Total cost in USD |
-| Share | Proportional bar showing this user's share of total cost |
+| Share | Proportional bar showing the share of total cost for this user |
 | Cache | Cache hit rate (%) |
 | Errors | Error rate; badge shown when errors > 0 |
 | Blocked | Blocked request count; badge shown when > 0 |
@@ -150,7 +150,12 @@ Clicking any row in the **By Tenant** tab opens a slide-in panel on the right si
 | Top Models | Table of models used by this tenant: Model, Provider, Requests, Cost, Avg Latency |
 | Monthly Spend | Table of per-month spend going back up to 12 months |
 
-Click outside the panel or the **×** button to close it.
+► Proceed as follows to close the tenant detail panel:
+
+1. Click outside the panel or click the **×** button.
+   ⇒ The panel closes.
+
+→ The tenant detail panel is closed.
 
 ---
 

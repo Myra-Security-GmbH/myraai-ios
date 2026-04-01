@@ -106,7 +106,9 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ## Budgets & quota
 
-**New: Persistent spend ledger** — Spend is now tracked in a SQLite `spend_ledger` table rather than shared-dict counters. Spend survives process restarts and worker crashes.
+> ⚠️ **Caution:** The spend ledger is now persisted in a database table rather than in-memory counters. Spend survives process restarts and worker crashes, but existing in-memory counters are not migrated on upgrade.
+
+**New: Persistent spend ledger** — Spend is now tracked in a `spend_ledger` table rather than shared-dict counters. Spend survives process restarts and worker crashes.
 
 **New: `total` budget period** — A new `"total"` period accumulates spend over the lifetime of the budget without ever auto-resetting. Useful for one-time allowances and trial accounts. Valid period values are now `"daily"`, `"monthly"`, and `"total"` (`"weekly"` is not a valid value).
 
@@ -140,7 +142,7 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 **New: Filter non-runnable models** — The model picker can be filtered to show only models with a configured API key, reducing noise in large setups.
 
-**New: Gemini native grounding** — Gemini models use Google's built-in grounding feature when web search is enabled, rather than the Brave Search path.
+**New: Gemini native grounding** — Gemini models use the built-in grounding feature of Google when web search is enabled, rather than the Brave Search path.
 
 ---
 
@@ -148,7 +150,7 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 **New: Human-readable block messages** — Guardrail block responses now include the human-readable harm category name (e.g. "Violent Crimes") alongside the category code (e.g. `S2`).
 
-**New: Anthropic tool use on compat endpoint** — OpenAI-format `tool_calls` sent via the compat endpoint to Anthropic are now automatically converted to Anthropic's native `tool_use` format.
+**New: Anthropic tool use on compat endpoint** — OpenAI-format `tool_calls` sent via the compat endpoint to Anthropic are now automatically converted to the native `tool_use` format of Anthropic.
 
 ---
 

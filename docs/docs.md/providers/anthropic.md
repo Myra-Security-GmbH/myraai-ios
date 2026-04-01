@@ -42,27 +42,32 @@ with `"model": "claude-opus-4-6"`.
 
 The gateway stores API keys using a bring-your-own-key (BYOK) mechanism. Keys are encrypted before being written to the database. The plaintext is never persisted.
 
-Proceed as follows to add an Anthropic API key:
+Before you begin, ensure the following conditions are met:
+- ☑ You have an Anthropic API key (starting with `sk-ant-`).
+- ☑ The gateway exists and is accessible.
 
 ![Screenshot: BYOK key management page with Add Key form](../assets/screenshots/byok-add-key.png)
 *The key management page for a gateway.*
 
+► Proceed as follows to add an Anthropic provider key:
+
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Keys** tab.
-   - The key management page opens.
+   ⇒ The key management page opens.
 4. Click on the **Add Key** button.
-   - The key form opens.
+   ⇒ The key form opens.
 5. Select `anthropic` from the **Provider** drop-down list.
-   - The provider is set.
+   ⇒ The provider is set.
 6. Enter `default` in the **Alias** text field (or a custom alias if you store multiple keys).
-   - The alias is set.
+   ⇒ The alias is set.
 7. Enter your Anthropic API key (starting with `sk-ant-`) in the **Key** text field.
-   - The key value is set.
+   ⇒ The key value is set.
 8. Click on the **Save** button.
-   - -> The key is encrypted and stored. The gateway uses it for all Anthropic requests on this gateway.
+
+→ The provider key is encrypted and stored. The gateway uses it for all Anthropic requests on this gateway.
 
 To add the key via the API:
 
@@ -97,7 +102,7 @@ curl -s -X POST \
 
 ## Extended thinking
 
-Anthropic's interleaved thinking feature exposes the model's reasoning steps in the response. Enable it by passing the beta header via the provider pass-through mechanism:
+The interleaved thinking feature of Anthropic exposes the reasoning steps of the model in the response. Enable it by passing the beta header via the provider pass-through mechanism:
 
 ```bash
 curl -s -X POST \
@@ -114,8 +119,7 @@ curl -s -X POST \
 
 The gateway strips the `x-aig-provider-` prefix and forwards `anthropic-beta: interleaved-thinking-2025-05-14` to Anthropic. Thinking blocks appear in the response content array alongside the final text block.
 
-!!! note "Beta header format"
-    Use `x-aig-provider-anthropic-beta` for any Anthropic beta feature. Pass multiple beta flags as a comma-separated value following Anthropic's header convention.
+> 💡 **Note:** Use `x-aig-provider-anthropic-beta` for any Anthropic beta feature. Pass multiple beta flags as a comma-separated value following the header convention of Anthropic.
 
 ## Prompt caching
 

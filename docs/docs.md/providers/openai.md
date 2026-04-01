@@ -33,27 +33,32 @@ with `"model": "gpt-4o"` (or any other OpenAI model name).
 
 The gateway stores API keys using a bring-your-own-key (BYOK) mechanism. Keys are encrypted with AES-256-CBC before being written to the database. The plaintext is never persisted.
 
-Proceed as follows to add an OpenAI API key:
+Before you begin, ensure the following conditions are met:
+- ☑ You have an OpenAI API key (starting with `sk-`).
+- ☑ The gateway exists and is accessible.
 
 ![Screenshot: BYOK key management page with Add Key form](../assets/screenshots/byok-add-key.png)
 *The key management page for a gateway.*
 
+► Proceed as follows to add an OpenAI provider key:
+
 1. Open **Gateways** in the left sidebar.
-   - The gateway list opens.
+   ⇒ The gateway list opens.
 2. Click on the gateway you want to configure.
-   - The gateway detail page opens.
+   ⇒ The gateway detail page opens.
 3. Click on the **Keys** tab.
-   - The key management page opens.
+   ⇒ The key management page opens.
 4. Click on the **Add Key** button.
-   - The key form opens.
+   ⇒ The key form opens.
 5. Select `openai` from the **Provider** drop-down list.
-   - The provider is set.
+   ⇒ The provider is set.
 6. Enter `default` in the **Alias** text field (or a custom alias if you store multiple keys).
-   - The alias is set.
+   ⇒ The alias is set.
 7. Enter your OpenAI API key (starting with `sk-`) in the **Key** text field.
-   - The key value is set.
+   ⇒ The key value is set.
 8. Click on the **Save** button.
-   - -> The key is encrypted and stored. The gateway uses it for all OpenAI requests on this gateway.
+
+→ The provider key is encrypted and stored. The gateway uses it for all OpenAI requests on this gateway.
 
 To add the key via the API:
 
@@ -81,8 +86,7 @@ There is no hardcoded model list. Pass any valid OpenAI model name and it is for
 | `o3-mini` | Reasoning model |
 | `gpt-4-turbo` | GPT-4 Turbo |
 
-!!! note "Model availability"
-    Available models depend on your OpenAI account tier. The gateway does not validate model names — an invalid name results in a 404 from OpenAI which is returned as-is.
+> 💡 **Note:** Available models depend on your OpenAI account tier. The gateway does not validate model names — an invalid name results in a 404 from OpenAI which is returned as-is.
 
 ## Request examples
 

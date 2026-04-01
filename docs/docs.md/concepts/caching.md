@@ -15,11 +15,9 @@ Enable caching when your workload includes repeated identical prompts — for ex
 
 **Not useful for:** conversational flows where each message is unique, or prompts that vary by temperature or other parameters (any change to the request produces a different cache key and a cache miss).
 
-!!! note "Exact match only"
-    The cache is purely exact-match. Two requests with identical prompts but different `temperature` or `max_tokens` values do not share a cache entry. Only byte-for-byte identical requests hit the cache.
+> 💡 **Note:** The cache is purely exact-match. Two requests with identical prompts but different `temperature` or `max_tokens` values do not share a cache entry. Only byte-for-byte identical requests hit the cache.
 
-??? info "How the cache key is constructed"
-    The cache key is computed from the provider name, model name, and the request body. The `stream`, `user`, and `metadata` fields are excluded before hashing — these are delivery preferences that do not affect the model's response. All other fields (messages, temperature, max_tokens, system, tools, etc.) are included. Field order within the JSON object does not matter.
+> ⭐ **Example:** How the cache key is constructed — The cache key is computed from the provider name, model name, and the request body. The `stream`, `user`, and `metadata` fields are excluded before hashing — these are delivery preferences that do not affect the response of the model. All other fields (messages, temperature, max_tokens, system, tools, etc.) are included. Field order within the JSON object does not matter.
 
 ---
 
@@ -38,7 +36,7 @@ Cache TTL (time to live) is configured per gateway in the gateway config JSON:
 | `0` (default) | Caching disabled |
 | `> 0` | Cache entries live for this many seconds |
 
-There is no way to set a different TTL per model or per token — the TTL applies to all cache entries for the gateway.
+> 💡 **Note:** There is no way to set a different TTL per model or per token — the TTL applies to all cache entries for the gateway.
 
 ---
 
@@ -66,7 +64,7 @@ X-AIG-Cache: HIT
 
 ## Savings tracking
 
-For every cache hit, the gateway logs:
+For every cache hit, the gateway logs the following fields:
 
 | **Field** | **Description** |
 |-----------|-----------------|
@@ -169,10 +167,9 @@ On a semantic cache hit:
 
 ### Latency note
 
-The embedding call adds approximately 50 ms on a cache **miss**. LLM inference calls typically take 500 ms–3 s, so the overhead is small relative to the savings on hits. The embedding storage step on writes is fully asynchronous and never adds latency to the response path.
+The embedding call adds approximately 50 ms on a cache **miss**. LLM inference calls typically take between 500 ms and 3 s, so the overhead is small relative to the savings on hits. The embedding storage step on writes is fully asynchronous and never adds latency to the response path.
 
-!!! note "Streaming not supported"
-    Requests with `"stream": true` are not stored in or served from the semantic cache. Exact-match caching also does not apply to streaming requests.
+> 💡 **Note:** Requests with `"stream": true` are not stored in or served from the semantic cache. Exact-match caching also does not apply to streaming requests.
 
 ---
 

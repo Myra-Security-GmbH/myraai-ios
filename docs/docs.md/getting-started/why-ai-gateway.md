@@ -13,15 +13,17 @@ Large organisations adopting AI often accumulate a tangle of direct provider API
 
 The most capable AI models — OpenAI, Anthropic, Google Gemini, AWS Bedrock — are operated by US companies, subject to US law, and hosted in US data centres. For European enterprises and government bodies, sending sensitive data directly to those providers raises questions under GDPR (General Data Protection Regulation) and sector-specific regulations: who accesses that data, under what legal framework, and with what oversight?
 
-AI Gateway places Myra Security's **certified EU infrastructure** between your organisation and every US AI provider. All requests and responses flow through Myra's network — a highly certified, EU-jurisdiction environment that operates under European data protection law. US providers receive only what your policies explicitly permit.
+AI Gateway places the **certified EU infrastructure** of Myra Security between your organisation and every US AI provider. All requests and responses flow through the network of Myra — a highly certified, EU-jurisdiction environment that operates under European data protection law. US providers receive only what your policies explicitly permit.
 
-The content inspection and PII (Personally Identifiable Information) detection engines that power guardrails — the [NLP PII Detector](../security/guardrails/presidio.md), [Prompt Guard](../security/guardrails/prompt-guard.md), and [PII Protector](../security/guardrails/pii-protector.md) — run as sidecars **within Myra's certified infrastructure**. Sensitive content is inspected, scrubbed, or tokenised inside the EU trust boundary; the US provider never sees it.
+The content inspection and PII (Personally Identifiable Information) detection engines that power guardrails — the [NLP PII Detector](../security/guardrails/presidio.md), [Prompt Guard](../security/guardrails/prompt-guard.md), and [PII Protector](../security/guardrails/pii-protector.md) — run as sidecars **within the certified infrastructure of Myra**. Sensitive content is inspected, scrubbed, or tokenised inside the EU trust boundary; the US provider never sees it.
 
 Specific controls available to your organisation:
 
 - PII, financial data, or regulated content in a prompt is detected and redacted or tokenised before the request leaves the EU. The US provider receives a sanitised or tokenised body; the original values are restored in the response on the way back.
 - Setting `fail_open: false` on any guardrail ensures an inspection failure blocks the request rather than allowing uninspected data to reach a US provider.
-- Payload logging is disabled globally or per-request via a single header, ensuring request and response bodies are not persisted — even within Myra's infrastructure — for the most sensitive workloads.
+
+> ⚠️ **Caution:** If `fail_open` is set to `true` and the sidecar service is unavailable, requests pass through without Tier 2 inspection. For compliance-sensitive workloads, set `fail_open: false` on all Tier 2 guardrails.
+- Payload logging is disabled globally or per-request via a single header, ensuring request and response bodies are not persisted — even within the infrastructure of Myra Security — for the most sensitive workloads.
 - The audit trail — what was sent, what was detected, what was blocked — is recorded within the EU environment and accessible to your compliance team.
 
 ---
@@ -64,7 +66,7 @@ Real-time spend is visible in the dashboard broken down by tenant, gateway, user
 
 ## No lock-in across 21 AI providers
 
-Organisations that commit to a single AI provider today are placing a long-term bet on that provider's pricing, capability, and availability. AI Gateway abstracts the provider layer: **21 providers** — including OpenAI, Anthropic, Google Gemini, Azure OpenAI, AWS Bedrock, and on-premises models via Ollama — share a single OpenAI-compatible API surface. Switching providers or adding a second one requires no changes to client code.
+Organisations that commit to a single AI provider today are placing a long-term bet on the pricing, capability, and availability of that provider. AI Gateway abstracts the provider layer: **21 providers** — including OpenAI, Anthropic, Google Gemini, Azure OpenAI, AWS Bedrock, and on-premises models via Ollama — share a single OpenAI-compatible API surface. Switching providers or adding a second one requires no changes to client code.
 
 Beyond multi-provider access, routing provides operational control:
 
@@ -102,7 +104,7 @@ Each tenant has its own:
 - Authentication tokens and user attribution
 - Analytics and log views
 
-An administrator scoped to one tenant cannot see another tenant's data, spend, or requests. This makes AI Gateway suitable for both internal shared services and organisations that deliver AI-enabled services to external clients from a single platform.
+An administrator scoped to one tenant cannot see the data, spend, or requests of another tenant. This makes AI Gateway suitable for both internal shared services and organisations that deliver AI-enabled services to external clients from a single platform.
 
 ---
 

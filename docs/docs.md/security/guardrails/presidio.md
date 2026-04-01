@@ -20,8 +20,7 @@ The guardrail sends the inspected body to a locally hosted Presidio sidecar. The
 
 The detection engine automatically identifies the language of each request and applies the appropriate NLP model. English and German are fully supported; other Latin-script languages are handled on a best-effort basis. No `language` field is required.
 
-!!! note "Scrub produces irreversible placeholders"
-    When `action: "scrub"` is used, matched PII is replaced with static labels such as `<PERSON>` or `<EMAIL_ADDRESS>`. If the model's output needs to reference the original values, use the [PII Protector guardrail](pii-protector.md) instead, which tokenises PII reversibly.
+> 💡 **Note:** When `action: "scrub"` is used, matched PII is replaced with static labels such as `<PERSON>` or `<EMAIL_ADDRESS>`. If the model output needs to reference the original values, use the [PII Protector guardrail](pii-protector.md) instead, which tokenises PII reversibly.
 
 ---
 
@@ -77,8 +76,7 @@ The NLP PII detector supports 50+ entity types. The following are commonly confi
 | `LOCATION` | Location names | **High** — ~18% FP; threshold auto-raised to 0.9 |
 | `DATE_TIME` | Dates and times | **High** — ~7–14% FP; threshold auto-raised to 0.9 |
 
-!!! tip "Focused PII preset"
-    For `action: block` or `action: scrub`, restrict `entities` to the 14 low-FP types and omit `ORG`, `PERSON`, `LOCATION`, and `DATE_TIME`. This set produces 0% false positives across benchmarks. The gateway automatically raises `score_threshold` to 0.85 for `ORG` and to 0.9 for the other named-entity types when they are included.
+> 💡 **Note:** For `action: block` or `action: scrub`, restrict `entities` to the 14 low-FP types and omit `ORG`, `PERSON`, `LOCATION`, and `DATE_TIME`. This set produces 0% false positives across benchmarks. The gateway automatically raises `score_threshold` to 0.85 for `ORG` and to 0.9 for the other named-entity types when they are included.
 
 ---
 
@@ -89,8 +87,7 @@ The NLP PII detector supports 50+ entity types. The following are commonly confi
 | `true` (default) | Request passes through as if no PII was found |
 | `false` | Request is blocked |
 
-!!! warning
-    Set `fail_open: false` when PII detection is a hard compliance requirement. With `fail_open: true`, a sidecar outage allows all traffic through uninspected.
+> ⚠️ **Caution:** Set `fail_open: false` when PII detection is a hard compliance requirement. With `fail_open: true`, a sidecar outage allows all traffic through uninspected.
 
 ---
 
@@ -175,8 +172,7 @@ Running a regex guardrail first (Tier 1) reduces the volume of content reaching 
 
 ## Streaming limitation
 
-!!! warning "Streaming responses"
-    When `target` is `"response"` or `"both"`, response-phase inspection applies only to non-streaming responses. Streamed responses are not buffered by the gateway, so response-phase scrubbing and flagging are skipped for them. Request-phase inspection is unaffected.
+> ⚠️ **Caution:** When `target` is `"response"` or `"both"`, response-phase inspection applies only to non-streaming responses. Streamed responses are not buffered by the gateway, so response-phase scrubbing and flagging are skipped for them. Request-phase inspection is unaffected.
 
 ---
 
@@ -185,11 +181,11 @@ Running a regex guardrail first (Tier 1) reduces the volume of content reaching 
 ![Screenshot: NLP PII detector card in the Guardrail Builder](../../assets/screenshots/guardrail-presidio-builder.png)
 *NLP PII detector card — expanded view*
 
-Proceed as follows to configure the NLP PII detector in the Guardrail Builder:
+► Proceed as follows to configure the NLP PII detector in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Presidio (NLP)** button.
-    - A collapsed NLP PII detector card appears at the bottom of the list.
+   ⇒ A collapsed NLP PII detector card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block`, `scrub`, or `flag`.
@@ -199,7 +195,8 @@ Proceed as follows to configure the NLP PII detector in the Guardrail Builder:
 9. If required, enter values in the **Allow List** field to exempt known non-PII strings.
 10. Toggle the **Fail Open** switch to `false` if the sidecar must be a hard dependency.
 11. Click on the **Save Guardrails** button.
-    - -> The NLP PII detector is saved and appears in the execution plan.
+
+→ The NLP PII detector is saved and appears in the execution plan.
 
 ---
 

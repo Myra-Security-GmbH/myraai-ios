@@ -18,8 +18,7 @@ Use Prompt Guard when you need semantic safety classification — detecting harm
 
 The guardrail sends the inspected content to the locally hosted Llama Guard 3 sidecar. The model classifies the content against the configured safety categories and returns a verdict. Request-phase classification evaluates only the most recent user message — the full conversation history is not sent to the classifier.
 
-!!! warning "Scrub not supported"
-    Prompt Guard does not support `action: "scrub"`. Configure `block` or `flag` only.
+> ⚠️ **Caution:** Prompt Guard does not support `action: "scrub"`. Configure `block` or `flag` only.
 
 ---
 
@@ -57,8 +56,7 @@ The guardrail sends the inspected content to the locally hosted Llama Guard 3 si
 | `S13` | Elections Integrity | Medium |
 | `S14` | Code Interpreter Abuse | Low — only fires in agentic/tool-use scenarios |
 
-!!! tip "Recommended block configuration"
-    For `action: block`, use only the low-FP categories: `S1`, `S3`, `S4`, `S9`, `S11`, `S12`, `S14`. This set produces approximately 1.7% false positives on OR-Bench-hard and drops to approximately 1.1% with `context_prompt` on security and education platforms. Avoid `S2` and `S6` for blocking. Use `action: flag` if you need visibility into S2, S6, or S10 without blocking.
+> 💡 **Note:** For `action: block`, use only the low-FP categories: `S1`, `S3`, `S4`, `S9`, `S11`, `S12`, `S14`. This set produces approximately 1.7% false positives on OR-Bench-hard and drops to approximately 1.1% with `context_prompt` on security and education platforms. Avoid `S2` and `S6` for blocking. Use `action: flag` if you need visibility into S2, S6, or S10 without blocking.
 
 ---
 
@@ -99,8 +97,7 @@ Measured impact (OR-Bench-hard, 10% sample):
 | No context | ~1.7% | ~14.5% |
 | With `context_prompt` | ~1.1% | ~7.2% |
 
-!!! note "Token budget"
-    The context prefix adds approximately 50 tokens. Llama Guard 3's effective input limit after context injection is approximately 3,946 tokens (down from ~4,096). Inputs that exceed this limit are truncated before classification.
+> 💡 **Note:** The context prefix adds approximately 50 tokens. The effective input limit of Llama Guard 3 after context injection is approximately 3,946 tokens (down from ~4,096). Inputs that exceed this limit are truncated before classification.
 
 ---
 
@@ -111,14 +108,13 @@ Measured impact (OR-Bench-hard, 10% sample):
 | `block` | The request or response is denied. The caller receives a synthetic assistant message identifying which categories triggered the block. |
 | `flag` | The violation is recorded in the request log. The pipeline continues without modification. |
 
-!!! note "Block response format"
-    When a request is blocked, the gateway returns a synthetic assistant message identifying the triggering categories. For example:
-
-    ```
-    Request blocked by content policy (safety-filter): S1 – Violent Crimes, S9 – CBRN
-    ```
-
-    The guardrail `name` field value appears in the message, making it easy to correlate blocks with your guardrail configuration.
+> 💡 **Note:** When a request is blocked, the gateway returns a synthetic assistant message identifying the triggering categories. For example:
+>
+> ```
+> Request blocked by content policy (safety-filter): S1 – Violent Crimes, S9 – CBRN
+> ```
+>
+> The value of the `name` field of the guardrail appears in the message, making it easy to correlate blocks with your guardrail configuration.
 
 ---
 
@@ -129,8 +125,7 @@ Measured impact (OR-Bench-hard, 10% sample):
 | `true` (default) | Request passes through as if no violation was found |
 | `false` | Request is blocked |
 
-!!! warning
-    Set `fail_open: false` in environments where safety enforcement must never be bypassed. With `fail_open: true`, a sidecar outage allows all traffic through unclassified.
+> ⚠️ **Caution:** Set `fail_open: false` in environments where safety enforcement must never be bypassed. With `fail_open: true`, a sidecar outage allows all traffic through unclassified.
 
 ---
 
@@ -198,7 +193,7 @@ Measured impact (OR-Bench-hard, 10% sample):
 
 ### Layer Prompt Guard after keyword pre-filtering
 
-Running keyword guardrails first (Tier 1) catches simple jailbreak strings before Prompt Guard's more expensive sidecar call.
+Running keyword guardrails first (Tier 1) catches simple jailbreak strings before the more expensive sidecar call of Prompt Guard.
 
 ```json
 [
@@ -227,11 +222,11 @@ Running keyword guardrails first (Tier 1) catches simple jailbreak strings befor
 ![Screenshot: Prompt Guard card in the Guardrail Builder](../../assets/screenshots/guardrail-prompt_guard-builder.png)
 *Prompt Guard card — expanded view*
 
-Proceed as follows to configure Prompt Guard in the Guardrail Builder:
+► Proceed as follows to configure Prompt Guard in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Prompt Guard** button.
-    - A collapsed Prompt Guard card appears at the bottom of the list.
+   ⇒ A collapsed Prompt Guard card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block` or `flag`.
@@ -240,7 +235,8 @@ Proceed as follows to configure Prompt Guard in the Guardrail Builder:
 8. If required, enter a deployment context in the **Context Prompt** text field to reduce false positives.
 9. Toggle the **Fail Open** switch to `false` if the sidecar must be a hard dependency.
 10. Click on the **Save Guardrails** button.
-    - -> Prompt Guard is saved and appears in the execution plan.
+
+→ Prompt Guard is saved and appears in the execution plan.
 
 ---
 

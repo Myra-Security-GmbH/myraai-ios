@@ -27,6 +27,10 @@ Thirteen providers expose an OpenAI-compatible API. They all share the same requ
 
 ## BYOK setup
 
+Before you begin, ensure the following conditions are met:
+- ☑ You have a valid API key for the target provider.
+- ☑ The gateway exists and is accessible.
+
 The process is identical for every provider in this group — only the `provider` field changes:
 
 ```bash
@@ -147,8 +151,7 @@ Force OpenRouter explicitly by adding the header:
 -H "x-aig-provider: openrouter"
 ```
 
-!!! note "OpenRouter BYOK"
-    A valid OpenRouter BYOK key must be stored for the fallback to work. Without it, fallback requests will fail with an authentication error from OpenRouter.
+> 💡 **Note:** A valid OpenRouter BYOK key must be stored for the fallback to work. Without it, fallback requests fail with an authentication error from OpenRouter.
 
 ## HuggingFace org prefix routing
 

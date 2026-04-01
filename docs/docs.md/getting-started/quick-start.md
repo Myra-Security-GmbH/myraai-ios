@@ -9,60 +9,59 @@ This guide takes you from first login to a working inference request. Complete t
 
 Before you begin, ensure the following conditions are met:
 
-- You have logged in to the admin UI at `https://<your-gateway-host>/admin`.
-- You have your provider API key (for example, an OpenAI API key) to hand.
+- ☑ You have logged in to the admin UI at `https://<your-gateway-host>/admin`.
+- ☑ You have your provider API key (for example, an OpenAI API key) to hand.
 
 ---
 
 ## Creating a tenant and gateway
 
-Proceed as follows to create a tenant and gateway:
+![Gateway list after creating a gateway](../assets/screenshots/gateway-list.png)
+
+► Proceed as follows to create a tenant and gateway:
 
 1. Click on **Tenants** in the left sidebar.
-   - The **Tenants** view opens.
+   ⇒ The **Tenants** view opens.
 2. Click on the **New Tenant** button.
-   - The **New Tenant** dialog opens.
+   ⇒ The **New Tenant** dialog opens.
 3. Enter a slug in the **Slug** text field. For example: `myapp`.
 4. Click on the **Save** button.
-   - The new tenant appears in the tenant list.
+   ⇒ The new tenant appears in the tenant list.
 5. Click on **Gateways** in the left sidebar.
-   - The **Gateways** view opens.
+   ⇒ The **Gateways** view opens.
 6. Click on the **New Gateway** button.
-   - The **New Gateway** dialog opens.
+   ⇒ The **New Gateway** dialog opens.
 7. Select your new tenant from the **Tenant** drop-down list.
 8. Enter a slug in the **Slug** text field. For example: `production`.
 9. Click on the **Save** button.
-   - The new gateway appears in the gateway list.
+   ⇒ The new gateway appears in the gateway list.
 
--> The gateway is created and associated with the tenant.
+→ The gateway is created and associated with the tenant.
 
-![Gateway list after creating a gateway](../assets/screenshots/gateway-list.png)
-
-!!! note "Authentication for this quick start"
-    By default, gateways require an auth token on every inference request. To skip that for now, open the gateway's **Config** tab and set the **Auth Required** toggle to off. Re-enable it before going to production.
+> ⚠️ **Caution:** By default, gateways require an auth token on every inference request. To skip that for now, open the **Config** tab of the gateway and set the **Auth Required** toggle to off. Re-enable it before going to production.
 
 ---
 
 ## Storing a provider key
 
-Proceed as follows to store a provider API key in the gateway:
+![Gateway detail view showing the Keys tab](../assets/screenshots/gateway-detail.png)
+
+► Proceed as follows to store a provider API key in the gateway:
 
 1. Click on **Gateways** in the left sidebar.
-   - The **Gateways** view opens.
+   ⇒ The **Gateways** view opens.
 2. Click on the gateway you created.
-   - The gateway detail view opens.
+   ⇒ The gateway detail view opens.
 3. Open the **Keys** tab.
-   - The provider keys list opens.
+   ⇒ The provider keys list opens.
 4. Click on the **Add Key** button.
-   - The **Add Key** dialog opens.
+   ⇒ The **Add Key** dialog opens.
 5. Select a provider from the **Provider** drop-down list. For example: `openai`.
 6. Paste your API key into the **API Key** text field.
 7. Click on the **Save** button.
-   - The new provider key appears in the keys list. The key is encrypted at rest immediately; the plaintext is never stored.
+   ⇒ The new provider key appears in the keys list. The key is encrypted at rest immediately; the plaintext is never stored.
 
--> The provider key is saved and the gateway is ready to forward requests to the provider.
-
-![Gateway detail view showing the Keys tab](../assets/screenshots/gateway-detail.png)
+→ The provider key is saved and the gateway is ready to forward requests to the provider.
 
 ---
 
@@ -108,18 +107,18 @@ A successful response looks like:
 }
 ```
 
--> The gateway forwards the request to the provider and returns the response to the client.
+→ The gateway forwards the request to the provider and returns the response to the client.
 
 ---
 
 ## Checking the request log
 
-Proceed as follows to verify the request was recorded:
+► Proceed as follows to verify the request was recorded:
 
 1. Click on **Logs** in the left sidebar.
-   - The **Logs** view opens. Your request appears at the top of the list with provider, model, token count, cost, and latency.
+   ⇒ The **Logs** view opens. Your request appears at the top of the list with provider, model, token count, cost, and latency.
 
--> The request log entry confirms the gateway processed and recorded the request.
+→ The request log entry confirms the gateway processed and recorded the request.
 
 ---
 

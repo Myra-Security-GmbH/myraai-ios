@@ -80,11 +80,18 @@ Not all views are visible to all users. The sidebar shows only the views the cur
 | Playground | Yes | Yes | Yes | No |
 | My tokens | Yes | Yes | Yes | No |
 
+> 💡 **Note:** The sidebar displays only the views that are accessible to the currently logged-in user's role. Views not listed in the table above are not accessible.
+
 ---
 
 ## Moving between views
 
-Click any entry in the sidebar to navigate to that view. The active view is highlighted in the sidebar. No page reload occurs — the panel uses client-side navigation.
+► Proceed as follows to navigate to a view:
+
+1. Click any entry in the sidebar.
+   ⇒ The selected view opens in the main area. The active view is highlighted in the sidebar. No page reload occurs — the panel uses client-side navigation.
+
+→ The selected view is displayed in the main area.
 
 To return to the dashboard from any view, click the **Dashboard** entry at the top of the sidebar, or click the product logo at the top of the sidebar.
 

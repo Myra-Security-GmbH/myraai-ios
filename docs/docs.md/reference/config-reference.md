@@ -63,7 +63,7 @@ The config is **merged at the top level** on each PATCH — only the fields you 
 | `rate_limit.requests` | integer | — | Maximum requests allowed in the window. |
 | `rate_limit.window_sec` | integer | — | Window duration in seconds. |
 
-Example:
+> ⭐ **Example:**
 
 ```json
 "rate_limit": {"requests": 100, "window_sec": 60}
@@ -77,7 +77,7 @@ Example:
 |---|---|---|---|
 | `ip_allowlist` | array of strings | `[]` | CIDR blocks permitted to call this gateway. An empty array allows all source IPs. Requests from IPs outside the list return `403 FORBIDDEN`. |
 
-Example:
+> ⭐ **Example:**
 
 ```json
 "ip_allowlist": ["10.0.0.0/8", "192.168.1.0/24"]
@@ -91,8 +91,7 @@ Example:
 |---|---|---|---|
 | `guardrails` | array | `[]` | Ordered list of guardrail configs. Evaluated in array order within each tier. First `block` verdict short-circuits the pipeline. |
 
-!!! note "Backwards compatibility"
-    The legacy key `detectors` is still accepted and behaves identically to `guardrails`. New configurations should use `guardrails`.
+> 💡 **Note:** The legacy key `detectors` is still accepted and behaves identically to `guardrails`. New configurations should use `guardrails`.
 
 Each guardrail object has a common set of fields plus type-specific fields:
 
@@ -134,9 +133,9 @@ See the [Guardrail Pipeline](../security/guardrails.md) page for full per-type f
 
 | **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
-| `provider_base_urls` | object | `{}` | Map of `provider_name → base URL`. Overrides the gateway's hardcoded default endpoint for any provider. Useful for Ollama on a remote host, internal proxies, and staging environments. |
+| `provider_base_urls` | object | `{}` | Map of `provider_name → base URL`. Overrides the hardcoded default endpoint of the gateway for any provider. Useful for Ollama on a remote host, internal proxies, and staging environments. |
 
-Example:
+> ⭐ **Example:**
 
 ```json
 "provider_base_urls": {
@@ -173,7 +172,7 @@ Webhooks deliver structured event payloads to an external HTTP endpoint for inte
 | `webhooks.secret` | string | — | Optional shared secret included as `X-Webhook-Secret` on every delivery. Use to verify origin in your receiver. |
 | `webhooks.events` | array | `["blocked","budget_exceeded","circuit_open"]` | Event types to deliver. Supported values: `blocked`, `budget_exceeded`, `circuit_open`. |
 
-Example:
+> ⭐ **Example:**
 
 ```json
 "webhooks": {
@@ -241,8 +240,7 @@ These headers can be sent on individual inference requests to override gateway c
 | `x-aig-collect-log-payload` | `"0"`, `"false"`, or `"1"` | `"0"` or `"false"` = log request metadata but omit the prompt and response body. `"1"` = log body (default). Does not affect the gateway-level `log_payloads` setting. |
 | `x-aig-provider-{field}` | string | Strip the `x-aig-provider-` prefix and forward the header verbatim to the upstream provider. Useful for provider-specific beta flags. |
 
-!!! note
-    `x-aig-provider-*` headers are forwarded unconditionally to whatever provider handles the request. Sending a provider-specific header to the wrong provider is harmless but may produce unexpected behaviour if the provider rejects unknown headers.
+> 💡 **Note:** `x-aig-provider-*` headers are forwarded unconditionally to whatever provider handles the request. Sending a provider-specific header to the wrong provider is harmless but may produce unexpected behaviour if the provider rejects unknown headers.
 
 ---
 

@@ -63,7 +63,7 @@ The `provider_base_urls` field overrides the default upstream endpoint for any p
 - **Private deployments** — route to an on-premises or VPC-hosted model server
 - **Custom proxies** — send traffic through an intermediary before it reaches the provider
 
-The value must be a bare `protocol://host:port` with no trailing slash or path. The gateway appends the provider's standard request path automatically.
+The value must be a bare `protocol://host:port` with no trailing slash or path. The gateway appends the standard request path of the provider automatically.
 
 | **Provider** | **Override value** | **When to use** |
 |---|---|---|
@@ -86,8 +86,7 @@ Certain behaviours can be overridden on individual requests without changing the
 | `x-aig-collect-log-payload` | `"0"` or `"false"` to disable; `"1"` to enable | Override whether request/response bodies are stored for this request, independent of `log_payloads` config. Both `"0"` and `"false"` suppress body storage. |
 | `x-aig-provider-{field}` | string | Override a provider-specific field for this request (e.g. `x-aig-provider-model`). |
 
-!!! warning
-    `x-aig-collect-log-payload: 0` suppresses body storage for that request only. It does not affect the gateway-level `log_payloads` setting for other requests.
+> ⚠️ **Caution:** `x-aig-collect-log-payload: 0` suppresses body storage for that request only. It does not affect the gateway-level `log_payloads` setting for other requests.
 
 ---
 
@@ -95,24 +94,24 @@ Certain behaviours can be overridden on individual requests without changing the
 
 Before you begin, ensure the following conditions are met:
 
-- You are logged in as a user with the `admin` role.
+- ☑ You are logged in as a user with the `admin` role.
 
 ![Screenshot: Gateways list with New Gateway button](../assets/screenshots/gateways-list.png)
 *The **Gateways** list.*
 
-Proceed as follows to create a gateway:
+► Proceed as follows to create a gateway:
 
 1. Click on **Gateways** in the left sidebar.
-   - The **Gateways** list opens.
+   ⇒ The **Gateways** list opens.
 2. Click on the **New Gateway** button.
-   - The **New Gateway** dialog opens.
+   ⇒ The **New Gateway** dialog opens.
 3. Enter a name for the gateway in the **Name** text field.
 4. Select the primary provider from the **Provider** drop-down list.
 5. If required, expand the **Advanced** section and adjust the configuration fields listed in the [Configuration fields reference](#configuration-fields-reference).
 6. Click on the **Save** button.
-   - The new gateway appears in the list of gateways.
+   ⇒ The new gateway appears in the list of gateways.
 
--> The new gateway is active immediately and accepts inference requests at its assigned endpoint.
+→ The new gateway is active immediately and accepts inference requests at its assigned endpoint.
 
 ---
 
@@ -121,56 +120,54 @@ Proceed as follows to create a gateway:
 ![Screenshot: Gateway detail view with Config tab open](../assets/screenshots/gateway-edit-modal.png)
 *The gateway **Config** tab.*
 
-Proceed as follows to edit a gateway:
+► Proceed as follows to edit a gateway:
 
 1. Click on **Gateways** in the left sidebar.
-   - The **Gateways** list opens.
+   ⇒ The **Gateways** list opens.
 2. Click on the gateway you want to edit.
-   - The gateway detail view opens.
+   ⇒ The gateway detail view opens.
 3. Click on the **Config** tab.
-   - The configuration form opens.
+   ⇒ The configuration form opens.
 4. Change the fields you want to update.
 5. To add a provider base URL override, scroll to the **Provider base URLs** section, click on the **Add** button, enter the provider name in the **Provider** text field (for example `ollama`), and enter the base URL in the **Base URL** text field (for example `http://192.168.1.50:11434`).
 6. Click on the **Save** button.
-   - The updated configuration is applied to the gateway. Only the fields you changed are updated — other settings are unaffected.
+   ⇒ The updated configuration is applied to the gateway. Only the fields you changed are updated — other settings are unaffected.
 
--> The gateway reflects the new configuration for all subsequent requests.
+→ The gateway reflects the new configuration for all subsequent requests.
 
-!!! note
-    To remove a provider base URL override, delete the entry in the **Provider base URLs** section and click on **Save**.
+> 💡 **Note:** To remove a provider base URL override, delete the entry in the **Provider base URLs** section and click on **Save**.
 
 ---
 
 ## Deleting a gateway
 
-!!! warning
-    Deleting a gateway is irreversible. All associated logs, tokens, and configuration are permanently removed.
+> ⚠️ **Caution:** Deleting a gateway is irreversible. All associated logs, tokens, and configuration are permanently removed.
 
 Before you begin, ensure the following conditions are met:
 
-- You are logged in as a user with the `admin` role.
-- No active client applications are routing traffic through the gateway.
+- ☑ You are logged in as a user with the `admin` role.
+- ☑ No active client applications are routing traffic through the gateway.
 
-Proceed as follows to delete a gateway:
+► Proceed as follows to delete a gateway:
 
 1. Click on **Gateways** in the left sidebar.
-   - The **Gateways** list opens.
+   ⇒ The **Gateways** list opens.
 2. Click on the gateway you want to delete.
-   - The gateway detail view opens.
+   ⇒ The gateway detail view opens.
 3. Click on the **Settings** tab.
-   - The gateway settings open.
+   ⇒ The gateway settings open.
 4. Click on the **Delete Gateway** button.
-   - A confirmation dialog opens.
+   ⇒ A confirmation dialog opens.
 5. Confirm the deletion by clicking on the **Delete** button.
-   - The gateway is removed from the list.
+   ⇒ The gateway is removed from the list.
 
--> The gateway no longer accepts requests and is permanently deleted.
+→ The gateway no longer accepts requests and is permanently deleted.
 
 ---
 
 ## API
 
-Gateway config can also be updated via the Admin API using a PATCH request. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for the endpoint reference and examples.
+The configuration of a gateway can also be updated via the Admin API using a PATCH request. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for the endpoint reference and examples.
 
 ## See also
 

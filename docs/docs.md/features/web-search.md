@@ -22,7 +22,7 @@ For the majority of supported providers, web search uses a two-leg agentic loop:
 
 ### Google Gemini — native grounding
 
-For Google Gemini, web search uses Gemini's built-in `googleSearch` grounding feature. No Brave Search API call is made, and the `api_key` in the gateway config is not used for Gemini requests. The gateway automatically converts the web search instruction to the Gemini grounding format. This is a single-leg request with no tool injection.
+For Google Gemini, web search uses the built-in `googleSearch` grounding feature of Gemini. No Brave Search API call is made, and the `api_key` in the gateway config is not used for Gemini requests. The gateway automatically converts the web search instruction to the Gemini grounding format. This is a single-leg request with no tool injection.
 
 ## Supported providers
 
@@ -85,8 +85,7 @@ Web search is configured at the gateway level under `config.web_search`.
 
 Obtain a Brave Search API key from the [Brave Search API developer portal](https://brave.com/search/api/). The Free tier provides 2,000 queries per month; paid plans offer higher limits.
 
-!!! note "Gemini native grounding"
-    For Google Gemini, web search uses Gemini's built-in `googleSearch` grounding feature rather than Brave Search. The `api_key` in the gateway config is not used for Gemini requests. The gateway automatically converts the `web_search` tool to the Gemini grounding format.
+> 💡 **Note:** For Google Gemini, web search uses the built-in `googleSearch` grounding feature of Gemini rather than Brave Search. The `api_key` in the gateway config is not used for Gemini requests. The gateway automatically converts the `web_search` tool to the Gemini grounding format.
 
 ## Request and response headers
 
@@ -114,7 +113,7 @@ The `count` field indicates the number of URLs being fetched.
 
 ## Enabling web search on a gateway
 
-Proceed as follows to enable web search on a gateway:
+► Proceed as follows to enable web search on a gateway:
 
 1. Send a `PATCH` request to `/admin/v1/gateways/{id}` with the `web_search` configuration block.
 
@@ -134,13 +133,13 @@ Proceed as follows to enable web search on a gateway:
      }'
    ```
 
-   - The gateway configuration is updated immediately.
+   ⇒ The gateway configuration is updated immediately.
 
--> Web search is active for all subsequent requests through this gateway.
+→ Web search is active for all subsequent requests through this gateway.
 
 ### Making a search-augmented request in opt-in mode
 
-Proceed as follows to send a search-augmented request when `mode` is `"opt-in"`:
+► Proceed as follows to send a search-augmented request when `mode` is `"opt-in"`:
 
 1. Include the `X-Web-Search: 1` header in the client request.
 
@@ -156,15 +155,13 @@ Proceed as follows to send a search-augmented request when `mode` is `"opt-in"`:
      }'
    ```
 
-   - The gateway runs the two-leg agentic flow and injects search results before the final model call.
+   ⇒ The gateway runs the two-leg agentic flow and injects search results before the final model call.
 
--> The model response includes context from live web search results.
+→ The model response includes context from live web search results.
 
-!!! warning "Model compatibility"
-    Not all models support tool use. Web search requires the model to support tool/function calling. If the model does not call the tool, the Leg 1 response is returned directly and no search is performed.
+> ⚠️ **Caution:** Not all models support tool use. Web search requires the model to support tool/function calling. If the model does not call the tool, the Leg 1 response is returned directly and no search is performed.
 
-!!! note "Anthropic compat endpoint"
-    Web search is not supported when using the OpenAI-compatible endpoint with Anthropic as the provider. Use the native Anthropic endpoint instead.
+> 💡 **Note:** Web search is not supported when using the OpenAI-compatible endpoint with Anthropic as the provider. Use the native Anthropic endpoint instead.
 
 ## See also
 

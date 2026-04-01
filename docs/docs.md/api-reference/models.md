@@ -1,6 +1,6 @@
 # Models & pricing API
 
-The Models API exposes the gateway's model catalogue. The Pricing API lets you read and manage per-model cost data used for spend tracking and budget enforcement. Model pricing data is maintained by Myra Security.
+The Models API exposes the model catalogue of the gateway. The Pricing API lets you read and manage per-model cost data used for spend tracking and budget enforcement. Model pricing data is maintained by Myra Security.
 
 **Base URL:** `https://<your-gateway-host>/admin/v1`
 
@@ -110,6 +110,8 @@ curl https://<your-gateway-host>/admin/v1/model-prices
 
 Create or update a price for a model. The `(provider, model)` pair is the unique key. If a record already exists it is replaced.
 
+> ⭐ **Example:** The following examples show how to upsert pricing for different provider and model combinations.
+
 ```bash
 curl -X PUT https://<your-gateway-host>/admin/v1/model-prices \
   -H "Content-Type: application/json" \
@@ -153,14 +155,13 @@ curl -X PUT https://<your-gateway-host>/admin/v1/model-prices \
 
 ## DELETE /model-prices/{provider}/{model}
 
-Remove a pricing record. Subsequent requests for this model fall back to the gateway's hardcoded cost table defaults, or report zero cost if the model is not in the defaults.
+Remove a pricing record. Subsequent requests for this model fall back to the defaults of the hardcoded cost table of the gateway, or report zero cost if the model is not in the defaults.
 
 ```bash
 curl -X DELETE "https://<your-gateway-host>/admin/v1/model-prices/openai/gpt-4o"
 ```
 
-!!! note
-    URL-encode the model name if it contains slashes. For example, `accounts/fireworks/models/llama-v3-70b` becomes `accounts%2Ffireworks%2Fmodels%2Fllama-v3-70b`.
+> 💡 **Note:** URL-encode the model name if it contains slashes. For example, `accounts/fireworks/models/llama-v3-70b` becomes `accounts%2Ffireworks%2Fmodels%2Fllama-v3-70b`.
 
 ---
 

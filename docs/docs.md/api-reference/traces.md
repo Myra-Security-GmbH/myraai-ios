@@ -140,7 +140,7 @@ curl "https://<your-gateway-host>/admin/v1/traces/trc_abc123"
 }
 ```
 
-Returns `404` if no trace with the given ID exists.
+> 💡 **Note:** Returns `404` if no trace with the given ID exists.
 
 ---
 
@@ -157,7 +157,7 @@ curl "https://<your-gateway-host>/admin/v1/logs/log_abc789"
 curl "https://<your-gateway-host>/admin/v1/traces/trc_abc123"
 ```
 
-When `trace_id` is `null` in a log entry, gateway tracing was not active for that request.
+> 💡 **Note:** When `trace_id` is `null` in a log entry, gateway tracing was not active for that request.
 
 ---
 

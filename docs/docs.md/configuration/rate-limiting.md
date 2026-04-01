@@ -22,7 +22,7 @@ Two independent limit levels exist:
 - **Gateway-level rate limit** — applies to the aggregate of all requests through the gateway.
 - **Per-token rate limit** — applies only to requests authenticated with a specific auth token.
 
-Both levels are evaluated independently. A request can be blocked by the gateway-level limit even if the token's own limit has not been reached, and vice versa.
+Both levels are evaluated independently. A request can be blocked by the gateway-level limit even if the limit of the token has not been reached, and vice versa.
 
 ### Rate limit configuration fields
 
@@ -41,7 +41,7 @@ When a request is rate limited, the gateway returns `HTTP 429` with the followin
 | `X-RateLimit-Remaining` | Estimated requests remaining in the current window (`0` when blocked). |
 | `Retry-After` | The window duration in seconds — the minimum time before retrying. |
 
-Example `429` response body:
+> ⭐ **Example:** `429` response body:
 
 ```json
 {
@@ -52,8 +52,7 @@ Example `429` response body:
 }
 ```
 
-!!! warning
-    Clients must implement backoff and retry logic. The `Retry-After` header gives the window duration in seconds — waiting at least this long before retrying is sufficient.
+> ⚠️ **Caution:** Clients must implement backoff and retry logic. The `Retry-After` header gives the window duration in seconds — waiting at least this long before retrying is sufficient.
 
 ---
 
@@ -63,28 +62,27 @@ The gateway-level rate limit applies to the aggregate of all requests through th
 
 Before you begin, ensure the following conditions are met:
 
-- You are logged in as a user with the `admin` role.
+- ☑ You are logged in as a user with the `admin` role.
 
 ![Screenshot: Gateway Config tab showing rate limit fields](../assets/screenshots/gateway-rate-limit.png)
 *The rate limit fields in the gateway **Config** tab.*
 
-Proceed as follows to configure a gateway-level rate limit:
+► Proceed as follows to configure a gateway-level rate limit:
 
 1. Click on **Gateways** in the left sidebar.
-   - The **Gateways** list opens.
+   ⇒ The **Gateways** list opens.
 2. Click on the gateway.
-   - The gateway detail view opens.
+   ⇒ The gateway detail view opens.
 3. Click on the **Config** tab.
-   - The configuration form opens.
+   ⇒ The configuration form opens.
 4. Enter the maximum number of requests in the **Requests** text field.
 5. Enter the window duration in seconds in the **Window** text field.
 6. Click on the **Save** button.
-   - The rate limit is applied to all requests through the gateway.
+   ⇒ The rate limit is applied to all requests through the gateway.
 
--> The gateway enforces the new rate limit for all subsequent requests.
+→ The gateway enforces the new rate limit for all subsequent requests.
 
-!!! note
-    To remove the gateway-level limit, clear the **Rate limit** fields and click on **Save**.
+> 💡 **Note:** To remove the gateway-level limit, clear the **Rate limit** fields and click on **Save**.
 
 ---
 
@@ -94,25 +92,25 @@ A per-token rate limit applies only to requests authenticated with a specific au
 
 Before you begin, ensure the following conditions are met:
 
-- You are logged in as a user with the `admin` role.
+- ☑ You are logged in as a user with the `admin` role.
 
 ![Screenshot: New Token dialog with rate limit fields](../assets/screenshots/token-rate-limit.png)
 *The rate limit fields in the **New Token** dialog.*
 
-Proceed as follows to configure a per-token rate limit:
+► Proceed as follows to configure a per-token rate limit:
 
 1. Click on **Users** in the left sidebar.
-   - The **Users** list opens.
+   ⇒ The **Users** list opens.
 2. Click on the user.
-   - The user detail view opens.
+   ⇒ The user detail view opens.
 3. Click on the **New Token** button.
-   - The **New Token** dialog opens.
+   ⇒ The **New Token** dialog opens.
 4. Enter the maximum number of requests in the **Requests** text field.
 5. Enter the window duration in seconds in the **Window** text field.
 6. Click on the **Save** button.
-   - The new token appears in the token list with the configured rate limit.
+   ⇒ The new token appears in the token list with the configured rate limit.
 
--> The token rate limit is active for all requests authenticated with that token.
+→ The token rate limit is active for all requests authenticated with that token.
 
 ---
 

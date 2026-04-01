@@ -65,7 +65,7 @@ Documents are written to `<url>/<index>/_doc` (one document per event).
 |---|---|---|---|
 | `url` | string | Yes | Vector HTTP source endpoint, e.g. `http://vector:8080` |
 
-Configure Vector's [HTTP source](https://vector.dev/docs/reference/configuration/sources/http_server/) to receive events. Vector can then fan out to any sink (Loki, Datadog, S3, Kafka, etc.).
+Configure the [HTTP source](https://vector.dev/docs/reference/configuration/sources/http_server/) of Vector to receive events. Vector can then fan out to any sink (Loki, Datadog, S3, Kafka, etc.).
 
 ### Syslog / CEF fields
 
@@ -93,8 +93,7 @@ Default (no `events` key or empty array): only `blocked` events are forwarded.
 { "events": ["blocked", "guardrail"] }
 ```
 
-!!! warning "Volume"
-    `"all"` produces very high volumes for busy gateways. Use a backend with adequate throughput (Elasticsearch, Vector) and configure appropriate index retention policies.
+> ⚠️ **Caution:** `"all"` produces very high volumes for busy gateways. Use a backend with adequate throughput (Elasticsearch, Vector) and configure appropriate index retention policies.
 
 ## Event payload
 
@@ -253,30 +252,29 @@ Use gateway-level SIEM integration to override the tenant default for a specific
 
 Before you begin, ensure the following conditions are met:
 
-- You are logged in as a user with the `admin` role.
+- ☑ You are logged in as a user with the `admin` role.
 
 ![Screenshot: Gateway edit dialog with SIEM Integration section](../assets/screenshots/gateway-siem.png)
 *The **SIEM Integration** section in the gateway edit dialog.*
 
-Proceed as follows to configure gateway-level SIEM integration:
+► Proceed as follows to configure gateway-level SIEM integration:
 
 1. Click on **Gateways** in the left sidebar.
-   - The **Gateways** list opens.
+   ⇒ The **Gateways** list opens.
 2. Click on the gateway.
-   - The gateway detail view opens.
+   ⇒ The gateway detail view opens.
 3. Click on the **Edit** button.
-   - The gateway edit dialog opens.
+   ⇒ The gateway edit dialog opens.
 4. Scroll to the **SIEM Integration** section.
 5. Select a backend type from the **Type** drop-down list.
 6. Select the events you want forwarded in the **Events** section.
 7. Enter the backend-specific fields (URL, token, host/port) as shown in the [Per-backend configuration examples](#per-backend-configuration-examples).
 8. Click on the **Save** button.
-   - The gateway forwards matching events to the configured SIEM backend.
+   ⇒ The gateway forwards matching events to the configured SIEM backend.
 
--> The gateway-level SIEM configuration is active. It overrides the tenant default for this gateway.
+→ The gateway-level SIEM configuration is active. It overrides the tenant default for this gateway.
 
-!!! note
-    To disable SIEM for a gateway and fall back to the tenant-level config, set the **Type** drop-down list to **— disabled —** and click on **Save**.
+> 💡 **Note:** To disable SIEM for a gateway and fall back to the tenant-level config, set the **Type** drop-down list to **— disabled —** and click on **Save**.
 
 ---
 
@@ -284,7 +282,7 @@ Proceed as follows to configure gateway-level SIEM integration:
 
 The tenant-level SIEM configuration applies to all gateways under the tenant that do not have a gateway-level override. The admin UI tenant editor does not expose a SIEM section — use the API.
 
-Proceed as follows to configure tenant-level SIEM integration:
+► Proceed as follows to configure tenant-level SIEM integration:
 
 1. Send a `PATCH` request to `/admin/v1/tenants/{id}` with the `siem` object in the request body:
 
@@ -302,12 +300,11 @@ Proceed as follows to configure tenant-level SIEM integration:
    }
    ```
 
-   - The tenant SIEM configuration is saved.
+   ⇒ The tenant SIEM configuration is saved.
 
--> All gateways under the tenant forward matching events to the configured SIEM backend, unless they have a gateway-level override.
+→ All gateways under the tenant forward matching events to the configured SIEM backend, unless they have a gateway-level override.
 
-!!! note
-    To clear the tenant SIEM configuration, send `"siem": null` in the PATCH request body.
+> 💡 **Note:** To clear the tenant SIEM configuration, send `"siem": null` in the PATCH request body.
 
 ---
 

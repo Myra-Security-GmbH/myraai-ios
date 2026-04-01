@@ -26,7 +26,7 @@ graph TD
 
 A **Tenant** is the top-level grouping for users and gateways. Each tenant can have multiple **Gateways** — each gateway is an independent policy domain with its own config, keys, tokens, and rules.
 
-**Users** belong to a tenant. Their role determines what they can do within that tenant.
+**Users** belong to a tenant. The role of a user determines what the user can do within that tenant.
 
 ![Tenants list](../assets/screenshots/tenants-list.png)
 
@@ -69,7 +69,7 @@ The gateway resolves `{tenant_slug}` and `{gateway_slug}` on every request and l
 
 Role is enforced at the authentication step. A `viewer` token is rejected before the request body is read.
 
-Deleting a user immediately disables all of their auth tokens.
+Deleting a user immediately disables all auth tokens of that user.
 
 ---
 
@@ -86,6 +86,8 @@ Tokens are scoped to a single gateway and carry optional per-token overrides:
 | `user_id` | Optional binding to a user; recorded in request logs |
 
 Token values are stored as a one-way hash. The plaintext token is shown only once at creation time — it cannot be recovered.
+
+> ⚠️ **Caution:** Store the token value immediately after creation. The plaintext token is displayed only once and cannot be retrieved again.
 
 ---
 
