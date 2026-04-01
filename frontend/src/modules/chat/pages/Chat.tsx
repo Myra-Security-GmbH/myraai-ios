@@ -400,11 +400,9 @@ export default function Chat() {
       if (msg.role === "user") {
         label = "**You**";
       } else {
-        const gw = msg.gateway_id ? gateways.find((g) => g.id === msg.gateway_id) : null;
-        const gwSlug = gw?.slug ?? (msg.gateway_id ?? null);
-        label = gwSlug
-          ? `**${aiLabel(convModel)} · ${gwSlug}**`
-          : `**${aiLabel(convModel)}**`;
+        const gwId = msg.gateway_id ?? conv.gateway_id;
+        const gw = gwId ? gateways.find((g) => g.id === gwId) : null;
+        label = `**${gw?.slug ?? gwId ?? "Assistant"}**`;
       }
       lines.push("", label, "");
 
