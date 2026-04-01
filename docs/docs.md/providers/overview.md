@@ -1,12 +1,15 @@
-# Providers Overview
-
-The AI Gateway supports 21 inference providers. Each provider is accessible via its own native endpoint and via the unified OpenAI-compatible (`compat`) endpoint.
-
 ---
+title: Providers overview
+description: Reference for all inference providers supported by AI Gateway, including endpoint patterns, model resolution, base URL overrides, and header pass-through.
+---
+
+# Providers overview
+
+AI Gateway by Myra Security supports 21 inference providers. Each provider is accessible via its own native endpoint and via the unified OpenAI-compatible (`compat`) endpoint.
 
 ## Supported providers
 
-| Provider | Wire Format | Auth | Notes |
+| Provider | Wire format | Auth | Notes |
 |---|---|---|---|
 | OpenAI | Native OpenAI | Bearer | Direct pass-through |
 | Azure OpenAI | OpenAI | `api-key` header | Requires `azure_endpoint`, `azure_deployment`, `azure_api_version` in gateway config |
@@ -29,8 +32,6 @@ The AI Gateway supports 21 inference providers. Each provider is accessible via 
 | Cohere | Cohere Chat API | Bearer | Native request/response translation |
 | HuggingFace | OpenAI-compatible | Bearer | Org-prefix routing |
 | Ollama | OpenAI-compatible | None | Local inference; configured via `provider_base_urls.ollama` |
-
----
 
 ## Endpoint patterns
 
@@ -73,17 +74,15 @@ curl -s -X POST "https://gateway.example.com/v1/myapp/prod/compat/chat/completio
   }'
 ```
 
----
-
 ## Compat model resolution
 
-When a request arrives at the compat endpoint the gateway resolves the provider in three tiers:
+When a request arrives at the compat endpoint, the gateway resolves the provider in three tiers:
 
 | Tier | Mechanism | Example |
 |---|---|---|
 | 1 | Explicit `x-aig-provider` request header | `x-aig-provider: anthropic` |
 | 2 | Model name prefix matching | `claude-` → Anthropic; `grok-` → xAI |
-| 3 | OpenRouter fallback | Any unrecognized model name |
+| 3 | OpenRouter fallback | Any unrecognised model name |
 
 **Tier 2 prefix examples:**
 
@@ -105,13 +104,11 @@ When a request arrives at the compat endpoint the gateway resolves the provider 
 | `command-`, `embed-` | Cohere |
 
 !!! note "OpenRouter as catch-all"
-    If no prefix matches and no `x-aig-provider` header is set, the request is forwarded to OpenRouter, which itself supports 300+ models. This makes the compat endpoint a true universal adapter.
-
----
+    If no prefix matches and no `x-aig-provider` header is set, the request is forwarded to OpenRouter, which supports 300+ models. This makes the compat endpoint a universal adapter.
 
 ## Provider base URL override
 
-Every provider has a hardcoded default base URL (e.g. `https://api.openai.com`). You can override this per-gateway using the `provider_base_urls` config field:
+Every provider has a hardcoded default base URL (for example, `https://api.openai.com`). Override this per gateway using the `provider_base_urls` config field:
 
 ```bash
 curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
@@ -127,13 +124,11 @@ curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
   }'
 ```
 
-This is useful for:
+Use cases:
 
 - Pointing Ollama at a remote host instead of `localhost`
-- Routing through an internal OpenAI-compat proxy
+- Routing through an internal OpenAI-compatible proxy
 - Testing against a staging endpoint
-
----
 
 ## Provider header pass-through
 
@@ -153,8 +148,6 @@ This lets you pass provider-specific beta flags, versioning headers, or experime
 !!! warning "Header forwarding is unconditional"
     All `x-aig-provider-*` headers are forwarded regardless of which provider handles the request. Sending an Anthropic-specific header to an OpenAI request is harmless but may produce unexpected upstream behaviour if the provider rejects unknown headers.
 
----
-
 ## See also
 
 - [OpenAI](openai.md)
@@ -163,5 +156,5 @@ This lets you pass provider-specific beta flags, versioning headers, or experime
 - [Azure OpenAI](azure.md)
 - [AWS Bedrock](bedrock.md)
 - [Ollama](ollama.md)
-- [OpenAI-Compatible Providers](openai-compatible.md)
-- [Gateway Configuration](../configuration/gateway-config.md)
+- [OpenAI-compatible providers](openai-compatible.md)
+- [Gateway configuration](../configuration/gateway-config.md)

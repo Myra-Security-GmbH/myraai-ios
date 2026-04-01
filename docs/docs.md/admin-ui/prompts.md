@@ -1,10 +1,29 @@
+---
+title: Prompt examples
+description: Ready-to-use prompts for analysing documents in the AI Gateway Chat view. Covers legal, marketing, sales, and finance documents.
+---
+
 # Prompt examples
 
-This page provides ready-to-use prompts for the Chat page. Upload a document as a file attachment and paste one of the prompts below to analyse, summarise, critique, or improve it.
+## View: Prompt examples
 
-Most prompts work best when you add brief context before or after — for example, the industry, the intended audience, or your role. Replace placeholders such as `[party name]` with the actual values.
+![View: Prompt examples](../assets/screenshots/prompts.png)
+*View: Prompt examples*
 
-Navigate to **Chat** in the sidebar to get started. See [Chat — File attachments](chat.md#file-attachments) for supported file formats.
+This view provides ready-to-use prompts for the **Chat** view. Upload a document as a file attachment and paste one of the prompts below to analyse, summarise, critique, or improve it.
+
+Most prompts produce better results when you add brief context — for example, the industry, the intended audience, or your role. Replace placeholders such as `[party name]` with the actual values.
+
+Proceed as follows to use a prompt from this page:
+
+1. Navigate to **Chat** in the sidebar.
+2. Start a new conversation and select your gateway and model.
+3. Attach a document using the **paperclip** icon or by dragging a file into the message area.
+4. Copy a prompt from this page and paste it into the message input field.
+5. Press **Enter** or click the **Send** button.
+   - -> The model responds based on the document content.
+
+See [Chat — Importing a file](chat.md#importing-a-file) for supported file formats.
 
 ---
 

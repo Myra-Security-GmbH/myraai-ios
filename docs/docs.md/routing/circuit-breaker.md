@@ -1,10 +1,15 @@
-# Circuit Breaker
-
-The circuit breaker automatically stops routing traffic to a provider that is consistently failing, then probes it after a cooldown period to detect recovery. This prevents cascading failures where a broken provider repeatedly burns retries on every request.
-
+---
+title: Circuit breaker
+description: How the circuit breaker protects against failing providers by stopping traffic, probing recovery, and resuming automatically.
 ---
 
-## State Machine
+# Circuit breaker
+
+The circuit breaker automatically stops routing traffic to a provider that is consistently failing, then probes it after a cooldown period to detect recovery. This prevents cascading failures where a broken provider repeatedly consumes retries on every request.
+
+## State machine
+
+The circuit breaker operates as a three-state machine:
 
 ```mermaid
 stateDiagram-v2
@@ -18,16 +23,70 @@ stateDiagram-v2
 | State | Behaviour |
 |---|---|
 | **Closed** (healthy) | All requests route normally |
-| **Open** | Requests skip this provider entirely; next target in fallback chain is tried |
+| **Open** | Requests skip this provider entirely; the next target in the fallback chain is tried |
 | **Half-open** | One probe request is allowed through to test recovery |
 
-The default state is **closed**. No state is stored until the first failure is recorded.
+The default state is **Closed**. No state is stored until the first failure is recorded.
 
----
+## Configuration fields
 
-## Configuration
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Set to `true` to activate the circuit breaker |
+| `failure_threshold` | integer | `5` | Number of failures within `window_sec` before the breaker opens |
+| `window_sec` | integer | `60` | Sliding window in seconds over which failures are counted |
+| `cooldown_ms` | integer | `30000` | Milliseconds to wait in the Open state before allowing a probe |
+| `failure_status_codes` | array | `[500,502,503,504]` | HTTP status codes that count as failures. Connection and timeout errors always count regardless of this list. |
 
-Add `circuit_breaker` to the gateway config:
+## What counts as a failure
+
+The following events increment the failure counter:
+
+- **HTTP 5xx from the provider** — only codes listed in `failure_status_codes` count (default: 500, 502, 503, 504).
+- **Connection errors** — DNS failure, connection refused, TLS error — always counted regardless of `failure_status_codes`.
+- **Timeouts** — treated as connection errors.
+
+The following events do not increment the failure counter:
+
+- **4xx responses from the provider** — bad request, auth failure, and similar client errors are not treated as provider failures.
+
+## Interaction with retries and fallbacks
+
+The circuit breaker check runs before each upstream attempt. Consider a request with `retry_count: 2` and one fallback, where OpenAI's breaker is open:
+
+1. Check OpenAI breaker → **Open** → skip OpenAI entirely.
+2. Check Anthropic breaker → Closed → attempt Anthropic.
+3. Anthropic succeeds → record success → return response.
+
+Without a circuit breaker, the gateway would exhaust two retry attempts on a failing OpenAI before trying Anthropic.
+
+## Configuring the circuit breaker
+
+Proceed as follows to configure the circuit breaker for a gateway:
+
+![Screenshot: Gateway configuration page with circuit breaker section](../assets/screenshots/gateway-circuit-breaker.png)
+*The circuit breaker configuration on the gateway detail page.*
+
+1. Open **Gateways** in the left sidebar.
+   - The gateway list opens.
+2. Click on the gateway you want to configure.
+   - The gateway detail page opens.
+3. Click on the **Configuration** tab.
+   - The configuration form opens.
+4. Toggle the **Circuit breaker enabled** toggle on.
+   - The circuit breaker configuration fields appear.
+5. Enter a value in the **Failure threshold** text field.
+   - The failure threshold is set.
+6. Enter a value in the **Window** text field (in seconds).
+   - The counting window is set.
+7. Enter a value in the **Cooldown** text field (in milliseconds).
+   - The cooldown period is set.
+8. If required, edit the **Failure status codes** field to customise which HTTP status codes count as failures.
+   - The status code list is updated.
+9. Click on the **Save** button.
+   - -> The circuit breaker configuration is saved and takes effect immediately.
+
+To configure the circuit breaker via the API:
 
 ```json
 {
@@ -40,40 +99,6 @@ Add `circuit_breaker` to the gateway config:
   }
 }
 ```
-
-### Fields
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | boolean | `false` | Must be `true` to activate the breaker |
-| `failure_threshold` | integer | `5` | Number of failures within `window_sec` before the breaker opens |
-| `window_sec` | integer | `60` | Sliding window in seconds over which failures are counted |
-| `cooldown_ms` | integer | `30000` | Milliseconds to wait in the Open state before allowing a probe |
-| `failure_status_codes` | array | `[500,502,503,504]` | HTTP status codes that count as failures. Connection/timeout errors always count regardless of this list. |
-
----
-
-## What Counts as a Failure
-
-- **HTTP 5xx from the provider** — only codes listed in `failure_status_codes` count (default: 500, 502, 503, 504)
-- **Connection errors** — DNS failure, connection refused, TLS error — always counted regardless of `failure_status_codes`
-- **Timeouts** — treated as connection errors
-
-**Not counted:** 4xx responses from the provider (bad request, auth failure, etc.) — these are treated as client errors, not provider failures.
-
----
-
-## Interaction with Retries and Fallbacks
-
-The circuit breaker check runs **before** each upstream attempt. The sequence for a request with `retry_count: 2` and one fallback, with OpenAI's breaker open:
-
-1. Check OpenAI breaker → **OPEN** → skip OpenAI entirely
-2. Check Anthropic breaker → closed → attempt Anthropic
-3. Anthropic succeeds → record success → return response
-
-Without a circuit breaker, the gateway would waste two retry attempts on a failing OpenAI before trying Anthropic.
-
----
 
 ## Status API
 
@@ -101,11 +126,9 @@ Response:
 
 Only providers that have recorded at least one failure appear in the response. A missing provider entry means the breaker is closed with zero recorded failures.
 
-The Dashboard UI shows this status in a live table on the gateway detail page when the circuit breaker is enabled.
+The dashboard UI shows this status in a live table on the gateway detail page when the circuit breaker is enabled.
 
----
-
-## Example Config
+## Example configurations
 
 ### Conservative — trip only on sustained outage
 
@@ -137,10 +160,8 @@ Opens after 10 failures in 2 minutes. Probes after 1 minute. Appropriate when pr
 
 Opens after 3 failures in 30 seconds. Probes after 10 seconds. Appropriate when you have multiple healthy fallbacks and want to shed load immediately.
 
----
+## See also
 
-## See Also
-
-- [Dynamic Routing & Fallback](fallback.md)
-- [Load Balancing](load-balancing.md)
-- [Gateway Configuration Reference](../reference/config-reference.md)
+- [Fallback and retry](fallback.md)
+- [Load balancing](load-balancing.md)
+- [Gateway configuration reference](../reference/config-reference.md)

@@ -4,9 +4,9 @@ Definitions for all key terms used across the AI Gateway documentation, listed a
 
 ---
 
-## Auth Token
+## Auth token
 
-An access token issued by the Admin UI or API that authenticates inference requests. The plaintext token is returned once at creation time and cannot be recovered afterwards. Tokens are scoped to a single gateway. See [Authentication](../security/authentication.md).
+An access token issued by the admin UI or API that authenticates inference requests. The plaintext token is returned once at creation time and cannot be recovered afterwards. Tokens are scoped to a single gateway. See [Authentication](../security/authentication.md).
 
 ## Block
 
@@ -14,7 +14,7 @@ A guardrail or policy action that rejects a request entirely and returns an erro
 
 ## Budget
 
-A cumulative spend cap in USD applied at either the gateway level (`config.budget_usd`) or the per-token level (`auth_token.budget_usd`). Once the cap is reached all requests return `429 QUOTA_EXCEEDED`. Budgets are reset via the Admin API. See [Budget & Quota Enforcement](../configuration/budgets.md).
+A cumulative spend cap in USD applied at either the gateway level (`config.budget_usd`) or the per-token level (`auth_token.budget_usd`). Once the cap is reached all requests return `429 QUOTA_EXCEEDED`. Budgets are reset via the admin API. See [Budget & Quota Enforcement](../configuration/budgets.md).
 
 ## BYOK
 
@@ -34,11 +34,7 @@ The unified `POST /v1/{tenant}/{gateway}/compat/chat/completions` endpoint that 
 
 ## cost_usd
 
-The estimated cost of an inference request in US dollars, calculated from token counts multiplied by the model's per-token pricing in the gateway's pricing table. Stored as micro-dollars internally. Appears in log entries and in the stats API. See [Models & Pricing API](../api-reference/models.md).
-
-## Guardrail
-
-A configurable content inspection component in the gateway's two-tier pipeline. Tier 1 guardrails (regex, keyword) run in-process in sub-milliseconds. Tier 2 guardrails (presidio, prompt_guard, pii_protector) call external HTTP sidecars. Each guardrail has an action: `block`, `scrub`, or `flag`. See [Guardrail Pipeline](../security/guardrails.md).
+The estimated cost of an inference request in US dollars, calculated from token counts multiplied by the model's per-token pricing in the gateway's pricing table. Stored as micro-dollars internally. Appears in log entries and in the Stats API. See [Models & Pricing API](../api-reference/models.md).
 
 ## DLP
 
@@ -46,7 +42,7 @@ A configurable content inspection component in the gateway's two-tier pipeline. 
 
 ## Exact-match cache
 
-The gateway's response caching mechanism. Responses are keyed on a SHA-256 hash of the provider name, model name, and canonicalized request body (excluding `stream`, `user`, and `metadata` fields). A cache hit returns the stored response without calling the upstream provider, saving cost and latency. Controlled by `config.cache_ttl`.
+The gateway's response caching mechanism. Responses are keyed on a SHA-256 hash of the provider name, model name, and canonicalised request body (excluding `stream`, `user`, and `metadata` fields). A cache hit returns the stored response without calling the upstream provider, saving cost and latency. Controlled by `config.cache_ttl`.
 
 ## Fallback
 
@@ -60,6 +56,10 @@ A detector action that records a match in the log entry (`detector_flags`) and c
 
 The second-level entity in the tenant hierarchy. A gateway belongs to a tenant and holds a configuration object, a set of provider keys, routing rules, and auth tokens. Each gateway corresponds to a unique path prefix in inference endpoint URLs: `/v1/{tenant}/{gateway}/...`. See [Tenants & Gateways API](../api-reference/tenants-gateways.md).
 
+## Guardrail
+
+A configurable content inspection component in the gateway's two-tier pipeline. Tier 1 guardrails (regex, keyword) run in-process in sub-milliseconds. Tier 2 guardrails (presidio, prompt_guard, pii_protector) call external HTTP sidecars. Each guardrail has an action: `block`, `scrub`, or `flag`. See [Guardrail Pipeline](../security/guardrails.md).
+
 ## Llama Guard
 
 An open-weight safety classification model (Meta's Llama Guard 3) that inspects prompt and response content for harm across 14 categories. In AI Gateway it is used as the `prompt_guard` Tier-2 guardrail sidecar. See [Prompt Guard](../security/guardrails/prompt-guard.md).
@@ -68,17 +68,17 @@ An open-weight safety classification model (Meta's Llama Guard 3) that inspects 
 
 The internal unit for cost storage: `cost_usd × 1,000,000` stored as an integer. This avoids floating-point precision loss when accumulating small per-request costs in an atomic counter. The API always returns values in USD (as a float), not micro-dollars.
 
+## NLP PII Detector
+
+An NLP-based named entity recognition engine for PII (personally identifiable information) detection. Runs as a locally hosted sidecar within the Myra infrastructure — data never leaves the Myra perimeter. More accurate than the in-process regex guardrails for unstructured text but adds network round-trip latency. See [NLP PII Detector](../security/guardrails/presidio.md).
+
 ## Playground
 
-The interactive model testing interface in the Admin UI. Supports multi-model comparisons, streaming responses, web search, and session persistence. Playground sessions use short-lived tokens issued by `POST /admin/v1/playground/token`. See [Admin API](../api-reference/authentication.md).
+The interactive model testing interface in the admin UI. Supports multi-model comparisons, streaming responses, web search, and session persistence. Playground sessions use short-lived tokens issued by `POST /admin/v1/playground/token`. See [Admin API](../api-reference/authentication.md).
 
 ## Playground token
 
 A short-lived token issued for the Playground UI. Expires after 10 minutes and is managed automatically by the admin UI. Cannot be used for production inference. See [Authentication](../api-reference/authentication.md).
-
-## NLP PII Detector
-
-An NLP-based named entity recognition engine for PII detection. Runs as a locally hosted sidecar within the Myra infrastructure — data never leaves the Myra perimeter. More accurate than the in-process regex guardrails for unstructured text but adds network round-trip latency. See [NLP PII Detector](../security/guardrails/presidio.md).
 
 ## Provider
 
@@ -90,7 +90,7 @@ The exhaustion state when a budget cap is reached. Requests are blocked with `42
 
 ## Rate limit
 
-A sliding-window request frequency cap, applied at the gateway level (`config.rate_limit`) or per token (`auth_token.rate_limit`). Implemented using a dual-bucket approximation in in-process shared memory (nginx shared-dict). Exceeded limits return `429 RATE_LIMITED`. See [Rate Limiting](../configuration/rate-limiting.md).
+A sliding-window request frequency cap, applied at the gateway level (`config.rate_limit`) or per token (`auth_token.rate_limit`). Exceeded limits return `429 RATE_LIMITED`. See [Rate Limiting](../configuration/rate-limiting.md).
 
 ## Retry
 
@@ -102,7 +102,7 @@ A priority-ordered conditional rule that rewrites the provider and model for mat
 
 ## saved_cost_usd
 
-For cache-hit requests: the cost that would have been incurred if the response had been fetched from the provider rather than served from cache. Reported in log entries and aggregated in stats as a "savings" metric. See [Stats API](../api-reference/stats.md).
+For cache-hit requests: the cost that would have been incurred if the response had been fetched from the provider rather than served from cache. Reported in log entries and aggregated in stats as a savings metric. See [Stats API](../api-reference/stats.md).
 
 ## Scrub
 
@@ -110,7 +110,7 @@ A detector action that replaces matched content with a placeholder (e.g. `[REDAC
 
 ## SigV4
 
-The request signing scheme used by AWS services including Bedrock. The gateway signs Bedrock requests automatically using credentials stored via BYOK — you don't need to handle signing yourself. See [AWS Bedrock](../providers/bedrock.md).
+The request signing scheme used by AWS services including Bedrock. The gateway signs Bedrock requests automatically using credentials stored via BYOK — you do not need to handle signing yourself. See [AWS Bedrock](../providers/bedrock.md).
 
 ## Slug
 
@@ -126,11 +126,7 @@ The mode of operation when a request includes `"stream": true`. The provider sen
 
 ## Tenant
 
-The top-level organizational unit. A tenant corresponds to one application or team. Each tenant has a unique slug that appears in all inference endpoint URLs. Tenants contain gateways, users, and tokens. See [Tenants & Gateways API](../api-reference/tenants-gateways.md).
-
-## Trace
-
-A structured step-by-step record of a single request's execution through the gateway pipeline. Each trace captures per-phase timing and data (auth, guardrail, upstream call, log) and is stored in the `playground_trace` table. Gateway traces are linked to log entries via the `trace_id` field. See [Traces API](../api-reference/traces.md).
+The top-level organisational unit. A tenant corresponds to one application or team. Each tenant has a unique slug that appears in all inference endpoint URLs. Tenants contain gateways, users, and tokens. See [Tenants & Gateways API](../api-reference/tenants-gateways.md).
 
 ## Tier 1 guardrail
 
@@ -139,6 +135,10 @@ An in-process guardrail (regex, keyword) that runs entirely inside the gateway p
 ## Tier 2 guardrail
 
 An HTTP-sidecar-based guardrail (presidio, prompt_guard, pii_protector) that sends content to an external service for analysis. Execution time is in the millisecond range due to the network round trip. Tier 2 guardrails run only after all Tier 1 guardrails pass without blocking. See [Guardrail Pipeline](../security/guardrails.md).
+
+## Trace
+
+A structured step-by-step record of a single request's execution through the gateway pipeline. Each trace captures per-phase timing and data (auth, guardrail, upstream call, log) and is stored in the `playground_trace` table. Gateway traces are linked to log entries via the `trace_id` field. See [Traces API](../api-reference/traces.md).
 
 ---
 

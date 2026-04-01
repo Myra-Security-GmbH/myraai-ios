@@ -1,4 +1,4 @@
-# Users & Tokens API
+# Users & tokens API
 
 Users are identity records within a tenant. Each user has a role and can hold multiple auth tokens. Tokens are the credentials used to authenticate inference requests.
 
@@ -10,7 +10,7 @@ Users are identity records within a tenant. Each user has a role and can hold mu
 
 ### Users
 
-| Method | Path | Description |
+| **Method** | **Path** | **Description** |
 |---|---|---|
 | `GET` | `/tenants/{id}/users` | List users for a tenant |
 | `POST` | `/tenants/{id}/users` | Create a user |
@@ -20,7 +20,7 @@ Users are identity records within a tenant. Each user has a role and can hold mu
 
 ### Tokens
 
-| Method | Path | Description |
+| **Method** | **Path** | **Description** |
 |---|---|---|
 | `GET` | `/gateways/{id}/tokens` | List all tokens for a gateway |
 | `POST` | `/gateways/{id}/tokens` | Create a gateway-scoped token |
@@ -28,9 +28,9 @@ Users are identity records within a tenant. Each user has a role and can hold mu
 | `GET` | `/users/{id}/tokens` | List tokens belonging to a user |
 | `POST` | `/users/{id}/tokens` | Create a user-scoped token |
 
-### Self-Service (My Tokens)
+### Self-service (my tokens)
 
-| Method | Path | Description |
+| **Method** | **Path** | **Description** |
 |---|---|---|
 | `GET` | `/me/tokens` | List the caller's own tokens |
 | `POST` | `/me/tokens` | Create a token for the caller |
@@ -40,7 +40,7 @@ Users are identity records within a tenant. Each user has a role and can hold mu
 
 ## Users
 
-### List users
+### Listing users
 
 ```bash
 curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users
@@ -61,7 +61,7 @@ curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users
 ]
 ```
 
-### Create a user
+### Creating a user
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users \
@@ -73,7 +73,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users \
   }'
 ```
 
-| Field | Type | Required | Description |
+| **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
 | `email` | string | Yes | User's email address. Must be globally unique. |
 | `name` | string | No | Display name. |
@@ -81,7 +81,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users \
 
 **Response:** `{ "id": "usr_abc123", "email": "alice@example.com" }`
 
-### Update a user
+### Updating a user
 
 ```bash
 curl -X PATCH https://<your-gateway-host>/admin/v1/users/{id} \
@@ -89,7 +89,7 @@ curl -X PATCH https://<your-gateway-host>/admin/v1/users/{id} \
   -d '{"role": "viewer"}'
 ```
 
-### Delete a user
+### Deleting a user
 
 Deletes the user record and immediately disables all tokens associated with that user. In-flight requests that have already passed the auth phase complete normally.
 
@@ -97,7 +97,7 @@ Deletes the user record and immediately disables all tokens associated with that
 curl -X DELETE https://<your-gateway-host>/admin/v1/users/{id}
 ```
 
-### Reset user token budgets
+### Resetting user token budgets
 
 Clears the accumulated spend for every token belonging to the user.
 
@@ -111,7 +111,7 @@ curl -X DELETE https://<your-gateway-host>/admin/v1/users/{id}/budget
 
 ### Token fields
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `label` | string | — | Human-readable name shown in the admin UI and logs. |
 | `user_id` | string \| null | `null` | Associates the token with a user for audit trail and per-user budget tracking. |
@@ -123,13 +123,13 @@ curl -X DELETE https://<your-gateway-host>/admin/v1/users/{id}/budget
 !!! note
     Tokens are hashed with SHA-256 before storage. The plaintext `token` value is returned once in the creation response and cannot be retrieved later. If a token is lost, revoke it and create a new one. The list endpoint returns `token_hash`, not the plaintext value.
 
-### List gateway tokens
+### Listing gateway tokens
 
 ```bash
 curl https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens
 ```
 
-### Create a gateway token
+### Creating a gateway token
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
@@ -153,7 +153,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
 }
 ```
 
-### Create a gateway token with rate limit and budget
+### Creating a gateway token with rate limit and budget
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
@@ -168,7 +168,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
   }'
 ```
 
-### Create a user token
+### Creating a user token
 
 User tokens work identically to gateway tokens but are listed under the user and can be managed via the user endpoint. `gateway_id` is required — it specifies which gateway the token grants access to.
 
@@ -183,7 +183,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/users/{user_id}/tokens \
   }'
 ```
 
-### Revoke a token
+### Revoking a token
 
 Revocation is immediate. Any subsequent inference request using the revoked token returns `401 UNAUTHORIZED`.
 
@@ -193,14 +193,14 @@ curl -X DELETE https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens
 
 ---
 
-## Self-Service Tokens (`/me/tokens`)
+## Self-service tokens (`/me/tokens`)
 
 These endpoints are available to **any authenticated user** regardless of role (except `viewer`). They let `member` and `tenant_admin` users create and manage tokens for themselves without needing an admin to act on their behalf.
 
 !!! note
     `viewer` users can call these endpoints but cannot create tokens with the `inference` scope because they have no inference access. Creating a token via `/me/tokens` automatically sets `scopes: ["inference"]`.
 
-### List own tokens
+### Listing own tokens
 
 ```bash
 curl https://<your-gateway-host>/admin/v1/me/tokens \
@@ -209,7 +209,7 @@ curl https://<your-gateway-host>/admin/v1/me/tokens \
 
 **Response:** array of [token objects](#token-fields).
 
-### Create own token
+### Creating own token
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/me/tokens \
@@ -224,7 +224,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/me/tokens \
   }'
 ```
 
-| Field | Type | Required | Description |
+| **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
 | `gateway_id` | string | Yes | Gateway the token grants access to. Must be accessible to the caller's tenant. |
 | `label` | string | No | Human-readable name. |
@@ -242,7 +242,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/me/tokens \
 }
 ```
 
-### Revoke own token
+### Revoking own token
 
 ```bash
 curl -X DELETE https://<your-gateway-host>/admin/v1/me/tokens/{token_id} \

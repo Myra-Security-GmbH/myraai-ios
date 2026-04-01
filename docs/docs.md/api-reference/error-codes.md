@@ -1,4 +1,4 @@
-# Error Codes
+# Error codes
 
 All errors returned by the gateway (admin API and inference endpoints) follow a consistent JSON structure.
 
@@ -24,7 +24,7 @@ The `code` field is a stable machine-readable string. The `message` is informati
 !!! note "Admin API vs inference API error format"
     Inference endpoint errors (`/v1/...`) use the structured format below with `code` and `message` fields. Admin API errors (`/admin/v1/...`) use a simpler flat format: `{"error": "message string"}`.
 
-| Code | HTTP Status | Description |
+| **Code** | **HTTP status** | **Description** |
 |---|---|---|
 | `unauthorized` | 401 | The request did not include a valid auth token, or the token has expired or been revoked. |
 | `forbidden` | 403 | The token is valid but does not have permission. Causes: `viewer` role on inference, or IP not in the gateway's `ip_allowlist`. |
@@ -45,7 +45,7 @@ The `code` field is a stable machine-readable string. The `message` is informati
 
 In **non-streaming** mode, a guardrail block returns `HTTP 400` with the `guardrail_blocked` error JSON.
 
-In **streaming** mode (`"stream": true`), the guardrail check runs before the provider call. When a block occurs the gateway returns `HTTP 200` with a synthetic SSE stream containing an error message chunk followed by `data: [DONE]`. This is necessary because some streaming clients do not gracefully handle a non-200 HTTP status on a streaming response.
+In **streaming** mode (`"stream": true`), the guardrail check runs before the provider call. When a block occurs the gateway returns `HTTP 200` with a synthetic SSE (Server-Sent Events) stream containing an error message chunk followed by `data: [DONE]`. This is necessary because some streaming clients do not gracefully handle a non-200 HTTP status on a streaming response.
 
 ```
 data: {"id":"...","choices":[{"delta":{"content":"[Blocked: S1]"},"finish_reason":"stop"}]}
@@ -63,7 +63,7 @@ data: [DONE]
 
 When `rate_limited` is returned, the response includes three headers:
 
-| Header | Description |
+| **Header** | **Description** |
 |---|---|
 | `X-RateLimit-Limit` | The configured request limit for the window. |
 | `X-RateLimit-Remaining` | Estimated remaining requests in the current window (0 when blocked). |

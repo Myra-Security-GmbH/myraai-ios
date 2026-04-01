@@ -1,8 +1,11 @@
+---
+title: Google Gemini
+description: How AI Gateway translates OpenAI format to the Google GenerateContent API for both Google AI Studio and Vertex AI.
+---
+
 # Google Gemini
 
-The gateway translates OpenAI chat completions format to the Google GenerateContent API (used by both Google AI Studio and Vertex AI) and translates responses back.
-
----
+AI Gateway by Myra Security translates the OpenAI chat completions format to the Google GenerateContent API (used by both Google AI Studio and Vertex AI) and translates responses back.
 
 ## Request translation
 
@@ -16,25 +19,6 @@ The gateway translates OpenAI chat completions format to the Google GenerateCont
 | `stream` | `?alt=sse` query param | SSE pass-through |
 
 System messages are extracted from the messages array and passed as the `system_instruction` top-level object.
-
----
-
-## BYOK setup (Google AI Studio)
-
-```bash
-curl -s -X POST "https://gateway.example.com/admin/v1/gateways/{gateway_id}/keys" \
-  -H "x-aig-token: <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "provider": "gemini",
-    "alias": "default",
-    "key": "AIza..."
-  }'
-```
-
-The key is sent as a Bearer token in the `Authorization` header to the Google AI API.
-
----
 
 ## Endpoint
 
@@ -54,7 +38,44 @@ POST /v1/{tenant}/{gateway}/compat/chat/completions
 
 with `"model": "gemini-2.0-flash"`.
 
----
+## Adding a Google AI Studio API key
+
+The gateway stores API keys using a bring-your-own-key (BYOK) mechanism. The key is sent as a Bearer token in the `Authorization` header to the Google AI API.
+
+Proceed as follows to add a Google AI Studio API key:
+
+![Screenshot: BYOK key management page with Add Key form](../assets/screenshots/byok-add-key.png)
+*The key management page for a gateway.*
+
+1. Open **Gateways** in the left sidebar.
+   - The gateway list opens.
+2. Click on the gateway you want to configure.
+   - The gateway detail page opens.
+3. Click on the **Keys** tab.
+   - The key management page opens.
+4. Click on the **Add Key** button.
+   - The key form opens.
+5. Select `gemini` from the **Provider** drop-down list.
+   - The provider is set.
+6. Enter `default` in the **Alias** text field (or a custom alias if you store multiple keys).
+   - The alias is set.
+7. Enter your Google AI Studio API key (starting with `AIza`) in the **Key** text field.
+   - The key value is set.
+8. Click on the **Save** button.
+   - -> The key is encrypted and stored. The gateway uses it for all Gemini requests on this gateway.
+
+To add the key via the API:
+
+```bash
+curl -s -X POST "https://gateway.example.com/admin/v1/gateways/{gateway_id}/keys" \
+  -H "x-aig-token: <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "gemini",
+    "alias": "default",
+    "key": "AIza..."
+  }'
+```
 
 ## Request example
 
@@ -74,11 +95,31 @@ curl -s -X POST \
   }'
 ```
 
----
-
 ## Vertex AI variant
 
-Vertex AI uses the same GenerateContent wire format but requires OAuth2 credentials and project/region configuration. Set the following fields in your gateway config:
+Vertex AI uses the same GenerateContent wire format but requires OAuth2 credentials and project/region configuration.
+
+### Configuring Vertex AI
+
+Proceed as follows to configure the Vertex AI variant:
+
+![Screenshot: Gateway configuration page with Vertex AI fields](../assets/screenshots/gateway-config-vertex.png)
+*Vertex AI configuration fields on the gateway detail page.*
+
+1. Open **Gateways** in the left sidebar.
+   - The gateway list opens.
+2. Click on the gateway you want to configure.
+   - The gateway detail page opens.
+3. Click on the **Configuration** tab.
+   - The configuration form opens.
+4. Enter your Google Cloud project ID in the **Vertex project** text field.
+   - The project is set.
+5. Enter the Google Cloud region in the **Vertex region** text field (for example, `us-central1`).
+   - The region is set.
+6. Click on the **Save** button.
+   - -> The Vertex AI configuration is saved.
+
+To configure Vertex AI via the API:
 
 ```bash
 curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
@@ -97,9 +138,10 @@ curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
 | `vertex_project` | `null` | Google Cloud project ID (required for Vertex AI) |
 | `vertex_region` | `"us-central1"` | Google Cloud region for Vertex AI endpoint |
 
-### BYOK setup (Vertex AI)
+!!! note "Project and region are required"
+    Requests to the Vertex AI provider will fail with a configuration error if `vertex_project` is not set in the gateway config.
 
-For Vertex AI, store your OAuth2 access token (or a service account key JSON encoded as the key value):
+Next, store your Vertex AI credentials as a BYOK key. For Vertex AI, store your OAuth2 access token (or a service account key JSON encoded as the key value):
 
 ```bash
 curl -s -X POST "https://gateway.example.com/admin/v1/gateways/{gateway_id}/keys" \
@@ -128,12 +170,7 @@ curl -s -X POST \
   }'
 ```
 
-!!! note "Project and region are required"
-    Requests to the Vertex AI provider will fail with a configuration error if `vertex_project` is not set in the gateway config.
-
----
-
 ## See also
 
-- [Providers Overview](overview.md)
-- [Gateway Configuration](../configuration/gateway-config.md) — `vertex_project`, `vertex_region`
+- [Providers overview](overview.md)
+- [Gateway configuration](../configuration/gateway-config.md) — `vertex_project`, `vertex_region`

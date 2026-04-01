@@ -1,4 +1,4 @@
-# Routing Rules API
+# Routing rules API
 
 Routing rules let you rewrite the provider and model for any request without changing the caller. Rules are evaluated in priority order — the first matching rule wins. Each rule can override the provider, rewrite the model name, and attach a fallback chain that is walked when the primary fails.
 
@@ -8,7 +8,7 @@ Routing rules let you rewrite the provider and model for any request without cha
 
 ## Endpoints
 
-| Method | Path | Description |
+| **Method** | **Path** | **Description** |
 |---|---|---|
 | `GET` | `/gateways/{id}/rules` | List rules for a gateway |
 | `POST` | `/gateways/{id}/rules` | Create a rule |
@@ -39,7 +39,7 @@ Routing rules let you rewrite the provider and model for any request without cha
 
 ### Rule fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `priority` | integer | Evaluation order. Lower numbers run first. Rules with equal priority are evaluated in creation order. |
 | `conditions` | array | List of condition objects. All conditions must match (logical AND). An empty array matches every request. |
@@ -54,7 +54,7 @@ Each condition object specifies a `field`, an `op` (operator), and a `value` to 
 
 ### Condition fields
 
-| Field | Description |
+| **Field** | **Description** |
 |---|---|
 | `model` | The model name from the request body. |
 | `provider` | The provider from the request URL path (e.g. `openai`, `compat`). |
@@ -64,7 +64,7 @@ Each condition object specifies a `field`, an `op` (operator), and a `value` to 
 
 ### Condition operators
 
-| Operator | Behavior |
+| **Operator** | **Behaviour** |
 |---|---|
 | `eq` | Exact string match. Case-sensitive. |
 | `neq` | Exact string non-match. Case-sensitive. |
@@ -102,7 +102,7 @@ Match all requests (catch-all rule, empty conditions):
 
 ## Actions
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `provider` | string | Override the inference provider (e.g. `openai`, `anthropic`, `gemini`). |
 | `model` | string | Rewrite the model name sent to the provider. If omitted, the original model name is used. |
@@ -115,7 +115,7 @@ Match all requests (catch-all rule, empty conditions):
 
 ## Examples
 
-### List rules
+### Listing rules
 
 ```bash
 curl https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules
@@ -141,7 +141,7 @@ curl https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules
 }
 ```
 
-### Create a rule — redirect GPT requests to OpenAI with Anthropic fallback
+### Creating a rule — redirect GPT requests to OpenAI with Anthropic fallback
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules \
@@ -162,7 +162,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules \
   }'
 ```
 
-### Create a rule — route production traffic to a specific model
+### Creating a rule — route production traffic to a specific model
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules \
@@ -181,7 +181,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules \
   }'
 ```
 
-### Create a catch-all rule — default provider for all unmatched requests
+### Creating a catch-all rule — default provider for all unmatched requests
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules \
@@ -197,7 +197,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules \
   }'
 ```
 
-### Update a rule — disable without deleting
+### Updating a rule — disable without deleting
 
 ```bash
 curl -X PATCH https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules/{rule_id} \
@@ -205,7 +205,7 @@ curl -X PATCH https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules/{
   -d '{"enabled": false}'
 ```
 
-### Update a rule — change priority
+### Updating a rule — change priority
 
 ```bash
 curl -X PATCH https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules/{rule_id} \
@@ -213,7 +213,7 @@ curl -X PATCH https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules/{
   -d '{"priority": 20}'
 ```
 
-### Delete a rule
+### Deleting a rule
 
 ```bash
 curl -X DELETE https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/rules/{rule_id}
@@ -228,7 +228,7 @@ Rules are evaluated in ascending priority order. The **first matching rule wins*
 If no rule matches the request, the provider and model from the original request URL or body are used as-is.
 
 !!! note
-    Rules are cached for 30 seconds in in-process shared memory (nginx shared-dict). Changes take effect within one cache TTL cycle. In a multi-worker deployment, each worker refreshes independently.
+    Rules are cached for 30 seconds in in-process shared memory. Changes take effect within one cache TTL cycle. In a multi-worker deployment, each worker refreshes independently.
 
 ---
 

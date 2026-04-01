@@ -1,6 +1,6 @@
-# Models & Pricing API
+# Models & pricing API
 
-The Models API exposes the gateway's model catalog. The Pricing API lets you read and manage per-model cost data used for spend tracking and budget enforcement. Model pricing data is maintained by Myra Security.
+The Models API exposes the gateway's model catalogue. The Pricing API lets you read and manage per-model cost data used for spend tracking and budget enforcement. Model pricing data is maintained by Myra Security.
 
 **Base URL:** `https://<your-gateway-host>/admin/v1`
 
@@ -8,9 +8,9 @@ The Models API exposes the gateway's model catalog. The Pricing API lets you rea
 
 ## Endpoints
 
-| Method | Path | Description |
+| **Method** | **Path** | **Description** |
 |---|---|---|
-| `GET` | `/models` | List the model catalog |
+| `GET` | `/models` | List the model catalogue |
 | `GET` | `/model-prices` | List all stored model prices |
 | `PUT` | `/model-prices` | Upsert a model price |
 | `DELETE` | `/model-prices/{provider}/{model}` | Delete a model price |
@@ -19,7 +19,7 @@ The Models API exposes the gateway's model catalog. The Pricing API lets you rea
 
 ## GET /models
 
-Returns the known model catalog. This list is used for model picker dropdowns in the admin UI.
+Returns the known model catalogue. This list is used for model picker dropdowns in the admin UI.
 
 ```bash
 curl https://<your-gateway-host>/admin/v1/models
@@ -95,7 +95,7 @@ curl https://<your-gateway-host>/admin/v1/model-prices
 
 ### ModelPrice fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `provider` | string | Provider identifier (e.g. `openai`, `anthropic`). |
 | `model` | string | Exact model name as used in requests. |
@@ -153,7 +153,7 @@ curl -X PUT https://<your-gateway-host>/admin/v1/model-prices \
 
 ## DELETE /model-prices/{provider}/{model}
 
-Remove a pricing record. Subsequent requests for this model will fall back to the gateway's hardcoded cost table defaults, or report zero cost if the model is not in the defaults.
+Remove a pricing record. Subsequent requests for this model fall back to the gateway's hardcoded cost table defaults, or report zero cost if the model is not in the defaults.
 
 ```bash
 curl -X DELETE "https://<your-gateway-host>/admin/v1/model-prices/openai/gpt-4o"

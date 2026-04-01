@@ -1,4 +1,9 @@
-# Request Pipeline
+---
+title: Request pipeline
+description: The three processing phases every gateway request passes through — access, content, and log.
+---
+
+# Request pipeline
 
 Every request to the gateway passes through three processing phases. Each phase either short-circuits — returning a response to the client immediately — or passes the request to the next step.
 
@@ -70,7 +75,7 @@ Has access to the full request body.
 
 ### Cache check
 
-Looks up the request in the exact-match response cache. On a hit, returns the stored response immediately with `X-AIG-Cache: HIT` — the provider is never called. See [Response Caching](caching.md).
+Looks up the request in the exact-match response cache. On a hit, returns the stored response immediately with `X-AIG-Cache: HIT` — the provider is never called. See [Response caching](caching.md).
 
 ### Guardrails (request)
 
@@ -79,7 +84,7 @@ Two-tier guardrail pipeline runs against the outbound request body:
 - **Tier 1** (in-process, sub-millisecond): regex and keyword guardrails
 - **Tier 2** (HTTP sidecar, milliseconds): NLP PII Detector, Prompt Guard, PII Protector — only if Tier 1 passes
 
-A `block` verdict returns a synthetic error response to the client. `scrub` replaces matched content. `flag` records the match in the log. See [Guardrail Pipeline](../security/guardrails.md).
+A `block` verdict returns a synthetic error response to the client. `scrub` replaces matched content. `flag` records the match in the log. See [Guardrail pipeline](../security/guardrails.md).
 
 ### Routing
 
@@ -99,7 +104,7 @@ Runs the guardrail pipeline against the inbound provider response before forward
 
 ### Cost accounting
 
-Extracts token counts from the provider response and computes the request cost. Increments the budget counter. See [Cost Attribution](cost-attribution.md).
+Extracts token counts from the provider response and computes the request cost. Increments the budget counter. See [Cost attribution](cost-attribution.md).
 
 ### Cache store
 
@@ -111,13 +116,13 @@ Persists non-streaming 200 responses to the cache when `cache_ttl > 0`.
 
 Runs after the response has been sent. Failures here do not affect the client.
 
-Writes a structured log entry containing identity, routing, status, cache state, token counts, cost, timing, guardrail results, and custom metadata. Payload logging can be suppressed per gateway (`log_payloads: false`) or per request (`x-aig-collect-log-payload: false`). The log entry can be skipped entirely with `x-aig-collect-log: false`.
+Writes a structured log entry containing identity, routing, status, cache state, token counts, cost, timing, guardrail results, and custom metadata. Payload logging is suppressed per gateway (`log_payloads: false`) or per request (`x-aig-collect-log-payload: false`). The log entry is skipped entirely with `x-aig-collect-log: false`.
 
 ---
 
 ## See also
 
-- [Multi-Tenancy](multi-tenancy.md) — how tenant and gateway resolution works
-- [Response Caching](caching.md) — cache key construction and TTL configuration
-- [Routing Rules](../routing/routing-rules.md) — rule engine conditions and actions
-- [Cost Attribution](cost-attribution.md) — token counting and pricing lookup
+- [Multi-tenancy](multi-tenancy.md) — how tenant and gateway resolution works
+- [Response caching](caching.md) — cache key construction and TTL configuration
+- [Routing rules](../routing/routing-rules.md) — rule engine conditions and actions
+- [Cost attribution](cost-attribution.md) — token counting and pricing lookup

@@ -1,8 +1,11 @@
-# OpenAI-Compatible Providers
-
-Thirteen providers expose an OpenAI-compatible API. They all share the same request format, Bearer token auth, and response structure. The only differences are the base URL, the expected model naming conventions, and provider-specific features.
-
 ---
+title: OpenAI-compatible providers
+description: Reference for the thirteen OpenAI-compatible providers supported by AI Gateway, including BYOK setup, endpoints, and request examples.
+---
+
+# OpenAI-compatible providers
+
+Thirteen providers expose an OpenAI-compatible API. They all share the same request format, Bearer token authentication, and response structure. The differences between them are the base URL, the expected model naming conventions, and provider-specific features.
 
 ## Provider list
 
@@ -22,8 +25,6 @@ Thirteen providers expose an OpenAI-compatible API. They all share the same requ
 | Cloudflare AI | `@cf/meta/llama-3.1-8b-instruct` etc. | `@cf/` prefix; edge inference |
 | HuggingFace | Org-prefix routing (see below) | Various open models |
 
----
-
 ## BYOK setup
 
 The process is identical for every provider in this group — only the `provider` field changes:
@@ -40,8 +41,6 @@ curl -s -X POST "https://gateway.example.com/admin/v1/gateways/{gateway_id}/keys
 ```
 
 Replace `"groq"` with any of: `mistral`, `together`, `fireworks`, `cerebras`, `deepseek`, `openrouter`, `perplexity`, `sambanova`, `xai`, `nvidia`, `cloudflare`, `huggingface`.
-
----
 
 ## Endpoints
 
@@ -65,7 +64,7 @@ POST /v1/{tenant}/{gateway}/huggingface/chat/completions
 
 ### Compat endpoint
 
-The compat endpoint resolves providers via model name prefix automatically. For providers where prefix matching is unambiguous you do not need to set `x-aig-provider`:
+The compat endpoint resolves providers via model name prefix automatically. For providers where prefix matching is unambiguous, the `x-aig-provider` header is not required:
 
 ```bash
 curl -s -X POST \
@@ -77,8 +76,6 @@ curl -s -X POST \
     "messages": [{"role": "user", "content": "Hello"}]
   }'
 ```
-
----
 
 ## Request example (Groq)
 
@@ -98,8 +95,6 @@ curl -s -X POST \
   }'
 ```
 
----
-
 ## Request example (Together AI)
 
 ```bash
@@ -113,8 +108,6 @@ curl -s -X POST \
     "max_tokens": 512
   }'
 ```
-
----
 
 ## Request example (Fireworks)
 
@@ -132,8 +125,6 @@ curl -s -X POST \
   }'
 ```
 
----
-
 ## OpenRouter as universal fallback
 
 OpenRouter aggregates 300+ models from many providers. When the compat endpoint cannot match a model name to any known provider prefix, it falls back to OpenRouter automatically.
@@ -150,16 +141,14 @@ curl -s -X POST \
   }'
 ```
 
-You can also force OpenRouter explicitly:
+Force OpenRouter explicitly by adding the header:
 
 ```bash
 -H "x-aig-provider: openrouter"
 ```
 
 !!! note "OpenRouter BYOK"
-    You must have an OpenRouter BYOK key stored for the fallback to work. Without it, fallback requests will fail with an authentication error from OpenRouter.
-
----
+    A valid OpenRouter BYOK key must be stored for the fallback to work. Without it, fallback requests will fail with an authentication error from OpenRouter.
 
 ## HuggingFace org prefix routing
 
@@ -188,10 +177,8 @@ curl -s -X POST \
   }'
 ```
 
----
-
 ## See also
 
-- [Providers Overview](overview.md)
+- [Providers overview](overview.md)
 - [OpenAI](openai.md)
-- [Gateway Configuration](../configuration/gateway-config.md)
+- [Gateway configuration](../configuration/gateway-config.md)

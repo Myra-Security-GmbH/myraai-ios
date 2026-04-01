@@ -16,7 +16,7 @@ curl "https://<your-gateway-host>/admin/v1/gateways/gw_xyz789/traces?limit=50"
 
 ### Query parameters
 
-| Parameter | Type | Default | Description |
+| **Parameter** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `limit` | integer | `50` | Maximum number of traces to return. Range: 1–200. |
 
@@ -24,7 +24,7 @@ curl "https://<your-gateway-host>/admin/v1/gateways/gw_xyz789/traces?limit=50"
 
 An array of trace summary objects:
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `id` | string | Trace UUID. Use with `GET /traces/{id}` to fetch full detail. |
 | `model` | string | Model used for this request. |
@@ -80,7 +80,7 @@ curl "https://<your-gateway-host>/admin/v1/traces/trc_abc123"
 
 ### TraceObject fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `id` | string | Trace UUID. |
 | `model` | string | Model used. |
@@ -92,7 +92,7 @@ curl "https://<your-gateway-host>/admin/v1/traces/trc_abc123"
 
 ### StepObject fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `seq` | integer | Step sequence number (1-based, ascending). |
 | `step` | string | Step name identifying the pipeline stage (e.g. `auth`, `guardrail`, `upstream`, `log`). |

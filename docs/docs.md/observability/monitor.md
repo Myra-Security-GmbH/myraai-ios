@@ -1,6 +1,14 @@
-# Live Monitor
+---
+title: Live monitor
+description: Real-time gateway activity view with configurable auto-refresh, period cards, and guardrail events.
+---
 
-The **Live Monitor** page provides a real-time view of gateway activity. It polls the Stats API on a configurable interval and displays continuously updating metrics for the current minute, last hour, today, and yesterday.
+# Live monitor
+
+![View: Live monitor](../assets/screenshots/monitor-overview.png)
+*The live monitor showing the activity sparkline, period cards, and controls.*
+
+The **Live Monitor** view provides a real-time view of gateway activity. It polls the Stats API on a configurable interval and displays continuously updating metrics for the current minute, last hour, today, and yesterday.
 
 Navigate to **Live Monitor** in the left sidebar.
 
@@ -10,10 +18,10 @@ Navigate to **Live Monitor** in the left sidebar.
 
 | Control | Description |
 |---------|-------------|
-| Tenant filter | Scope all metrics to a single tenant. Defaults to all tenants. |
+| Tenant filter | Scopes all metrics to a single tenant. Defaults to all tenants. |
 | Interval | Auto-refresh interval: 1 s, 2 s, 3 s (default), 5 s, 10 s, or 30 s. |
-| Pause / Resume | Stop or restart auto-refresh. Metrics freeze on pause. |
-| Refresh | Force an immediate update regardless of the current interval. |
+| Pause / Resume | Stops or restarts auto-refresh. Metrics freeze on pause. |
+| Refresh | Forces an immediate update regardless of the current interval. |
 
 The header shows the timestamp of the last successful poll and whether auto-refresh is running.
 
@@ -21,9 +29,7 @@ The header shows the timestamp of the last successful poll and whether auto-refr
 
 ## Activity sparkline
 
-A rolling line chart plots the request count per polling interval over the last 60 samples. Use it to spot traffic spikes or sudden drops at a glance.
-
-The current requests-per-interval value is shown to the right of the chart.
+A rolling line chart plots the request count per polling interval over the last 60 samples. The current requests-per-interval value appears to the right of the chart.
 
 ---
 
@@ -56,14 +62,14 @@ Each card shows:
 
 ---
 
-## Recent Guardrail Events
+## Recent guardrail events
 
-A table of the most recent blocked requests, identical to the one on the [Dashboard](dashboard.md). Only shown when blocked events exist for the selected scope.
+The **Recent Guardrail Events** table shows the most recent blocked requests, identical to the one on the [Dashboard](dashboard.md). It is visible only when blocked events exist for the selected scope.
 
 ---
 
 ## See also
 
 - [Dashboard](dashboard.md) — snapshot view with selectable timeframes
-- [Cost Analytics](analytics.md) — historical spend breakdown by tenant, gateway, provider, model, and user
+- [Cost analytics](analytics.md) — historical spend breakdown by tenant, gateway, provider, model, and user
 - [Stats API](../api-reference/stats.md)

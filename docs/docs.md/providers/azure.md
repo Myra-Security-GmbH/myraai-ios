@@ -1,10 +1,13 @@
+---
+title: Azure OpenAI
+description: How AI Gateway connects to Azure OpenAI, required gateway configuration, BYOK setup, and request examples.
+---
+
 # Azure OpenAI
 
 Azure OpenAI uses the same wire format as OpenAI but requires routing to an Azure resource endpoint with deployment-specific paths and an `api-key` header. All configuration is set at the gateway level.
 
----
-
-## Required gateway config
+## Required gateway configuration
 
 Three fields must be set in the gateway config before Azure requests will succeed:
 
@@ -14,7 +17,36 @@ Three fields must be set in the gateway config before Azure requests will succee
 | `azure_deployment` | string | `null` | The deployment name created in Azure AI Studio. Overrides the `model` field in the request path. |
 | `azure_api_version` | string | `"2024-02-01"` | API version appended as `?api-version=` query parameter |
 
-Set these with a PATCH request:
+!!! warning "`azure_endpoint` and `azure_deployment` are required"
+    Requests to the Azure provider will fail with a configuration error if either field is null. Ensure both are set before sending inference requests.
+
+## Authentication
+
+Azure uses an `api-key` header rather than a `Bearer` token. The gateway applies this automatically — store your Azure API key as the BYOK value and the gateway handles the header translation.
+
+## Configuring Azure OpenAI
+
+Proceed as follows to configure Azure OpenAI on a gateway:
+
+![Screenshot: Gateway configuration page with Azure fields visible](../assets/screenshots/gateway-config-azure.png)
+*Azure OpenAI configuration fields on the gateway detail page.*
+
+1. Open **Gateways** in the left sidebar.
+   - The gateway list opens.
+2. Click on the gateway you want to configure.
+   - The gateway detail page opens.
+3. Click on the **Configuration** tab.
+   - The configuration form opens.
+4. Enter your Azure OpenAI resource endpoint in the **Azure endpoint** text field (for example, `https://myresource.openai.azure.com`).
+   - The endpoint is set.
+5. Enter your Azure deployment name in the **Azure deployment** text field.
+   - The deployment is set.
+6. Enter the API version in the **Azure API version** text field (for example, `2024-05-01-preview`).
+   - The API version is set.
+7. Click on the **Save** button.
+   - -> The Azure configuration is saved.
+
+To configure the gateway via the API:
 
 ```bash
 curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
@@ -29,18 +61,28 @@ curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
   }'
 ```
 
-!!! warning "azure_endpoint and azure_deployment are required"
-    Requests to the Azure provider will fail with a configuration error if either field is null. Ensure both are set before sending inference requests.
+## Adding an Azure API key
 
----
+Proceed as follows to add an Azure API key:
 
-## Auth
+1. Open **Gateways** in the left sidebar.
+   - The gateway list opens.
+2. Click on the gateway you want to configure.
+   - The gateway detail page opens.
+3. Click on the **Keys** tab.
+   - The key management page opens.
+4. Click on the **Add Key** button.
+   - The key form opens.
+5. Select `azure` from the **Provider** drop-down list.
+   - The provider is set.
+6. Enter `default` in the **Alias** text field.
+   - The alias is set.
+7. Enter your Azure API key in the **Key** text field.
+   - The key value is set.
+8. Click on the **Save** button.
+   - -> The key is encrypted and stored. The gateway sends it as an `api-key` header to Azure.
 
-Azure uses an `api-key` header rather than a `Bearer` token. The gateway applies this automatically — store your Azure API key as the BYOK value and the gateway handles the header translation.
-
----
-
-## BYOK setup
+To add the key via the API:
 
 ```bash
 curl -s -X POST "https://gateway.example.com/admin/v1/gateways/{gateway_id}/keys" \
@@ -53,8 +95,6 @@ curl -s -X POST "https://gateway.example.com/admin/v1/gateways/{gateway_id}/keys
   }'
 ```
 
----
-
 ## Endpoint
 
 ### Native endpoint
@@ -65,7 +105,7 @@ POST /v1/{tenant}/{gateway}/azure/chat/completions
 
 ### Compat endpoint
 
-You can also route Azure requests via the compat endpoint by setting the `x-aig-provider` header explicitly (Azure model names are the same as OpenAI and would otherwise resolve to the OpenAI provider):
+Route Azure requests via the compat endpoint by setting the `x-aig-provider` header explicitly. Azure model names are the same as OpenAI and would otherwise resolve to the OpenAI provider:
 
 ```bash
 curl -s -X POST \
@@ -76,9 +116,7 @@ curl -s -X POST \
   -d '{"model": "gpt-4o", "messages": [...]}'
 ```
 
----
-
-## Full config + request example
+## Request example
 
 ```bash
 # 1. Configure the gateway
@@ -123,10 +161,8 @@ The gateway constructs the upstream URL as:
 
 The `model` field in the request body is ignored for routing — `azure_deployment` from the config determines the actual model served.
 
----
-
 ## See also
 
-- [Providers Overview](overview.md)
+- [Providers overview](overview.md)
 - [OpenAI](openai.md)
-- [Gateway Configuration](../configuration/gateway-config.md)
+- [Gateway configuration](../configuration/gateway-config.md)

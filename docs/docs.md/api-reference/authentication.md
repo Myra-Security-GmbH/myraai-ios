@@ -1,4 +1,4 @@
-# Admin API Authentication
+# Admin API authentication
 
 Admin API access is controlled at the network level. The admin interface is bound to your provisioned endpoint and protected by your Myra Security account credentials. Inference endpoints use a bearer-token model described below.
 
@@ -15,7 +15,7 @@ All endpoints under `/admin/v1/` are accessible to authenticated operators via y
 
 ---
 
-## Inference API Authentication
+## Inference API authentication
 
 Inference endpoints (`/v1/{tenant}/{gateway}/{provider}/...`) use an opaque bearer token issued by the admin API.
 
@@ -23,7 +23,7 @@ Inference endpoints (`/v1/{tenant}/{gateway}/{provider}/...`) use an opaque bear
 
 The gateway checks request headers in this order; the first matching header wins:
 
-| Priority | Header | Example |
+| **Priority** | **Header** | **Example** |
 |---|---|---|
 | 1 | `x-aig-token` | `x-aig-token: myra_xxxx` |
 | 2 | `Authorization: Bearer` | `Authorization: Bearer myra_xxxx` |
@@ -108,7 +108,7 @@ curl -X POST "https://<your-gateway-host>/v1/myapp/production/anthropic/chat/com
 
 Tokens are linked to a user record via `user_id`. The user's `role` determines what the token can do:
 
-| Role | Inference | Admin API |
+| **Role** | **Inference** | **Admin API** |
 |---|---|---|
 | `admin` | All gateways | Full access |
 | `member` | Assigned gateways only | No access |

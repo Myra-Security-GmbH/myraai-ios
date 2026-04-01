@@ -1,26 +1,80 @@
+---
+title: AWS Bedrock
+description: How AI Gateway connects to AWS Bedrock using SigV4 signing, including key format, IAM requirements, and request examples.
+---
+
 # AWS Bedrock
 
-The gateway translates OpenAI chat completions format to the AWS Bedrock Converse API and handles SigV4 request signing automatically. You do not need an AWS SDK or signing library in your application.
-
----
+AI Gateway by Myra Security translates the OpenAI chat completions format to the AWS Bedrock Converse API and handles AWS Signature Version 4 (SigV4) request signing automatically. Your application does not need an AWS SDK or signing library.
 
 ## How signing works
 
-Every request forwarded to Bedrock is signed with AWS Signature Version 4 (HMAC-SHA256). The gateway:
+Every request forwarded to Bedrock is signed with HMAC-SHA256. The gateway:
 
-1. Extracts your `ACCESS_KEY_ID` and `SECRET_ACCESS_KEY` from the stored BYOK value
-2. Computes the `Authorization` header using the request body, timestamp, and target region
-3. Forwards the signed request to the Bedrock Converse endpoint
+1. Extracts your `ACCESS_KEY_ID` and `SECRET_ACCESS_KEY` from the stored BYOK value.
+2. Computes the `Authorization` header using the request body, timestamp, and target region.
+3. Forwards the signed request to the Bedrock Converse endpoint.
 
 This happens transparently — your application sends a normal OpenAI-format request.
 
----
-
-## Gateway config
+## Gateway configuration
 
 Set the AWS region in your gateway config:
 
+| Config field | Default | Description |
+|---|---|---|
+| `bedrock_region` | `"us-east-1"` | AWS region for Bedrock API calls |
+
+## BYOK key format
+
+The BYOK value must be your AWS credentials in one of the following two formats.
+
+For permanent credentials:
+
+```
+ACCESS_KEY_ID:SECRET_ACCESS_KEY
+```
+
+For temporary credentials (AWS Security Token Service):
+
+```
+ACCESS_KEY_ID:SECRET_ACCESS_KEY:SESSION_TOKEN
+```
+
+## Adding AWS Bedrock credentials
+
+Proceed as follows to add AWS Bedrock credentials:
+
+![Screenshot: BYOK key management page with Add Key form](../assets/screenshots/byok-add-key.png)
+*The key management page for a gateway.*
+
+1. Open **Gateways** in the left sidebar.
+   - The gateway list opens.
+2. Click on the gateway you want to configure.
+   - The gateway detail page opens.
+3. Click on the **Configuration** tab.
+   - The configuration form opens.
+4. Enter the AWS region in the **Bedrock region** text field (for example, `us-west-2`).
+   - The region is set.
+5. Click on the **Save** button.
+   - The region configuration is saved.
+6. Click on the **Keys** tab.
+   - The key management page opens.
+7. Click on the **Add Key** button.
+   - The key form opens.
+8. Select `bedrock` from the **Provider** drop-down list.
+   - The provider is set.
+9. Enter `default` in the **Alias** text field (or a custom alias for multiple credential sets).
+   - The alias is set.
+10. Enter your AWS credentials in the **Key** text field using the format `ACCESS_KEY_ID:SECRET_ACCESS_KEY`.
+    - The key value is set.
+11. Click on the **Save** button.
+    - -> The credentials are encrypted and stored. The gateway uses them to sign all Bedrock requests on this gateway.
+
+To configure the region and add credentials via the API:
+
 ```bash
+# Set the region
 curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
   -H "x-aig-token: <admin-token>" \
   -H "Content-Type: application/json" \
@@ -29,29 +83,7 @@ curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
       "bedrock_region": "us-west-2"
     }
   }'
-```
 
-| Config field | Default | Description |
-|---|---|---|
-| `bedrock_region` | `"us-east-1"` | AWS region for Bedrock API calls |
-
----
-
-## BYOK key format
-
-The BYOK value must be your AWS credentials in one of these two formats:
-
-```
-ACCESS_KEY_ID:SECRET_ACCESS_KEY
-```
-
-or, if using temporary credentials with a session token:
-
-```
-ACCESS_KEY_ID:SECRET_ACCESS_KEY:SESSION_TOKEN
-```
-
-```bash
 # Permanent credentials
 curl -s -X POST "https://gateway.example.com/admin/v1/gateways/{gateway_id}/keys" \
   -H "x-aig-token: <admin-token>" \
@@ -76,11 +108,9 @@ curl -s -X POST "https://gateway.example.com/admin/v1/gateways/{gateway_id}/keys
 !!! warning "Rotate credentials regularly"
     Bedrock credentials are stored encrypted but follow standard BYOK security practices. For production, prefer short-lived STS credentials or an IAM role if running on AWS infrastructure.
 
----
-
 ## IAM requirements
 
-The IAM principal associated with the credentials needs the following permission:
+The IAM principal associated with the credentials requires the following permission:
 
 ```json
 {
@@ -99,8 +129,6 @@ Restrict the `Resource` to specific model ARNs for tighter access control:
 ]
 ```
 
----
-
 ## Endpoint
 
 ### Native endpoint
@@ -109,9 +137,9 @@ Restrict the `Resource` to specific model ARNs for tighter access control:
 POST /v1/{tenant}/{gateway}/bedrock/chat/completions
 ```
 
----
+## Request examples
 
-## Request example
+### Standard request
 
 ```bash
 curl -s -X POST \
@@ -129,7 +157,7 @@ curl -s -X POST \
   }'
 ```
 
-Pass the full Bedrock model ID (including provider prefix and version) in the `model` field. The gateway forwards this as the model identifier in the Converse API call.
+Pass the full Bedrock model identifier (including provider prefix and version) in the `model` field. The gateway forwards this as the model identifier in the Converse API call.
 
 ### Streaming
 
@@ -146,9 +174,7 @@ curl -s -X POST \
   }'
 ```
 
----
-
 ## See also
 
-- [Providers Overview](overview.md)
-- [Gateway Configuration](../configuration/gateway-config.md) — `bedrock_region`
+- [Providers overview](overview.md)
+- [Gateway configuration](../configuration/gateway-config.md) — `bedrock_region`

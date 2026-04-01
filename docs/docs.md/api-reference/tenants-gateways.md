@@ -1,6 +1,6 @@
-# Tenants & Gateways API
+# Tenants & gateways API
 
-Tenants are the top-level organizational unit. Each tenant contains one or more gateways. A gateway holds a configuration object, a set of provider keys, routing rules, and auth tokens.
+Tenants are the top-level organisational unit. Each tenant contains one or more gateways. A gateway holds a configuration object, a set of provider keys, routing rules, and auth tokens.
 
 **Base URL:** `https://<your-gateway-host>/admin/v1`
 
@@ -8,7 +8,7 @@ Tenants are the top-level organizational unit. Each tenant contains one or more 
 
 ## Endpoints
 
-| Method | Path | Description |
+| **Method** | **Path** | **Description** |
 |---|---|---|
 | `GET` | `/tenants` | List all tenants |
 | `POST` | `/tenants` | Create a tenant |
@@ -25,7 +25,7 @@ Tenants are the top-level organizational unit. Each tenant contains one or more 
 
 ## Tenants
 
-### List all tenants
+### Listing tenants
 
 ```bash
 curl https://<your-gateway-host>/admin/v1/tenants
@@ -48,7 +48,7 @@ curl https://<your-gateway-host>/admin/v1/tenants
 }
 ```
 
-### Create a tenant
+### Creating a tenant
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/tenants \
@@ -60,7 +60,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants \
   }'
 ```
 
-| Field | Type | Required | Description |
+| **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
 | `slug` | string | Yes | URL-safe identifier. Must be unique. Used in inference endpoint URLs. |
 | `plan` | string | No | Arbitrary plan label (e.g. `starter`, `pro`). Not enforced by the gateway. |
@@ -69,7 +69,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants \
 
 **Response:** `{ "id": "...", "slug": "..." }`
 
-### Update a tenant
+### Updating a tenant
 
 ```bash
 curl -X PATCH https://<your-gateway-host>/admin/v1/tenants/{id} \
@@ -77,7 +77,7 @@ curl -X PATCH https://<your-gateway-host>/admin/v1/tenants/{id} \
   -d '{"plan": "pro", "budget_usd": 1000.00, "budget_period": "monthly"}'
 ```
 
-### Delete a tenant
+### Deleting a tenant
 
 ```bash
 curl -X DELETE https://<your-gateway-host>/admin/v1/tenants/{id}
@@ -90,7 +90,7 @@ curl -X DELETE https://<your-gateway-host>/admin/v1/tenants/{id}
 
 ## Gateways
 
-### List gateways for a tenant
+### Listing gateways for a tenant
 
 ```bash
 curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/gateways
@@ -112,7 +112,7 @@ curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/gateways
 }
 ```
 
-### Create a gateway
+### Creating a gateway
 
 ```bash
 curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/gateways \
@@ -131,20 +131,20 @@ curl -X POST https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/gateways \
   }'
 ```
 
-| Field | Type | Required | Description |
+| **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
 | `slug` | string | Yes | URL-safe identifier unique within the tenant. |
 | `config` | object | No | Gateway configuration. Omitted fields use defaults. |
 
 **Response:** `{ "id": "...", "slug": "..." }`
 
-### Get a gateway
+### Getting a gateway
 
 ```bash
 curl https://<your-gateway-host>/admin/v1/gateways/{id}
 ```
 
-### Update gateway config
+### Updating gateway config
 
 The `PATCH` body must include a `config` key. The config is **merged at the top level** — only fields you include are changed. Nested objects (`rate_limit`) are replaced in full.
 
@@ -176,13 +176,13 @@ curl -X PATCH https://<your-gateway-host>/admin/v1/gateways/{id} \
 !!! note
     The `config` merge is shallow. To clear a nested object (e.g. to remove a rate limit), set the field to `null` explicitly: `"rate_limit": null`.
 
-### Delete a gateway
+### Deleting a gateway
 
 ```bash
 curl -X DELETE https://<your-gateway-host>/admin/v1/gateways/{id}
 ```
 
-### Reset gateway budget counter
+### Resetting the gateway budget counter
 
 Clears the accumulated spend counter. Requests blocked by `QUOTA_EXCEEDED` will be allowed again (up to the configured `budget_usd`).
 

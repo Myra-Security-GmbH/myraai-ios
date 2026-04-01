@@ -1,14 +1,20 @@
-# Admin Dashboard
+---
+title: Admin dashboard
+description: Overview of the AI Gateway admin dashboard — hero cards, timeframe selector, usage tables, and recent events.
+---
 
-The dashboard is the first screen shown after logging into the admin UI. It provides a live operations view of real-time gateway activity: request volume, cost, guardrail hits, recent traffic, and recent blocked events.
+# Admin dashboard
+
+![View: Admin dashboard](../assets/screenshots/dashboard-overview.png)
+*The admin dashboard showing hero cards, timeframe selector, usage tables, and recent events.*
+
+The admin dashboard is the first screen shown after logging into the admin UI. It provides a live operations view of gateway activity: request volume, cost, guardrail hits, recent traffic, and recent blocked events.
 
 ---
 
-![Dashboard overview](../assets/screenshots/dashboard-overview.png)
-
 ## Timeframe selector
 
-The top-right of the hero section contains a timeframe selector. Choosing a timeframe updates the hero card values and sparklines for that window.
+The top-right of the hero section contains the **Timeframe** drop-down list. Selecting a timeframe updates the hero card values and sparklines for that window.
 
 | Option | Window |
 |--------|--------|
@@ -25,7 +31,7 @@ The top-right of the hero section contains a timeframe selector. Choosing a time
 Six cards summarise the selected timeframe at a glance. Each card includes a sparkline chart of the underlying timeseries.
 
 | Card | Primary metric | Sub-metric |
-|------|---------------|------------|
+|------|----------------|------------|
 | Total Spend | Cumulative cost in USD | Cache savings in USD |
 | Cache Savings | Cost avoided by serving cached responses | — |
 | Total Requests | Total request count | Cache hit rate (%) |
@@ -35,9 +41,9 @@ Six cards summarise the selected timeframe at a glance. Each card includes a spa
 
 ---
 
-## Usage by Tenant
+## Usage by tenant
 
-A table showing per-tenant activity for the selected timeframe:
+The **Usage by Tenant** table shows per-tenant activity for the selected timeframe. It is visible only when at least one request exists in the period.
 
 | Column | Description |
 |--------|-------------|
@@ -47,13 +53,11 @@ A table showing per-tenant activity for the selected timeframe:
 | Output Tokens | Total output tokens consumed |
 | Cost | Total cost in USD |
 
-Only visible when there is at least one request in the period.
-
 ---
 
-## Top Models
+## Top models
 
-A table of up to 5 models ordered by request count for the selected timeframe:
+The **Top Models** table lists up to five models ordered by request count for the selected timeframe.
 
 | Column | Description |
 |--------|-------------|
@@ -65,9 +69,9 @@ A table of up to 5 models ordered by request count for the selected timeframe:
 
 ---
 
-## Recent Requests
+## Recent requests
 
-A live table of the last 20 requests across all gateways:
+The **Recent Requests** table shows the last 20 requests across all gateways.
 
 | Column | Description |
 |--------|-------------|
@@ -77,16 +81,16 @@ A live table of the last 20 requests across all gateways:
 | Provider | Provider that handled the request |
 | Model | Model name |
 | Status | HTTP status code badge |
-| Tokens | Input + output token counts (`in+out`) |
+| Tokens | Input and output token counts (`in+out`) |
 | Cost | Estimated cost in USD |
 | Latency | End-to-end latency in milliseconds |
 | Flags | `cached` or `blocked` badges where applicable |
 
 ---
 
-## Recent Guardrail Events
+## Recent guardrail events
 
-A table of the most recent blocked requests. Only shown when blocked events exist.
+The **Recent Guardrail Events** table shows the most recent blocked requests. It is visible only when blocked events exist.
 
 | Column | Description |
 |--------|-------------|
@@ -97,13 +101,13 @@ A table of the most recent blocked requests. Only shown when blocked events exis
 | Provider | Intended provider |
 
 !!! note "Refresh behaviour"
-    The dashboard does not auto-refresh. Click the refresh button to pull the latest data.
+    The dashboard does not auto-refresh. Click the **Refresh** button to pull the latest data.
 
 ---
 
 ## See also
 
-- [Cost Analytics](analytics.md) — spend breakdown by tenant, gateway, provider, model, and user
-- [Request Logging](logging.md)
-- [Request Tracing](tracing.md)
+- [Cost analytics](analytics.md) — spend breakdown by tenant, gateway, provider, model, and user
+- [Request logging](logging.md)
+- [Request tracing](tracing.md)
 - [Stats API](../api-reference/stats.md)

@@ -1,24 +1,15 @@
+---
+title: Gateway configuration
+description: Create, edit, and delete gateways in AI Gateway by Myra Security. Reference for all configuration fields, provider base URL overrides, and per-request header overrides.
+---
+
 # Gateway configuration
 
-Every gateway has a `config` object that controls caching, timeouts, security, routing, and provider-specific settings.
-
-## Configuring the gateway via the admin UI
-
-1. Click on **Gateways** in the left sidebar.
-   ↳ The **Gateways** view opens.
-2. Click on the gateway you want to configure.
-   ↳ The gateway detail view opens.
-3. Open the **Config** tab.
-   ↳ The configuration form opens.
-4. Edit the fields you want to change.
-5. To save the configuration, click on the **Save** button.
-   ↳ The updated configuration is applied to the gateway. Only the fields you changed are updated — other settings are unaffected.
-
-![Gateway configuration editor](../assets/screenshots/gateway-edit-modal.png)
+A gateway is the central routing object in AI Gateway by Myra Security. Each gateway exposes an inference endpoint, enforces security policies, and routes requests to one or more AI providers. Every gateway has a `config` object that controls caching, timeouts, security, routing, and provider-specific settings.
 
 ## Configuration fields reference
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `cache_ttl` | integer | `0` | Response cache TTL in seconds. `0` disables caching. |
 | `retry_count` | integer | `2` | Number of retry attempts against the primary provider on 5xx errors before moving to fallbacks. |
@@ -26,9 +17,9 @@ Every gateway has a `config` object that controls caching, timeouts, security, r
 | `log_payloads` | boolean | `true` | Whether to store request and response bodies in the log table. Disable for sensitive workloads. |
 | `auth_required` | boolean | `true` | Require a valid auth token on every inference request. Set to `false` only for development. |
 | `budget_usd` | number \| null | `null` | Monthly spend cap in USD for this gateway. `null` means no limit. Superseded by per-token budgets. |
-| `rate_limit` | object \| null | `null` (disabled) | Gateway-level rate limit. Default: `null` (disabled). Example: `{"requests": 100, "window_sec": 60}`. Applied before per-token limits. |
-| `ip_allowlist` | array | `[]` | List of CIDR blocks permitted to call this gateway. Empty list allows all sources. |
-| `guardrails` | array | `[]` | Ordered list of guardrail configs (regex, keyword, presidio, prompt_guard, pii_protector). |
+| `rate_limit` | object \| null | `null` | Gateway-level rate limit. Example: `{"requests": 100, "window_sec": 60}`. Applied before per-token limits. |
+| `ip_allowlist` | array | `[]` | List of CIDR blocks permitted to call this gateway. An empty list allows all sources. |
+| `guardrails` | array | `[]` | Ordered list of guardrail configs (`regex`, `keyword`, `presidio`, `prompt_guard`, `pii_protector`). |
 | `azure_endpoint` | string \| null | `null` | Azure OpenAI resource endpoint, e.g. `https://myresource.openai.azure.com`. |
 | `azure_deployment` | string \| null | `null` | Azure deployment name. Overrides the model name in the request path. |
 | `azure_api_version` | string | `"2024-02-01"` | Azure OpenAI API version query parameter. |
@@ -39,7 +30,7 @@ Every gateway has a `config` object that controls caching, timeouts, security, r
 | `tracing` | object \| null | `null` | Request tracing configuration. See [Request Tracing](../observability/tracing.md). |
 | `web_search` | object \| null | `null` | Web search augmentation settings. See [Web Search](../features/web-search.md). |
 
-## Full default configuration
+### Full default configuration
 
 ```json
 {
@@ -66,37 +57,15 @@ Every gateway has a `config` object that controls caching, timeouts, security, r
 
 ## Provider base URLs
 
-The `provider_base_urls` field lets you override the default upstream endpoint for any provider on a per-gateway basis. This is useful for:
+The `provider_base_urls` field overrides the default upstream endpoint for any provider on a per-gateway basis. Use it for:
 
 - **Local Ollama** — point the gateway at an Ollama instance running on a custom host or port
 - **Private deployments** — route to an on-premises or VPC-hosted model server
 - **Custom proxies** — send traffic through an intermediary before it reaches the provider
 
-### Configuring provider base URLs via the admin UI
-
-1. Click on **Gateways** in the left sidebar.
-   ↳ The **Gateways** view opens.
-2. Click on the gateway.
-   ↳ The gateway detail view opens.
-3. Open the **Config** tab.
-   ↳ The configuration form opens.
-4. Scroll to the **Provider base URLs** section.
-5. Click on the **Add** button.
-   ↳ A new row appears in the provider base URLs table.
-6. Enter the provider name in the **Provider** text field. For example: `ollama`.
-7. Enter the base URL in the **Base URL** text field. For example: `http://192.168.1.50:11434`.
-8. To save the provider base URL, click on the **Save** button.
-   ↳ The provider base URL appears in the list. The gateway uses this URL for all requests to that provider.
-
-To remove an override, delete the entry and click on **Save**.
-
-### URL format
-
 The value must be a bare `protocol://host:port` with no trailing slash or path. The gateway appends the provider's standard request path automatically.
 
-### Examples
-
-| Provider | Override value | When to use |
+| **Provider** | **Override value** | **When to use** |
 |---|---|---|
 | `ollama` | `http://localhost:11434` | Ollama running locally on the default port |
 | `ollama` | `http://192.168.1.50:11434` | Ollama on another machine in the same network |
@@ -109,7 +78,7 @@ Any of the 21 supported providers can be overridden.
 
 Certain behaviours can be overridden on individual requests without changing the gateway config.
 
-| Header | Type | Description |
+| **Header** | **Type** | **Description** |
 |---|---|---|
 | `x-aig-byok-alias` | string | Select a non-default BYOK key alias for this request. See [Provider Key Management](../security/byok.md). |
 | `x-aig-meta-{key}` | string | Attach arbitrary metadata to the request log entry. Accessible as `meta:{key}` (colon notation) in routing rule conditions. |
@@ -120,9 +89,88 @@ Certain behaviours can be overridden on individual requests without changing the
 !!! warning
     `x-aig-collect-log-payload: 0` suppresses body storage for that request only. It does not affect the gateway-level `log_payloads` setting for other requests.
 
+---
+
+## Creating a gateway
+
+Before you begin, ensure the following conditions are met:
+
+- You are logged in as a user with the `admin` role.
+
+![Screenshot: Gateways list with New Gateway button](../assets/screenshots/gateways-list.png)
+*The **Gateways** list.*
+
+Proceed as follows to create a gateway:
+
+1. Click on **Gateways** in the left sidebar.
+   - The **Gateways** list opens.
+2. Click on the **New Gateway** button.
+   - The **New Gateway** dialog opens.
+3. Enter a name for the gateway in the **Name** text field.
+4. Select the primary provider from the **Provider** drop-down list.
+5. If required, expand the **Advanced** section and adjust the configuration fields listed in the [Configuration fields reference](#configuration-fields-reference).
+6. Click on the **Save** button.
+   - The new gateway appears in the list of gateways.
+
+-> The new gateway is active immediately and accepts inference requests at its assigned endpoint.
+
+---
+
+## Editing a gateway
+
+![Screenshot: Gateway detail view with Config tab open](../assets/screenshots/gateway-edit-modal.png)
+*The gateway **Config** tab.*
+
+Proceed as follows to edit a gateway:
+
+1. Click on **Gateways** in the left sidebar.
+   - The **Gateways** list opens.
+2. Click on the gateway you want to edit.
+   - The gateway detail view opens.
+3. Click on the **Config** tab.
+   - The configuration form opens.
+4. Change the fields you want to update.
+5. To add a provider base URL override, scroll to the **Provider base URLs** section, click on the **Add** button, enter the provider name in the **Provider** text field (for example `ollama`), and enter the base URL in the **Base URL** text field (for example `http://192.168.1.50:11434`).
+6. Click on the **Save** button.
+   - The updated configuration is applied to the gateway. Only the fields you changed are updated — other settings are unaffected.
+
+-> The gateway reflects the new configuration for all subsequent requests.
+
+!!! note
+    To remove a provider base URL override, delete the entry in the **Provider base URLs** section and click on **Save**.
+
+---
+
+## Deleting a gateway
+
+!!! warning
+    Deleting a gateway is irreversible. All associated logs, tokens, and configuration are permanently removed.
+
+Before you begin, ensure the following conditions are met:
+
+- You are logged in as a user with the `admin` role.
+- No active client applications are routing traffic through the gateway.
+
+Proceed as follows to delete a gateway:
+
+1. Click on **Gateways** in the left sidebar.
+   - The **Gateways** list opens.
+2. Click on the gateway you want to delete.
+   - The gateway detail view opens.
+3. Click on the **Settings** tab.
+   - The gateway settings open.
+4. Click on the **Delete Gateway** button.
+   - A confirmation dialog opens.
+5. Confirm the deletion by clicking on the **Delete** button.
+   - The gateway is removed from the list.
+
+-> The gateway no longer accepts requests and is permanently deleted.
+
+---
+
 ## API
 
-Gateway config can also be updated via the Admin API using a PATCH request. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for endpoint reference and examples.
+Gateway config can also be updated via the Admin API using a PATCH request. See [Tenants & Gateways API](../api-reference/tenants-gateways.md) for the endpoint reference and examples.
 
 ## See also
 

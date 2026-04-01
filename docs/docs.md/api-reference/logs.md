@@ -16,7 +16,7 @@ curl "https://<your-gateway-host>/admin/v1/logs"
 
 ### Query parameters
 
-| Parameter | Type | Default | Description |
+| **Parameter** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `tenant_id` | string | — | Filter by tenant UUID. |
 | `gateway_id` | string | — | Filter by gateway UUID. |
@@ -36,7 +36,7 @@ curl "https://<your-gateway-host>/admin/v1/logs"
 
 ## LogEntry fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `id` | string | Unique log entry ID. |
 | `ts` | string | Request timestamp in ISO 8601 format (e.g. `"2025-03-21T10:00:00Z"`). |
@@ -64,11 +64,11 @@ curl "https://<your-gateway-host>/admin/v1/logs"
 | `saved_cost_usd` | number | For cached requests: the cost that would have been incurred without the cache. |
 | `request_size_bytes` | integer | Size of the request body in bytes. |
 | `trace_id` | string \| null | Links this log entry to a detailed execution trace. `null` when gateway tracing is disabled. See [Traces API](traces.md). |
-| `response_raw` | string \| null | Raw LLM response body before PII token restoration. Only present when `pii_protector` is active and `log_payloads: true`. |
+| `response_raw` | string \| null | Raw LLM response body before PII (personally identifiable information) token restoration. Only present when `pii_protector` is active and `log_payloads: true`. |
 
 The following fields are only returned by `GET /logs/{id}` (single-entry endpoint), not by the list endpoint:
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `prompt` | string \| null | Request body sent to the provider. `null` when `log_payloads: false`. |
 | `response` | string \| null | Provider response body. `null` when `log_payloads: false`. |
@@ -93,50 +93,50 @@ Returns the same [LogEntry](#logentry-fields) object as in the list endpoint. Re
 
 ## Examples
 
-### Fetch the last 100 requests
+### Fetching the last 100 requests
 
 ```bash
 curl "https://<your-gateway-host>/admin/v1/logs?limit=100"
 ```
 
-### Fetch logs for a specific gateway
+### Fetching logs for a specific gateway
 
 ```bash
 curl "https://<your-gateway-host>/admin/v1/logs?gateway_id=gw_xyz789&limit=50"
 ```
 
-### Fetch only blocked requests for a tenant
+### Fetching only blocked requests for a tenant
 
 ```bash
 curl "https://<your-gateway-host>/admin/v1/logs?tenant_id=ten_abc123&blocked=1&limit=50"
 ```
 
-### Fetch requests where a guardrail fired (blocked, scrubbed, or flagged)
+### Fetching requests where a guardrail fired (blocked, scrubbed, or flagged)
 
 ```bash
 curl "https://<your-gateway-host>/admin/v1/logs?gateway_id=gw_xyz789&guardrail_outcome=any&limit=50"
 ```
 
-### Fetch only guardrail-blocked requests
+### Fetching only guardrail-blocked requests
 
 ```bash
 curl "https://<your-gateway-host>/admin/v1/logs?gateway_id=gw_xyz789&guardrail_outcome=blocked&limit=50"
 ```
 
-### Fetch logs since a Unix timestamp (milliseconds)
+### Fetching logs since a Unix timestamp (milliseconds)
 
 ```bash
 curl "https://<your-gateway-host>/admin/v1/logs?since=1742544000000&limit=200"
 ```
 
-### Fetch the last hour of OpenAI requests
+### Fetching the last hour of OpenAI requests
 
 ```bash
 SINCE=$(date -d "1 hour ago" +%s)000   # convert seconds to ms
 curl "https://<your-gateway-host>/admin/v1/logs?provider=openai&since=${SINCE}&limit=500"
 ```
 
-### Paginate through a large result set
+### Paginating through a large result set
 
 ```bash
 # Page 1

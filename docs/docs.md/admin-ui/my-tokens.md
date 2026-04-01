@@ -1,14 +1,18 @@
-# My Tokens
-
-**My Tokens** is a self-service page in the admin panel that lets any user create and manage their own inference tokens without admin assistance.
-
-Navigate to **My Tokens** in the sidebar (bottom of the navigation, under **Account**).
-
-![My Tokens page](../assets/screenshots/my-tokens.png)
-
+---
+title: My tokens
+description: How to create and revoke personal inference tokens in the AI Gateway admin panel.
 ---
 
-## Who can use this
+# My tokens
+
+## View: My tokens
+
+![View: My tokens](../assets/screenshots/my-tokens.png)
+*View: My tokens*
+
+The **My tokens** view lets any eligible user create and manage their own inference tokens without administrator assistance. It is accessible from the **My tokens** entry at the bottom of the sidebar, under **Account**.
+
+The view lists all tokens belonging to the currently logged-in user. Each row shows the token label, the gateway it is scoped to, the expiry date, the spend budget, the rate limit, and a **Revoke** button.
 
 | Role | Can create tokens | Can revoke own tokens |
 |---|---|---|
@@ -17,23 +21,31 @@ Navigate to **My Tokens** in the sidebar (bottom of the navigation, under **Acco
 | `member` | Yes | Yes |
 | `viewer` | No | — |
 
-`member` and `viewer` roles do not have access to the **Users** page, so **My Tokens** is the only way for a `member` to create their own inference credentials.
+`member` users do not have access to the **Users** view. The **My tokens** view is therefore the only way for a `member` to create their own inference credentials.
 
 ---
 
 ## Creating a token
 
-1. Click **+ New Token**.
-2. Select the **gateway** you want to access. Gateways are listed as `tenant/gateway-slug`.
-3. Optionally set a **label**, **expiry date**, **spend budget** (USD), and **rate limit**.
-4. Click **Create Token**.
-5. Copy the token immediately — it is shown once and cannot be retrieved later.
+Proceed as follows to create an inference token:
+
+1. Click the **+ New Token** button.
+   - A creation form appears.
+2. Select the gateway you want the token to access from the **Gateway** drop-down list. Gateways are listed as `tenant/gateway-slug`.
+3. Optional: Enter a descriptive name in the **Label** text field.
+4. Optional: Set an expiry date in the **Expiry date** field.
+5. Optional: Enter a maximum spend in USD in the **Spend budget** text field.
+6. Optional: Set a request rate limit in the **Rate limit** field.
+7. Click the **Create Token** button.
+   - The token value appears on screen.
+8. Copy the token value immediately.
+   - -> The token is shown once only and cannot be retrieved again. Store it securely before closing the dialog.
 
 ---
 
 ## Using a token
 
-Tokens created here are standard inference tokens. Use them with the `Authorization: Bearer` header on any provider endpoint:
+Tokens created in the **My tokens** view are standard inference tokens. Use them with the `Authorization: Bearer` header on any provider endpoint:
 
 ```bash
 curl -X POST https://<gateway-host>/v1/<tenant>/<gateway>/compat/chat/completions \
@@ -51,5 +63,8 @@ See [Endpoint URL formats](../routing/compat-endpoint.md) for provider-specific 
 
 ## Revoking a token
 
-Click **Revoke** next to any token in the table. Revocation is immediate — the token is rejected on the next request. You can only revoke tokens that belong to your own account.
+Proceed as follows to revoke a token:
 
+1. Locate the token you want to revoke in the token table.
+2. Click the **Revoke** button on that row.
+   - -> The token is invalidated immediately. Any request that uses the revoked token is rejected. You can only revoke tokens that belong to your own account.

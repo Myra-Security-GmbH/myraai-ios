@@ -1,4 +1,4 @@
-# What's New
+# What's new
 
 Recent additions and fixes to AI Gateway, organised by feature area.
 
@@ -6,13 +6,13 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ## Chat
 
-**New: Drag-and-drop file upload** — Drag any supported file from your desktop and drop it anywhere on the message area. A blue drop target appears while the file is dragged over the panel. The file is attached exactly as if selected via the paperclip button. See [Chat — File attachments](../admin-ui/chat.md#file-attachments).
+**New: Drag-and-drop file upload** — Drag any supported file from your desktop and drop it anywhere on the message area. A blue drop target appears while the file is dragged over the panel. The file is attached exactly as if selected via the paperclip button. See [Chat — Importing a file](../admin-ui/chat.md#importing-a-file).
 
 **New: Processing status indicator** — A spinner and status label appear in the message area between the moment you send a message and the moment the first response token arrives. The label shows what is happening — for example, extracting text from a document or waiting for the model.
 
-**New: Spreadsheet file upload** — Attach spreadsheet files (`.csv`, `.tsv`, `.xlsx`, `.xlsm`, `.ods`) to any chat message. Claude reads and analyses the content and can answer questions about it. Spreadsheet files require an Anthropic provider key on the selected gateway. See [Chat — File attachments](../admin-ui/chat.md#file-attachments).
+**New: Spreadsheet file upload** — Attach spreadsheet files (`.csv`, `.tsv`, `.xlsx`, `.xlsm`, `.ods`) to any chat message. Claude reads and analyses the content and can answer questions about it. Spreadsheet files require an Anthropic provider key on the selected gateway. See [Chat — Importing a file](../admin-ui/chat.md#importing-a-file).
 
-**New: Conversation export** — Download a conversation as a Markdown or PDF file using the export buttons in the chat configuration bar. Both buttons are disabled when no conversation is active. See [Chat — Exporting conversations](../admin-ui/chat.md#exporting-conversations).
+**New: Conversation export** — Download a conversation as a Markdown or PDF file using the export buttons in the chat configuration bar. Both buttons are disabled when no conversation is active. See [Chat — Exporting a conversation](../admin-ui/chat.md#exporting-a-conversation).
 
 **Improved: Long response handling** — Long responses complete automatically without any action required.
 
@@ -28,7 +28,7 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ## Authentication
 
-**New: Stay logged in** — A **Stay logged in for 30 days on this device** checkbox is available on the Email OTP login step. When selected, the session remains active for 30 days instead of the default 8 hours. See [Authentication — Session](../admin-ui/authentication.md#session).
+**New: Stay logged in** — A **Stay logged in for 30 days on this device** checkbox is available on the Email OTP login step. When selected, the session remains active for 30 days instead of the default 8 hours. See [Authentication — Session duration](../admin-ui/authentication.md#session-duration).
 
 ---
 
@@ -58,13 +58,13 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ---
 
-## SIEM Integration
+## SIEM integration
 
 **New: SIEM event streaming** — Security events can now be forwarded asynchronously to an external SIEM. Supported backends: Splunk HEC, Elasticsearch / OpenSearch, Vector HTTP source, and Syslog (CEF or RFC 5424). SIEM config can be set at tenant level (default for all gateways) or overridden per gateway. Delivery is fire-and-forget and never adds latency to inference requests. See [SIEM Integration](../configuration/siem.md).
 
 ---
 
-## Admin UI — Role-based navigation
+## Admin UI — role-based navigation
 
 **New: Management section hidden from member and viewer roles** — The **Management** sidebar section (Tenants, Gateways, Users) is now visible only to `admin` and `tenant_admin` users. `member` and `viewer` users see only the Observability, Config, and Account sections.
 
@@ -76,7 +76,7 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ---
 
-## Analytics Dashboard
+## Analytics dashboard
 
 **New: Analytics tabs** — The analytics view now breaks down activity across five tabs: By Tenant, By Gateway, By Provider, By Model, and By User. Each tab has a filter bar for searching by name or ID.
 
@@ -104,7 +104,7 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ---
 
-## Budgets & Quota
+## Budgets & quota
 
 **New: Persistent spend ledger** — Spend is now tracked in a SQLite `spend_ledger` table rather than shared-dict counters. Spend survives process restarts and worker crashes.
 
@@ -122,7 +122,7 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ---
 
-## Providers & Routing
+## Providers & routing
 
 **Fixed: Ollama model prefix stripping** — Requests using the `ollama/` model prefix (e.g. `ollama/llama3.2`) now correctly strip the prefix before forwarding to the Ollama API. Previously the prefix was forwarded verbatim, causing model-not-found errors.
 
@@ -144,7 +144,7 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ---
 
-## Security & Guardrails
+## Security & guardrails
 
 **New: Human-readable block messages** — Guardrail block responses now include the human-readable harm category name (e.g. "Violent Crimes") alongside the category code (e.g. `S2`).
 

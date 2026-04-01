@@ -1,4 +1,4 @@
-# Gateway Configuration Reference
+# Gateway configuration reference
 
 Every gateway has a `config` JSON object that controls authentication, caching, timeouts, security, routing, and provider settings. Update it with `PATCH /admin/v1/gateways/{id}`.
 
@@ -41,7 +41,7 @@ The config is **merged at the top level** on each PATCH — only the fields you 
 
 ## Core fields
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `auth_required` | boolean | `true` | Require a valid `x-aig-token`, `Authorization: Bearer`, or `x-api-key` header on all inference requests. Set to `false` only for development. |
 | `budget_usd` | number \| null | `null` | Gateway-level spend cap in USD for the current budget period. Blocks all requests once exhausted. `null` = no cap. |
@@ -51,13 +51,13 @@ The config is **merged at the top level** on each PATCH — only the fields you 
 | `cache_ttl` | integer | `0` | Response cache TTL in seconds. `0` disables the cache. Cached responses are keyed on `SHA-256(provider:model:canonical_body)`. |
 | `retry_count` | integer | `2` | Maximum number of retry attempts against the primary provider on 5xx errors before the fallback chain is walked. |
 | `timeout_ms` | integer | `60000` | Per-upstream-request timeout in milliseconds. Applies to each attempt individually, not the total request time. |
-| `log_payloads` | boolean | `true` | Whether to store request and response bodies in the log table. Disable for sensitive workloads where prompt/response content must not be persisted. |
+| `log_payloads` | boolean | `true` | Store request and response bodies in the log table. Disable for sensitive workloads where prompt/response content must not be persisted. |
 
 ---
 
 ## Rate limiting
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `rate_limit` | object \| null | `null` (disabled) | Gateway-level sliding-window rate limit applied to all callers. Default: `null` (disabled). Example: `{"requests": 100, "window_sec": 60}`. Per-token limits are checked independently — a request can be blocked by either limit. |
 | `rate_limit.requests` | integer | — | Maximum requests allowed in the window. |
@@ -73,7 +73,7 @@ Example:
 
 ## IP allowlist
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `ip_allowlist` | array of strings | `[]` | CIDR blocks permitted to call this gateway. An empty array allows all source IPs. Requests from IPs outside the list return `403 FORBIDDEN`. |
 
@@ -87,7 +87,7 @@ Example:
 
 ## Guardrails
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `guardrails` | array | `[]` | Ordered list of guardrail configs. Evaluated in array order within each tier. First `block` verdict short-circuits the pipeline. |
 
@@ -96,7 +96,7 @@ Example:
 
 Each guardrail object has a common set of fields plus type-specific fields:
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `type` | string | Guardrail type: `regex`, `keyword`, `jailbreak`, `json_schema`, `contains_code`, `gibberish`, `language`, `presidio`, `prompt_guard`, `pii_protector`. |
 | `name` | string | Human-readable name used in block messages and logs. |
@@ -111,7 +111,7 @@ See the [Guardrail Pipeline](../security/guardrails.md) page for full per-type f
 
 ### Azure OpenAI
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `azure_endpoint` | string \| null | `null` | Azure OpenAI resource URL, e.g. `https://myresource.openai.azure.com`. Required for Azure provider. |
 | `azure_deployment` | string \| null | `null` | Azure deployment name. Replaces the model name in the request URL path. |
@@ -119,20 +119,20 @@ See the [Guardrail Pipeline](../security/guardrails.md) page for full per-type f
 
 ### AWS Bedrock
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `bedrock_region` | string | `"us-east-1"` | AWS region for Bedrock API calls. Used in SigV4 request signing. |
 
 ### Google Vertex AI
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `vertex_project` | string \| null | `null` | Google Cloud project ID. Required for Vertex AI. |
 | `vertex_region` | string | `"us-central1"` | Google Cloud region for Vertex AI API calls. |
 
 ### Provider base URL overrides
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `provider_base_urls` | object | `{}` | Map of `provider_name → base URL`. Overrides the gateway's hardcoded default endpoint for any provider. Useful for Ollama on a remote host, internal proxies, and staging environments. |
 
@@ -149,7 +149,7 @@ Example:
 
 ## Circuit breaker
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `circuit_breaker` | object \| null | `null` | Set to enable the per-provider circuit breaker. `null` disables it entirely. |
 | `circuit_breaker.enabled` | boolean | `false` | Must be `true` to activate the breaker. |
@@ -166,7 +166,7 @@ See [Circuit Breaker](../routing/circuit-breaker.md) for state machine details a
 
 Webhooks deliver structured event payloads to an external HTTP endpoint for integration with alerting, ITSM, and automation systems.
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `webhooks` | object \| null | `null` | Set to enable outgoing webhooks. `null` disables them. |
 | `webhooks.url` | string | — | HTTPS endpoint that receives POST requests for each event. |
@@ -187,9 +187,9 @@ Example:
 
 ## SIEM (gateway-level override)
 
-A gateway-level `siem` key overrides the tenant-level SIEM config for that specific gateway. All fields are identical to the tenant-level config.
+A gateway-level `siem` key overrides the tenant-level SIEM (Security Information and Event Management) config for that specific gateway. All fields are identical to the tenant-level config.
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `siem` | object \| null | `null` | SIEM backend config for this gateway. Overrides the tenant default. Set `null` to remove the override and fall back to the tenant config. |
 | `siem.type` | string | — | Backend: `splunk_hec`, `elasticsearch`, `vector`, `syslog`. |
@@ -201,7 +201,7 @@ See [SIEM Integration](../configuration/siem.md) for the full field reference an
 
 ## Tracing
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `tracing` | object \| null | `null` | Set to enable request tracing. `null` disables tracing entirely. |
 | `tracing.enabled` | boolean | `false` | Activate internal pipeline tracing (Traces API + Playground traces). |
@@ -217,7 +217,7 @@ See [Request Tracing](../observability/tracing.md) for the full pipeline step re
 
 ## Web search
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `web_search` | object \| null | `null` | Set to enable web-search augmentation. `null` disables the feature. |
 | `web_search.enabled` | boolean | `false` | Activate web search on this gateway. |
@@ -233,7 +233,7 @@ See [Web Search](../features/web-search.md) for provider support details and usa
 
 These headers can be sent on individual inference requests to override gateway config for that request only.
 
-| Header | Type | Description |
+| **Header** | **Type** | **Description** |
 |---|---|---|
 | `x-aig-byok-alias` | string | Use a non-default BYOK provider key alias for this request. Must match an alias stored for the resolved provider. |
 | `x-aig-meta-{key}` | string | Attach a custom key-value pair to the request log entry and make it available in routing rule conditions as `meta:{key}` (colon notation). Multiple headers allowed. |

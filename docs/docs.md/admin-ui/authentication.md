@@ -1,46 +1,29 @@
-# Admin Panel Authentication
+---
+title: Logging in
+description: How to log in to the AI Gateway admin panel using Google SSO or email OTP, and how sessions work.
+---
 
-The admin panel (`/admin/*`) is protected by a stateless JWT session cookie. Two login methods are supported: **Google SSO** and **Email one-time code (OTP)**.
+# Logging in
+
+![View: Login](../assets/screenshots/login-page.png)
+*View: Login*
+
+The admin panel is protected by a stateless JWT session cookie. Two login methods are available: **Google SSO** and **email one-time code (OTP)**. The login page is accessible at `/login`. The system redirects you to this page automatically when you access a protected page without a valid session.
+
+Any user account in the system can log in to the admin panel, regardless of role. Accounts are not created automatically on first login — an administrator must create your account in advance. See [User management](users.md) for details.
 
 ---
 
-## Login page
+## Session duration
 
-Navigate to `http://<your-gateway>/login`. You will be redirected here automatically if you access a protected page without a valid session.
-
-![Login page](../assets/screenshots/login-page.png)
-
----
-
-## Google SSO
-
-Click **Continue with Google**. You will be redirected to Google's consent screen and returned to the dashboard on success.
-
-!!! note
-    Your email must already exist as a user in the system. Accounts are not created automatically on first login. Contact your administrator if you do not have access.
-
----
-
-## Email OTP
-
-Click **Continue with Email code**, enter your email address, and wait for a 6-digit code. The code expires in **15 minutes** and can only be used once.
-
-The code is delivered by email to the address you entered.
-
-Before clicking **Send code**, you can check **Stay logged in for 30 days on this device**. When checked, your session remains active for 30 days instead of the default 8 hours.
-
----
-
-## Session
-
-After a successful login, a secure session is created.
+After a successful login, the system creates a secure session.
 
 | Login method | Default session duration | With **Stay logged in** |
 |---|---|---|
 | Email OTP | 8 hours | 30 days |
 | Google SSO | 8 hours | — |
 
-You will be redirected to the login page automatically when your session expires. If you are already logged in and navigate to the login page, you are redirected to the dashboard immediately.
+When your session expires, the system redirects you to the login page. If you navigate to the login page while already holding a valid session, the system redirects you to the dashboard immediately.
 
 ---
 
@@ -50,7 +33,36 @@ You will be redirected to the login page automatically when your session expires
 |---|---|
 | `admin` | Full platform — all tenants, gateways, users |
 | `tenant_admin` | Own tenant — manages users, gateways, and settings within their tenant |
-| `member` | Own tenant — full access to gateways within their tenant; can create their own inference tokens via [My Tokens](my-tokens.md) |
+| `member` | Own tenant — full access to gateways within their tenant; can create inference tokens via [My tokens](my-tokens.md) |
 | `viewer` | Own tenant — read-only access to the admin panel; cannot make inference requests |
 
-Any user in the database can log in to the admin panel regardless of role. Create users via **Users → New User** or the [Users API](../api-reference/users-tokens.md).
+---
+
+## Logging in with Google SSO
+
+Proceed as follows to log in with Google SSO:
+
+1. Navigate to `/login`.
+2. Click the **Continue with Google** button.
+   - The system redirects you to Google's consent screen.
+3. Authenticate with your Google account.
+   - -> The system returns you to the dashboard.
+
+!!! note
+    Your email address must already exist as a user in the system. Contact your administrator if you do not have access.
+
+---
+
+## Logging in with email OTP
+
+Proceed as follows to log in with an email one-time code:
+
+1. Navigate to `/login`.
+2. Click the **Continue with Email code** button.
+3. Enter your email address in the **Email** text field.
+4. Optional: Check **Stay logged in for 30 days on this device** to extend your session to 30 days.
+5. Click the **Send code** button.
+   - The system sends a 6-digit code to your email address. The code expires after 15 minutes and can only be used once.
+6. Enter the code in the **One-time code** text field.
+7. Click the **Verify** button.
+   - -> The system creates your session and redirects you to the dashboard.

@@ -1,12 +1,17 @@
-# Multi-Tenancy
+---
+title: Multi-tenancy
+description: How AI Gateway organises tenants and gateways, enforces isolation, and controls access through user roles and auth tokens.
+---
 
-AI Gateway organizes everything into two levels: **tenants** and **gateways**.
+# Multi-tenancy
 
-A **tenant** is your top-level account — typically one company, application, or team. A **gateway** is a named deployment inside a tenant, such as `production` or `staging`. Each gateway has its own API keys, auth tokens, rate limits, and routing rules — completely isolated from every other gateway.
+AI Gateway by Myra Security organises everything into two levels: **tenants** and **gateways**.
 
-Most organizations start with one tenant and one or two gateways (e.g. `production` + `development`). You'd create additional tenants if you need to provide the gateway service to separate customers or business units with billing isolation between them.
+A **tenant** is the top-level account — typically one company, application, or team. A **gateway** is a named deployment inside a tenant, such as `production` or `staging`. Each gateway has its own API keys, auth tokens, rate limits, and routing rules, completely isolated from every other gateway.
 
-AI Gateway can serve many tenants and gateways from a single process, with hard isolation boundaries between them.
+Most organisations start with one tenant and one or two gateways (e.g. `production` and `development`). Additional tenants are appropriate when you need to provide the gateway service to separate customers or business units with billing isolation between them.
+
+AI Gateway serves many tenants and gateways from a single process, with hard isolation boundaries between them.
 
 ---
 
@@ -16,7 +21,7 @@ AI Gateway can serve many tenants and gateways from a single process, with hard 
 graph TD
     T["Tenant<br/>budget · plan"]
     T --> G["Gateway<br/>config · provider keys<br/>auth tokens · routing rules"]
-    T --> U["User<br/>role: admin · tenant_admin · member · viewer"]
+    T --> U["User<br/>role: admin · tenant_admin<br/>member · viewer"]
 ```
 
 A **Tenant** is the top-level grouping for users and gateways. Each tenant can have multiple **Gateways** — each gateway is an independent policy domain with its own config, keys, tokens, and rules.
@@ -42,8 +47,8 @@ The gateway resolves `{tenant_slug}` and `{gateway_slug}` on every request and l
 
 ## Isolation mechanisms
 
-| Boundary | Mechanism |
-|----------|-----------|
+| **Boundary** | **Mechanism** |
+|--------------|---------------|
 | URL routing | `{tenant_slug}/{gateway_slug}` prefix resolved on every request; unknown slugs return `404 TENANT_NOT_FOUND` |
 | Internal state isolation | All internal state is namespaced per tenant and gateway — no cross-tenant data leakage is possible |
 | Storage | All data is strictly scoped to the owning tenant at the storage layer; cross-tenant access is not possible |
@@ -55,8 +60,8 @@ The gateway resolves `{tenant_slug}` and `{gateway_slug}` on every request and l
 
 ## User roles
 
-| Role | Inference requests | Admin operations |
-|------|-------------------|-----------------|
+| **Role** | **Inference requests** | **Admin operations** |
+|----------|----------------------|----------------------|
 | `admin` | Yes, on all gateways (platform-wide) | Full CRUD on all tenants, gateways, users, tokens, rules, keys |
 | `tenant_admin` | Yes, on all gateways in their tenant | Full access within their tenant; manages users and tenant settings |
 | `member` | Yes, on all gateways in their tenant | Full access within their tenant |
@@ -72,9 +77,9 @@ Deleting a user immediately disables all of their auth tokens.
 
 Tokens are scoped to a single gateway and carry optional per-token overrides:
 
-| Field | Description |
-|-------|-------------|
-| `label` | Human-readable name, e.g., `"ci-pipeline"` |
+| **Field** | **Description** |
+|-----------|-----------------|
+| `label` | Human-readable name, e.g. `"ci-pipeline"` |
 | `expiration` | ISO-8601 timestamp; requests after this date return `401` |
 | `rate_limit` | `{"requests": N, "window_sec": S}` — overrides gateway-level rate limit |
 | `budget_usd` | Per-token spending cap; takes precedence over gateway-level budget |
@@ -88,5 +93,5 @@ Token values are stored as a one-way hash. The plaintext token is shown only onc
 
 - [Authentication](../security/authentication.md) — token acceptance order, role enforcement
 - [BYOK Key Vault](../security/byok.md) — per-gateway provider key encryption
-- [Request Pipeline](request-pipeline.md) — where tenant resolution happens in the chain
-- [Admin REST API — Tenants & Gateways](../api-reference/tenants-gateways.md)
+- [Request pipeline](request-pipeline.md) — where tenant resolution happens in the chain
+- [Admin REST API — Tenants and gateways](../api-reference/tenants-gateways.md)

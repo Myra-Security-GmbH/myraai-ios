@@ -1,6 +1,11 @@
-# Cost Attribution
+---
+title: Cost attribution
+description: How AI Gateway computes inference costs, resolves model prices, tracks Anthropic prompt caching fields, and enforces budget caps.
+---
 
-AI Gateway computes and records the cost of every inference request, accumulates spend against configurable budget caps, and exposes aggregated cost data through the Stats API and admin UI.
+# Cost attribution
+
+AI Gateway by Myra Security computes and records the cost of every inference request, accumulates spend against configurable budget caps, and exposes aggregated cost data through the Stats API and admin UI.
 
 ---
 
@@ -26,8 +31,8 @@ Token counts come from the provider's response. For streaming requests, they are
 
 Anthropic's prompt caching feature writes frequently-used content (system prompts, document context) to a cache and bills cache reads at a steep discount. AI Gateway tracks and reports these fields separately:
 
-| Field | Typical price relative to input |
-|-------|-------------------------------|
+| **Field** | **Typical price relative to input** |
+|-----------|-------------------------------------|
 | `cache_write_tokens` | 1.25× input price |
 | `cache_read_tokens` | 0.10× input price |
 
@@ -69,8 +74,8 @@ The following models have hardcoded fallback prices. All prices are USD per 1,00
 
 ### OpenAI
 
-| Model | Input/1K | Output/1K |
-|-------|---------|----------|
+| **Model** | **Input/1K** | **Output/1K** |
+|-----------|-------------|--------------|
 | gpt-4o | $0.0025 | $0.010 |
 | gpt-4o-mini | $0.00015 | $0.0006 |
 | gpt-4-turbo | $0.010 | $0.030 |
@@ -78,8 +83,8 @@ The following models have hardcoded fallback prices. All prices are USD per 1,00
 
 ### Anthropic
 
-| Model | Input/1K | Output/1K | Cache write/1K | Cache read/1K |
-|-------|---------|----------|---------------|--------------|
+| **Model** | **Input/1K** | **Output/1K** | **Cache write/1K** | **Cache read/1K** |
+|-----------|-------------|--------------|-------------------|------------------|
 | claude-opus-4-6 | $0.015 | $0.075 | $0.01875 | $0.0015 |
 | claude-sonnet-4-6 | $0.003 | $0.015 | $0.00375 | $0.0003 |
 | claude-haiku-4-5-20251001 | $0.0008 | $0.004 | $0.001 | $0.00008 |
@@ -88,42 +93,42 @@ The following models have hardcoded fallback prices. All prices are USD per 1,00
 
 ### Gemini / Vertex AI
 
-| Model | Input/1K | Output/1K |
-|-------|---------|----------|
+| **Model** | **Input/1K** | **Output/1K** |
+|-----------|-------------|--------------|
 | gemini-1.5-pro | $0.00125 | $0.005 |
 | gemini-1.5-flash | $0.000075 | $0.0003 |
 | gemini-2.0-flash | $0.0001 | $0.0004 |
 
 ### Mistral
 
-| Model | Input/1K | Output/1K |
-|-------|---------|----------|
+| **Model** | **Input/1K** | **Output/1K** |
+|-----------|-------------|--------------|
 | mistral-large-latest | $0.002 | $0.006 |
 | mistral-small-latest | $0.0002 | $0.0006 |
 | codestral-latest | $0.0003 | $0.0009 |
 
 ### Groq
 
-| Model | Input/1K | Output/1K |
-|-------|---------|----------|
+| **Model** | **Input/1K** | **Output/1K** |
+|-----------|-------------|--------------|
 | llama-3.3-70b-versatile | $0.00059 | $0.00079 |
 | llama-3.1-8b-instant | $0.00005 | $0.00008 |
 
 ### xAI
 
-| Model | Input/1K | Output/1K |
-|-------|---------|----------|
+| **Model** | **Input/1K** | **Output/1K** |
+|-----------|-------------|--------------|
 | grok-3 | $0.003 | $0.015 |
 | grok-3-mini | $0.0003 | $0.0005 |
 
 ### DeepSeek
 
-| Model | Input/1K | Output/1K |
-|-------|---------|----------|
+| **Model** | **Input/1K** | **Output/1K** |
+|-----------|-------------|--------------|
 | deepseek-chat | $0.00027 | $0.0011 |
 | deepseek-reasoner | $0.00055 | $0.00219 |
 
-Model pricing data is maintained by Myra Security and updated automatically. You can view and override individual model prices via the [Models & Pricing API](../api-reference/models.md).
+Model pricing data is maintained by Myra Security and updated automatically. View and override individual model prices via the [Models and pricing API](../api-reference/models.md).
 
 ---
 
@@ -131,15 +136,15 @@ Model pricing data is maintained by Myra Security and updated automatically. You
 
 Cost attribution feeds directly into the budget enforcement system:
 
-- **Per-gateway budget** — set `budget_usd` in the gateway config; returns `429 QUOTA_EXCEEDED` once the accumulated spend reaches the cap
-- **Per-token budget** — set `budget_usd` on an auth token; takes precedence over the gateway budget
-- **Reset** — `DELETE /admin/v1/gateways/{id}/budget` resets the gateway counter; `DELETE /admin/v1/users/{id}/budget` resets all token budgets for a user
+- **Per-gateway budget** — set `budget_usd` in the gateway config; returns `429 QUOTA_EXCEEDED` once the accumulated spend reaches the cap.
+- **Per-token budget** — set `budget_usd` on an auth token; takes precedence over the gateway budget.
+- **Reset** — `DELETE /admin/v1/gateways/{id}/budget` resets the gateway counter; `DELETE /admin/v1/users/{id}/budget` resets all token budgets for a user.
 
 ---
 
 ## See also
 
-- [Request Pipeline](request-pipeline.md) — where cost calculation fits in the request lifecycle
-- [Budgets and Quotas](../configuration/budgets.md) — configuring and resetting spend caps
-- [Response Caching](caching.md) — `saved_cost_usd` logged on cache hits
+- [Request pipeline](request-pipeline.md) — where cost calculation fits in the request lifecycle
+- [Budgets and quotas](../configuration/budgets.md) — configuring and resetting spend caps
+- [Response caching](caching.md) — `saved_cost_usd` logged on cache hits
 - [Models API](../api-reference/models.md) — managing model prices at runtime

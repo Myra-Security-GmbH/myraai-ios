@@ -1,10 +1,34 @@
-# Code Detection Guardrail
+---
+title: Code detection guardrail
+description: Configuration reference for the AI Gateway code detection guardrail — supported languages, detection signals, min_signals tuning, and example configurations.
+---
+
+# Code detection guardrail
 
 The code detection guardrail is a **Tier 1** (in-process) guardrail that detects source code in request and response content. It is suited for preventing SQL injection attempts in prompts, monitoring when a model returns code unexpectedly, or enforcing policies that prohibit code exchange through an AI endpoint.
 
+## When to use the code detection guardrail
+
+Use the code detection guardrail when you need to detect or block the presence of actual source code — not just discussion of programming topics. Tune `min_signals` to balance sensitivity against false positives on educational or explanatory content.
+
+## How it works
+
+Detection uses two independent layers. Each layer that produces a positive result counts as one signal.
+
+1. **Markdown code fences** — the presence of any fenced code block (`` ```sql ``, `` ```python ``, `` ``` ``, etc.) triggers immediately. A single opening fence is sufficient; the fence does not need to be closed.
+2. **Structural heuristics** — language-specific patterns are checked against the plain text. Each language uses a set of syntactic signals appropriate to that language.
+
+### `min_signals` setting
+
+Setting `min_signals: 2` requires both a code fence and a structural heuristic match before the guardrail triggers. This reduces false positives in conversations that discuss programming topics without containing executable code — for example, a user asking "how does a SELECT statement work?" matches heuristics but does not produce a code fence, so it passes with `min_signals: 2`.
+
+!!! tip "Recommended values"
+    - `min_signals: 1` (default) — suitable when the traffic is not expected to contain any code discussion. Maximum sensitivity.
+    - `min_signals: 2` — suitable for general-purpose assistants where programming topics arise in natural prose. Reduces false positives on educational or explanatory content.
+
 ---
 
-## Configuration fields
+## Configuration reference
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -14,15 +38,6 @@ The code detection guardrail is a **Tier 1** (in-process) guardrail that detects
 | `target` | string | `"request"` | Which traffic to inspect: `request`, `response`, or `both` |
 | `languages` | array | — | Restrict detection to these language names. When absent, all supported languages are active. |
 | `min_signals` | integer | `1` | Minimum number of independent detection signals required before the guardrail triggers |
-
----
-
-## Detection method
-
-Detection uses two independent layers. Each layer that produces a positive result counts as one signal.
-
-1. **Markdown code fences** — the presence of any fenced code block (`` ```sql ``, `` ```python ``, `` ``` ``, etc.) triggers immediately. A single opening fence is sufficient; the fence does not need to be closed.
-2. **Structural heuristics** — language-specific patterns are checked against the plain text. Each language uses a set of syntactic signals appropriate to that language.
 
 ---
 
@@ -39,17 +54,7 @@ Detection uses two independent layers. Each layer that produces a positive resul
 
 ---
 
-## `min_signals` setting
-
-Setting `min_signals: 2` requires both a code fence **and** a structural heuristic match before the guardrail triggers. This reduces false positives in conversations that discuss programming topics without containing executable code — for example, a user asking *"how does a SELECT statement work?"* will match heuristics but not produce a code fence, so it passes with `min_signals: 2`.
-
-!!! tip "Recommended values"
-    - `min_signals: 1` (default) — suitable when the traffic is not expected to contain any code discussion. Maximum sensitivity.
-    - `min_signals: 2` — suitable for general-purpose assistants where programming topics arise in natural prose. Reduces false positives on educational or explanatory content.
-
----
-
-## Examples
+## Example configurations
 
 ### Block SQL in requests
 
@@ -78,7 +83,7 @@ Records a log entry whenever the model returns code-containing content, without 
 }
 ```
 
-↳ Detections are recorded in `detectors_fired` on the log entry. The response is not modified.
+Detections are recorded in `detectors_fired` on the log entry. The response is not modified.
 
 ### Require two signals before blocking
 
@@ -94,17 +99,38 @@ Reduces false positives on discussions about programming topics where no actual 
 }
 ```
 
-↳ A message such as *"explain how a for loop works in Python"* matches structural heuristics (mentions of Python syntax) but does not contain a code fence, so it passes. A message containing `` ```python … ``` `` is blocked regardless of `min_signals` because the fence alone satisfies both layers when combined with the heuristic match.
+A message such as "explain how a for loop works in Python" matches structural heuristics (mentions of Python syntax) but does not contain a code fence, so it passes. A message containing `` ```python … ``` `` is blocked regardless of `min_signals` because the fence alone satisfies both layers when combined with the heuristic match.
+
+---
+
+## Configuring the code detection guardrail
+
+![Screenshot: Code detection guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-contains-code-builder.png)
+*Code detection guardrail card — expanded view*
+
+Proceed as follows to configure the code detection guardrail in the Guardrail Builder:
+
+1. Open the gateway detail page and scroll down to the **Guardrails** card.
+2. Click on the **+ Contains Code** button.
+    - A collapsed code detection guardrail card appears at the bottom of the list.
+3. Click on the card to expand it.
+4. Enter a name in the **Name** text field.
+5. Select the action from the **Action** drop-down list: `block` or `flag`.
+6. Select the target from the **Target** drop-down list: `request`, `response`, or `both`.
+7. If required, select specific languages from the **Languages** list. Leave empty to detect all supported languages.
+8. If required, set the **Min Signals** field to `2` to reduce false positives on educational content.
+9. Click on the **Save Guardrails** button.
+    - -> The code detection guardrail is saved and appears in the execution plan.
 
 ---
 
 ## Pipeline position
 
-The code detection guardrail is **Tier 1** — it runs in-process with no external calls. It can run in both the request and response phases depending on the configured `target`. A `block` verdict from this guardrail stops the pipeline immediately. No subsequent guardrails run.
+The code detection guardrail is **Tier 1** — it runs in-process with no external calls. It runs in both the request and response phases depending on the configured `target`. A `block` verdict from this guardrail stops the pipeline immediately. No subsequent guardrails run.
 
 ---
 
-## See Also
+## See also
 
-- [Guardrail Pipeline Overview](../guardrails.md)
-- [Regex Guardrail](regex.md)
+- [Guardrail pipeline overview](../guardrails.md)
+- [Regex guardrail](regex.md)

@@ -1,103 +1,56 @@
-# SIEM Integration
-
-Stream AI gateway security events to an external Security Information and Event Management
-(SIEM) system in real time. Supported backends: **Splunk HEC**, **Elasticsearch / OpenSearch**,
-**Vector**, and **Syslog / CEF**.
-
+---
+title: SIEM integration
+description: Configure SIEM integration in AI Gateway by Myra Security. Supported backends, event payload structure, and gateway-level and tenant-level configuration.
 ---
 
-## Overview
+# SIEM integration
 
-The gateway emits structured security telemetry for every blocked request, guardrail trigger, and
-PII scrub event. SIEM integration forwards these events asynchronously — delivery happens on a
-background timer and never adds latency to inference requests.
+SIEM integration streams AI gateway security events to an external Security Information and Event Management (SIEM) system in real time. The gateway emits structured security telemetry for every blocked request, guardrail trigger, and PII scrub event. Delivery happens on a background timer and never adds latency to inference requests.
 
-Typical SIEM use cases:
+Typical use cases:
 
 - **Threat detection** — correlate blocked requests across tenants or time windows
 - **Compliance audit** — retain a tamper-evident log of all policy violations
 - **Alerting** — trigger SIEM rules on jailbreak attempts, PII leakage, or budget anomalies
 
----
-
 ## Supported backends
 
-| Type | Protocol | Auth | Best for |
+| **Type** | **Protocol** | **Auth** | **Best for** |
 |---|---|---|---|
 | `splunk_hec` | HTTPS POST | Bearer token | Splunk Enterprise / Cloud |
 | `elasticsearch` | HTTPS POST | Basic auth | Elasticsearch, OpenSearch |
 | `vector` | HTTP POST | None | Vector sidecar fan-out (Loki, Datadog, S3…) |
 | `syslog` | UDP or TCP | None | QRadar, ArcSight, CEF-native SIEMs |
 
----
+## Configuration levels
 
-## Configuration
+SIEM config is set at two levels:
 
-SIEM config can be set at two levels:
+- **Tenant level** — applies to all gateways under that tenant by default.
+- **Gateway level** — overrides the tenant default for a specific gateway.
 
-- **Tenant level** — applies to all gateways under that tenant (default)
-- **Gateway level** — overrides the tenant default for a specific gateway
+When a gateway has a `siem` key in its config, it takes priority over the tenant-level setting. To fall back to the tenant default, remove the `siem` key from the gateway config.
 
-### Tenant-level (default for all gateways)
-
-```http
-PATCH /admin/v1/tenants/{id}
-Content-Type: application/json
-
-{
-  "siem": {
-    "type": "splunk_hec",
-    "url": "https://splunk.corp.com:8088/services/collector/event",
-    "token": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "events": ["blocked", "guardrail"]
-  }
-}
-```
-
-To clear the tenant SIEM config, send `"siem": null`.
-
-### Gateway-level (overrides tenant default)
-
-```http
-PATCH /admin/v1/gateways/{id}
-Content-Type: application/json
-
-{
-  "config": {
-    "siem": {
-      "type": "syslog",
-      "host": "siem.corp.com",
-      "port": 514
-    }
-  }
-}
-```
-
-When a gateway has `siem` in its config, it takes priority over the tenant-level setting.
-To fall back to the tenant default, remove the `siem` key from the gateway config.
-
----
-
-## Configuration reference
+## Configuration fields reference
 
 ### Common fields
 
-| Field | Type | Required | Description |
+| **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
 | `type` | string | Yes | Backend type: `splunk_hec`, `elasticsearch`, `vector`, `syslog` |
-| `events` | array | No | Event filter (see [Event Filter](#event-filter)). Default: `["blocked"]` |
+| `events` | array | No | Event filter. Default: `["blocked"]`. See [Event filter](#event-filter). |
 
 ### Splunk HEC fields
 
-| Field | Type | Required | Description |
+| **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
 | `url` | string | Yes | HEC endpoint, e.g. `https://splunk:8088/services/collector/event` |
 | `token` | string | Yes | HEC token (sent as `Authorization: Splunk <token>`) |
-| `index` | string | No | Target Splunk index. Omit to use the HEC default |
+| `index` | string | No | Target Splunk index. Omit to use the HEC default. |
 
 ### Elasticsearch / OpenSearch fields
 
-| Field | Type | Required | Description |
+| **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
 | `url` | string | Yes | Base URL, e.g. `https://es.corp.com:9200` |
 | `index` | string | No | Index name. Default: `aig-logs` |
@@ -108,47 +61,40 @@ Documents are written to `<url>/<index>/_doc` (one document per event).
 
 ### Vector fields
 
-| Field | Type | Required | Description |
+| **Field** | **Type** | **Required** | **Description** |
 |---|---|---|---|
 | `url` | string | Yes | Vector HTTP source endpoint, e.g. `http://vector:8080` |
 
-Configure Vector's [HTTP source](https://vector.dev/docs/reference/configuration/sources/http_server/)
-to receive events. Vector can then fan out to any sink (Loki, Datadog, S3, Kafka, etc.).
+Configure Vector's [HTTP source](https://vector.dev/docs/reference/configuration/sources/http_server/) to receive events. Vector can then fan out to any sink (Loki, Datadog, S3, Kafka, etc.).
 
 ### Syslog / CEF fields
 
-| Field | Type | Default | Description |
+| **Field** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `host` | string | — | Syslog receiver hostname or IP |
 | `port` | integer | `514` | Syslog receiver port |
 | `protocol` | string | `udp` | Transport: `udp` or `tcp` |
 | `format` | string | `cef` | Message format: `cef` (ArcSight CEF) or `rfc5424` |
 
----
-
 ## Event filter
 
 The `events` array controls which request records are forwarded. Values can be combined.
 
-| Value | Emits when… |
+| **Value** | **Emits when** |
 |---|---|
 | `blocked` | Request was blocked for any reason (guardrail, rate limit, quota, IP allowlist) |
 | `guardrail` | One or more detectors fired (block, flag, or scrub) |
 | `scrubbed` | PII was tokenised and restored in the response |
 | `all` | Every inference request, regardless of outcome |
 
-**Default (no `events` key or empty array):** only `blocked` events are forwarded.
+Default (no `events` key or empty array): only `blocked` events are forwarded.
 
 ```json
 { "events": ["blocked", "guardrail"] }
 ```
 
 !!! warning "Volume"
-    `"all"` can produce very high volumes for busy gateways. Use a backend with
-    adequate throughput (Elasticsearch, Vector) and configure appropriate index
-    retention policies.
-
----
+    `"all"` produces very high volumes for busy gateways. Use a backend with adequate throughput (Elasticsearch, Vector) and configure appropriate index retention policies.
 
 ## Event payload
 
@@ -156,16 +102,16 @@ The `events` array controls which request records are forwarded. Values can be c
 
 All HTTP backends receive the same structured fields from `request_log`:
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `id` | string | Unique request UUID |
 | `tenant_id` | string | Tenant identifier |
 | `gateway_id` | string | Gateway identifier |
-| `provider` | string | LLM provider (openai, anthropic, …) |
+| `provider` | string | LLM provider (`openai`, `anthropic`, …) |
 | `model` | string | Model name |
 | `status` | integer | HTTP status returned to the client |
 | `blocked` | boolean | Whether the request was blocked |
-| `blocked_by` | string | Block reason category (guardrail, rate_limit, quota, ip_allowlist) |
+| `blocked_by` | string | Block reason category (`guardrail`, `rate_limit`, `quota`, `ip_allowlist`) |
 | `block_reason` | string | Human-readable block description |
 | `detectors_fired` | array | Names of detectors that triggered |
 | `guardrail_verdict` | string | Guardrail pipeline verdict |
@@ -185,7 +131,7 @@ All HTTP backends receive the same structured fields from `request_log`:
   "time": 1700000000.123,
   "sourcetype": "_json",
   "index": "ai-gateway",
-  "event": { "id": "...", "tenant_id": "...", "blocked": true, ... }
+  "event": { "id": "...", "tenant_id": "...", "blocked": true }
 }
 ```
 
@@ -210,9 +156,7 @@ CEF:0|AI-Gateway|ai-gateway|1.0|GUARDRAIL_BLOCK|Request blocked by guardrail|7|
 
 RFC 5424 format wraps the raw JSON fields in a syslog envelope.
 
----
-
-## Per-backend examples
+## Per-backend configuration examples
 
 ### Splunk HEC
 
@@ -243,8 +187,7 @@ RFC 5424 format wraps the raw JSON fields in a syslog envelope.
 }
 ```
 
-Recommended index mapping: use `keyword` for string fields and `date` with `format: epoch_millis`
-for the `ts` field.
+Recommended index mapping: use `keyword` for string fields and `date` with `format: epoch_millis` for the `ts` field.
 
 ### Vector
 
@@ -304,23 +247,67 @@ endpoint = "http://loki:3100"
 
 ---
 
-## Configuring SIEM via the admin UI
+## Configuring gateway-level SIEM integration
 
-1. Click on a gateway in the **Gateways** view.
-   ↳ The gateway detail view opens.
-2. Click on the **Edit** button.
-   ↳ The gateway edit dialog opens.
-3. Scroll to the **SIEM Integration** section.
-4. Select a backend type from the **Type** drop-down list.
-5. Select the events you want forwarded in the **Events** section.
-6. Enter the backend-specific fields (URL, token, host/port).
-7. To save the SIEM configuration, click on the **Save** button.
-   ↳ The gateway forwards matching events to the configured SIEM backend.
+Use gateway-level SIEM integration to override the tenant default for a specific gateway, or to configure SIEM on a gateway that has no tenant-level setting.
 
-To disable SIEM for a gateway, set the **Type** drop-down list back to **— disabled —** and click on **Save**. The gateway falls back to the tenant-level SIEM config (if any).
+Before you begin, ensure the following conditions are met:
 
-To configure a tenant-level default, use the API (`PATCH /admin/v1/tenants/{id}` with a
-`"siem"` key). The admin UI tenant editor does not currently expose a SIEM section.
+- You are logged in as a user with the `admin` role.
+
+![Screenshot: Gateway edit dialog with SIEM Integration section](../assets/screenshots/gateway-siem.png)
+*The **SIEM Integration** section in the gateway edit dialog.*
+
+Proceed as follows to configure gateway-level SIEM integration:
+
+1. Click on **Gateways** in the left sidebar.
+   - The **Gateways** list opens.
+2. Click on the gateway.
+   - The gateway detail view opens.
+3. Click on the **Edit** button.
+   - The gateway edit dialog opens.
+4. Scroll to the **SIEM Integration** section.
+5. Select a backend type from the **Type** drop-down list.
+6. Select the events you want forwarded in the **Events** section.
+7. Enter the backend-specific fields (URL, token, host/port) as shown in the [Per-backend configuration examples](#per-backend-configuration-examples).
+8. Click on the **Save** button.
+   - The gateway forwards matching events to the configured SIEM backend.
+
+-> The gateway-level SIEM configuration is active. It overrides the tenant default for this gateway.
+
+!!! note
+    To disable SIEM for a gateway and fall back to the tenant-level config, set the **Type** drop-down list to **— disabled —** and click on **Save**.
+
+---
+
+## Configuring tenant-level SIEM integration
+
+The tenant-level SIEM configuration applies to all gateways under the tenant that do not have a gateway-level override. The admin UI tenant editor does not expose a SIEM section — use the API.
+
+Proceed as follows to configure tenant-level SIEM integration:
+
+1. Send a `PATCH` request to `/admin/v1/tenants/{id}` with the `siem` object in the request body:
+
+   ```http
+   PATCH /admin/v1/tenants/{id}
+   Content-Type: application/json
+
+   {
+     "siem": {
+       "type": "splunk_hec",
+       "url": "https://splunk.corp.com:8088/services/collector/event",
+       "token": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+       "events": ["blocked", "guardrail"]
+     }
+   }
+   ```
+
+   - The tenant SIEM configuration is saved.
+
+-> All gateways under the tenant forward matching events to the configured SIEM backend, unless they have a gateway-level override.
+
+!!! note
+    To clear the tenant SIEM configuration, send `"siem": null` in the PATCH request body.
 
 ---
 

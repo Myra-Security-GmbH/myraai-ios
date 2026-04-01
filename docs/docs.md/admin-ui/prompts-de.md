@@ -1,10 +1,29 @@
+---
+title: Prompt-Beispiele
+description: Einsatzbereite Prompts zur Dokumentenanalyse in der Chat-Ansicht des AI Gateway. Für Rechts-, Marketing-, Vertriebs- und Finanzdokumente.
+---
+
 # Prompt-Beispiele
 
-Diese Seite enthält einsatzbereite Prompts für die Chat-Seite. Laden Sie ein Dokument als Dateianhang hoch und verwenden Sie einen der folgenden Prompts, um es zu analysieren, zusammenzufassen, zu hinterfragen oder zu verbessern.
+## Ansicht: Prompt-Beispiele
+
+![Ansicht: Prompt-Beispiele](../assets/screenshots/prompts.png)
+*Ansicht: Prompt-Beispiele*
+
+Diese Ansicht enthält einsatzbereite Prompts für die **Chat**-Ansicht. Laden Sie ein Dokument als Dateianhang hoch und verwenden Sie einen der folgenden Prompts, um es zu analysieren, zusammenzufassen, zu hinterfragen oder zu verbessern.
 
 Die meisten Prompts liefern bessere Ergebnisse, wenn Sie kurzen Kontext ergänzen — zum Beispiel die Branche, die Zielgruppe oder Ihre Rolle. Ersetzen Sie Platzhalter wie `[Name der Partei]` durch die tatsächlichen Angaben.
 
-Navigieren Sie zu **Chat** in der Seitenleiste. Unterstützte Dateiformate finden Sie unter [Chat — Dateianhänge](chat.md#file-attachments).
+Gehen Sie wie folgt vor, um einen Prompt von dieser Seite zu verwenden:
+
+1. Navigieren Sie zu **Chat** in der Seitenleiste.
+2. Starten Sie ein neues Gespräch und wählen Sie Gateway und Modell aus.
+3. Hängen Sie ein Dokument über das **Büroklammer**-Symbol an oder ziehen Sie eine Datei in den Nachrichtenbereich.
+4. Kopieren Sie einen Prompt von dieser Seite und fügen Sie ihn in das Eingabefeld ein.
+5. Drücken Sie **Enter** oder klicken Sie auf **Senden**.
+   - -> Das Modell antwortet auf Basis des Dokumentinhalts.
+
+Unterstützte Dateiformate finden Sie unter [Chat — Datei importieren](chat.md#importing-a-file).
 
 ---
 

@@ -1,12 +1,17 @@
+---
+title: Budget and quota enforcement
+description: Configure spend budgets at the gateway, tenant, and token level in AI Gateway by Myra Security. Budget hierarchy, periods, cost calculation, and reset procedures.
+---
+
 # Budget and quota enforcement
 
-The gateway tracks cumulative spend per token, per tenant, and per gateway, and blocks requests once a configured budget is exhausted. Budgets are useful for hard cost caps on individual clients, tenants, or entire gateways.
+The gateway tracks cumulative spend per token, per tenant, and per gateway, and blocks requests once a configured budget is exhausted. Budgets provide hard cost caps on individual clients, tenants, or entire gateways.
 
 ## Budget hierarchy
 
 Three budget levels exist and are evaluated in order: per-token → per-tenant → per-gateway.
 
-1. **Per-token budget** — tracks spend for one specific auth token. If the token budget is exhausted the request is blocked regardless of the other budget levels.
+1. **Per-token budget** — tracks spend for one specific auth token. If the token budget is exhausted, the request is blocked regardless of the other budget levels.
 2. **Per-tenant budget** — tracks aggregate spend for all requests across a tenant (all gateways belonging to that tenant). Set via the `tenant_budget_usd` field in the gateway config. Blocks requests for the entire tenant when exhausted.
 3. **Per-gateway budget** — tracks aggregate spend across all tokens on one gateway. Acts as a hard cap for that gateway as a whole.
 
@@ -14,22 +19,22 @@ All three levels are independent. A request must pass all applicable checks befo
 
 ## Budget periods
 
-Each budget level has a configurable **period** — the window over which spend is accumulated. At the start of each new period, spend resets automatically with no manual action required.
+Each budget level has a configurable period — the window over which spend is accumulated. At the start of each new period, spend resets automatically with no manual action required.
 
-| Config field | Scope | Default | Options |
+| **Config field** | **Scope** | **Default** | **Options** |
 |---|---|---|---|
 | `budget_period` | Gateway | `monthly` | `daily`, `monthly`, `total` |
 | `tenant_budget_period` | Tenant | `monthly` | `daily`, `monthly`, `total` |
-| `token_budget_period` | Token (auth_token) | `monthly` | `daily`, `monthly`, `total` |
+| `token_budget_period` | Token (auth token) | `monthly` | `daily`, `monthly`, `total` |
 
-| Value | Resets | Use case |
+| **Value** | **Resets** | **Use case** |
 |---|---|---|
 | `daily` | Each calendar day at midnight UTC | Per-day spend caps for high-volume tenants |
 | `monthly` | First day of each calendar month | Standard billing-period enforcement (default) |
 | `total` | Never — lifetime accumulation | One-time spend allowances, trial accounts |
 
 !!! note
-    Automatic period reset is distinct from a manual budget reset (which clears accumulated spend immediately). Manual resets are still available for one-off corrections.
+    Automatic period reset is distinct from a manual budget reset, which clears accumulated spend immediately. Manual resets are available for one-off corrections.
 
 ## Cost calculation
 
@@ -42,7 +47,7 @@ Spend is incremented after each successful inference response. Streaming respons
 
 ## QUOTA_EXCEEDED response
 
-When a budget is exhausted, the gateway returns `HTTP 429` with an actionable message identifying the scope that triggered the block and the exact API call needed to resolve it:
+When a budget is exhausted, the gateway returns `HTTP 429` with an actionable message that identifies the scope that triggered the block and the exact API call needed to resolve it.
 
 **Token budget exhausted**
 
@@ -83,46 +88,11 @@ When a budget is exhausted, the gateway returns `HTTP 429` with an actionable me
 }
 ```
 
-The message always includes the configured budget, the current spend, and the two corrective actions: increase the budget or reset spend for the current period.
-
-## Configuring budgets via the admin UI
-
-### Setting a gateway budget
-
-1. Click on **Gateways** in the left sidebar.
-   ↳ The **Gateways** view opens.
-2. Click on the gateway.
-   ↳ The gateway detail view opens.
-3. Open the **Config** tab.
-   ↳ The configuration form opens.
-4. Enter the spend cap in the **Budget (USD)** text field.
-5. To save the budget, click on the **Save** button.
-   ↳ The gateway budget is applied to all requests through the gateway.
-
-### Setting a per-token budget
-
-1. Click on **Users** in the left sidebar.
-   ↳ The **Users** view opens.
-2. Click on the user.
-   ↳ The user detail view opens.
-3. Create or edit a token.
-4. Enter the spend cap in the **Budget (USD)** text field.
-5. To save the token budget, click on the **Save** button.
-   ↳ The budget is applied to all requests authenticated with that token.
-
-### Resetting a budget
-
-To clear accumulated spend so requests can flow again, use the **Reset budget** action:
-
-- **Gateway budget**: In the **Config** tab, use the **Reset budget** button.
-- **User token budgets**: In the **Users** module, use the **Reset budget** action on the user.
-
-!!! warning
-    Budget resets are immediate and irreversible. There is no confirmation step. Automate resets with care — for example, a monthly scheduled task that resets at the start of each billing period.
+The message always includes the configured budget, the current spend, and two corrective actions: increase the budget or reset spend for the current period.
 
 ## Best practices
 
-| Scenario | Recommendation |
+| **Scenario** | **Recommendation** |
 |---|---|
 | Absolute cost cap for the gateway | Set `gateway.budget_usd`; reset monthly. |
 | Per-client spend limit | Set `budget_usd` on each client's token. |
@@ -131,6 +101,101 @@ To clear accumulated spend so requests can flow again, use the **Reset budget** 
 
 !!! note
     The gateway budget and per-token budget are not linked. Exhausting the gateway budget blocks all requests even if individual token budgets have remaining balance.
+
+---
+
+## Configuring a gateway budget
+
+Before you begin, ensure the following conditions are met:
+
+- You are logged in as a user with the `admin` role.
+
+![Screenshot: Gateway Config tab showing Budget (USD) field](../assets/screenshots/gateway-budget.png)
+*The **Budget (USD)** field in the gateway **Config** tab.*
+
+Proceed as follows to configure a gateway budget:
+
+1. Click on **Gateways** in the left sidebar.
+   - The **Gateways** list opens.
+2. Click on the gateway.
+   - The gateway detail view opens.
+3. Click on the **Config** tab.
+   - The configuration form opens.
+4. Enter the spend cap in the **Budget (USD)** text field.
+5. Click on the **Save** button.
+   - The gateway budget is applied to all requests through the gateway.
+
+-> The gateway enforces the budget. Requests are blocked once the configured spend cap is reached.
+
+---
+
+## Configuring a per-token budget
+
+Before you begin, ensure the following conditions are met:
+
+- You are logged in as a user with the `admin` role.
+
+![Screenshot: New Token or Edit Token dialog with Budget (USD) field](../assets/screenshots/token-budget.png)
+*The **Budget (USD)** field in the token dialog.*
+
+Proceed as follows to configure a per-token budget:
+
+1. Click on **Users** in the left sidebar.
+   - The **Users** list opens.
+2. Click on the user.
+   - The user detail view opens.
+3. Create or open a token.
+   - The token dialog opens.
+4. Enter the spend cap in the **Budget (USD)** text field.
+5. Click on the **Save** button.
+   - The budget is applied to all requests authenticated with that token.
+
+-> The token budget is active immediately. Requests using that token are blocked once the spend cap is reached.
+
+---
+
+## Resetting a budget
+
+Use the reset action to clear accumulated spend so that requests can resume. Resetting is useful when correcting an over-run or starting a new billing period manually.
+
+!!! warning
+    Budget resets are immediate and irreversible. There is no confirmation step. Automate resets with care.
+
+### Resetting a gateway budget
+
+![Screenshot: Gateway Config tab with Reset budget button](../assets/screenshots/gateway-budget-reset.png)
+*The **Reset budget** button in the gateway **Config** tab.*
+
+Proceed as follows to reset a gateway budget:
+
+1. Click on **Gateways** in the left sidebar.
+   - The **Gateways** list opens.
+2. Click on the gateway.
+   - The gateway detail view opens.
+3. Click on the **Config** tab.
+   - The configuration form opens.
+4. Click on the **Reset budget** button.
+   - Accumulated spend for the current period is cleared.
+
+-> The gateway spend counter resets to zero. Requests are accepted again up to the configured budget cap.
+
+### Resetting a user token budget
+
+![Screenshot: Users view with Reset budget action](../assets/screenshots/user-budget-reset.png)
+*The **Reset budget** action in the **Users** module.*
+
+Proceed as follows to reset a user token budget:
+
+1. Click on **Users** in the left sidebar.
+   - The **Users** list opens.
+2. Click on the user.
+   - The user detail view opens.
+3. Click on the **Reset budget** action for the token.
+   - Accumulated spend for that token is cleared.
+
+-> The token spend counter resets to zero. Requests authenticated with that token are accepted again up to the configured budget cap.
+
+---
 
 ## API
 

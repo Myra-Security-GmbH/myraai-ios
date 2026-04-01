@@ -1,13 +1,18 @@
-# Supported Providers
+---
+title: Supported providers
+description: The 21 AI providers supported by AI Gateway, endpoint formats, model resolution, and provider-specific configuration.
+---
 
-AI Gateway supports 21 AI providers through a unified OpenAI-compatible interface.
+# Supported providers
+
+AI Gateway by Myra Security supports 21 AI providers through a unified OpenAI-compatible interface.
 
 ---
 
 ## Provider table
 
-| Provider | Notes |
-|----------|-------|
+| **Provider** | **Notes** |
+|--------------|-----------|
 | OpenAI | Direct pass-through |
 | Azure OpenAI | Requires `azure_endpoint`, `azure_deployment`, `azure_api_version` in gateway config |
 | Anthropic | Extended thinking and prompt caching supported |
@@ -54,13 +59,13 @@ The provider is inferred from the `model` field using a three-tier resolution pr
 
 ## Compat endpoint model resolution
 
-For the complete and authoritative model-to-provider mapping, see [OpenAI-Compatible Endpoint](../routing/compat-endpoint.md).
+For the complete and authoritative model-to-provider mapping, see [OpenAI-compatible endpoint](../routing/compat-endpoint.md).
 
 ---
 
 ## HuggingFace org-prefix routing
 
-The HuggingFace provider routes to the Inference API endpoint for the specified `org/model` path. The following organization prefixes are recognized:
+The HuggingFace provider routes to the Inference API endpoint for the specified `org/model` path. The following organisation prefixes are recognised:
 
 ```
 HuggingFaceH4/
@@ -89,7 +94,7 @@ The `provider_base_urls` gateway config field lets you override the default upst
 ```
 
 !!! note "Ollama requires a base URL"
-    Ollama has no default public endpoint. You must set `provider_base_urls.ollama` to your local Ollama server URL.
+    Ollama has no default public endpoint. Set `provider_base_urls.ollama` to your local Ollama server URL.
 
 ---
 
@@ -108,7 +113,7 @@ curl -X POST https://<your-gateway-host>/v1/myapp/prod/anthropic/chat/completion
 
 ## See also
 
-- [Compat Endpoint](../routing/compat-endpoint.md) — detailed model resolution and streaming re-encoding
+- [Compat endpoint](../routing/compat-endpoint.md) — detailed model resolution and streaming re-encoding
 - [BYOK Key Vault](../security/byok.md) — storing and selecting provider keys
-- [Cost Attribution](cost-attribution.md) — per-provider pricing
-- [Routing Rules](../routing/routing-rules.md) — overriding the provider at request time
+- [Cost attribution](cost-attribution.md) — per-provider pricing
+- [Routing rules](../routing/routing-rules.md) — overriding the provider at request time

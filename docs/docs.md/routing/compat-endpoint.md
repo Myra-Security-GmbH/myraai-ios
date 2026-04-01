@@ -1,20 +1,21 @@
-# OpenAI-Compatible Endpoint
+---
+title: OpenAI-compatible endpoint
+description: How the compat endpoint works, model resolution tiers, streaming normalisation, and SDK usage examples.
+---
 
-The compat endpoint accepts any model name and automatically resolves which provider to route to. It is designed to be a drop-in replacement for the OpenAI API — any client built against the OpenAI SDK works without modification.
+# OpenAI-compatible endpoint
 
-## When to use this endpoint
+The compat endpoint accepts any model name and automatically resolves which provider to route to. It is designed as a drop-in replacement for the OpenAI API — any client built against the OpenAI SDK works without modification by changing only the `base_url` and `api_key`.
 
 Use the compat endpoint when you want to:
 
-- **Switch providers without changing code** — point your existing OpenAI SDK client at the gateway and change only the `base_url` and `api_key`. You can then route to Claude, Gemini, or any other provider just by changing the model name.
-- **Access multiple providers from one endpoint** — your code always calls the same URL; the gateway figures out which provider to use.
-- **Use OpenRouter as a fallback** — any model ID that OpenRouter supports will work automatically, even if it isn't listed in the gateway's built-in model registry.
+- **Switch providers without changing code** — point your existing OpenAI SDK client at the gateway and change only the `base_url` and `api_key`. Route to Claude, Gemini, or any other provider by changing the model name.
+- **Access multiple providers from one endpoint** — your code always calls the same URL; the gateway determines which provider to use.
+- **Use OpenRouter as a fallback** — any model identifier that OpenRouter supports will work automatically, even if it is not listed in the gateway's built-in model registry.
 
-Use the [provider-native endpoint](../concepts/providers.md) instead if you need provider-specific features (like Anthropic's extended thinking or AWS Bedrock's inference profiles) that aren't available through the OpenAI-compatible format.
+Use the provider-native endpoint instead if you need provider-specific features (such as Anthropic's extended thinking or AWS Bedrock's inference profiles) that are not available through the OpenAI-compatible format.
 
----
-
-This page is the single authoritative reference for compat model resolution. The [Providers Overview](../concepts/providers.md) page cross-references this page for resolution details.
+This page is the single authoritative reference for compat model resolution. The [Providers overview](../providers/overview.md) page cross-references this page for resolution details.
 
 ## Endpoint URL
 
@@ -31,7 +32,7 @@ The request and response formats are identical to the OpenAI Chat Completions AP
 
 ## Model resolution
 
-The compat endpoint resolves a provider for each request using a three-tier lookup:
+The compat endpoint resolves a provider for each request using a three-tier lookup.
 
 **Tier 1 — Exact match**
 
@@ -95,14 +96,18 @@ If no exact match is found, the model name prefix is matched:
 
 **Tier 3 — OpenRouter fallback**
 
-If neither an exact nor a prefix match is found, the request is forwarded to **OpenRouter**, which supports hundreds of models from many providers under a single API. This means any model ID that OpenRouter accepts will work through the compat endpoint without any gateway configuration.
+If neither an exact nor a prefix match is found, the request is forwarded to OpenRouter, which supports hundreds of models from many providers under a single API. Any model identifier that OpenRouter accepts will work through the compat endpoint without any gateway configuration.
 
 !!! note
     OpenRouter fallback requires a valid OpenRouter API key stored as a BYOK key for the `openrouter` provider on your gateway.
 
-## Streaming normalization
+## Routing rules and compat resolution
 
-All providers use different SSE formats for streaming responses. The compat endpoint normalizes all provider streams into the OpenAI chunk format:
+Routing rules apply on top of compat resolution. If a routing rule matches the incoming request before provider resolution runs, the rule's configured provider and model are used instead.
+
+## Streaming normalisation
+
+All providers use different server-sent event (SSE) formats for streaming responses. The compat endpoint normalises all provider streams into the OpenAI chunk format:
 
 ```
 data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"delta":{"content":"Hello"}}]}
@@ -116,9 +121,11 @@ data: [DONE]
 
 A usage chunk is always emitted immediately before `data: [DONE]`, even if the upstream provider does not include usage in its stream. This ensures usage-based billing and token tracking work consistently regardless of provider.
 
-## Using with OpenAI SDKs
+## Using the compat endpoint
 
-**Python (openai library):**
+The following examples show how to call the compat endpoint from common clients.
+
+**Python (`openai` library):**
 
 ```python
 from openai import OpenAI
@@ -134,7 +141,7 @@ response = client.chat.completions.create(
 )
 ```
 
-**Node.js (openai library):**
+**Node.js (`openai` library):**
 
 ```javascript
 import OpenAI from 'openai';
@@ -163,12 +170,9 @@ curl https://your-gateway-host/v1/my-tenant/my-gateway/compat/chat/completions \
   }'
 ```
 
-!!! note
-    Routing rules apply on top of compat resolution. If a routing rule matches the incoming request before provider resolution runs, the rule's configured provider and model are used instead.
-
 ## See also
 
-- [Routing Rules](routing-rules.md)
-- [Fallback & Retry](fallback.md)
-- [Provider Key Management (BYOK)](../security/byok.md)
-- [Providers Overview](../providers/overview.md)
+- [Routing rules](routing-rules.md)
+- [Fallback and retry](fallback.md)
+- [Provider key management (BYOK)](../security/byok.md)
+- [Providers overview](../providers/overview.md)

@@ -31,12 +31,12 @@ curl https://<your-gateway-host>/admin/v1/stats
 
 ### PeriodStats fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `requests` | integer | Total inference requests in the period. |
 | `cached` | integer | Requests served from cache (no provider call made). |
 | `blocked` | integer | Requests blocked by auth, rate limit, quota, or detectors. |
-| `scrubbed` | integer | Requests where a guardrail scrubbed PII from the payload but allowed the request through. |
+| `scrubbed` | integer | Requests where a guardrail scrubbed PII (personally identifiable information) from the payload but allowed the request through. |
 | `flagged` | integer | Requests where a guardrail raised a flag but took no blocking or scrubbing action. |
 | `input_tokens` | integer | Total prompt tokens consumed. |
 | `output_tokens` | integer | Total completion tokens generated. |
@@ -49,7 +49,7 @@ curl https://<your-gateway-host>/admin/v1/stats
 
 `by_tenant` in `GET /stats` is a summary view with the following fields:
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `tenant_id` | string | Tenant UUID. |
 | `tenant` | string | Tenant slug. |
@@ -119,7 +119,7 @@ curl "https://<your-gateway-host>/admin/v1/stats/analytics?since=1742544000000"
 
 ### Query parameters
 
-| Parameter | Type | Default | Description |
+| **Parameter** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `since` | integer | 24 hours ago | Start of the analysis window as Unix milliseconds. |
 
@@ -137,7 +137,7 @@ curl "https://<your-gateway-host>/admin/v1/stats/analytics?since=1742544000000"
 
 ### LatencyPercentiles fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `p50` | number \| null | Median end-to-end latency in milliseconds. `null` if no data. |
 | `p95` | number \| null | 95th-percentile latency in milliseconds. |
@@ -147,7 +147,7 @@ Percentiles cover only non-blocked requests.
 
 ### TopModelRow fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `model` | string | Model name. |
 | `provider` | string | Provider slug (e.g. `openai`, `anthropic`). |
@@ -159,7 +159,7 @@ Up to 10 models are returned, ordered by request count descending.
 
 ### GatewayStats fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `gateway_id` | string | Gateway UUID. |
 | `gateway` | string | Gateway slug. |
@@ -176,7 +176,7 @@ Up to 10 models are returned, ordered by request count descending.
 
 ### UserStats fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `user_id` | string | User UUID (from the auth token's `user_id` field). |
 | `requests` | integer | Total requests attributed to this user. |
@@ -241,7 +241,7 @@ curl "https://<your-gateway-host>/admin/v1/stats/timeseries?bucket=1h&n=24"
 
 ### Query parameters
 
-| Parameter | Type | Default | Description |
+| **Parameter** | **Type** | **Default** | **Description** |
 |---|---|---|---|
 | `bucket` | string | `1h` | Bucket size. One of: `5m`, `15m`, `30m`, `1h`, `6h`, `1d`. |
 | `n` | integer | `24` | Number of buckets to return. Range: 1–168. |
@@ -249,7 +249,7 @@ curl "https://<your-gateway-host>/admin/v1/stats/timeseries?bucket=1h&n=24"
 
 ### TimeseriesPoint fields
 
-| Field | Type | Description |
+| **Field** | **Type** | **Description** |
 |---|---|---|
 | `ts` | integer | Bucket start time as Unix milliseconds. |
 | `requests` | integer | Total requests in the bucket. |

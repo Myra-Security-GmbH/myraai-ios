@@ -66,84 +66,85 @@ plugins:
       path_to_pdf: "ai-gateway-docs.pdf"
 
 nav:
-  - Home: README.md
-  - Getting Started:
-    - getting-started/why-ai-gateway.md
+  - Start page: README.md
+  - Side map: reference/site-map.md
+  - Getting started:
     - getting-started/what-is-ai-gateway.md
-    - getting-started/quick-start.md
+    - getting-started/why-ai-gateway.md
     - getting-started/installation.md
-  - Admin UI:
+    - getting-started/quick-start.md
+  - Views:
+    - admin-ui/views-overview.md
     - admin-ui/authentication.md
+    - observability/dashboard.md
+    - observability/monitor.md
+    - observability/analytics.md
+    - observability/logging.md
+    - observability/playground.md
+    - admin-ui/chat.md
     - admin-ui/users.md
     - admin-ui/my-tokens.md
-    - admin-ui/chat.md
     - admin-ui/prompts.md
     - admin-ui/prompts-de.md
-  - Core Concepts:
-    - concepts/request-pipeline.md
-    - concepts/multi-tenancy.md
-    - concepts/providers.md
-    - concepts/caching.md
-    - concepts/cost-attribution.md
   - Configuration:
     - configuration/gateway-config.md
     - configuration/rate-limiting.md
     - configuration/budgets.md
     - configuration/model-prices.md
-    - configuration/siem.md
-  - Security:
     - security/authentication.md
     - security/byok.md
     - security/ip-allowlist.md
-  - Guardrails:
-    - security/guardrails.md
-    - security/guardrails/regex.md
-    - security/guardrails/keyword.md
-    - security/guardrails/jailbreak.md
-    - security/guardrails/presidio.md
-    - security/guardrails/prompt-guard.md
-    - security/guardrails/pii-protector.md
-    - security/guardrails/json-schema.md
-    - security/guardrails/contains-code.md
-    - security/guardrails/gibberish.md
-    - security/guardrails/language.md
-  - Routing:
-    - routing/routing-rules.md
-    - routing/compat-endpoint.md
-    - routing/fallback.md
-    - routing/load-balancing.md
-    - routing/circuit-breaker.md
-  - Providers:
-    - providers/overview.md
-    - providers/openai.md
-    - providers/anthropic.md
-    - providers/gemini.md
-    - providers/azure.md
-    - providers/bedrock.md
-    - providers/ollama.md
-    - providers/openai-compatible.md
-  - Observability:
-    - observability/logging.md
-    - observability/dashboard.md
-    - observability/monitor.md
-    - observability/analytics.md
+    - Guardrails:
+      - security/guardrails.md
+      - security/guardrails/regex.md
+      - security/guardrails/keyword.md
+      - security/guardrails/jailbreak.md
+      - security/guardrails/presidio.md
+      - security/guardrails/prompt-guard.md
+      - security/guardrails/pii-protector.md
+      - security/guardrails/json-schema.md
+      - security/guardrails/contains-code.md
+      - security/guardrails/gibberish.md
+      - security/guardrails/language.md
+    - Routing:
+      - routing/routing-rules.md
+      - routing/compat-endpoint.md
+      - routing/fallback.md
+      - routing/load-balancing.md
+      - routing/circuit-breaker.md
+    - Providers:
+      - providers/overview.md
+      - providers/openai.md
+      - providers/anthropic.md
+      - providers/gemini.md
+      - providers/azure.md
+      - providers/bedrock.md
+      - providers/ollama.md
+      - providers/openai-compatible.md
+    - configuration/siem.md
     - observability/tracing.md
-    - observability/playground.md
     - features/web-search.md
-  - Integrations:
     - integrations/claude-code.md
-  - API Reference:
-    - api-reference/authentication.md
-    - api-reference/tenants-gateways.md
-    - api-reference/users-tokens.md
-    - api-reference/routing-rules.md
-    - api-reference/stats.md
-    - api-reference/logs.md
-    - api-reference/traces.md
-    - api-reference/models.md
-    - api-reference/error-codes.md
+  - Concepts:
+    - concepts/request-pipeline.md
+    - concepts/multi-tenancy.md
+    - concepts/providers.md
+    - concepts/caching.md
+    - concepts/cost-attribution.md
+  - Troubleshooting: troubleshooting.md
   - Reference:
+    - API Reference:
+      - api-reference/authentication.md
+      - api-reference/tenants-gateways.md
+      - api-reference/users-tokens.md
+      - api-reference/routing-rules.md
+      - api-reference/stats.md
+      - api-reference/logs.md
+      - api-reference/traces.md
+      - api-reference/models.md
+      - api-reference/error-codes.md
     - reference/config-reference.md
-    - What's New: reference/changelog.md
+    - What's new: reference/changelog.md
     - reference/glossary.md
-    - Topic Map: reference/topic-map.md
+    - reference/index.md
+    - Topic map: reference/topic-map.md

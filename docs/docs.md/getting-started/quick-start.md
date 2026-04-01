@@ -1,30 +1,42 @@
+---
+title: Quick start
+description: Create a tenant, gateway, and provider key, then send your first inference request to AI Gateway by Myra Security.
+---
+
 # Quick start
 
-This guide takes you from first login to a working inference request in four steps.
+This guide takes you from first login to a working inference request. Complete the [Getting access](installation.md) steps before you begin.
 
-Log in to the admin UI at `https://<your-gateway-host>/admin` using the credentials provided when your instance was provisioned.
+Before you begin, ensure the following conditions are met:
+
+- You have logged in to the admin UI at `https://<your-gateway-host>/admin`.
+- You have your provider API key (for example, an OpenAI API key) to hand.
 
 ---
 
 ## Creating a tenant and gateway
 
+Proceed as follows to create a tenant and gateway:
+
 1. Click on **Tenants** in the left sidebar.
-   ↳ The **Tenants** view opens.
+   - The **Tenants** view opens.
 2. Click on the **New Tenant** button.
-   ↳ The **New Tenant** dialog opens.
+   - The **New Tenant** dialog opens.
 3. Enter a slug in the **Slug** text field. For example: `myapp`.
-4. To save the new tenant, click on the **Save** button.
-   ↳ The new tenant appears in the tenant list.
+4. Click on the **Save** button.
+   - The new tenant appears in the tenant list.
 5. Click on **Gateways** in the left sidebar.
-   ↳ The **Gateways** view opens.
+   - The **Gateways** view opens.
 6. Click on the **New Gateway** button.
-   ↳ The **New Gateway** dialog opens.
+   - The **New Gateway** dialog opens.
 7. Select your new tenant from the **Tenant** drop-down list.
 8. Enter a slug in the **Slug** text field. For example: `production`.
-9. To save the new gateway, click on the **Save** button.
-   ↳ The new gateway appears in the gateway list.
+9. Click on the **Save** button.
+   - The new gateway appears in the gateway list.
 
-![Gateway list after selecting a tenant](../assets/screenshots/gateway-list.png)
+-> The gateway is created and associated with the tenant.
+
+![Gateway list after creating a gateway](../assets/screenshots/gateway-list.png)
 
 !!! note "Authentication for this quick start"
     By default, gateways require an auth token on every inference request. To skip that for now, open the gateway's **Config** tab and set the **Auth Required** toggle to off. Re-enable it before going to production.
@@ -33,26 +45,32 @@ Log in to the admin UI at `https://<your-gateway-host>/admin` using the credenti
 
 ## Storing a provider key
 
+Proceed as follows to store a provider API key in the gateway:
+
 1. Click on **Gateways** in the left sidebar.
-   ↳ The **Gateways** view opens.
+   - The **Gateways** view opens.
 2. Click on the gateway you created.
-   ↳ The gateway detail view opens.
+   - The gateway detail view opens.
 3. Open the **Keys** tab.
-   ↳ The provider keys list opens.
+   - The provider keys list opens.
 4. Click on the **Add Key** button.
-   ↳ The **Add Key** dialog opens.
+   - The **Add Key** dialog opens.
 5. Select a provider from the **Provider** drop-down list. For example: `openai`.
 6. Paste your API key into the **API Key** text field.
-7. To save the key, click on the **Save** button.
-   ↳ The new provider key appears in the keys list. The key is encrypted at rest immediately. The plaintext is never stored.
+7. Click on the **Save** button.
+   - The new provider key appears in the keys list. The key is encrypted at rest immediately; the plaintext is never stored.
 
-![Gateway detail — provider keys, auth tokens, and routing rules](../assets/screenshots/gateway-detail.png)
+-> The provider key is saved and the gateway is ready to forward requests to the provider.
+
+![Gateway detail view showing the Keys tab](../assets/screenshots/gateway-detail.png)
 
 ---
 
 ## Making your first request
 
 ### Provider-native endpoint
+
+Send a request directly to a specific provider using the provider-native endpoint:
 
 ```bash
 curl -s -X POST \
@@ -90,17 +108,23 @@ A successful response looks like:
 }
 ```
 
+-> The gateway forwards the request to the provider and returns the response to the client.
+
 ---
 
 ## Checking the request log
 
+Proceed as follows to verify the request was recorded:
+
 1. Click on **Logs** in the left sidebar.
-   ↳ The **Logs** view opens. Your request appears at the top of the list with provider, model, token count, cost, and latency.
+   - The **Logs** view opens. Your request appears at the top of the list with provider, model, token count, cost, and latency.
+
+-> The request log entry confirms the gateway processed and recorded the request.
 
 ---
 
 ## Next steps
 
-- [Multi-Tenancy](../concepts/multi-tenancy.md) — understand the tenant/gateway/token hierarchy
-- [Request Pipeline](../concepts/request-pipeline.md) — see exactly what happens to every request
-- [Supported Providers](../concepts/providers.md) — swap OpenAI for any of the 21 supported providers
+- [Multi-tenancy](../concepts/multi-tenancy.md) — understand the tenant/gateway/token hierarchy
+- [Request pipeline](../concepts/request-pipeline.md) — see what happens to every request
+- [Supported providers](../concepts/providers.md) — swap OpenAI for any of the 21 supported providers

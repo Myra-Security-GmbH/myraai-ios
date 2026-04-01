@@ -1,12 +1,29 @@
+---
+title: Prompt Guard
+description: Configuration reference for the AI Gateway Prompt Guard guardrail — Llama Guard 3 safety classification, category filtering, context injection, and example configurations.
+---
+
 # Prompt Guard
 
-The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that uses Meta's Llama Guard 3 model to classify request and response content against 14 safety categories. It is designed to detect harmful, illegal, or policy-violating content that rule-based guardrails cannot cover. Llama Guard 3 runs as a locally hosted model within Myra's certified infrastructure — prompt content is never transmitted outside the Myra perimeter.
+The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) guardrail that uses Meta's Llama Guard 3 model to classify request and response content against 14 safety categories. It detects harmful, illegal, or policy-violating content that rule-based guardrails cannot cover. Llama Guard 3 runs as a locally hosted model within Myra's certified infrastructure — prompt content is never transmitted outside the Myra perimeter.
 
-![Prompt Guard editor](../../assets/screenshots/guardrail-prompt_guard.png)
+![Screenshot: Prompt Guard editor in the Guardrail Builder](../../assets/screenshots/guardrail-prompt_guard.png)
+*Prompt Guard editor*
+
+## When to use Prompt Guard
+
+Use Prompt Guard when you need semantic safety classification — detecting harmful intent expressed in natural language, rephrased attacks, or policy violations that literal keyword matching cannot catch. For structured data detection (PII, card numbers), use the [Regex guardrail](regex.md) or [NLP PII Detector](presidio.md).
+
+## How it works
+
+The guardrail sends the inspected content to the locally hosted Llama Guard 3 sidecar. The model classifies the content against the configured safety categories and returns a verdict. Request-phase classification evaluates only the most recent user message — the full conversation history is not sent to the classifier.
+
+!!! warning "Scrub not supported"
+    Prompt Guard does not support `action: "scrub"`. Configure `block` or `flag` only.
 
 ---
 
-## Configuration Fields
+## Configuration reference
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -15,13 +32,13 @@ The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) gua
 | `action` | string | `"block"` | What to do on a safety violation: `block` or `flag` |
 | `target` | string | `"request"` | Which phase to classify: `request`, `response`, or `both` |
 | `timeout_ms` | integer | `2000` | Timeout for the sidecar call in milliseconds |
-| `fail_open` | boolean | `true` | If `true`, sidecar errors allow the request to pass through; if `false`, they block it |
+| `fail_open` | boolean | `true` | When `true`, sidecar errors allow the request to pass through; when `false`, they block it |
 | `categories` | array \| null | `null` | Safety categories to enforce; `null` enforces all 14 categories |
-| `context_prompt` | string | `null` | Deployment context prepended to each user message before classification — reduces false positives on professional platforms (see [Context Injection](#context-injection)) |
+| `context_prompt` | string | `null` | Deployment context prepended to each user message before classification — reduces false positives on professional platforms (see [Context injection](#context-injection)) |
 
 ---
 
-## Safety Categories
+## Safety categories
 
 | Code | Category | FP risk for `block` |
 |---|---|---|
@@ -30,7 +47,7 @@ The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) gua
 | `S3` | Sex-Related Crimes | Low |
 | `S4` | Child Sexual Exploitation | Low |
 | `S5` | Defamation | Medium |
-| `S6` | Specialized Advice (medical, legal, or financial) | **High** — triggers on any professional context |
+| `S6` | Specialised Advice (medical, legal, or financial) | **High** — triggers on any professional context |
 | `S7` | Privacy Violations | Medium |
 | `S8` | Intellectual Property Infringement | Medium |
 | `S9` | Weapons of Mass Destruction (CBRN) | Low |
@@ -41,24 +58,21 @@ The Prompt Guard guardrail is a **Tier 2** (sidecar HTTP call, milliseconds) gua
 | `S14` | Code Interpreter Abuse | Low — only fires in agentic/tool-use scenarios |
 
 !!! tip "Recommended block configuration"
-    For `action: block`, use only the **low-FP** categories: `S1`, `S3`, `S4`, `S9`, `S11`, `S12`, `S14`.
-    This set produces **~1.7% false positives** on OR-Bench-hard (hard adversarial prompts) and drops to **~1.1% with `context_prompt`** on security/education platforms.
-    Avoid `S2` and `S6` for blocking — `S2` alone produces 14.5% FP on security/education content (7.2% with context).
-    Use `action: flag` if you need visibility into S2, S6, or S10 without blocking.
+    For `action: block`, use only the low-FP categories: `S1`, `S3`, `S4`, `S9`, `S11`, `S12`, `S14`. This set produces approximately 1.7% false positives on OR-Bench-hard and drops to approximately 1.1% with `context_prompt` on security and education platforms. Avoid `S2` and `S6` for blocking. Use `action: flag` if you need visibility into S2, S6, or S10 without blocking.
 
 ---
 
-## Category Filtering
+## Category filtering
 
-When `categories` is set to an array, the guardrail only blocks or flags violations within the listed categories. Content classified as unsafe for a category not in your list is treated as safe.
+When `categories` is set to an array, the guardrail only blocks or flags violations within the listed categories. Content classified as unsafe for a category not in the list is treated as safe.
 
 When `categories` is `null` or omitted, all 14 categories are enforced.
 
 ---
 
-## Context Injection
+## Context injection
 
-The `context_prompt` field lets you describe your deployment context so Llama Guard can apply appropriate judgment. The text is prepended to each user message before classification, giving the model information about who is asking and why.
+The `context_prompt` field lets you describe your deployment context so Llama Guard 3 can apply appropriate judgement. The text is prepended to each user message before classification.
 
 This is most useful when your platform serves professionals who regularly ask questions that superficially resemble harmful requests:
 
@@ -78,9 +92,9 @@ This is most useful when your platform serves professionals who regularly ask qu
 }
 ```
 
-**Measured impact** (OR-Bench-hard, 10% sample):
+Measured impact (OR-Bench-hard, 10% sample):
 
-| Configuration | recommended_block FP | S2 alone FP |
+| Configuration | Recommended_block FP | S2 alone FP |
 |---|---|---|
 | No context | ~1.7% | ~14.5% |
 | With `context_prompt` | ~1.1% | ~7.2% |
@@ -92,7 +106,7 @@ This is most useful when your platform serves professionals who regularly ask qu
 
 ## Actions
 
-| Action | Behavior |
+| Action | Behaviour |
 |---|---|
 | `block` | The request or response is denied. The caller receives a synthetic assistant message identifying which categories triggered the block. |
 | `flag` | The violation is recorded in the request log. The pipeline continues without modification. |
@@ -106,12 +120,9 @@ This is most useful when your platform serves professionals who regularly ask qu
 
     The guardrail `name` field value appears in the message, making it easy to correlate blocks with your guardrail configuration.
 
-!!! warning "Scrub not supported"
-    Prompt Guard does not support `action: "scrub"`. Configure `block` or `flag` only.
-
 ---
 
-## `fail_open` Behavior
+## `fail_open` behaviour
 
 | `fail_open` | Sidecar unavailable |
 |---|---|
@@ -125,14 +136,14 @@ This is most useful when your platform serves professionals who regularly ask qu
 
 ## Limitations
 
-- **`scrub` action not supported.** Configure `block` or `flag` only.
-- **Request phase classifies only the last user message.** The full conversation history is not sent to the classifier. Only the most recent user turn is evaluated.
-- **Input truncation.** Inputs longer than approximately 4,096 tokens are truncated before classification. With `context_prompt` set, the effective limit is approximately 3,946 tokens.
-- **Not a replacement for Tier 1 guardrails.** For structured sensitive data (PII, card numbers, credentials), use regex or the NLP PII Detector guardrail. Prompt Guard is optimised for unstructured content policy enforcement.
+- `scrub` action is not supported. Configure `block` or `flag` only.
+- Request-phase classification evaluates only the last user message. The full conversation history is not sent to the classifier.
+- Inputs longer than approximately 4,096 tokens are truncated before classification. With `context_prompt` set, the effective limit is approximately 3,946 tokens.
+- Prompt Guard is optimised for unstructured content policy enforcement. For structured sensitive data (PII, card numbers, credentials), use the [Regex guardrail](regex.md) or the [NLP PII Detector](presidio.md).
 
 ---
 
-## Examples
+## Example configurations
 
 ### Block violent, extremist, and harmful content (recommended low-FP set)
 
@@ -161,7 +172,7 @@ This is most useful when your platform serves professionals who regularly ask qu
 }
 ```
 
-### Flag specialized advice in responses for audit (no blocking)
+### Flag specialised advice in responses for audit (no blocking)
 
 ```json
 {
@@ -187,7 +198,7 @@ This is most useful when your platform serves professionals who regularly ask qu
 
 ### Layer Prompt Guard after keyword pre-filtering
 
-Running keyword guardrails first (Tier 1) can catch simple jailbreak strings before Prompt Guard's more expensive sidecar call.
+Running keyword guardrails first (Tier 1) catches simple jailbreak strings before Prompt Guard's more expensive sidecar call.
 
 ```json
 [
@@ -211,14 +222,36 @@ Running keyword guardrails first (Tier 1) can catch simple jailbreak strings bef
 
 ---
 
-## Pipeline Position
+## Configuring Prompt Guard
+
+![Screenshot: Prompt Guard card in the Guardrail Builder](../../assets/screenshots/guardrail-prompt_guard-builder.png)
+*Prompt Guard card — expanded view*
+
+Proceed as follows to configure Prompt Guard in the Guardrail Builder:
+
+1. Open the gateway detail page and scroll down to the **Guardrails** card.
+2. Click on the **+ Prompt Guard** button.
+    - A collapsed Prompt Guard card appears at the bottom of the list.
+3. Click on the card to expand it.
+4. Enter a name in the **Name** text field.
+5. Select the action from the **Action** drop-down list: `block` or `flag`.
+6. Select the target from the **Target** drop-down list: `request`, `response`, or `both`.
+7. If required, select specific safety categories from the **Categories** list. Leave empty to enforce all 14 categories.
+8. If required, enter a deployment context in the **Context Prompt** text field to reduce false positives.
+9. Toggle the **Fail Open** switch to `false` if the sidecar must be a hard dependency.
+10. Click on the **Save Guardrails** button.
+    - -> Prompt Guard is saved and appears in the execution plan.
+
+---
+
+## Pipeline position
 
 Prompt Guard is **Tier 2** — it makes an HTTP call to a sidecar service. All Tier 1 guardrails (regex, keyword) run before any Tier 2 guardrail. Within Tier 2, guardrails run in the order they appear in the `guardrails` array.
 
 ---
 
-## See Also
+## See also
 
-- [Guardrail Pipeline Overview](../guardrails.md)
-- [Keyword Guardrail](keyword.md) — fast exact-string blocking, useful as a Tier 1 pre-filter
-- [NLP PII Detector](presidio.md) — NLP-based PII detection
+- [Guardrail pipeline overview](../guardrails.md)
+- [Keyword guardrail](keyword.md) — fast exact-string blocking, useful as a Tier 1 pre-filter
+- [NLP PII detector](presidio.md) — NLP-based PII detection
