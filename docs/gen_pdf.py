@@ -244,23 +244,138 @@ def mark_small_tables(content: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Static ToC injection
+# Static ToC injection — dynamic group loading from mkdocs.yml
 # ---------------------------------------------------------------------------
+#
+# _TOC_GROUPS used to be a hardcoded list.  It is now derived at render time
+# from the mkdocs.yml nav so that adding, renaming, or reordering nav sections
+# automatically flows through to the PDF Table of Contents without any changes
+# to this file.
+#
+# Each nav entry is mapped to a (key, label) tuple:
+#   • Standalone page ("Label: file.md")  → key = exact section slug, label = None
+#   • Group          ("Label: [...]")     → key = directory prefix of every file
+#                                            in the group (recursively), label = group name
+#
+# The section slug for a file path is:  path/to/file.md → path-to-file
+# The directory prefix for a file path: path/to/file.md → path  (first segment)
+#
+# Matching in build_toc_html:
+#   sec_id == key            → exact match   (standalone pages)
+#   sec_id.startswith(key+"-") → prefix match (grouped pages)
+#
+# Consecutive toc_groups entries that share the same label are merged into a
+# single ToC block so "admin-ui" + "observability" → one "Views" section.
 
-# Map from section-id prefix → human-readable group label for ToC grouping.
-_TOC_GROUPS = [
-    ("index",           None),           # standalone — no group header
-    ("getting-started", "Getting Started"),
-    ("concepts",        "Core Concepts"),
-    ("configuration",   "Configuration"),
-    ("security",        "Security"),
-    ("routing",         "Routing"),
-    ("providers",       "Providers"),
-    ("observability",   "Observability"),
-    ("features",        "Features"),
-    ("api-reference",   "API Reference"),
-    ("reference",       "Reference"),
-]
+_MKDOCS_YML = os.path.join(HERE, "mkdocs.yml")
+
+
+def _nav_path_to_slug(path: str) -> str:
+    """Convert a nav file path to the MkDocs print-plugin section slug."""
+    path = path.replace("\\", "/").rstrip("/")
+    if path in ("README.md", "index.md", "README.html", "index.html"):
+        return "index"
+    path = re.sub(r"\.(md|html)$", "", path, flags=re.IGNORECASE)
+    return path.replace("/", "-")
+
+
+def _nav_path_to_dir_prefix(path: str) -> str:
+    """Return the first path segment (directory) of a nav file path."""
+    path = path.replace("\\", "/").rstrip("/")
+    if path in ("README.md", "index.md"):
+        return "index"
+    segments = path.split("/")
+    if len(segments) == 1:
+        return re.sub(r"\.(md|html)$", "", segments[0], flags=re.IGNORECASE)
+    return segments[0]
+
+
+def _collect_nav_prefixes(items: list) -> list[str]:
+    """Recursively collect unique directory prefixes from a nav item list."""
+    prefixes: list[str] = []
+    seen: set[str] = set()
+
+    def _visit(node) -> None:
+        if isinstance(node, str):
+            p = _nav_path_to_dir_prefix(node)
+            if p not in seen:
+                seen.add(p)
+                prefixes.append(p)
+        elif isinstance(node, dict):
+            for _key, val in node.items():
+                if isinstance(val, str):
+                    p = _nav_path_to_dir_prefix(val)
+                    if p not in seen:
+                        seen.add(p)
+                        prefixes.append(p)
+                elif isinstance(val, list):
+                    for child in val:
+                        _visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                _visit(child)
+
+    for item in items:
+        _visit(item)
+    return prefixes
+
+
+def _load_toc_groups() -> list[tuple[str, str | None]]:
+    """
+    Build the ToC groups list from mkdocs.yml nav at render time.
+
+    Returns a list of (key, label) tuples in nav order.  key is either an
+    exact section slug (for standalone pages) or a directory prefix (for
+    grouped pages).  label is the nav group name, or None for standalone pages.
+    """
+    try:
+        import yaml
+    except ImportError:
+        print("  Warning: PyYAML not installed — ToC will have no group headers",
+              file=sys.stderr)
+        return []
+
+    if not os.path.exists(_MKDOCS_YML):
+        print(f"  Warning: {_MKDOCS_YML} not found — ToC will have no group headers",
+              file=sys.stderr)
+        return []
+
+    # mkdocs.yml may contain !!python/name: tags (e.g. for pymdownx superfences)
+    # that yaml.safe_load rejects.  We only need the 'nav' key, so we load with
+    # a permissive loader that returns None for any unrecognised Python tag.
+    class _NavLoader(yaml.SafeLoader):
+        pass
+    _NavLoader.add_multi_constructor(
+        "tag:yaml.org,2002:python/",
+        lambda loader, tag_suffix, node: None,
+    )
+
+    with open(_MKDOCS_YML, encoding="utf-8") as f:
+        config = yaml.load(f, Loader=_NavLoader)
+
+    nav = config.get("nav", [])
+    groups: list[tuple[str, str | None]] = []
+
+    for item in nav:
+        if isinstance(item, str):
+            # Bare file path at top level (unusual)
+            groups.append((_nav_path_to_slug(item), None))
+        elif isinstance(item, dict):
+            for label, children in item.items():
+                if isinstance(children, str):
+                    # Standalone page: "Side map: reference/site-map.md"
+                    # Use exact slug so it doesn't collide with prefix-matched
+                    # sections that share the same directory (e.g. reference/).
+                    groups.append((_nav_path_to_slug(children), None))
+                elif isinstance(children, list):
+                    # Group: "Getting started: [...]"
+                    # Every unique directory prefix under this group maps to
+                    # the group label.
+                    for prefix in _collect_nav_prefixes(children):
+                        groups.append((prefix, label))
+
+    return groups
+
 
 _SECTION_H1_RE = re.compile(
     r'<section[^>]+\bid="([^"]+)"[^>]*>.*?'
@@ -272,51 +387,77 @@ _SECTION_H1_RE = re.compile(
 def build_toc_html(content: str) -> str:
     """
     Generate a static ToC <ul> from section headings in *content*.
+    Groups are derived dynamically from mkdocs.yml.
+    Consecutive entries that share the same group label are merged into a
+    single <li> block so that e.g. admin-ui + observability → one "Views" entry.
     Returns the HTML string for the list (without the <h1>Contents</h1>).
     """
+    toc_groups = _load_toc_groups()
+
+    # Collect all sections from the rendered HTML
     entries = []
     for m in _SECTION_H1_RE.finditer(content):
-        sec_id   = m.group(1)
-        h1_id    = m.group(2) or sec_id
+        sec_id    = m.group(1)
+        h1_id     = m.group(2) or sec_id
         title_raw = m.group(3)
-        title = re.sub(r'<[^>]+>', '', title_raw).strip()
+        title = re.sub(r"<[^>]+>", "", title_raw).strip()
         title = html_module.unescape(title)
         if sec_id == "print-site-cover-page":
-            continue   # skip cover
+            continue
         entries.append((sec_id, h1_id, title))
 
     if not entries:
         return ""
 
-    # Group entries by prefix
-    groups: dict[str, list] = {prefix: [] for prefix, _ in _TOC_GROUPS}
+    # Map each section to the first matching key in toc_groups
+    key_to_items: dict[str, list] = {key: [] for key, _ in toc_groups}
     for sec_id, h1_id, title in entries:
         matched = False
-        for prefix, _label in _TOC_GROUPS:
-            if sec_id == prefix or sec_id.startswith(prefix + "-"):
-                groups[prefix].append((sec_id, h1_id, title))
+        for key, _label in toc_groups:
+            if sec_id == key or sec_id.startswith(key + "-"):
+                key_to_items[key].append((sec_id, h1_id, title))
                 matched = True
                 break
         if not matched:
-            groups.setdefault("__other__", []).append((sec_id, h1_id, title))
+            key_to_items.setdefault("__other__", []).append((sec_id, h1_id, title))
 
+    # Render — merge consecutive entries with the same label into one block
     lines = ['<ul class="print-site-toc">']
-    for prefix, label in _TOC_GROUPS:
-        items = groups.get(prefix, [])
+    current_label: str | None = "__unset__"
+
+    def _close_group() -> None:
+        if current_label not in (None, "__unset__"):
+            lines.append("    </ul>")
+            lines.append("  </li>")
+
+    for key, label in toc_groups:
+        items = key_to_items.get(key, [])
         if not items:
             continue
+
         if label is None:
-            # Standalone entry (Home)
+            # Standalone entry — close any open group first
+            _close_group()
+            current_label = None
             for sec_id, h1_id, title in items:
-                lines.append(f'  <li><a href="#{sec_id}">{html_module.escape(title)}</a></li>')
+                lines.append(
+                    f'  <li><a href="#{sec_id}">{html_module.escape(title)}</a></li>'
+                )
         else:
-            lines.append(f'  <li><strong>{label}</strong>')
-            lines.append('    <ul>')
+            if label != current_label:
+                # New group — close previous, open this one
+                _close_group()
+                lines.append(f'  <li><strong>{html_module.escape(label)}</strong>')
+                lines.append("    <ul>")
+                current_label = label
+            # Append entries into the currently open group
             for sec_id, h1_id, title in items:
-                lines.append(f'      <li><a href="#{sec_id}">{html_module.escape(title)}</a></li>')
-            lines.append('    </ul>')
-            lines.append('  </li>')
-    lines.append('</ul>')
+                lines.append(
+                    f'      <li><a href="#{sec_id}">{html_module.escape(title)}</a></li>'
+                )
+
+    _close_group()
+    lines.append("</ul>")
     return "\n".join(lines)
 
 
@@ -425,6 +566,55 @@ def convert_foreignobject(svg: str) -> str:
         note = f" ({remaining} unconverted)" if remaining else ""
         print(f"    Converted {converted}/{before} foreignObject → SVG text{note}")
     return svg
+
+
+# ---------------------------------------------------------------------------
+# Missing-image stripping
+# ---------------------------------------------------------------------------
+#
+# Screenshot placeholder images are referenced in the source markdown but the
+# actual PNG files do not exist yet.  WeasyPrint cannot load them and renders
+# each missing image as an empty box that still consumes the CSS margin/border
+# space defined for img elements.  On short sections this produces near-blank
+# or completely blank PDF pages.
+#
+# We strip every <img> whose resolved src path does not exist on disk before
+# passing the HTML to WeasyPrint.  The site_dir parameter should be the
+# directory that WeasyPrint uses as its base URL (docs/out/print_page/).
+
+_IMG_TAG_RE = re.compile(r"<img[^>]+>", re.IGNORECASE)
+_IMG_SRC_RE = re.compile(r'\bsrc=["\']([^"\']+)["\']', re.IGNORECASE)
+
+
+def strip_missing_images(content: str, site_dir: str) -> str:
+    """
+    Remove <img> tags whose src file is not present on disk.
+
+    Only local file paths are checked; data: URIs and http(s): URLs are
+    left untouched.  Paths are resolved relative to *site_dir* (the
+    WeasyPrint base-URL directory).
+    """
+    removed = 0
+
+    def _check(m: re.Match) -> str:
+        nonlocal removed
+        tag = m.group(0)
+        src_m = _IMG_SRC_RE.search(tag)
+        if not src_m:
+            return tag
+        src = src_m.group(1)
+        if src.startswith(("data:", "http:", "https:", "//")):
+            return tag
+        resolved = os.path.normpath(os.path.join(site_dir, src))
+        if not os.path.exists(resolved):
+            removed += 1
+            return ""
+        return tag
+
+    result = _IMG_TAG_RE.sub(_check, content)
+    if removed:
+        print(f"  Stripped {removed} missing image(s) from content")
+    return result
 
 
 _MERMAID_RE = re.compile(
@@ -793,6 +983,7 @@ def main():
     # ── Clean up & pre-render ────────────────────────────────────────────────
     print("→ Pre-processing HTML …")
     content = strip_codelineno_anchors(content)
+    content = strip_missing_images(content, os.path.join(HERE, "out", "print_page"))
     content = inject_toc(content)
     content = strip_nav_section_dividers(content)
     content = strip_inline_toc(content)
