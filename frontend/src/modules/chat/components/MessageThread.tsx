@@ -36,19 +36,50 @@ export default function MessageThread({
   const bottomRef = useRef<HTMLDivElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const isUserScrolled = useRef(false);
+  const scrollRafRef = useRef<number | null>(null);
+  // Track programmatic scrolls so the scroll listener ignores them
+  const isProgrammaticScroll = useRef(false);
 
-  // Auto-scroll when new content arrives, unless user has scrolled up
+  // Auto-scroll when new content arrives, unless user has scrolled up.
+  // During streaming: instant scroll, throttled to one rAF per frame to avoid
+  // queuing competing smooth-scroll animations (which causes the bouncing effect).
+  // After streaming: single smooth scroll on message commit.
   useEffect(() => {
-    if (!isUserScrolled.current) {
+    if (isUserScrolled.current) return;
+
+    if (isStreaming) {
+      // Throttle to one scroll per animation frame during streaming
+      if (scrollRafRef.current !== null) return;
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        if (!isUserScrolled.current) {
+          isProgrammaticScroll.current = true;
+          bottomRef.current?.scrollIntoView({ behavior: "instant" });
+        }
+      });
+    } else {
+      // Message just committed — one smooth scroll is safe here
+      isProgrammaticScroll.current = true;
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, streamingContent, processingStatus]);
+  }, [messages, streamingContent, processingStatus, isStreaming]);
 
-  // Detect manual scroll
+  // Cancel any pending rAF on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, []);
+
+  // Detect manual scroll — ignore programmatic scrolls triggered by auto-scroll
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
     const onScroll = () => {
+      if (isProgrammaticScroll.current) {
+        isProgrammaticScroll.current = false;
+        return;
+      }
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       isUserScrolled.current = !atBottom;
     };

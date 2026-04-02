@@ -74,11 +74,9 @@ export default function ThinkingBlock({ content, isThinking, durationMs }: Props
         )}
         <ChevronIcon open={open} />
       </button>
-      {open && (
-        <div className={s.body}>
-          <pre className={s.text}>{content || " "}</pre>
-        </div>
-      )}
+      <div className={[s.body, open ? "" : s["body-collapsed"]].filter(Boolean).join(" ")}>
+        <pre className={s.text}>{content || " "}</pre>
+      </div>
     </div>
   );
 }

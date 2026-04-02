@@ -66,6 +66,16 @@
   padding: 10px 12px;
   max-height: 320px;
   overflow-y: auto;
+  // Animated collapse — prevents sudden height jumps that confuse auto-scroll
+  transition: max-height 0.2s ease, padding 0.2s ease, border-top-width 0.2s ease;
+}
+
+.body-collapsed {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  overflow: hidden;
 }
 
 .text {
