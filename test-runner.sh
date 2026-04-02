@@ -34,6 +34,26 @@ run_suite() {
     echo ""
 }
 
+# ── Lua syntax check (loadfile via resty/LuaJIT on every src/*.lua) ───────────
+run_lua_syntax() {
+    local any_fail=0
+    while IFS= read -r -d '' f; do
+        local name="${f#"$REPO"/}"
+        printf '  %-52s ' "$name"
+        local err
+        # Use resty (LuaJIT) rather than luac: luac is Lua 5.1 and rejects
+        # goto statements used throughout the codebase; LuaJIT supports them.
+        if err=$(resty -e "local fn,e=loadfile('$f'); if e then io.write(e); os.exit(1) end" 2>&1); then
+            green OK
+        else
+            red FAIL
+            echo "$err" | sed 's/^/    /'
+            any_fail=1
+        fi
+    done < <(find "$REPO/src" -name "*.lua" -print0 | sort -z)
+    return $any_fail
+}
+
 # ── backend: Lua unit tests via resty ─────────────────────────────────────────
 run_backend() {
     local unit_dir="$REPO/tests/unit"
@@ -124,7 +144,7 @@ run_playwright() {
 # ── suite selection ────────────────────────────────────────────────────────────
 SUITES=("$@")
 if [[ ${#SUITES[@]} -eq 0 ]]; then
-    SUITES=(backend frontend playwright)
+    SUITES=(lua-syntax backend frontend playwright)
 fi
 
 echo ""
@@ -134,12 +154,13 @@ echo ""
 
 for suite in "${SUITES[@]}"; do
     case "$suite" in
+        lua-syntax)         run_suite "Lua syntax (luac -p)"          run_lua_syntax ;;
         backend)            run_suite "Backend  (Lua unit)"           run_backend ;;
         backend:coverage)   run_suite "Backend  (Lua coverage)"       run_backend_coverage ;;
         frontend)           run_suite "Frontend (Vitest unit)"         run_frontend ;;
         frontend:coverage)  run_suite "Frontend (Vitest coverage)"     run_frontend_coverage ;;
         playwright)         run_suite "Playwright (e2e)"               run_playwright ;;
-        *)          yellow "Unknown suite: $suite"; yellow "  valid: backend backend:coverage frontend frontend:coverage playwright"; exit 1 ;;
+        *)          yellow "Unknown suite: $suite"; yellow "  valid: lua-syntax backend backend:coverage frontend frontend:coverage playwright"; exit 1 ;;
     esac
 done
 

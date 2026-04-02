@@ -39,10 +39,24 @@ async function createConversation(page: Page, gatewayId: string, title: string):
   return conv.id;
 }
 
-async function addMessage(page: Page, convId: string, role: "user" | "assistant", content: string) {
+async function addMessage(page: Page, convId: string, role: "user" | "assistant", content: string, model?: string) {
   await page.context().request.post(`${ADMIN_URL}/admin/v1/conversations/${convId}/messages`, {
-    data: { role, content },
+    data: { role, content, ...(model ? { model } : {}) },
   });
+}
+
+async function getGatewaySlug(page: Page, gatewayId: string): Promise<string | null> {
+  const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
+  if (!tenantsResp.ok()) return null;
+  const tenants = (await tenantsResp.json()) as Array<{ id: string }>;
+  for (const tenant of tenants) {
+    const gwResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants/${tenant.id}/gateways`);
+    if (!gwResp.ok()) continue;
+    const gws = (await gwResp.json()) as Array<{ id: string; slug: string }>;
+    const gw = gws.find((g) => g.id === gatewayId);
+    if (gw) return gw.slug;
+  }
+  return null;
 }
 
 async function deleteConversation(page: Page, convId: string) {
@@ -70,13 +84,17 @@ async function openConversation(page: Page, convId: string) {
 
 test.describe("Chat — export (Markdown + PDF)", () => {
   let gatewayId: string;
+  let gatewaySlug: string;
 
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage();
     const gid = await getFirstGatewayId(page);
+    if (!gid) { await page.close(); throw new Error("No gateway found — cannot run export tests"); }
+    const slug = await getGatewaySlug(page, gid);
     await page.close();
-    if (!gid) throw new Error("No gateway found — cannot run export tests");
+    if (!slug) throw new Error("Could not resolve gateway slug — cannot run export tests");
     gatewayId = gid;
+    gatewaySlug = slug;
   });
 
   // ── 1. Buttons disabled with no active conversation ───────────────────────
@@ -104,7 +122,7 @@ test.describe("Chat — export (Markdown + PDF)", () => {
     const userMsg = "What colour is the sky?";
     const assistantMsg = "The sky is blue due to Rayleigh scattering.";
     await addMessage(page, convId, "user", userMsg);
-    await addMessage(page, convId, "assistant", assistantMsg);
+    await addMessage(page, convId, "assistant", assistantMsg, "claude-sonnet-4-6");
 
     try {
       await openConversation(page, convId);
@@ -130,7 +148,7 @@ test.describe("Chat — export (Markdown + PDF)", () => {
 
       expect(content).toMatch(/^#\s+/m);                        // heading
       expect(content).toContain("**You**");
-      expect(content).toContain("**Claude**");
+      expect(content).toContain(`**Claude (claude-sonnet-4-6) via ${gatewaySlug}**`);
       expect(content).toContain(userMsg);
       expect(content).toContain(assistantMsg);
       expect(content).toMatch(/\*Exported on .+\*/);
@@ -181,7 +199,42 @@ test.describe("Chat — export (Markdown + PDF)", () => {
     }
   });
 
-  // ── 3. PDF export ─────────────────────────────────────────────────────────
+  // ── 3. Export label format ────────────────────────────────────────────────
+
+  test("export label shows ModelFamily (model-id) via gateway-slug per message", async ({ page }) => {
+    const convId = await createConversation(page, gatewayId, "Label Format Test");
+    if (!convId) { test.skip(); return; }
+
+    await addMessage(page, convId, "user", "Tell me about the weather.");
+    await addMessage(page, convId, "assistant", "It is sunny today.", "claude-opus-4-6");
+
+    try {
+      await openConversation(page, convId);
+
+      const mdBtn = page.locator("button[title='Download Markdown']");
+      await expect(mdBtn).toBeEnabled({ timeout: 5000 });
+
+      const [download]: [Download] = await Promise.all([
+        page.waitForEvent("download", { timeout: 10_000 }),
+        mdBtn.click(),
+      ]);
+
+      const stream = await download.createReadStream();
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        stream.on("data", (c: Buffer) => chunks.push(c));
+        stream.on("end", resolve);
+        stream.on("error", reject);
+      });
+      const content = Buffer.concat(chunks).toString("utf-8");
+
+      expect(content).toContain(`**Claude (claude-opus-4-6) via ${gatewaySlug}**`);
+    } finally {
+      await deleteConversation(page, convId);
+    }
+  });
+
+  // ── 4. PDF export ─────────────────────────────────────────────────────────
 
   test("PDF export POSTs markdown and downloads a valid PDF binary", async ({ page }) => {
     const convId = await createConversation(page, gatewayId, "PDF Export Test");

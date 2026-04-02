@@ -1,11 +1,17 @@
 /**
- * playwright.production.config.ts — Playwright config for capturing screenshots
+ * playwright.production.config.ts — Playwright config for tests that run
  * against the live production instance at https://ai.myra.eu.
  *
  * Usage (from frontend/ directory):
+ *   # screenshots only
  *   npx playwright test tests/screenshots.spec.ts \
  *     --config playwright.production.config.ts \
  *     --project=chromium
+ *
+ *   # long-response regression test
+ *   npx playwright test tests/chat-long-response.spec.ts \
+ *     --config playwright.production.config.ts \
+ *     --project=chromium-chat --timeout=360000
  */
 
 import { defineConfig, devices } from "@playwright/test";
@@ -37,6 +43,15 @@ export default defineConfig({
     {
       name: "chromium",
       testMatch: "**/screenshots.spec.ts",
+      dependencies: ["production-setup"],
+      use: { ...devices["Desktop Chrome"], storageState: SESSION },
+    },
+    {
+      name: "chromium-chat",
+      testMatch: [
+        "**/chat-summarize.spec.ts",
+        "**/chat-long-response.spec.ts",
+      ],
       dependencies: ["production-setup"],
       use: { ...devices["Desktop Chrome"], storageState: SESSION },
     },

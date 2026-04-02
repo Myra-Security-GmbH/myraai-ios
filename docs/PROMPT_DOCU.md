@@ -18,12 +18,7 @@ Every document follows the fixed structure below. Apply every structural rule st
 The title page contains exactly three elements:
 
 - **Product name** — the official name of the product being documented.
-- **Document type** — the type of document and this is *"Online Help"*
-- **Product description** - The introduction orients the reader and explains what information the document contains. It consists of the following four sections, applied in the order listed:
-	- Product description *(required)* - Explain the product. Give the reader an overview of its function and the benefit it provides.
-	- Purpose of this document *(required)* - Describe the purpose of the document in two to three sentences. State the goal of the document and identify its target audience.
-
-	- Features and limitations *(required)* - List the individual functions of the product. Then list any known limitations of the product. Use two separate unordered lists — one for features, one for limitations.
+- **Document type** — the type of document and this is *"Online Help"*. At this information as sub title.
 - **Version history** - The version history lists every version of the document in a table with the following columns:
 
 | **Version** | **Date** | **Reason for change** |
@@ -32,11 +27,11 @@ The title page contains exactly three elements:
 List versions in descending order, with the most recent version at the top.
 
 
----
-
-### side map *(required)*
-
-The side map lists all chapters and sections in the document up to and including the all heading level. It contains no content beyond chapter and section titles.
+### Product description *(required)*
+The introduction orients the reader and explains what the function of the product is and which information the document contains. It consists of the following the sections below, applied in the order listed:
+- **What is AI Gateway** - Explanation of the product to give the reader an overview of its function and the benefit it provides.
+- **Why AI Gateway** - Why the product can be helpful for specific scenarios.
+- **Features and limitations** - List the individual functions of the product. Then list any known limitations of the product. Use a table with two columns and with Features in the left column and Limitation in the right column.
 
 ---
 
@@ -180,22 +175,23 @@ Conditions the user must fulfill before starting.
 Individual steps the user performs to reach the goal.
 
 - Introduce the steps by beginning with the phrase the phrase "Proceed as follows...", the topic of the action and a colon instead of a dot. Example *"Proceed as follows to integrate the product:"*
-- Use a numbered list.
-- Con
+- Action steps are always a numbered list.
+- Intermediate results are always an unordered sub-list with a dash (-), indented directly below the step they belong to.
+- The final result is placed on a new line after the list, at the base indentation level, and always begins with ->.
 - Always start the list with the number one after each heading or new introductory sentence.
-- Start every step with an imperative verb: Click on, Select, Enter, Leave, Verify.
+- Start every step with an imperative verb: "Click on", "Select", "Enter", "Leave", "Verify". Example: "Click on the xyz button."
 - One action per step. Never combine two actions in one step.
-- Follow each step with an indented result line:
+- Follow each step with an indented result line as sub item:
 
 ```
-1. Click on the **Domains** tab.
-	- The **Domains** view opens.
-2. Click on the **Add DNS entry** button.
-	- The **Add DNS entry** dialog opens.
+1. Click on the **Save** button.
+   - The **Settings** dialog closes.
+2. Click on the **Add** button.
+   - The **Add entry** dialog opens.
+
+-> The new entry appears in the list of entries.
 ```
 
-- For the final step, state the purpose before the action:
-  *"To save the DNS entry, click on the **Save** button."*
 - If the step describe a UI and the buttons and field the user can see, click or use on it, add a picture with a caption below it.
 
 ### 7. Conditional action step *(if applicable)*
@@ -288,7 +284,7 @@ Apply these rules to all text types.
 - Never use passive voice in actions.
 - Never use modal verbs in actions (should, can, may, must) — except in warnings where obligation must be explicitly emphasised.
 - One action per sentence. Never join two actions with "and".
-- Place results in a sub list item or for a final result in the next line using -> at the beginning — never in the same sentence as the action.
+- Place results in a sub list item or for a final result in the new line using -> at the beginning — never in the same sentence as the action.
 - Never use the subjunctive mood: not "the connection would not be possible" → "the connection is not possible".
 - Use consistent sentence patterns throughout the document.
 - Use *"If required,"* for optional steps.
@@ -308,6 +304,7 @@ Apply these rules to all text types.
 - Avoid long sentences. Try to write sentences as short as possible and as long as needed to represent the information.
 - For range values, always state the full range: *"between X and Y"*.
 - For unchanged defaults: *"Leave the [field] toggle set to [value]."*
+- Use an article "a" or "the" before every non and UI. Example: "Click on the xyz button.
 
 ### Lists
 
@@ -315,7 +312,6 @@ Apply these rules to all text types.
 - Always introduce a list with a full lead-in sentence that defines the topic.
 - Use unordered lists for equally weighted information or tasks with no fixed sequence.
 - Use numbered lists for actions or procedures with a fixed sequence.
-- In procedures: include intermediate results (as sub item of a list) and final results (same level as step number with an -> instead of a number).
 - Never interrupt a sentence with a list. Complete the lead-in sentence first, then start the list.
 
 ### Tables
@@ -364,6 +360,35 @@ End every procedure with a result statement:
 | Subjunctive mood | Indicative present tense |
 | Sentences without a verb | Full sentences with verb |
 | Lists that interrupt a sentence | Complete the lead-in sentence first |
+| Never use the genetiv s for unliving things | For unlving things like product name avoid the genetiv s. General use "B of A" syntax and not "A's B". Example: "Myra EU CAPTCHA" or "Button of the App".|
+
+
+### Notastional conventions
+
+When creating documentation, strictly follow these formatting conventions and implement them using Markdown syntax:
+
+**Text Formatting:**
+- `**Bold**` → Use for UI element names (buttons, menu items, field labels, screen quotes)
+- `` `monospace` `` → Use for commands, code snippets, and user input
+- `` `<ABC>` `` → Use for placeholders to be filled in by the user or system
+- `[Link text](url)` → Use for references to chapters, sections, or external sources
+
+**Callout Boxes (use Markdown blockquotes with prefixes):**
+
+```markdown
+> 💡 **Note:** Text for important hints that support the user.
+
+> ⚠️ **Caution:** Text for critical information — ignoring this may cause misconfiguration or data loss.
+
+> ⭐ **Example:** Text for examples that help the user understand.
+```
+
+**General Rules:**
+- Apply each formatting element **exclusively** for its defined purpose — do not repurpose them
+- Never use bold for code, and never use monospace for UI labels
+- Always use `☑` prerequisites **before** the first `►` action step
+- Use `⇒` only for intermediate results mid-sequence, and `→` only for the **final** outcome
+- Before finalizing output, verify that every formatting element is correctly and consistently applied
 
 ## use of graphics
 

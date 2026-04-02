@@ -16,11 +16,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-pip \
         pandoc \
         fonts-liberation \
+        fonts-noto-color-emoji \
+        fontconfig \
         libpango-1.0-0 \
         libpangocairo-1.0-0 \
         libcairo2 \
         libgdk-pixbuf2.0-0 \
     && pip3 install --no-cache-dir weasyprint pymupdf \
+    && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/*
 
 # Lua vendor dependencies (lua-resty-http, lua-resty-hmac)
