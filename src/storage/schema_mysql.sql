@@ -452,3 +452,20 @@ CREATE TABLE IF NOT EXISTS chat_preset (
     CONSTRAINT fk_chat_preset_user FOREIGN KEY (user_id)
         REFERENCES `user`(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS chat_feedback (
+    id              VARCHAR(36)  NOT NULL,
+    conversation_id VARCHAR(36)  NOT NULL,
+    user_id         VARCHAR(36)  NOT NULL,
+    rating          INT          NOT NULL,
+    comment         TEXT,
+    created_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    updated_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_feedback_conv (conversation_id),
+    KEY idx_chat_feedback_user (user_id, created_at),
+    CONSTRAINT fk_chat_feedback_conv FOREIGN KEY (conversation_id)
+        REFERENCES chat_conversation(id) ON DELETE CASCADE,
+    CONSTRAINT fk_chat_feedback_user FOREIGN KEY (user_id)
+        REFERENCES `user`(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -40,6 +40,7 @@ interface Props {
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   creating: boolean;
+  streamingConvId?: string | null;
 }
 
 export default function ConversationList({
@@ -50,6 +51,7 @@ export default function ConversationList({
   onRename,
   onDelete,
   creating,
+  streamingConvId,
 }: Props) {
   const [search, setSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -115,6 +117,9 @@ export default function ConversationList({
                 <>
                   <div className={s["conv-item-title"]} onDoubleClick={() => startRename(conv)}>
                     {conv.title}
+                    {conv.id === streamingConvId && (
+                      <span className={s["streaming-dot"]} title="Streaming in background" />
+                    )}
                   </div>
                   <div className={s["conv-item-date"]}>{fmtDate(conv.updated_at)}</div>
                 </>

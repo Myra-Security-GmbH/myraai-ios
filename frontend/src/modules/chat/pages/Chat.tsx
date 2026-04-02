@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "src/api/client";
 import type {
   ChatConversation,
+  ChatFeedback,
   ChatMessage,
   ChatPreset,
   Gateway,
@@ -21,6 +22,7 @@ import ConversationList from "../components/ConversationList";
 import MessageThread from "../components/MessageThread";
 import SettingsDrawer, { type DrawerSettings } from "../components/SettingsDrawer";
 import ArtifactPanel, { type Artifact } from "../components/ArtifactPanel";
+import { Modal } from "src/common/components/Modal";
 import chatS from "./Chat.module.scss";
 
 // ── Gear icon ──────────────────────────────────────────────────────────────
@@ -60,6 +62,15 @@ function PdfIcon() {
       <polyline points="14 2 14 8 20 8" />
       <line x1="9" y1="15" x2="15" y2="15" />
       <line x1="9" y1="11" x2="11" y2="11" />
+    </svg>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+      <line x1="4" y1="22" x2="4" y2="15" />
     </svg>
   );
 }
@@ -143,6 +154,8 @@ export default function Chat() {
 
   // ── Active conversation ────────────────────────────────────────────────────
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const activeConvIdRef = useRef<string | null>(null);
+  useEffect(() => { activeConvIdRef.current = activeConvId; }, [activeConvId]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   // ── Settings drawer ────────────────────────────────────────────────────────
@@ -190,6 +203,7 @@ export default function Chat() {
   const [isStreaming, setIsStreaming] = useState(false);
   useWakeLock(isStreaming);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const [streamingConvId, setStreamingConvId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // ── Thinking phase timing ──────────────────────────────────────────────────
@@ -207,6 +221,13 @@ export default function Chat() {
   // ── UI ─────────────────────────────────────────────────────────────────────
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [showFeedback, setShowFeedback]       = useState(false);
+  const [feedbackRating, setFeedbackRating]   = useState<number | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackSaving, setFeedbackSaving]   = useState(false);
+  const [feedbackError, setFeedbackError]     = useState<string | null>(null);
+  const [feedbackSaved, setFeedbackSaved]     = useState(false);
 
   // ── Initial data load ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -297,6 +318,12 @@ export default function Chat() {
         // Find tenant for this gateway
         setGatewayId(conv.gateway_id);
       }
+      // Load existing feedback (silently — 404 means none yet)
+      api.get<ChatFeedback>(`/conversations/${id}/feedback`)
+        .then((fb) => { setFeedbackRating(fb.rating); setFeedbackComment(fb.comment ?? ""); })
+        .catch(() => { setFeedbackRating(null); setFeedbackComment(""); });
+      setFeedbackSaved(false);
+      setFeedbackError(null);
     } catch (e) {
       setError(String(e));
     }
@@ -350,11 +377,15 @@ export default function Chat() {
               // Qwen3 thinking models require /no_think to skip the <think> block;
               // for all other models (Claude, etc.) the prefix is harmless or absent.
               content: (currentModel.toLowerCase().includes("qwen") ? "/no_think\n" : "") +
-                "Generate a short title (3–6 words) for the conversation the user provides. Reply with only the title — no quotes, no punctuation at the end. Use natural phrasing, like a topic jotted in a notebook, not a document heading.",
+                "Generate a short title (3–6 words) for the conversation the user provides. " +
+                "The assistant excerpt may be incomplete or cut off mid-sentence — infer the topic from context. " +
+                "Reply with only the title — no quotes, no punctuation at the end. " +
+                "Use natural phrasing, like a topic jotted in a notebook, not a document heading.",
             },
             {
               role: "user",
-              content: "User: " + firstUserText.slice(0, 400) + "\n\nAssistant: " + firstAssistantText.slice(0, 400),
+              content: "User: " + firstUserText.slice(0, 400) +
+              "\n\nAssistant (excerpt, may be incomplete): " + firstAssistantText.slice(0, 400),
             },
           ],
           max_tokens: 500,
@@ -483,6 +514,24 @@ export default function Chat() {
       URL.revokeObjectURL(url);
     } catch (e) {
       setError("PDF export failed: " + String(e));
+    }
+  }
+
+  async function saveFeedback() {
+    if (!activeConvId || feedbackRating === null) return;
+    setFeedbackSaving(true);
+    setFeedbackError(null);
+    try {
+      await api.put(`/conversations/${activeConvId}/feedback`, {
+        rating: feedbackRating,
+        comment: feedbackComment,
+      });
+      setFeedbackSaved(true);
+      setTimeout(() => setShowFeedback(false), 800);
+    } catch (e: unknown) {
+      setFeedbackError(e instanceof Error ? e.message : "Failed to save feedback");
+    } finally {
+      setFeedbackSaving(false);
     }
   }
 
@@ -766,6 +815,7 @@ export default function Chat() {
     setProcessingStatus("Waiting for model response…");
     setIsStreaming(true);
     setStreamingContent("");
+    setStreamingConvId(convId);
     thinkBlockStartRef.current = null;
     thinkBlockDurationRef.current = null;
     setStreamingThinkingDurationMs(null);
@@ -820,17 +870,36 @@ export default function Chat() {
         const reader = res.body!.getReader();
         const decoder = new TextDecoder();
         let buf = "";
+        let receivedDone = false;
+        const legStart = performance.now();
 
         while (true) {
           const { value, done } = await reader.read();
-          if (done) break;
+          if (done) {
+            if (!receivedDone && !abort.signal.aborted) {
+              console.warn(
+                "[stream_truncated] SSE stream body closed without [DONE] token",
+                {
+                  continueCount,
+                  accumulatedChars: accumulated.length,
+                  outputTokens,
+                  finishReason,
+                  elapsedMs: Math.round(performance.now() - legStart),
+                  gateway: tok.gateway_slug,
+                  tenant: tok.tenant_slug,
+                  model,
+                },
+              );
+            }
+            break;
+          }
           buf += decoder.decode(value, { stream: true });
           const lines = buf.split("\n");
           buf = lines.pop() ?? "";
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
             const data = line.slice(6).trim();
-            if (data === "[DONE]") continue;
+            if (data === "[DONE]") { receivedDone = true; continue; }
             try {
               const chunk = JSON.parse(data);
               const delta = chunk?.choices?.[0]?.delta?.content;
@@ -859,8 +928,43 @@ export default function Chat() {
                 outputTokens = (outputTokens ?? 0) + (usage.completion_tokens ?? 0);
                 costUsd      = (costUsd      ?? 0) + (usage.cost_usd          ?? 0);
               }
+              // Gateway web-search status event (emitted by web_search.lua before fetching)
+              if (chunk?.aig_status === "fetching") {
+                const n = chunk.count;
+                setProcessingStatus(`🔎 Fetching ${n ?? ""} URL${n !== 1 ? "s" : ""}…`.trim());
+              }
+              // Native Anthropic tool-use event (forwarded by on_compat_chunk in upstream.lua)
+              if (chunk?.aig_tool_call) {
+                const toolLabels: Record<string, string> = {
+                  web_search:     "🔎 Searching the web…",
+                  computer_use:   "🖥️ Using computer…",
+                  code_execution: "⚙️ Running code…",
+                };
+                setProcessingStatus(toolLabels[chunk.aig_tool_call as string] ?? `⚙️ ${chunk.aig_tool_call}…`);
+              }
             } catch { /* skip malformed */ }
           }
+        }
+
+        // Per-leg diagnostics
+        const legElapsedMs = Math.round(performance.now() - legStart);
+        const legCtx = {
+          continueCount,
+          accumulatedChars: accumulated.length,
+          outputTokens,
+          finishReason,
+          receivedDone,
+          elapsedMs: legElapsedMs,
+          gateway: tok.gateway_slug,
+          tenant: tok.tenant_slug,
+          model,
+        };
+        if (finishReason === "error") {
+          console.error("[stream_truncated] backend signalled finish_reason=error", legCtx);
+        } else if (!finishReason && !abort.signal.aborted) {
+          console.warn("[stream_truncated] stream ended with no finish_reason", legCtx);
+        } else {
+          console.info("[stream_ok] SSE leg completed", legCtx);
         }
       } catch (err: unknown) {
         if ((err as Error)?.name === "AbortError") {
@@ -875,7 +979,7 @@ export default function Chat() {
       }
 
       // Auto-continue if the model hit the token limit and user hasn't aborted
-      if (finishReason === "max_tokens" && !abort.signal.aborted && continueCount < MAX_CONTINUATIONS) {
+      if ((finishReason === "max_tokens" || finishReason === "length") && !abort.signal.aborted && continueCount < MAX_CONTINUATIONS) {
         continueCount++;
         continue streaming;
       }
@@ -886,6 +990,7 @@ export default function Chat() {
     setProcessingStatus(null);
     setIsStreaming(false);
     setStreamingContent(null);
+    setStreamingConvId(null);
 
     // Auto-generate title even when accumulated is empty (thinking-only models like qwen3
     // strip all <think> blocks, leaving an empty visible response — we still want a title).
@@ -922,7 +1027,9 @@ export default function Chat() {
         created_at: new Date().toISOString(),
         attachments: [],
       };
-      setMessages((prev) => [...prev, assistantMsg]);
+      if (activeConvIdRef.current === convId) {
+        setMessages((prev) => [...prev, assistantMsg]);
+      }
       // Update conversation updated_at in list
       setConversations((prev) =>
         prev.map((c) =>
@@ -1174,6 +1281,15 @@ export default function Chat() {
 
         <button
           className={chatS["icon-btn"]}
+          title="Session feedback"
+          onClick={() => { setShowFeedback(true); setFeedbackSaved(false); setFeedbackError(null); }}
+          disabled={!activeConvId}
+        >
+          <FlagIcon />
+        </button>
+
+        <button
+          className={chatS["icon-btn"]}
           title="Settings"
           onClick={() => setShowSettings(true)}
         >
@@ -1213,6 +1329,7 @@ export default function Chat() {
             onRename={renameConversation}
             onDelete={deleteConversation}
             creating={creating}
+            streamingConvId={streamingConvId}
           />
         </div>
 
@@ -1239,10 +1356,10 @@ export default function Chat() {
           <div className={chatS["thread-artifact-row"]}>
             <MessageThread
               messages={messages}
-              streamingContent={streamingContent}
-              isStreaming={isStreaming}
-              processingStatus={processingStatus}
-              streamingThinkingDurationMs={streamingThinkingDurationMs}
+              streamingContent={activeConvId === streamingConvId ? streamingContent : null}
+              isStreaming={isStreaming && activeConvId === streamingConvId}
+              processingStatus={activeConvId === streamingConvId ? processingStatus : null}
+              streamingThinkingDurationMs={activeConvId === streamingConvId ? streamingThinkingDurationMs : null}
               onCopy={copyToClipboard}
               onEdit={editMessage}
               onRegenerate={regenerate}
@@ -1284,6 +1401,71 @@ export default function Chat() {
           onSavePreset={savePreset}
           onDeletePreset={deletePreset}
         />
+      )}
+
+      {/* Feedback modal */}
+      {showFeedback && (
+        <Modal
+          title="Session Feedback"
+          onClose={() => setShowFeedback(false)}
+          error={feedbackError}
+        >
+          <div className={s["modal-body"]}>
+            <p style={{ marginBottom: 12, fontSize: 14, color: "var(--text-secondary)" }}>
+              How would you rate this session? <em>(1 = best, 5 = worst)</em>
+            </p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setFeedbackRating(n)}
+                  style={{
+                    width: 36, height: 36, borderRadius: 6,
+                    border: feedbackRating === n
+                      ? "2px solid var(--accent, #0052cc)"
+                      : "1px solid var(--card-border, #ccc)",
+                    background: feedbackRating === n
+                      ? "var(--accent-light, #e8f0fe)"
+                      : "transparent",
+                    fontWeight: feedbackRating === n ? 700 : 400,
+                    fontSize: 16, cursor: "pointer",
+                  }}
+                >{n}</button>
+              ))}
+            </div>
+            <textarea
+              rows={10}
+              placeholder="What could be better? (optional)"
+              value={feedbackComment}
+              onChange={(e) => setFeedbackComment(e.target.value)}
+              style={{
+                width: "100%", resize: "vertical", padding: "8px 10px",
+                borderRadius: 6, border: "1px solid var(--card-border, #ccc)",
+                fontSize: 14, fontFamily: "inherit",
+                background: "var(--card-bg, #fff)", color: "var(--text-primary, #111)",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+          <div className={s["modal-footer"]}>
+            {feedbackSaved && (
+              <span style={{ color: "var(--success, #2e7d32)", fontSize: 13, marginRight: 8 }}>
+                Saved ✓
+              </span>
+            )}
+            <button className={s["btn-secondary"]} onClick={() => setShowFeedback(false)}>
+              Cancel
+            </button>
+            <button
+              className={s["btn-primary"]}
+              onClick={saveFeedback}
+              disabled={feedbackRating === null || feedbackSaving}
+            >
+              {feedbackSaving ? "Saving…" : "Save feedback"}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

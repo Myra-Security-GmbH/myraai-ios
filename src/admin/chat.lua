@@ -131,6 +131,32 @@ function M.register(route)
         send(200, { ok = true })
     end)
 
+    -- ── Feedback ─────────────────────────────────────────────────────────────
+
+    route("GET", "^/admin/v1/conversations/([^/]+)/feedback$", function(conv_id)
+        local u  = ngx.ctx.admin_user
+        local fb = storage.get_feedback(conv_id, u.id)
+        if not fb then return send(404, { error = "not_found" }) end
+        send(200, fb)
+    end)
+
+    route("PUT", "^/admin/v1/conversations/([^/]+)/feedback$", function(conv_id)
+        local u      = ngx.ctx.admin_user
+        local body   = read_body()
+        local rating = tonumber(body.rating)
+        if not rating or rating < 1 or rating > 5 then
+            return send(400, { error = "rating must be 1-5" })
+        end
+        local _, err = storage.upsert_feedback({
+            conversation_id = conv_id,
+            user_id         = u.id,
+            rating          = rating,
+            comment         = body.comment or "",
+        })
+        if err then return send(500, { error = err }) end
+        send(200, { ok = true })
+    end)
+
     -- ── Messages ────────────────────────────────────────────────────────────
 
     -- POST /admin/v1/conversations/:id/messages  { role, content, input_tokens?, output_tokens?, cost_usd?, latency_ms?, gateway_id? }
@@ -763,13 +789,13 @@ except Exception as e:
 
         -- Write embedded CSS for clean chat-transcript formatting
         local css = [[
-body { font-family: "Liberation Serif", Georgia, serif; font-size: 11pt; line-height: 1.65; color: #1a1a1a; max-width: 48em; margin: 0 auto; padding: 2em 1em; }
+body { font-family: "Liberation Serif", "Noto Color Emoji", Georgia, serif; font-size: 11pt; line-height: 1.65; color: #1a1a1a; max-width: 48em; margin: 0 auto; padding: 2em 1em; }
 h1 { font-size: 18pt; border-bottom: 2px solid #333; padding-bottom: 6pt; margin-bottom: 4pt; }
 em { color: #555; }
 hr { border: none; border-top: 1px solid #ccc; margin: 14pt 0; }
 p strong:only-child { font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.05em; color: #444; }
 pre { background: #f5f5f5; border-left: 3px solid #ccc; padding: 10pt 12pt; font-size: 9.5pt; white-space: pre-wrap; word-break: break-word; }
-code { font-family: "Liberation Mono", "Courier New", monospace; font-size: 9.5pt; background: #f5f5f5; padding: 1pt 3pt; }
+code { font-family: "Liberation Mono", "Noto Color Emoji", "Courier New", monospace; font-size: 9.5pt; background: #f5f5f5; padding: 1pt 3pt; }
 pre code { background: none; padding: 0; }
 table { border-collapse: collapse; width: 100%; font-size: 10pt; }
 th, td { border: 1px solid #ccc; padding: 4pt 8pt; text-align: left; }

@@ -69,6 +69,10 @@ local function migrate_columns(cfg)
     if not tcols.budget_period       then db:exec("ALTER TABLE tenant ADD COLUMN budget_period TEXT NOT NULL DEFAULT 'monthly'") end
     if not tcols.chat_presets_config then db:exec("ALTER TABLE tenant ADD COLUMN chat_presets_config TEXT") end
 
+    local mcols = {}
+    for row in db:nrows("PRAGMA table_info(chat_message)") do mcols[row.name] = true end
+    if not mcols.gateway_id then db:exec("ALTER TABLE chat_message ADD COLUMN gateway_id TEXT") end
+
     local ucols = {}
     for row in db:nrows("PRAGMA table_info(user)") do ucols[row.name] = true end
     if not ucols.last_login_at then db:exec("ALTER TABLE user ADD COLUMN last_login_at INTEGER") end
@@ -294,6 +298,7 @@ local function migrate_columns(cfg)
             output_tokens     INTEGER,
             cost_usd          REAL,
             latency_ms        INTEGER,
+            gateway_id        TEXT,
             created_at        INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
             deleted_at        INTEGER
         );
@@ -1948,7 +1953,7 @@ function M.get_conversation(id, user_id)
     if not conv then return nil, "not_found" end
     local msgs = query_all(cfg_db(), [[
         SELECT id, parent_message_id, role, content,
-               input_tokens, output_tokens, cost_usd, latency_ms,
+               input_tokens, output_tokens, cost_usd, latency_ms, gateway_id,
                datetime(created_at, 'unixepoch') || 'Z' AS created_at
         FROM chat_message WHERE conversation_id = ? AND deleted_at IS NULL ORDER BY created_at ASC
     ]], id) or {}
@@ -2009,12 +2014,12 @@ function M.append_message(data)
     local e = exec_one(cfg_db(), [[
         INSERT INTO chat_message
             (id, conversation_id, parent_message_id, role, content,
-             input_tokens, output_tokens, cost_usd, latency_ms, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)
+             input_tokens, output_tokens, cost_usd, latency_ms, gateway_id, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
     ]], id, data.conversation_id, data.parent_message_id,
         data.role, data.content,
         data.input_tokens, data.output_tokens,
-        data.cost_usd, data.latency_ms, now)
+        data.cost_usd, data.latency_ms, data.gateway_id, now)
     if not e then
         exec_one(cfg_db(), "UPDATE chat_conversation SET updated_at = ? WHERE id = ?",
                  now, data.conversation_id)

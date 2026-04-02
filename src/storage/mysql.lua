@@ -257,6 +257,25 @@ function M.migrate(cfg)
     db:query("ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS gateway_id VARCHAR(36)")
     -- Add model to chat_message if not present (idempotent)
     db:query("ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS model VARCHAR(255)")
+    -- Create chat_feedback table if not present (idempotent)
+    db:query([[
+        CREATE TABLE IF NOT EXISTS chat_feedback (
+            id              VARCHAR(36)  NOT NULL,
+            conversation_id VARCHAR(36)  NOT NULL,
+            user_id         VARCHAR(36)  NOT NULL,
+            rating          INT          NOT NULL,
+            comment         TEXT,
+            created_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            updated_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_feedback_conv (conversation_id),
+            KEY idx_chat_feedback_user (user_id, created_at),
+            CONSTRAINT fk_chat_feedback_conv FOREIGN KEY (conversation_id)
+                REFERENCES chat_conversation(id) ON DELETE CASCADE,
+            CONSTRAINT fk_chat_feedback_user FOREIGN KEY (user_id)
+                REFERENCES `user`(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ]])
 
     db:set_keepalive(0, 5)
 end
@@ -2027,6 +2046,40 @@ function M.delete_preset(id, user_id)
     local e = exec_one(db, "DELETE FROM chat_preset WHERE id = ? AND user_id = ?", id, user_id)
     release(db)
     return e
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat feedback
+-- ---------------------------------------------------------------------------
+
+function M.upsert_feedback(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id  = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_feedback (id, conversation_id, user_id, rating, comment, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE rating = VALUES(rating), comment = VALUES(comment), updated_at = VALUES(updated_at)
+    ]], id, data.conversation_id, data.user_id, data.rating, data.comment, now, now)
+    release(db)
+    if e then return nil, e end
+    return id
+end
+
+function M.get_feedback(conv_id, user_id)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local row = query_one(db, [[
+        SELECT id, conversation_id, user_id, rating, comment,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+        FROM chat_feedback
+        WHERE conversation_id = ? AND user_id = ?
+        LIMIT 1
+    ]], conv_id, user_id)
+    release(db)
+    return row
 end
 
 -- ---------------------------------------------------------------------------

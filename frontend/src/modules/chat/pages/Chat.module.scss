@@ -164,6 +164,8 @@
 }
 
 .conv-item-title {
+  display: flex;
+  align-items: center;
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
@@ -656,4 +658,22 @@
 .preset-model {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+// ── Background-streaming indicator dot in conversation list ───────────────────
+.streaming-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent, #0052cc);
+  margin-left: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+  animation: streaming-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes streaming-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%       { opacity: 0.3; transform: scale(0.75); }
 }
