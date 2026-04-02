@@ -6,6 +6,8 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ## Chat
 
+**New: Session feedback** — Rate any conversation on a 1–5 star scale and add an optional comment using the flag (🚩) icon on each conversation row. Ratings are saved per conversation. See [Chat — Rating a conversation](../admin-ui/chat.md#rating-a-conversation).
+
 **New: Drag-and-drop file upload** — Drag any supported file from your desktop and drop it anywhere on the message area. A blue drop target appears while the file is dragged over the panel. The file is attached exactly as if selected via the paperclip button. See [Chat — Importing a file](../admin-ui/chat.md#importing-a-file).
 
 **New: Processing status indicator** — A spinner and status label appear in the message area between the moment you send a message and the moment the first response token arrives. The label shows what is happening — for example, extracting text from a document or waiting for the model.
@@ -72,6 +74,8 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ## Users
 
+**New: Sortable user table** — All columns in the **Users** view are now sortable. Click any column header to sort ascending; click again to sort descending. Sorting is applied server-side. See [User management](../admin-ui/users.md).
+
 **New: Tenant reassignment** — `admin` users can now reassign a user to a different tenant from the Edit User dialog. `tenant_admin` users cannot change another user's tenant.
 
 ---
@@ -125,6 +129,8 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 ---
 
 ## Providers & routing
+
+**Improved: Streaming reliability** — The gateway now uses a 5-minute read timeout for streaming responses, preventing premature connection drops on long model outputs. Stop-reason normalisation ensures consistent `finish_reason` values (`stop`, `max_tokens`, `tool_use`) across all providers.
 
 **Fixed: Ollama model prefix stripping** — Requests using the `ollama/` model prefix (e.g. `ollama/llama3.2`) now correctly strip the prefix before forwarding to the Ollama API. Previously the prefix was forwarded verbatim, causing model-not-found errors.
 

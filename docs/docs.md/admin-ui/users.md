@@ -22,7 +22,10 @@ The table shows the following columns:
 | Name | The display name of the user, if set |
 | Role | `admin`, `tenant_admin`, `member`, or `viewer` |
 | Tenant | The tenant the user belongs to |
+| Last Login | The timestamp of the user's most recent login, if any |
 | Created | The account creation timestamp |
+
+All column headers are sortable. Click a header to sort ascending; click the same header again to sort descending. The active sort column shows a ▲ (ascending) or ▼ (descending) indicator next to the header label. Sorting is applied server-side.
 
 Clicking a row opens the user detail panel for that user.
 

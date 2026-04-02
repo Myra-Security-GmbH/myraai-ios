@@ -4,7 +4,7 @@ This chapter describes errors that occur when using AI Gateway by Myra Security,
 
 ---
 
-#### Error: 429 RATE_LIMITED
+## Error: 429 RATE_LIMITED
 
 **Description**
 
@@ -31,7 +31,7 @@ The gateway returns HTTP 429 with code `rate_limited` when the number of request
 
 ---
 
-#### Error: 429 QUOTA_EXCEEDED
+## Error: 429 QUOTA_EXCEEDED
 
 **Description**
 
@@ -53,7 +53,7 @@ The gateway returns HTTP 429 with code `quota_exceeded` when the cumulative spen
 
 ---
 
-#### Error: 502 ALL_PROVIDERS_FAILED
+## Error: 502 ALL_PROVIDERS_FAILED
 
 **Description**
 
@@ -78,7 +78,7 @@ The gateway returns HTTP 502 with code `all_providers_failed` when every provide
 
 ---
 
-#### Error: 400 GUARDRAIL_BLOCKED
+## Error: 400 GUARDRAIL_BLOCKED
 
 **Description**
 
@@ -102,7 +102,7 @@ The gateway returns HTTP 400 with code `guardrail_blocked` when a guardrail in t
 
 ---
 
-#### Error: 401 UNAUTHORIZED
+## Error: 401 UNAUTHORIZED
 
 **Description**
 
@@ -126,7 +126,7 @@ The gateway returns HTTP 401 with code `unauthorized` when a request does not in
 
 ---
 
-#### Error: 403 FORBIDDEN (IP allowlist)
+## Error: 403 FORBIDDEN (IP allowlist)
 
 **Description**
 
@@ -150,7 +150,7 @@ The gateway returns HTTP 403 with code `forbidden` when the source IP address of
 
 ---
 
-#### Error: Circuit breaker open
+## Error: Circuit breaker open
 
 **Description**
 
@@ -175,7 +175,7 @@ When the circuit breaker is enabled on a gateway and a provider accumulates fail
 
 ---
 
-#### Error: Tier 2 guardrail sidecar unavailable
+## Error: Tier 2 guardrail sidecar unavailable
 
 **Description**
 
@@ -185,7 +185,7 @@ Tier 2 guardrails (NLP PII Detector, Prompt Guard, PII Protector) make an HTTP c
 
 ► Proceed as follows to resolve the error:
 
-1. Check the request log in the admin UI for affected requests and look for guardrail verdict fields (`blocked`, `blocked_by`, `detectors_fired`) to confirm which sidecar was unreachable.
+1. Check the request log in the admin UI for affected requests and look for guardrail verdict fields (`blocked`, `blocked_by`, `detectors_fired` — the legacy log-field name for the guardrails that fired) to confirm which sidecar was unreachable.
    ⇒ Requests that passed through with `fail_open: true` will not have a block verdict; the absence of a Tier 2 verdict in the log indicates the sidecar was skipped.
 2. Verify that the sidecar service is running and reachable within the infrastructure of Myra Security.
    ⇒ Contact Myra Security support if the sidecar deployment is managed by Myra.

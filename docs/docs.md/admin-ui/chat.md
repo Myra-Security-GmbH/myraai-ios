@@ -128,6 +128,22 @@ Attaching an unsupported file type shows an error message listing the supported 
 
 ---
 
+## Rating a conversation
+
+► Proceed as follows to rate a conversation:
+
+1. Hover over the conversation row in the conversation list.
+   ⇒ A flag icon (🚩) appears on the right side of the row.
+2. Click the flag icon.
+   ⇒ The **Feedback** dialog opens.
+3. Click the star that corresponds to your rating (1 = poor, 5 = excellent).
+4. If required, enter a comment in the **Comment** text field.
+5. Click the **Save** button.
+
+→ The rating is saved. The flag icon on the conversation row is filled to indicate that feedback has been recorded for this conversation.
+
+---
+
 ## See also
 
 - [Prompt examples (English)](prompts.md) — ready-to-use prompts for legal, marketing, sales, and finance documents

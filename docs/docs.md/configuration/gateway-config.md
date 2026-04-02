@@ -129,7 +129,12 @@ Before you begin, ensure the following conditions are met:
 3. Click on the **Config** tab.
    ⇒ The configuration form opens.
 4. Change the fields you want to update.
-5. To add a provider base URL override, scroll to the **Provider base URLs** section, click on the **Add** button, enter the provider name in the **Provider** text field (for example `ollama`), and enter the base URL in the **Base URL** text field (for example `http://192.168.1.50:11434`).
+5. If required, proceed as follows to add a provider base URL override:
+   a. Scroll to the **Provider base URLs** section.
+   b. Click on the **Add** button.
+      ⇒ A new row appears in the list.
+   c. Enter the provider name in the **Provider** text field. For example: `ollama`.
+   d. Enter the base URL in the **Base URL** text field. For example: `http://192.168.1.50:11434`.
 6. Click on the **Save** button.
    ⇒ The updated configuration is applied to the gateway. Only the fields you changed are updated — other settings are unaffected.
 
