@@ -3,9 +3,14 @@ local http_lib = require("resty.http")
 
 local M = {}
 
-local DEFAULT_CONNECT_MS =  5000  -- TCP handshake should be near-instant for local/CDN
-local DEFAULT_SEND_MS    = 10000  -- sending the request body
-local DEFAULT_READ_MS    = 60000  -- waiting for the response (LLM calls can be slow)
+local DEFAULT_CONNECT_MS        =   5000  -- TCP handshake should be near-instant for local/CDN
+local DEFAULT_SEND_MS           =  10000  -- sending the request body
+local DEFAULT_READ_MS           =  60000  -- non-streaming: waiting for + reading full response
+local DEFAULT_STREAM_READ_MS    = 300000  -- streaming: max gap between SSE chunks (5 min)
+                                          -- Long responses from slow/local models or extended
+                                          -- <think> blocks can take well over 60 s between
+                                          -- tokens.  Without this the socket read times out
+                                          -- and the stream is cut mid-response.
 
 -- Perform an HTTP request to an upstream provider.
 -- opts fields:
@@ -13,15 +18,23 @@ local DEFAULT_READ_MS    = 60000  -- waiting for the response (LLM calls can be 
 --   timeout_ms           — unified fallback for all three phases (backwards-compat)
 --   connect_timeout_ms   — TCP connect phase (default 5 s)
 --   send_timeout_ms      — sending request headers + body (default 10 s)
---   read_timeout_ms      — waiting for + reading response (default 60 s)
+--   read_timeout_ms      — waiting for + reading response (default 60 s non-stream,
+--                          300 s streaming)
 -- Returns (status, headers, body_or_reader, err)
 function M.request(opts)
     local httpc = http_lib.new()
     local fallback = opts.timeout_ms
+    -- For streaming, read_timeout_ms must never fall back to the general timeout_ms
+    -- (which is typically 60 s from gateway config).  Without this guard, a 60 s
+    -- gateway timeout × 3 retry attempts = 180 s and the stream is cut mid-response.
+    local read_ms = opts.read_timeout_ms
+                    or (opts.stream and DEFAULT_STREAM_READ_MS)
+                    or fallback
+                    or DEFAULT_READ_MS
     httpc:set_timeouts(
         opts.connect_timeout_ms or fallback or DEFAULT_CONNECT_MS,
         opts.send_timeout_ms    or fallback or DEFAULT_SEND_MS,
-        opts.read_timeout_ms    or fallback or DEFAULT_READ_MS
+        read_ms
     )
 
     local parsed, err = httpc:parse_uri(opts.url)

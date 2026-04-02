@@ -213,11 +213,22 @@ function M.parse_sse_chunk(line)
         delta = chunk.delta.text or ""
     end
 
+    -- Surface the tool name when a tool-use block starts so the client can
+    -- show "Searching the web…" / "Using computer…" etc. in the status bar.
+    local tool_name
+    if chunk.type == "content_block_start"
+       and chunk.content_block
+       and chunk.content_block.type == "tool_use" then
+        tool_name = chunk.content_block.name
+    end
+
     local done = (chunk.type == "message_stop")
 
+    local stop_reason
     local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
-    if chunk.type == "message_delta" and chunk.usage then
-        output_tokens = chunk.usage.output_tokens
+    if chunk.type == "message_delta" then
+        if chunk.delta then stop_reason = chunk.delta.stop_reason end
+        if chunk.usage then output_tokens = chunk.usage.output_tokens end
     end
     if chunk.type == "message_start" and chunk.message and chunk.message.usage then
         local u = chunk.message.usage
@@ -229,6 +240,8 @@ function M.parse_sse_chunk(line)
     return {
         delta                 = delta,
         done                  = done,
+        tool_name             = tool_name,
+        stop_reason           = stop_reason,   -- "end_turn", "max_tokens", "stop_sequence", …
         input_tokens          = input_tokens,
         output_tokens         = output_tokens,
         cache_creation_tokens = cache_creation_tokens,

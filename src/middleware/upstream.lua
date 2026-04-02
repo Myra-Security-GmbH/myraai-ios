@@ -225,8 +225,14 @@ local function handle_compat_streaming(ctx, res)
     local done_sent        = false
     local stream_errored   = false  -- #8: track mid-stream read failures
     local in_think         = false  -- stateful <think> block tracker
+    local stop_reason_seen = nil    -- accumulated from message_delta before message_stop fires
     -- #1: table accumulator avoids O(n²) string copies for large responses
     local acc_parts        = {}
+    -- Diagnostics: count raw bytes and read() calls for truncation logging
+    local bytes_read       = 0
+    local read_calls       = 0
+    local read_timeout_ms  = ctx.rule_timeout_ms or (ctx.gateway_config and ctx.gateway_config.timeout_ms) or 300000
+    local stream_start_ms  = ngx.now() * 1000
 
     -- Initial role delta (mirrors OpenAI behaviour).
     -- Skipped when web_search already flushed an aig_status chunk — the client
@@ -250,12 +256,35 @@ local function handle_compat_streaming(ctx, res)
         if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
         if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
 
+        -- Accumulate stop_reason from message_delta — it arrives in an earlier
+        -- chunk than message_stop (parsed.done), so we must capture it here.
+        if parsed.stop_reason then stop_reason_seen = parsed.stop_reason end
+
+        -- When the model starts a tool-use block, forward the tool name so the
+        -- client can show a brief "Searching the web…" / "Using computer…" badge.
+        if parsed.tool_name then
+            local tool_evt = "data: " .. json.encode({ aig_tool_call = parsed.tool_name }) .. "\n\n"
+            ngx.print(tool_evt)
+            ngx.flush(true)
+        end
+
         if parsed.done and not done_sent then
+            -- Translate provider stop_reason → compat finish_reason.
+            -- Normalise to "max_tokens" (not OpenAI's "length") so both old and
+            -- new frontend builds recognise it and trigger auto-continue.
+            -- Anthropic "end_turn" → "stop"; everything else passes through.
+            local finish_reason = "stop"
+            local sr = stop_reason_seen   -- use accumulated value, not parsed.stop_reason
+            if sr == "max_tokens" or sr == "length" then
+                finish_reason = "max_tokens"
+            elseif sr and sr ~= "end_turn" and sr ~= "stop" and sr ~= "" then
+                finish_reason = sr   -- pass through unknown reasons as-is
+            end
             local finish_line = "data: " .. json.encode({
                 id      = chat_id,
                 object  = "chat.completion.chunk",
                 model   = model,
-                choices = {{ index = 0, delta = {}, finish_reason = "stop" }},
+                choices = {{ index = 0, delta = {}, finish_reason = finish_reason }},
             }) .. "\n\n"
             ngx.print(finish_line)
             ngx.flush(true)
@@ -280,12 +309,29 @@ local function handle_compat_streaming(ctx, res)
 
     while true do
         local chunk, err = reader(8192)
+        read_calls = read_calls + 1
         if err then
-            ngx.log(ngx.ERR, "compat streaming read error: ", err)
+            local elapsed_ms = math.floor(ngx.now() * 1000 - stream_start_ms)
+            ngx.log(ngx.ERR,
+                "[stream_truncated] compat read error after ", elapsed_ms, "ms"
+                .. " | provider=", res.provider_name
+                .. " model=", model
+                .. " gateway=", tostring(ctx.gateway_id)
+                .. " request_id=", tostring(ctx.request_id)
+                .. " bytes_read=", bytes_read
+                .. " read_calls=", read_calls
+                .. " content_chars=", #table.concat(acc_parts)
+                .. " output_tokens=", output_tokens
+                .. " done_sent=", tostring(done_sent)
+                .. " read_timeout_ms=", read_timeout_ms
+                .. " err=", err)
             stream_errored = true  -- #8
             break
         end
         if not chunk then break end
+        if chunk ~= "" then
+            bytes_read = bytes_read + #chunk
+        end
 
         if not first_chunk_seen and chunk ~= "" then
             first_chunk_seen = true
@@ -297,6 +343,35 @@ local function handle_compat_streaming(ctx, res)
     end
 
     local accumulated_content = table.concat(acc_parts)  -- #1
+    local elapsed_total_ms = math.floor(ngx.now() * 1000 - stream_start_ms)
+
+    -- Detect provider closing connection without sending a finish event (unexpected EOF).
+    -- This is a different failure mode from a read error: the TCP connection closed
+    -- cleanly but the provider never sent [DONE] or finish_reason.
+    if not stream_errored and not done_sent then
+        ngx.log(ngx.WARN,
+            "[stream_truncated] provider closed connection without finish event (unexpected EOF)"
+            .. " | provider=", res.provider_name
+            .. " model=", model
+            .. " gateway=", tostring(ctx.gateway_id)
+            .. " request_id=", tostring(ctx.request_id)
+            .. " elapsed_ms=", elapsed_total_ms
+            .. " bytes_read=", bytes_read
+            .. " content_chars=", #accumulated_content
+            .. " output_tokens=", output_tokens
+            .. " first_chunk_seen=", tostring(first_chunk_seen))
+    elseif not stream_errored then
+        ngx.log(ngx.ERR,
+            "[stream_ok] compat stream completed cleanly"
+            .. " | provider=", res.provider_name
+            .. " model=", model
+            .. " gateway=", tostring(ctx.gateway_id)
+            .. " finish_reason=", tostring(stop_reason_seen)
+            .. " elapsed_ms=", elapsed_total_ms
+            .. " bytes_read=", bytes_read
+            .. " content_chars=", #accumulated_content
+            .. " output_tokens=", output_tokens)
+    end
 
     -- #8: on read error emit an error-finish chunk so clients don't hang
     if stream_errored then
@@ -394,6 +469,12 @@ local function handle_streaming(ctx, res)
     local first_chunk_seen = false
     -- #1: table accumulator; only allocated when pii_protector is active
     local acc_parts = ctx.pii_token_map and {} or nil
+    -- Diagnostics
+    local bytes_read      = 0
+    local read_calls      = 0
+    local stream_errored  = false
+    local read_timeout_ms = ctx.rule_timeout_ms or (ctx.gateway_config and ctx.gateway_config.timeout_ms) or 300000
+    local stream_start_ms = ngx.now() * 1000
 
     -- #5: named closure; defined once outside the read loop
     local function on_stream_chunk(parsed)
@@ -408,11 +489,27 @@ local function handle_streaming(ctx, res)
 
     while true do
         local chunk, err = reader(8192)
+        read_calls = read_calls + 1
         if err then
-            ngx.log(ngx.ERR, "streaming read error: ", err)
+            local elapsed_ms = math.floor(ngx.now() * 1000 - stream_start_ms)
+            ngx.log(ngx.ERR,
+                "[stream_truncated] passthrough read error after ", elapsed_ms, "ms"
+                .. " | provider=", res.provider_name
+                .. " model=", model
+                .. " gateway=", tostring(ctx.gateway_id)
+                .. " request_id=", tostring(ctx.request_id)
+                .. " bytes_read=", bytes_read
+                .. " read_calls=", read_calls
+                .. " output_tokens=", output_tokens
+                .. " read_timeout_ms=", read_timeout_ms
+                .. " err=", err)
+            stream_errored = true
             break
         end
         if not chunk then break end
+        if chunk ~= "" then
+            bytes_read = bytes_read + #chunk
+        end
 
         if not first_chunk_seen and chunk ~= "" then
             first_chunk_seen = true
@@ -425,6 +522,28 @@ local function handle_streaming(ctx, res)
 
         -- #5: shared line parser with #2 pcall protection inside
         buf = drain_sse_buf(buf, chunk, provider_mod, on_stream_chunk)
+    end
+
+    local elapsed_total_ms = math.floor(ngx.now() * 1000 - stream_start_ms)
+
+    if stream_errored then
+        ngx.log(ngx.WARN,
+            "[stream_truncated] passthrough stream ended with read error"
+            .. " | provider=", res.provider_name
+            .. " model=", model
+            .. " gateway=", tostring(ctx.gateway_id)
+            .. " elapsed_ms=", elapsed_total_ms
+            .. " bytes_forwarded=", bytes_read
+            .. " output_tokens=", output_tokens)
+    else
+        ngx.log(ngx.ERR,
+            "[stream_ok] passthrough stream completed"
+            .. " | provider=", res.provider_name
+            .. " model=", model
+            .. " gateway=", tostring(ctx.gateway_id)
+            .. " elapsed_ms=", elapsed_total_ms
+            .. " bytes_forwarded=", bytes_read
+            .. " output_tokens=", output_tokens)
     end
 
     -- Return connection to pool

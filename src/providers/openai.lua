@@ -45,10 +45,17 @@ function M.build_headers(ctx, api_key)
 end
 
 -- Pass the request body through unchanged (OpenAI is our canonical format).
+-- Inject stream_options.include_usage=true for streaming so that the final
+-- chunk carries prompt/completion token counts (needed by the UI stats bar).
 function M.build_request(ctx)
-    -- Body was already read and normalised by transform.lua.
-    -- Sanitize lone surrogates: cjson preserves them but strict UTF-8 parsers reject them.
-    return json.sanitize_surrogates(json.encode(ctx.request_body))
+    local body = ctx.request_body
+    if body and body.stream then
+        local patched = {}
+        for k, v in pairs(body) do patched[k] = v end
+        patched.stream_options = { include_usage = true }
+        return json.sanitize_surrogates(json.encode(patched))
+    end
+    return json.sanitize_surrogates(json.encode(body))
 end
 
 function M.parse_response(body_str)
@@ -100,6 +107,7 @@ function M.parse_sse_chunk(line)
     return {
         delta         = delta,
         done          = (choice and type(choice.finish_reason) == "string") or false,
+        stop_reason   = choice and choice.finish_reason or nil,
         input_tokens  = usage and usage.prompt_tokens     or nil,
         output_tokens = usage and usage.completion_tokens or nil,
     }
