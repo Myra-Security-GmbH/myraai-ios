@@ -7,6 +7,12 @@ copyright: >
 docs_dir: docs.md
 site_dir: out
 
+# ai-gateway-docs.pdf is generated post-build by gen_pdf.py and placed directly
+# in docs/out/ — suppress the false-positive "not found" warning.
+validation:
+  links:
+    not_found: ignore
+
 theme:
   name: material
   custom_dir: overrides
@@ -66,34 +72,49 @@ plugins:
       path_to_pdf: "ai-gateway-docs.pdf"
 
 nav:
-  - Start page: README.md
-  - Side map: reference/site-map.md
+  - Home: README.md
+
+  # Part 1 — Using the product
   - Getting started:
-    - getting-started/what-is-ai-gateway.md
-    - getting-started/why-ai-gateway.md
-    - getting-started/installation.md
-    - getting-started/quick-start.md
-  - Views:
-    - admin-ui/views-overview.md
-    - admin-ui/authentication.md
-    - observability/dashboard.md
-    - observability/monitor.md
-    - observability/analytics.md
-    - observability/logging.md
-    - observability/playground.md
-    - admin-ui/chat.md
-    - admin-ui/users.md
-    - admin-ui/my-tokens.md
-    - admin-ui/prompts.md
-    - admin-ui/prompts-de.md
-  - Configuration:
-    - configuration/gateway-config.md
-    - configuration/rate-limiting.md
-    - configuration/budgets.md
-    - configuration/model-prices.md
-    - security/authentication.md
-    - security/byok.md
-    - security/ip-allowlist.md
+    - What is AI Gateway: getting-started/what-is-ai-gateway.md
+    - Why AI Gateway: getting-started/why-ai-gateway.md
+    - Getting access: getting-started/installation.md
+    - Quick start: getting-started/quick-start.md
+    - Interface overview: admin-ui/views-overview.md
+    - Signing in: admin-ui/authentication.md
+  - Dashboard: observability/dashboard.md
+  - Chat: admin-ui/chat.md
+  - Projects: admin-ui/projects.md
+  - Playground: observability/playground.md
+
+  # Part 2 — Account management
+  - My tokens: admin-ui/my-tokens.md
+  - My commands: admin-ui/my-commands.md
+
+  # Part 3 — Observability
+  - Cost analytics: observability/analytics.md
+  - Live monitor: observability/monitor.md
+  - Request logs: observability/logging.md
+
+  # Part 4 — Administration
+  - Users: admin-ui/users.md
+  - Gateways:
+    - Overview: configuration/gateway-config.md
+    - Providers:
+      - providers/overview.md
+      - providers/openai.md
+      - providers/anthropic.md
+      - providers/gemini.md
+      - providers/azure.md
+      - providers/bedrock.md
+      - providers/ollama.md
+      - providers/openai-compatible.md
+    - Routing:
+      - routing/routing-rules.md
+      - routing/compat-endpoint.md
+      - routing/fallback.md
+      - routing/load-balancing.md
+      - routing/circuit-breaker.md
     - Guardrails:
       - security/guardrails.md
       - security/guardrails/regex.md
@@ -106,25 +127,21 @@ nav:
       - security/guardrails/contains-code.md
       - security/guardrails/gibberish.md
       - security/guardrails/language.md
-    - Routing:
-      - routing/routing-rules.md
-      - routing/compat-endpoint.md
-      - routing/fallback.md
-      - routing/load-balancing.md
-      - routing/circuit-breaker.md
-    - Providers:
-      - providers/overview.md
-      - providers/openai.md
-      - providers/anthropic.md
-      - providers/gemini.md
-      - providers/azure.md
-      - providers/bedrock.md
-      - providers/ollama.md
-      - providers/openai-compatible.md
-    - configuration/siem.md
-    - observability/tracing.md
-    - features/web-search.md
-    - integrations/claude-code.md
+    - Rate limiting: configuration/rate-limiting.md
+    - Budgets: configuration/budgets.md
+    - Provider keys (BYOK): security/byok.md
+    - IP allowlist: security/ip-allowlist.md
+    - Provider authentication: security/authentication.md
+    - SIEM integration: configuration/siem.md
+    - Distributed tracing: observability/tracing.md
+    - Web search: features/web-search.md
+  - Tenants: admin-ui/tenants.md
+  - Model prices: configuration/model-prices.md
+  - Integrations:
+    - Overview: integrations/overview.md
+    - Claude Code: integrations/claude-code.md
+
+  # Part 5 — Background and reference
   - Concepts:
     - concepts/request-pipeline.md
     - concepts/multi-tenancy.md
@@ -133,7 +150,7 @@ nav:
     - concepts/cost-attribution.md
   - Troubleshooting: troubleshooting.md
   - Reference:
-    - API Reference:
+    - API reference:
       - api-reference/authentication.md
       - api-reference/tenants-gateways.md
       - api-reference/users-tokens.md
@@ -143,8 +160,8 @@ nav:
       - api-reference/traces.md
       - api-reference/models.md
       - api-reference/error-codes.md
-    - reference/config-reference.md
+    - Configuration reference: reference/config-reference.md
+    - Glossary: reference/glossary.md
     - What's new: reference/changelog.md
-    - reference/glossary.md
-    - reference/index.md
+    - Index: reference/index.md
     - Topic map: reference/topic-map.md

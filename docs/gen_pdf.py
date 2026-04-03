@@ -27,7 +27,6 @@ Strategy:
 
 import argparse
 import datetime
-import glob
 import html as html_module
 import os
 import re
@@ -39,9 +38,8 @@ import time
 HERE     = os.path.dirname(os.path.abspath(__file__))
 IN_HTML  = os.path.join(HERE, "out", "print_page", "index.html")
 _now     = datetime.datetime.now()
-_ts      = _now.strftime("%Y%m%d-%H%M%S")
 _version = _now.strftime("%Y%m%d %H%M%S")
-OUT_PDF  = os.path.join(HERE, "out", f"ai-gateway-docs-{_ts}.pdf")
+OUT_PDF  = os.path.join(HERE, "out", "ai-gateway-docs.pdf")
 
 
 # ---------------------------------------------------------------------------
@@ -294,18 +292,21 @@ def inject_wbr_in_td_code(content: str) -> str:
 #
 # Each nav entry is mapped to a (key, label) tuple:
 #   • Standalone page ("Label: file.md")  → key = exact section slug, label = None
-#   • Group          ("Label: [...]")     → key = directory prefix of every file
+#   • Group          ("Label: [...]")     → key = full section slug for every file
 #                                            in the group (recursively), label = group name
 #
 # The section slug for a file path is:  path/to/file.md → path-to-file
-# The directory prefix for a file path: path/to/file.md → path  (first segment)
 #
 # Matching in build_toc_html:
-#   sec_id == key            → exact match   (standalone pages)
-#   sec_id.startswith(key+"-") → prefix match (grouped pages)
+#   sec_id == key            → exact match
+#   sec_id.startswith(key+"-") → prefix match (sub-pages)
+#
+# Using full slugs (not first-segment directory prefixes) ensures that pages
+# from the same directory can appear in different nav groups without ambiguity
+# (e.g. observability/tracing in Configuration vs observability/dashboard in Views).
 #
 # Consecutive toc_groups entries that share the same label are merged into a
-# single ToC block so "admin-ui" + "observability" → one "Views" section.
+# single ToC block so entries from admin-ui + observability → one "Views" section.
 
 _MKDOCS_YML = os.path.join(HERE, "mkdocs.yml")
 
@@ -331,23 +332,29 @@ def _nav_path_to_dir_prefix(path: str) -> str:
 
 
 def _collect_nav_prefixes(items: list) -> list[str]:
-    """Recursively collect unique directory prefixes from a nav item list."""
-    prefixes: list[str] = []
+    """Recursively collect full page slugs from a nav item list.
+
+    Using full slugs (rather than first-segment directory prefixes) ensures
+    that pages from the same directory can appear in different nav groups
+    without matching the wrong group (e.g. observability/tracing in
+    Configuration vs observability/dashboard in Views).
+    """
+    slugs: list[str] = []
     seen: set[str] = set()
 
     def _visit(node) -> None:
         if isinstance(node, str):
-            p = _nav_path_to_dir_prefix(node)
-            if p not in seen:
-                seen.add(p)
-                prefixes.append(p)
+            s = _nav_path_to_slug(node)
+            if s not in seen:
+                seen.add(s)
+                slugs.append(s)
         elif isinstance(node, dict):
             for _key, val in node.items():
                 if isinstance(val, str):
-                    p = _nav_path_to_dir_prefix(val)
-                    if p not in seen:
-                        seen.add(p)
-                        prefixes.append(p)
+                    s = _nav_path_to_slug(val)
+                    if s not in seen:
+                        seen.add(s)
+                        slugs.append(s)
                 elif isinstance(val, list):
                     for child in val:
                         _visit(child)
@@ -357,7 +364,7 @@ def _collect_nav_prefixes(items: list) -> list[str]:
 
     for item in items:
         _visit(item)
-    return prefixes
+    return slugs
 
 
 def _load_toc_groups() -> list[tuple[str, str | None]]:
@@ -1004,18 +1011,17 @@ def _remove_terminal_blocks_by_snippets(content: str,
 # ---------------------------------------------------------------------------
 
 def main():
+    import fcntl
+    _lockfile = open("/tmp/ai-gateway-gen-pdf.lock", "w")
+    try:
+        fcntl.flock(_lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print("gen_pdf.py is already running", file=sys.stderr)
+        sys.exit(1)
+
     parser = argparse.ArgumentParser(description="Generate PDF documentation")
     parser.add_argument("--out", default=OUT_PDF, help="Output PDF path")
     args = parser.parse_args()
-
-    # ── Delete previous PDF builds ───────────────────────────────────────────
-    old_pdfs = glob.glob(os.path.join(HERE, "out", "ai-gateway-docs-*.pdf"))
-    for old in old_pdfs:
-        try:
-            os.unlink(old)
-            print(f"  Deleted old PDF: {os.path.basename(old)}")
-        except OSError as e:
-            print(f"  Warning: could not delete {old}: {e}", file=sys.stderr)
 
     # ── Pre-flight checks ────────────────────────────────────────────────────
     try:

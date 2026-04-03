@@ -21,7 +21,7 @@ fi
 
 # ── 3. Build topic-map.md dynamically from mkdocs.yml nav ───────────────────
 python3 << PYEOF
-import re, sys
+import re
 
 mkdocs_file = "$MKDOCS"
 docs_dir    = "$DOCSDIR"
@@ -53,62 +53,90 @@ def page_title(path, explicit=None):
                     return m.group(1).strip()
     except OSError:
         pass
-    # fallback: humanise filename
     return path.split('/')[-1].replace('.md', '').replace('-', ' ').replace('_', ' ').title()
 
-# Parse nav_lines into sections.
-# Patterns (after stripping the nav: block):
-#   "  - Name:"              top-level section (no file)
-#   "  - Title: file.md"     top-level single page  → skip
-#   "  - file.md"            top-level single page  → skip
-#   "    - file.md"          child page, derive title from file
-#   "    - Title: file.md"   child page with explicit title
-#   "    - SubName:"         nested sub-section header → skip header, treat children as flat
+# Parse nav_lines into sections grouped by "# Part N — Name" comments.
+#
+# Handled patterns (indented with spaces as in mkdocs.yml):
+#   "  # Part N — Name"          → start a new topic-map section card
+#   "  - Name:"                   → named sub-section; pages added to current Part card
+#   "  - Title: file.md"          → top-level single page; added to current Part card
+#   "  - file.md"                 → top-level single page (no title); added to current Part card
+#   "    - SubName:"              → sub-section header at depth 2; skip
+#   "    - Title: file.md"        → child page (depth 2)
+#   "    - file.md"               → child page (depth 2, title from file)
+#   "      - SubName:"            → sub-section header at depth 3; skip
+#   "      - Title: file.md"      → grandchild page (depth 3); flattened into current Part card
+#   "      - file.md"             → grandchild page (depth 3, title from file)
 
 sections = []   # [(section_name, [(title, path), ...])]
 cur_section = None
 cur_pages   = []
 
+def flush():
+    if cur_section is not None:
+        sections.append((cur_section, list(cur_pages)))
+
 for line in nav_lines:
-    # top-level section with children
-    m = re.match(r'^  - ([^:]+):\s*$', line)
+    # "  # Part N — Name"  →  new section card
+    m = re.match(r'^\s+#\s+Part\s+\d+\s+[-\u2014]+\s+(.+)', line)
     if m:
-        if cur_section is not None:
-            sections.append((cur_section, cur_pages))
+        flush()
         cur_section = m.group(1).strip()
         cur_pages   = []
         continue
 
-    # top-level single page (skip — not a section card)
-    if re.match(r'^  - ', line):
-        if cur_section is not None:
-            sections.append((cur_section, cur_pages))
-        cur_section = None
-        cur_pages   = []
+    # "  - Name:"  →  top-level named sub-section; don't flush, just continue adding to current Part
+    if re.match(r'^  - [^:]+:\s*$', line):
+        continue
+
+    # "  - Title: file.md"  →  top-level single page with explicit title
+    m = re.match(r'^  - ([^:]+):\s+(\S+\.md)\s*$', line)
+    if m and cur_section is not None:
+        cur_pages.append((page_title(m.group(2).strip(), m.group(1).strip()), m.group(2).strip()))
+        continue
+
+    # "  - file.md"  →  top-level single page, title from file
+    m = re.match(r'^  - (\S+\.md)\s*$', line)
+    if m and cur_section is not None:
+        path = m.group(1).strip()
+        cur_pages.append((page_title(path), path))
         continue
 
     if cur_section is None:
         continue
 
-    # nested sub-section header (e.g. "    - SubName:") — skip the header line
-    if re.match(r'^    - [^:]+:\s*$', line):
+    # "    - SubName:"  or  "      - SubName:"  →  sub-section header, skip
+    if re.match(r'^    - [^:]+:\s*$', line) or re.match(r'^      - [^:]+:\s*$', line):
         continue
 
-    # child with explicit title: "    - Title: path.md"
+    # "    - Title: file.md"  →  child with explicit title (depth 2)
     m = re.match(r'^    - ([^:]+):\s+(\S+\.md)\s*$', line)
     if m:
         cur_pages.append((page_title(m.group(2).strip(), m.group(1).strip()), m.group(2).strip()))
         continue
 
-    # child without explicit title: "    - path.md"
+    # "    - file.md"  →  child without title (depth 2)
     m = re.match(r'^    - (\S+\.md)\s*$', line)
     if m:
         path = m.group(1).strip()
         cur_pages.append((page_title(path), path))
         continue
 
-if cur_section is not None:
-    sections.append((cur_section, cur_pages))
+    # "      - Title: file.md"  →  grandchild with explicit title (depth 3)
+    m = re.match(r'^      - ([^:]+):\s+(\S+\.md)\s*$', line)
+    if m:
+        cur_pages.append((page_title(m.group(2).strip(), m.group(1).strip()), m.group(2).strip()))
+        continue
+
+    # "      - file.md"  →  grandchild without title (depth 3)
+    m = re.match(r'^      - (\S+\.md)\s*$', line)
+    if m:
+        path = m.group(1).strip()
+        cur_pages.append((page_title(path), path))
+        continue
+
+flush()
 
 # Write topic-map.md
 # topic-map.md lives in reference/, so relative links need ../

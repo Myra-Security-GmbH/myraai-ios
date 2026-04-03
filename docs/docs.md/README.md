@@ -10,6 +10,10 @@ AI Gateway by Myra Security is a multi-tenant AI proxy that provides a single, s
 
 ---
 
+[Download as PDF](ai-gateway-docs.pdf){ .md-button }
+
+---
+
 ## Purpose of this document
 
 This document is the Online Help for AI Gateway by Myra Security. It describes how to configure and use the product. The target audience is administrators, tenant administrators, and developers who integrate AI capabilities through the gateway.

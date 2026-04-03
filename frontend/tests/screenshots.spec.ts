@@ -183,7 +183,28 @@ test("chat-file-attach", async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. Tenants list
+// 8. Projects
+// ---------------------------------------------------------------------------
+
+test("projects-list", async ({ page }) => {
+  await page.goto("/projects");
+  await waitReady(page);
+  await page.screenshot(snap("projects-list.png"));
+});
+
+test("projects-create", async ({ page }) => {
+  await page.goto("/projects");
+  await waitReady(page);
+  const newBtn = page.getByRole("button", { name: /\+ new project/i }).first();
+  if (await newBtn.isVisible().catch(() => false)) {
+    await newBtn.click();
+    await page.waitForTimeout(500);
+  }
+  await page.screenshot(snap("projects-create.png"));
+});
+
+// ---------------------------------------------------------------------------
+// 9. Tenants list
 // ---------------------------------------------------------------------------
 
 test("tenants-list", async ({ page }) => {

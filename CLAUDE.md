@@ -4,9 +4,45 @@ These instructions apply to every session in this repository. Follow them exactl
 
 ---
 
+## Quality standard
+
+**All outputs must be of the highest quality. Errors are not permitted.**
+
+- Code must be correct on the first attempt. Do not submit broken code and fix it later.
+- Tests must pass before any task is considered complete. A failing test is a blocker, not a note.
+- Documentation must be accurate, complete, and consistent with the current state of the product.
+- Screenshots in documentation must reflect the actual current UI.
+- If something cannot be done correctly, say so — do not produce low-quality output.
+
+---
+
 ## E2E Testing — MANDATORY for every feature
 
 **Every feature must ship with a full Playwright E2E test suite. No manual testing is acceptable.**
+
+### Running tests
+
+E2E tests require the Vite dev server running as a proxy to the Docker container:
+
+```bash
+# Terminal 1 — keep running
+cd frontend && npm run dev
+
+# Terminal 2 — run tests
+cd frontend && npx playwright test tests/<feature>.spec.ts --reporter=list
+```
+
+Run all tests:
+```bash
+cd frontend && npx playwright test --reporter=list
+```
+
+Run a single test by name:
+```bash
+cd frontend && npx playwright test --grep "test name here" --reporter=list
+```
+
+The Vite dev server at `http://localhost:5173` proxies `/admin/v1` and `/admin/auth` to the Docker container. **The Docker container must be running** before tests are executed.
 
 ### Coverage requirements
 
@@ -115,18 +151,64 @@ that an API field is unset.
 
 ---
 
-## Deploying changes
+## Frontend development
 
-### Frontend changes only (React / TypeScript / CSS)
+### Building and deploying
 
 ```bash
 bash build_frontend.sh
 ```
 
 Run from `/home/sas/work/ai-gateway/`. NEVER run `npm run build` or `vite build` directly —
-the script sets four mandatory `VITE_*` env vars that get baked into the bundle.
+the script sets four mandatory `VITE_*` env vars that get baked into the bundle:
+- `VITE_ADMIN_URL=https://ai-api-admin.myra.eu/admin/v1`
+- `VITE_AUTH_URL=https://ai-api-admin.myra.eu/admin/auth`
+- `VITE_GATEWAY_URL=https://ai-api.myra.eu`
+- `VITE_DOCS_URL=https://ai-docs.myra.eu`
 
-### Lua / backend / config changes
+`build_frontend.sh` hot-deploys to the running container via `docker cp`. It does **not** rebuild the Docker image. Use `run_docker_production.sh` when a full image rebuild is needed.
+
+### Type checking
+
+Before deploying any frontend change, verify there are no TypeScript errors:
+
+```bash
+cd frontend && npx tsc --noEmit
+```
+
+A build will succeed even with type errors (Vite transpiles without checking). Always run `tsc --noEmit` explicitly.
+
+### CSS — myraui / Layout.module.scss
+
+All frontend pages and components use the shared CSS module at:
+`frontend/src/common/components/layout/Layout.module.scss`
+
+**Never use inline styles or custom CSS classes for things already covered by this module.**
+Always check what exists before adding anything. Key classes:
+
+| Category | Classes |
+|---|---|
+| Page shell | `.page`, `.page-header`, `.page-title`, `.page-subtitle` |
+| Buttons | `.btn` + `.btn--primary`, `.btn--secondary`, `.btn--danger`, `.btn--sm` |
+| Forms | `.form-group`, `.form-label`, `.form-input`, `.form-hint`, `.form-actions`, `.form-row` |
+| Tables | `.table-wrapper`, `.table` |
+| Badges | `.badge` + `.badge--success`, `.badge--warning`, `.badge--error`, `.badge--neutral` |
+| Alerts | `.alert` + `.alert--success`, `.alert--error` |
+| Empty state | `.empty` |
+| Detail panel | `.detail-panel`, `.detail-panel-body`, `.detail-header`, `.detail-title` |
+| Tabs | `.tabs`, `.tab`, `.tab--active` |
+| Stats | `.stats-grid`, `.stat-card`, `.stat-label`, `.stat-value`, `.stat-value--text` |
+| Sections | `.section-header`, `.section-title` |
+| Drop zone | `.drop-zone`, `.drop-zone--active` |
+| Pickers | `.picker-row`, `.picker-group`, `.picker-options`, `.picker-btn`, `.picker-btn--selected` |
+| Colour swatches | `.color-swatch`, `.color-swatch--selected` |
+
+Modal dialogs use the shared `<Modal>` component at `frontend/src/common/components/Modal.tsx`.
+Never build a custom modal overlay — always use `<Modal>`.
+
+---
+
+## Lua / backend changes
 
 ```bash
 bash run_docker_production.sh
@@ -134,19 +216,58 @@ bash run_docker_production.sh
 
 Lua files are **baked into the Docker image** — they are NOT volume-mounted.
 `sudo openresty -s reload` only works for a locally-running openresty; it has no effect on Docker.
-`docker compose up -d` alone will crash-loop (the entrypoint requires `AIG_LAUNCHED_BY_SCRIPT=1`
-and the secrets injected by the script). Only use `run_docker_production.sh`.
+`docker compose up -d` alone will crash-loop — the entrypoint requires `AIG_LAUNCHED_BY_SCRIPT=1`
+and the secrets injected by `run_docker_production.sh`. Never call `docker compose up` directly.
 
 If a clean rebuild is needed: `docker compose build --no-cache` first, then `bash run_docker_production.sh`.
 
-### Documentation changes
+---
+
+## Documentation changes
+
+### Content changes
 
 After any change to files under `docs/docs.md/`:
 
 1. Update `docs/mkdocs.yml` nav if pages were added or sections moved
-2. Run `./create_map.sh` from `docs/` — regenerates `topic-map.md` and calls `gen_docs.sh`
+2. Run `./gen_docs.sh` from `docs/` — runs `mkdocs build` + regenerates `llms.txt`
 
-`create_map.sh` is always safe to use. If only the nav changed (no new files), `./gen_docs.sh` directly is sufficient.
+`./create_map.sh` calls `gen_docs.sh` and additionally regenerates `topic-map.md`. Use it when
+the topic map needs updating (new pages, renamed sections). Either script is safe to use.
+
+### Screenshots
+
+After any UI change that affects documentation screenshots, rebuild them:
+
+```bash
+cd frontend
+npx playwright test tests/screenshots.spec.ts \
+  --config playwright.production.config.ts --project=chromium
+```
+
+Output goes to `docs/docs.md/assets/screenshots/*.png`.
+Run against the **live production container** — `run_docker_production.sh` must have been run first
+so the container serves the latest code.
+
+### PDF generation
+
+`gen_pdf.py` is called automatically inside `run_docker_production.sh` — do not run it separately.
+Output: `docs/out/ai-gateway-docs.pdf` (baked into the Docker image, served at `/ai-gateway-docs.pdf`).
+
+### Full pipeline order
+
+`run_docker_production.sh` **must always be last** — it runs `gen_docs.sh` + `gen_pdf.py` internally,
+then bakes everything into the Docker image. Running it earlier embeds stale outputs.
+
+```
+1. bash build_frontend.sh          # hot-deploy frontend to running container
+2. (run E2E tests to verify)
+3. npx playwright test screenshots  # capture screenshots against the running container
+4. bash run_docker_production.sh   # LAST: gen_docs + gen_pdf + full image rebuild + container restart
+```
+
+Steps 1–3 are only needed when their respective outputs changed.
+`bash build_frontend.sh` alone is sufficient for a quick frontend-only iteration.
 
 ---
 
@@ -156,6 +277,11 @@ After any change to files under `docs/docs.md/`:
 - MariaDB runs on the host at `172.17.0.1:3306`
 - Production DB: `ai_gateway` | Dev DB: `gateway_dev`
 - MySQL user: `gateway` / `gateway`
+
+Connect for debugging:
+```bash
+mysql -h 172.17.0.1 -u gateway -pgateway ai_gateway
+```
 
 ---
 
@@ -172,3 +298,19 @@ Config files used in Docker:
 - `config/nginx.docker.conf` → `/etc/openresty/nginx.conf`
 - `config/gateway.docker.lua` → `/opt/ai-gateway/config/gateway.lua`
 - `config/docker-entrypoint.sh` → validates env vars, starts openresty
+
+---
+
+## Git hygiene
+
+**Never commit:**
+- `docs/__pycache__/` — Python bytecode
+- `docs/out/` — built site output; generated, not source
+- `*.pdf` anywhere — generated outputs, always excluded
+- `luacov.stats.out`, `luacov.report.out`, `.luacov` — Lua coverage artefacts
+- `frontend/coverage/` — Vitest coverage output
+- `test-results/` — Playwright failure screenshots and traces
+- Any file containing credentials or secrets (`run_docker_production.sh` is intentionally not committed)
+
+When grouping commits, split by concern: backend (Lua + schema), frontend (React/CSS), docs.
+Do not bundle unrelated changes in one commit.
