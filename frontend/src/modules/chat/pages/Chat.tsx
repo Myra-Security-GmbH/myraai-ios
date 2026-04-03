@@ -184,6 +184,9 @@ export default function Chat() {
 
   // ── Settings drawer ────────────────────────────────────────────────────────
   const [showSettings, setShowSettings] = useState(false);
+
+  // ── Mobile conversation list drawer ────────────────────────────────────────
+  const [showConvList, setShowConvList] = useState(false);
   const DEFAULT_SYSTEM_PROMPT =
     "Today's date is " + new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) + ".\n\n" +
     "You are Claude, an AI assistant made by Anthropic.\n\n" +
@@ -1369,6 +1372,18 @@ export default function Chat() {
         >
           <GearIcon />
         </button>
+
+        <button
+          className={`${chatS["icon-btn"]} ${chatS["conv-list-toggle"]}`}
+          title="Conversations"
+          onClick={() => setShowConvList(true)}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
       </div>
 
       {error && (
@@ -1393,8 +1408,16 @@ export default function Chat() {
       )}
 
       <div className={chatS["chat-body"]}>
+        {/* Conversation sidebar — mobile backdrop */}
+        {showConvList && (
+          <div
+            className={chatS["conv-sidebar-backdrop"]}
+            onClick={() => setShowConvList(false)}
+          />
+        )}
+
         {/* Conversation sidebar */}
-        <div className={chatS["conv-sidebar"]}>
+        <div className={`${chatS["conv-sidebar"]} ${showConvList ? chatS["conv-sidebar--open"] : ""}`}>
           {activeProject && (
             <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--card-border)", background: "var(--accent-subtle)", fontSize: 12 }}>
               <span style={{ fontWeight: 600, color: "var(--accent)" }}>{activeProject.icon} {activeProject.name}</span>
@@ -1408,8 +1431,8 @@ export default function Chat() {
               : conversations.filter((c) => !c.project_id)
             }
             activeId={activeConvId}
-            onSelect={loadConversation}
-            onCreate={createConversation}
+            onSelect={(id) => { loadConversation(id); setShowConvList(false); }}
+            onCreate={() => { createConversation(); setShowConvList(false); }}
             onRename={renameConversation}
             onDelete={deleteConversation}
             creating={creating}

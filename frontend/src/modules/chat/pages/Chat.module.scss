@@ -84,7 +84,39 @@
   overflow: hidden;
 
   @media (max-width: 640px) {
-    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 300;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+
+    &--open {
+      transform: translateX(0);
+    }
+  }
+}
+
+.conv-sidebar-backdrop {
+  display: none;
+
+  @media (max-width: 640px) {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 299;
+  }
+}
+
+.conv-list-toggle {
+  display: none;
+
+  @media (max-width: 640px) {
+    display: flex;
   }
 }
 
