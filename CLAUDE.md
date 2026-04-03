@@ -230,10 +230,10 @@ If a clean rebuild is needed: `docker compose build --no-cache` first, then `bas
 After any change to files under `docs/docs.md/`:
 
 1. Update `docs/mkdocs.yml` nav if pages were added or sections moved
-2. Run `./gen_docs.sh` from `docs/` — runs `mkdocs build` + regenerates `llms.txt`
+2. Run `./gen_docs.sh` from `docs/` — calls `create_map.sh` (regenerates `topic-map.md`), then runs `mkdocs build` + regenerates `llms.txt`
 
-`./create_map.sh` calls `gen_docs.sh` and additionally regenerates `topic-map.md`. Use it when
-the topic map needs updating (new pages, renamed sections). Either script is safe to use.
+`./gen_docs.sh` is the correct entry point for all documentation builds — run it after any content change.
+`./create_map.sh` can be run standalone to regenerate only `topic-map.md` without a full site rebuild.
 
 ### Screenshots
 
