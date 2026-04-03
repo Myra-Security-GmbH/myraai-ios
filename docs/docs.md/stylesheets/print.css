@@ -186,10 +186,13 @@
     color: inherit;
   }
 
-  /* Inline code inside table cells: force break so long default values
-     (e.g. ["blocked","budget_exceeded","circuit_open"]) never overflow the column */
+  /* Inline code inside table cells: allow breaking at any character to prevent
+     column overflow (e.g. long JSON arrays), but only when necessary.
+     <wbr> elements injected by gen_pdf.py at separator positions (-_./: ) ensure
+     the renderer prefers those boundaries over arbitrary mid-token positions. */
   td code {
-    word-break: break-all;
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
 
   /* ── Lists ─────────────────────────────────────────────── */

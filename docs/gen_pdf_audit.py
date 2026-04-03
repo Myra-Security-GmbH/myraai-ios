@@ -46,6 +46,12 @@ MARGIN_PX  = int(MARGIN_LR_MM / 25.4 * 96)
 CONTENT_W  = A4_W_PX - 2 * MARGIN_PX
 CONTENT_H  = A4_H_PX - int((MARGIN_TOP_MM + MARGIN_BOT_MM) / 25.4 * 96)
 
+# ── Pass E constants ──────────────────────────────────────────────────────────
+# Monospace char width at 8.5pt (JetBrains Mono, as set in print.css td code)
+_MONO_CHAR_PX     = 8.5 * (4 / 3) * 0.60   # ≈ 6.8 px per char at 96 dpi
+_NO_BREAK_MIN_CHARS = 10                     # shorter tokens rarely cause issues
+_ATOMIC_SEP_RE    = re.compile(r"[-_./:]")  # breakable chars inside identifiers
+
 
 @dataclass
 class Issue:
@@ -429,6 +435,89 @@ def pass_d(html_path: Path) -> list[Issue]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Pass E — no-break token detection
+# ─────────────────────────────────────────────────────────────────────────────
+
+def pass_e(html_path: Path) -> list[Issue]:
+    """
+    Detect atomic identifiers in <td><code> cells that word-break:break-all
+    may split at an undesirable mid-token position.
+
+    print.css applies ``td code { word-break: break-all }`` to prevent column
+    overflow from long JSON array default values.  That rule also lets the
+    renderer break tokens like ``x-aig-byok-alias`` or ``tenant_admin`` at
+    arbitrary character positions rather than at their natural hyphen/underscore
+    separators, producing confusing line breaks in the PDF.
+
+    A token is flagged when:
+      - it contains no interior spaces (single identifier, not a phrase)
+      - it contains at least one separator char  (- _ . / :)
+      - its length is >= _NO_BREAK_MIN_CHARS  (shorter tokens rarely wrap)
+
+    Duplicate tokens across tables are reported only once.
+    """
+    import html as _html
+
+    issues: list[Issue] = []
+    seen: set[str] = set()   # suppress repeated tokens across tables
+
+    with open(html_path, encoding="utf-8") as f:
+        raw = f.read()
+
+    # Restrict scan to the print-site page body (skip header/nav boilerplate)
+    m = re.search(r'<div id="print-site-page"', raw)
+    if not m:
+        content = raw
+    else:
+        content = raw[raw.index(">", m.start()) + 1:]
+
+    for table_m in re.finditer(r"<table[^>]*>(.*?)</table>", content, re.DOTALL):
+        table_html = table_m.group(1)
+
+        # Estimate column count from <th> elements in <thead>
+        thead_m = re.search(r"<thead[^>]*>(.*?)</thead>", table_html, re.DOTALL)
+        if thead_m:
+            col_count = max(1, len(re.findall(r"<th[\s>]", thead_m.group(1))))
+        else:
+            col_count = 2  # safe default
+        est_col_px = CONTENT_W / col_count
+
+        for td_m in re.finditer(r"<td[^>]*>(.*?)</td>", table_html, re.DOTALL):
+            cell_html = td_m.group(1)
+            for code_m in re.finditer(r"<code[^>]*>(.*?)</code>", cell_html, re.DOTALL):
+                # Strip any nested tags (e.g. <span>) and decode HTML entities
+                token = _html.unescape(
+                    re.sub(r"<[^>]+>", "", code_m.group(1))
+                ).strip()
+
+                if not token:
+                    continue
+                if " " in token:          # multi-word value, not an identifier
+                    continue
+                if len(token) < _NO_BREAK_MIN_CHARS:
+                    continue
+                if not _ATOMIC_SEP_RE.search(token):
+                    continue              # no breakable separator → no risk
+                if token in seen:
+                    continue
+                seen.add(token)
+
+                token_px = len(token) * _MONO_CHAR_PX
+                issues.append(Issue(
+                    page=0, kind="NO_BREAK_TOKEN",
+                    detail=(
+                        f"'{token}' ({len(token)} chars, ~{int(token_px)}px)"
+                        f" — word-break:break-all may split this identifier"
+                        f" mid-token in a {col_count}-col table"
+                        f" (est. col width ~{int(est_col_px)}px)"
+                    ),
+                ))
+
+    print(f"  Pass E: {len(issues)} no-break token issue(s) found")
+    return issues
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Pass A — visual / pixel analysis
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -549,7 +638,7 @@ def analyse_page(img_path: Path, page_no: int, dpi: int) -> list[Issue]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_report(results: list[PageResult], c_issues: list[Issue],
-                 d_issues: list[Issue],
+                 d_issues: list[Issue], e_issues: list[Issue],
                  out_path: Path, dpi: int) -> None:
     """Write an HTML audit report with thumbnails and issue annotations."""
 
@@ -575,6 +664,15 @@ def build_report(results: list[PageResult], c_issues: list[Issue],
                      f"<td style='color:{col}'>{iss.kind}</td>"
                      f"<td>{html_module.escape(iss.detail)}</td></tr>\n")
 
+    # Pass E: no-break token issues
+    if e_issues:
+        rows += "<tr><td colspan='3' style='background:#f0fdf4;font-weight:700;padding:8px'>No-break token (Pass E)</td></tr>\n"
+        for iss in e_issues:
+            col = severity_colour.get(iss.severity, "#555")
+            rows += (f"<tr><td style='color:{col};font-weight:700'>—</td>"
+                     f"<td style='color:{col}'>{iss.kind}</td>"
+                     f"<td>{html_module.escape(iss.detail)}</td></tr>\n")
+
     # Per-page issues
     flagged = [r for r in results if r.issues]
     if flagged:
@@ -590,8 +688,9 @@ def build_report(results: list[PageResult], c_issues: list[Issue],
                      f"<td>{thumb}{html_module.escape(iss.detail)}</td>"
                      f"</tr>\n")
 
-    total_issues = len(c_issues) + len(d_issues) + sum(len(r.issues) for r in results)
+    total_issues = len(c_issues) + len(d_issues) + len(e_issues) + sum(len(r.issues) for r in results)
     errors  = sum(1 for i in c_issues if i.severity == "error") + \
+              sum(1 for i in e_issues if i.severity == "error") + \
               sum(1 for r in results for i in r.issues if i.severity == "error")
     warnings = total_issues - errors
 
@@ -664,6 +763,10 @@ def main():
     print("→ Pass D — Mermaid SVG overflow analysis …")
     d_issues = pass_d(html_path)
 
+    # ── Pass E: no-break token detection ─────────────────────────────────
+    print("→ Pass E — no-break token detection …")
+    e_issues = pass_e(html_path)
+
     # ── Pass A: visual ────────────────────────────────────────────────────
     print(f"→ Pass A — rasterising {pdf_path.name} at {args.dpi} dpi …")
     with tempfile.TemporaryDirectory() as tmp:
@@ -686,10 +789,10 @@ def main():
 
         # ── Report ────────────────────────────────────────────────────────
         print(f"→ Writing report → {REPORT}")
-        build_report(results, c_issues, d_issues, REPORT, args.dpi)
+        build_report(results, c_issues, d_issues, e_issues, REPORT, args.dpi)
 
     # ── Summary ───────────────────────────────────────────────────────────
-    all_static = c_issues + d_issues
+    all_static = c_issues + d_issues + e_issues
     total   = len(all_static) + sum(len(r.issues) for r in results)
     errors  = sum(1 for i in all_static if i.severity == "error") + \
               sum(1 for r in results for i in r.issues if i.severity == "error")
@@ -709,8 +812,13 @@ def main():
         print()
         for iss in all_static:
             sev = "ERR " if iss.severity == "error" else "WARN"
-            src = "D" if iss in d_issues else "C"
-            print(f"  {src:>5}  {iss.kind:<18}  [{sev}] {iss.detail[:70]}")
+            if iss in e_issues:
+                src = "E"
+            elif iss in d_issues:
+                src = "D"
+            else:
+                src = "C"
+            print(f"  {src:>5}  {iss.kind:<18}  [{sev}] {iss.detail[:80]}")
 
     print()
     print(f"  Report: {REPORT}")

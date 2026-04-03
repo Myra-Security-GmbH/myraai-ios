@@ -29,9 +29,9 @@ List versions in descending order, with the most recent version at the top.
 
 ### Product description *(required)*
 The introduction orients the reader and explains what the function of the product is and which information the document contains. It consists of the following the sections below, applied in the order listed:
-- **What is AI Gateway** - Explanation of the product to give the reader an overview of its function and the benefit it provides.
-- **Why AI Gateway** - Why the product can be helpful for specific scenarios.
-- **Features and limitations** - List the individual functions of the product. Then list any known limitations of the product. Use a table with two columns and with Features in the left column and Limitation in the right column.
+- Explanation of the product to give the reader an overview of its function and the benefit it provides.
+- Why the product can be helpful for specific scenarios.
+- List the individual features and limitations of the product. Then list any known limitations of the product. Use a table with two columns and with Features in the left column and Limitation in the right column.
 
 ---
 
@@ -50,39 +50,73 @@ Add additional sections to the getting started chapter as needed, following the 
 
 ---
 
-### Views *(required)*
+### Feature chapters *(one chapter per product area, required)*
 
-The views chapter gives the reader a complete overview of everything visible in the product and the functions associated with each view. Begin with the start page and the overall GUI structure to orient the reader before describing individual views.
+The documentation contains one chapter per major product area.
+Never split a product area into a separate Views chapter and a Configuration chapter.
+Each chapter covers the concept, the view, and all user actions in one place.
 
-#### Start page and GUI structure *(required)*
-Describe the start page and the overall structure of the graphical user interface (GUI). Explain the main navigation elements and how the reader moves between views.
+#### Chapter order *(required)*
 
-#### View: *[name]* *(one section per view)*
-Describe each view the reader can open. For each view, explain the following:
+Apply these chapters in the order listed. Never reorder them.
 
-- What the view shows.
-- What actions are available in the view.
-- What each UI element does.
+**Part 1 — Using the product** *(all users)*
 
-Create one section per view. Never combine two views in one section.
+| # | Chapter |
+|---|---|
+| 1 | Getting started |
+| 2 | Dashboard |
+| 3 | Chat |
+| 4 | Projects |
+| 5 | Playground |
 
-Add at the beginning at each view after the heading a Picture of the view.
----
+**Part 2 — Account management** *(all users)*
 
-### Configuration *(required)*
+| # | Chapter |
+|---|---|
+| 6 | My tokens |
+| 7 | My commands |
 
-The configuration chapter helps the reader make important settings in the product. Each section focuses on a goal, not on an individual function. Apply the following section pattern for every configurable object in the product:
+**Part 3 — Observability** *(users with access)*
 
-#### Creating *[object]* *(required where applicable)*
-Describe how the reader creates a new entry or object.
+| # | Chapter |
+|---|---|
+| 8 | Cost analytics |
+| 9 | Live monitor |
+| 10 | Request logs |
 
-#### Editing *[object]* *(required where applicable)*
-Describe how the reader modifies an existing entry or setting.
+**Part 4 — Administration** *(tenant admins and admins only)*
 
-#### Deleting *[object]* *(required where applicable)*
-Describe how the reader deletes an existing entry or setting.
+| # | Chapter |
+|---|---|
+| 11 | Users |
+| 12 | Gateways |
+| 13 | Tenants |
+| 14 | Model prices |
+| 15 | Integrations |
 
-Each section contains a complete instructional sequence with goal, steps, and result. Never combine creating, editing, and deleting in one section.
+**Part 5 — Background and reference**
+
+| # | Chapter |
+|---|---|
+| 16 | Concepts |
+| 17 | Troubleshooting |
+| 18 | Reference |
+
+#### Structure of each feature chapter *(required)*
+
+Every feature chapter follows this fixed pattern in the order listed:
+
+1. **Screenshot** — a screenshot of the main view of the feature, placed immediately after the chapter heading.
+2. **Description** — a descriptive section explaining what the feature is, what it does, and who uses it.
+3. **Creating [object]** — one instructional section per object the user can create.
+4. **Editing [object]** — one instructional section per object the user can edit.
+5. **Deleting [object]** — one instructional section per object the user can delete.
+6. **Additional sub-topics** — further sections as required by the feature (for example: configuring routing rules within the Gateways chapter).
+
+Never combine creating, editing, and deleting in one section.
+Never mix descriptive and instructional content in the same section.
+Add a screenshot before every instructional section that shows a UI element the user must interact with.
 
 ---
 
@@ -178,8 +212,8 @@ Individual steps the user performs to reach the goal.
 - Action steps are always a numbered list.
 - Intermediate results are always an unordered sub-list with a dash (-), indented directly below the step they belong to.
 - The final result is placed on a new line after the list, at the base indentation level, and always begins with ->.
-- Always start the list with the number one after each heading or new introductory sentence.
-- Start every step with an imperative verb: "Click on", "Select", "Enter", "Leave", "Verify". Example: "Click on the xyz button."
+- Always start the list with the number one after each heading or after each final result.
+- Start every step with an imperative verb: Click on, Select, Enter, Leave, Verify. Example: Click on the **xyz** button.
 - One action per step. Never combine two actions in one step.
 - Follow each step with an indented result line as sub item:
 
@@ -360,8 +394,8 @@ End every procedure with a result statement:
 | Subjunctive mood | Indicative present tense |
 | Sentences without a verb | Full sentences with verb |
 | Lists that interrupt a sentence | Complete the lead-in sentence first |
-| Never use the genetiv s for unliving things | For unlving things like product name avoid the genetiv s. General use "B of A" syntax and not "A's B". Example: "Myra EU CAPTCHA" or "Button of the App".|
-
+| Never use the genitive s for unliving things | For unlving things like product name avoid the genetiv s. General use "B of A" syntax and not "A's B". Example: "Myra EU CAPTCHA" or "Button of the App".|
+| Avoid italic | Use instead **bold** for UI and buttons or ``code`` for commands, paths and code. |
 
 ### Notastional conventions
 
@@ -382,13 +416,6 @@ When creating documentation, strictly follow these formatting conventions and im
 
 > ⭐ **Example:** Text for examples that help the user understand.
 ```
-
-**General Rules:**
-- Apply each formatting element **exclusively** for its defined purpose — do not repurpose them
-- Never use bold for code, and never use monospace for UI labels
-- Always use `☑` prerequisites **before** the first `►` action step
-- Use `⇒` only for intermediate results mid-sequence, and `→` only for the **final** outcome
-- Before finalizing output, verify that every formatting element is correctly and consistently applied
 
 ## use of graphics
 

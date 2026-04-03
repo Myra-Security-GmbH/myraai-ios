@@ -559,7 +559,8 @@ Gemini / Vertex: native `googleSearch` grounding (single leg, no tool loop).
 
 ### Client-Side Integration
 
-The playground UI shows a live status badge cycling through `searching → fetching N URLs → searched` and persists the final query in the panel footer.
+- **Playground UI** — shows a live status badge cycling through `searching → fetching N URLs → searched`; the final query persists in the panel footer.
+- **Chat UI** — reads the `aig_status: "fetching"` SSE event and displays `🔎 Fetching N URL(s)…` in the processing-status area (automatically cleared on first response token).
 
 The `X-Web-Search-Query` response header carries the query string that was searched; logged as `web_search_query`.
 
@@ -659,6 +660,33 @@ The compat endpoint converts provider-native SSE to OpenAI `chat.completion.chun
    ```
    Cache token fields (`cache_creation_tokens`, `cache_read_tokens`) are included when non-zero (Anthropic prompt caching).
 5. `data: [DONE]`
+
+### `finish_reason` Normalisation
+
+Anthropic `stop_reason` values are translated to OpenAI `finish_reason` in the compat stream:
+
+| Anthropic `stop_reason` | OpenAI `finish_reason` |
+|---|---|
+| `end_turn` | `stop` |
+| `max_tokens` | `length` |
+| `stop_sequence` | `stop` |
+| `tool_use` | `tool_calls` |
+
+This ensures clients that branch on `finish_reason: "length"` (to detect truncated responses) behave correctly with Anthropic models.
+
+### Token Count Injection for Local / OpenAI-Compat Providers
+
+For providers that do not return token usage in their streaming responses by default (Ollama, Qwen-via-Together, any OpenAI-compat endpoint that omits usage), the gateway injects `stream_options: {"include_usage": true}` into the outgoing request body. This enables the usage chunk that is otherwise absent, ensuring token counts and costs are always recorded in the request log.
+
+### Tool-Use Activity Events
+
+When Claude (or any Anthropic-native model) begins executing a tool call during streaming, the gateway emits a custom SSE event before the tool output arrives:
+
+```
+data: {"aig_tool_call": "web_search"}
+```
+
+The `aig_tool_call` value is the tool name from the Anthropic `content_block_start` event (e.g. `web_search`, `computer_use`, `code_execution`). The Chat UI (§21) maps these to human-readable status labels displayed in the processing-status area.
 
 ---
 
@@ -1152,10 +1180,28 @@ After the first exchange in a new conversation, a non-blocking background reques
 - `<think>` blocks stripped from title response
 - Surrounding quotes and trailing punctuation stripped
 - 90-second timeout to handle slow local vLLM models
+- System prompt instructs the model to produce a title even when the provided excerpt is incomplete (e.g. mid-sentence cutoff from a long streaming context)
 
 ### Auto-Continue
 
 If the model returns `finish_reason: "max_tokens"`, the chat automatically continues with `"Continue"` injected as the next user message, up to 10 times. Accumulated content is stitched together into a single assistant message.
+
+### Background Streaming
+
+Streaming continues even when the user navigates to a different conversation. A pulsing dot indicator appears next to the conversation title in the sidebar to show that a response is in flight in the background. When the user returns to that conversation, the completed (or in-progress) response is displayed. If the user is viewing a different conversation, `setMessages` updates are gated to prevent cross-conversation message bleed.
+
+### Tool-Use Activity Display
+
+While a model is executing a tool call (web search, computer use, code execution), a live status label is displayed in the processing-status area above the streaming cursor:
+
+| Tool name (from `aig_tool_call`) | Status label |
+|---|---|
+| `web_search` | 🔎 Searching the web… |
+| `computer_use` | 🖥️ Using computer… |
+| `code_execution` | ⚙️ Running code… |
+| *(unknown)* | ⚙️ `<tool_name>`… |
+
+Gateway-level web search (`aig_status: "fetching"`) shows `🔎 Fetching N URL(s)…` during the URL fetch phase. Both status types are automatically cleared when the first real text token arrives.
 
 ### Export
 

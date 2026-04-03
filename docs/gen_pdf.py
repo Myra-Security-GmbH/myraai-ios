@@ -244,8 +244,48 @@ def mark_small_tables(content: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Static ToC injection — dynamic group loading from mkdocs.yml
+# <wbr> injection for td code identifiers
 # ---------------------------------------------------------------------------
+#
+# print.css uses overflow-wrap:anywhere on td code so long values (e.g. JSON
+# array defaults) never overflow a column.  That rule can still break atomic
+# identifiers like `tenant_admin` or `x-aig-byok-alias` at arbitrary positions
+# because CSS treats underscores and hyphens as ordinary characters.
+#
+# We post-process the HTML and insert a <wbr> (word-break opportunity) element
+# immediately after each separator character (-  _  .  /  : ) inside every
+# <code> element that is a direct descendant of a <td>.  WeasyPrint honours
+# <wbr> as a preferred break point, so the renderer will split `tenant_admin`
+# as `tenant_` / `admin` instead of `tenant_adm` / `in`.
+#
+# Content inside <pre> blocks is intentionally excluded — those are rendered
+# verbatim and are already controlled by white-space:pre-wrap + word-break on
+# the <pre> rule.
+
+_TD_RE   = re.compile(r'(<td[^>]*>)(.*?)(</td>)', re.DOTALL | re.IGNORECASE)
+_CODE_RE = re.compile(r'(<code[^>]*>)(.*?)(</code>)', re.DOTALL | re.IGNORECASE)
+_SEP_RE  = re.compile(r'([-_./:])')
+
+
+def inject_wbr_in_td_code(content: str) -> str:
+    """Insert <wbr> after separator chars inside <td><code> to guide line breaks."""
+    count = 0
+
+    def _patch_code(cm: re.Match) -> str:
+        nonlocal count
+        patched = _SEP_RE.sub(r'\1<wbr>', cm.group(2))
+        if patched != cm.group(2):
+            count += 1
+        return cm.group(1) + patched + cm.group(3)
+
+    def _patch_td(tm: re.Match) -> str:
+        inner = _CODE_RE.sub(_patch_code, tm.group(2))
+        return tm.group(1) + inner + tm.group(3)
+
+    result = _TD_RE.sub(_patch_td, content)
+    if count:
+        print(f"  Injected <wbr> separators into {count} td code element(s)")
+    return result
 #
 # _TOC_GROUPS used to be a hardcoded list.  It is now derived at render time
 # from the mkdocs.yml nav so that adding, renaming, or reordering nav sections
@@ -783,10 +823,17 @@ def build_standalone_html(content: str, css_path: str, base_url: str,
 
 def set_open_action(pdf_path: str) -> None:
     """
-    Embed viewer preferences so the PDF opens with page 1 fit to window:
-      • OpenAction  — /Fit destination on page 1 (zoom-to-fit on open)
-      • FitWindow   — ask the viewer to resize its window to the page
-      • DisplayDocTitle — show the document title in the title bar
+    Embed viewer preferences so the PDF opens showing the top of page 1:
+      • OpenAction  — explicit /GoTo action with /FitH at page top, which fits
+                      the page width in the viewport and scrolls to y=page_top.
+                      More reliably honoured than an implicit /Fit array, and
+                      overrides any bookmark destination the viewer might
+                      otherwise scroll to on open.
+      • DisplayDocTitle — show the document title in the title bar.
+      FitWindow is intentionally omitted: it instructs the viewer to resize its
+      application window to the page size, which browser-based PDF viewers
+      (Chrome, Firefox PDF.js) cannot do and therefore ignore, causing them to
+      fall back to their own default zoom rather than the OpenAction.
     Requires pikepdf (pip install pikepdf).
     """
     try:
@@ -796,12 +843,23 @@ def set_open_action(pdf_path: str) -> None:
         return
 
     with pikepdf.open(pdf_path, allow_overwriting_input=True) as pdf:
-        pdf.Root.OpenAction = pikepdf.Array([
-            pdf.pages[0].obj,
-            pikepdf.Name("/Fit"),
-        ])
+        page0 = pdf.pages[0]
+        mb = page0.get("/MediaBox")
+        page_top = float(mb[3]) if mb else 841.89
+
+        # /FitH top: fit page width in window, scroll to top of page 1.
+        # Using an explicit GoTo action dict rather than an implicit destination
+        # array because more viewers (including PDF.js) honour the action form.
+        pdf.Root.OpenAction = pikepdf.Dictionary(
+            Type=pikepdf.Name("/Action"),
+            S=pikepdf.Name("/GoTo"),
+            D=pikepdf.Array([
+                page0.obj,
+                pikepdf.Name("/FitH"),
+                pikepdf.Real(round(page_top, 2)),
+            ]),
+        )
         pdf.Root.ViewerPreferences = pdf.make_indirect(pikepdf.Dictionary(
-            FitWindow=pikepdf.Boolean(True),
             DisplayDocTitle=pikepdf.Boolean(True),
         ))
         pdf.save(pdf_path)
@@ -989,6 +1047,7 @@ def main():
     content = strip_inline_toc(content)
     content = compact_terminal_sections(content)
     content = mark_small_tables(content)
+    content = inject_wbr_in_td_code(content)
     content = inject_version_into_cover(content, _version)
     content = render_mermaid_diagrams(content)
 

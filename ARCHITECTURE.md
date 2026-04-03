@@ -21,6 +21,7 @@
 13. [Admin UI (Frontend)](#13-admin-ui-frontend)
 14. [nginx Configuration](#14-nginx-configuration)
 15. [Deployment Topology](#15-deployment-topology)
+16. [Test Infrastructure](#16-test-infrastructure)
 
 ---
 
@@ -179,9 +180,10 @@ scripts/
   import_litellm_prices.sh   # Bulk-import model prices from LiteLLM price table
   sync_openrouter_models.sh  # Sync OpenRouter model catalog + prices to DB
 tests/
-  unit/                  # busted unit tests per module
-  integration/           # End-to-end tests against running gateway
+  unit/                  # resty/LuaJIT unit tests (test_*.lua)
+  runner.lua             # Test harness; COVERAGE=1 enables luacov instrumentation
   fixtures/              # Sample provider request/response JSON
+test-runner.sh           # Unified test runner (lua-syntax | backend | frontend | playwright suites)
 ```
 
 ---
@@ -445,8 +447,10 @@ provider.base_url(ctx)               -- construct upstream URL
 provider.build_headers(ctx, api_key) -- Authorization + provider-specific headers
 provider.build_request(ctx)          -- serialize body for the provider wire format
 provider.parse_response(body)        -- extract tokens + content from buffered response
-provider.parse_sse_chunk(line)       -- streaming: parse one SSE line → {delta, tokens, done}
+provider.parse_sse_chunk(line)       -- streaming: parse one SSE line → {delta, tokens, done, tool_name, stop_reason}
 ```
+
+`parse_sse_chunk` returns a `tool_name` field (non-nil only on Anthropic `content_block_start` events with `type=tool_use`). `upstream.lua` reads this field and emits a `data: {"aig_tool_call": "<name>"}` SSE event to the client so the Chat UI can display a real-time tool-use status label.
 
 **Provider → wire format mapping:**
 
@@ -485,6 +489,12 @@ provider.parse_sse_chunk(line)       -- streaming: parse one SSE line → {delta
 ### Streaming
 
 For compat requests, `handle_compat_streaming` re-encodes provider-native SSE (Anthropic format, Gemini format, etc.) into OpenAI `chat.completion.chunk` format. A usage chunk containing token counts and cache stats is emitted just before `[DONE]`, enabling clients to display real-time metrics.
+
+**`finish_reason` normalisation** — Anthropic `stop_reason` values (`end_turn`, `max_tokens`, `stop_sequence`, `tool_use`) are translated to OpenAI `finish_reason` (`stop`, `length`, `stop`, `tool_calls`) so clients that branch on `finish_reason` work correctly with Anthropic models.
+
+**Token count injection** — For providers whose streaming responses omit usage by default (Ollama, OpenAI-compat endpoints), `stream_options: {"include_usage": true}` is injected into the outgoing request body. This guarantees a usage chunk is emitted and token costs are recorded in the request log regardless of provider.
+
+**Tool-use events** — When `parse_sse_chunk` returns a non-nil `tool_name` (Anthropic `content_block_start` with `type=tool_use`), a custom event `data: {"aig_tool_call": "<name>"}` is emitted immediately. The Chat UI maps tool names to status labels ("Searching the web…", "Using computer…").
 
 ---
 
@@ -742,6 +752,7 @@ React 19 + TypeScript SPA built with Vite. Proxied through Vite dev server (`/ad
 | Guardrails | Guardrail configuration builder (GuardrailBuilder UI) |
 | Monitor | Real-time monitoring with optional tenant filter |
 | Playground | Interactive model comparison UI (see below) |
+| Chat | Persistent multi-turn conversation UI |
 
 ### Dashboard
 
@@ -772,6 +783,20 @@ Multi-panel AI chat interface for testing models against a live gateway:
 - **Persisted state** — tenant, gateway, model selection, system prompt, temperature, max tokens saved to `localStorage` (`aig_playground_v1`) and restored on reload
 - **Error handling** — structured error badges (AUTH ERROR, RATE LIMITED, NOT FOUND, SERVER ERROR) with contextual hints; network errors detected separately
 - **Playground tokens** — short-lived gateway auth tokens (10 min TTL, `playground` scope); at most one token per gateway (old tokens purged on new issue)
+
+### Chat
+
+Full-featured conversational AI console (`/chat` route):
+
+- **Persistent conversations** — all turns stored server-side; full message history loaded on navigation
+- **Background streaming** — streaming continues when the user switches to another conversation; a pulsing dot indicator in the conversation sidebar shows which conversation is actively receiving a response; the `setMessages` append is guarded by an `activeConvIdRef` to prevent cross-conversation message bleed
+- **Tool-use status** — `aig_tool_call` and `aig_status` SSE events are read in the SSE loop and surface real-time status labels ("🔎 Searching the web…", "⚙️ Running code…", "🔎 Fetching N URLs…") in the processing-status area above the streaming cursor; labels clear automatically on the first text token
+- **Thinking blocks** — `<think>` content rendered in collapsible "Thought process" panels; duration badge auto-calculated
+- **Artifact panel** — HTML/SVG fenced blocks ≥ 8 lines rendered in a sandboxed `<iframe>` beside the thread
+- **Auto-title generation** — background call after first exchange; Qwen3 `/no_think` prefix; `<think>` block stripping; handles incomplete excerpts robustly
+- **Auto-continue** — if `finish_reason: "length"`, automatically sends "Continue" up to 10 times
+- **File attachments** — images, PDF, DOCX, XLSX, CSV, TXT, MD via drag-and-drop or paperclip button
+- **Export** — PDF (WeasyPrint server-side) and Markdown (client-side)
 
 ---
 
@@ -863,3 +888,27 @@ State is shared across workers via `ngx.shared.dict`. No external processes requ
 ```
 
 The state backend abstraction in `state/init.lua` switches from `ngx.shared.dict` to Redis by changing a single config flag. All rate-limit keys and cache entries are already namespaced for multi-node use.
+
+---
+
+## 16. Test Infrastructure
+
+### Unified test runner (`test-runner.sh`)
+
+A single shell script drives all test suites. Invoked as:
+
+```bash
+./test-runner.sh [suite …]         # run named suites
+./test-runner.sh                   # all suites (lua-syntax backend frontend playwright)
+```
+
+| Suite | Tool | Description |
+|---|---|---|
+| `lua-syntax` | `resty` (LuaJIT) | Load-checks every `src/**/*.lua` file — catches parse errors before unit tests run. Uses `resty` rather than `luac` to support `goto` statements used in the codebase. |
+| `backend` | `resty tests/runner.lua` | Lua unit tests in `tests/unit/test_*.lua` |
+| `backend:coverage` | `resty` + `luacov` | Same as `backend`, with LuaCov instrumentation; generates `luacov.report.out` |
+| `frontend` | `vitest` | TypeScript unit tests in `frontend/src/**/*.test.ts` |
+| `frontend:coverage` | `vitest --coverage` | Same as `frontend`, with v8 coverage; generates `frontend/coverage/` |
+| `playwright` | `npx playwright test` | End-to-end browser tests; respects `PLAYWRIGHT_FILTER` env var |
+
+The `lua-syntax` suite is the fast pre-flight gate: it runs first and will catch any Lua parse error (missing `function` declarations, unmatched `end` blocks, etc.) before the heavier unit-test pass runs. Each suite reports a coloured `PASS/FAIL` line; a non-zero exit is returned if any suite fails.
