@@ -60,5 +60,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
-run_docker_production.sh
+# Production secrets — never commit
+.env.production
 run-docker-gw.sh
