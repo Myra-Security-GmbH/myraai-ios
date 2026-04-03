@@ -3,7 +3,7 @@ import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { useAuth } from "src/common/contexts/AuthContext";
 import { api } from "src/api/client";
-import { Tenant, Gateway, BudgetPeriod, TenantPreset, ModelPrice, ProviderMeta } from "src/api/types";
+import { Tenant, Gateway, BudgetPeriod, TenantPreset, SlashCommand, ModelPrice, ProviderMeta } from "src/api/types";
 import ModelPicker from "src/common/components/ModelPicker/ModelPicker";
 import { fmtDate } from "src/common/utils/date";
 import { fmtCost } from "src/common/utils/format";
@@ -177,6 +177,94 @@ function PresetModal({ preset, gateways, onClose, onSaved }: {
 }
 
 // ---------------------------------------------------------------------------
+// Tenant slash command modal
+// ---------------------------------------------------------------------------
+
+function TenantCommandModal({ command, onClose, onSaved }: {
+  command?: SlashCommand;
+  onClose: () => void;
+  onSaved: (c: SlashCommand) => void;
+}) {
+  const isEdit = !!command;
+  const [name, setName] = useState(command?.name ?? "");
+  const [description, setDescription] = useState(command?.description ?? "");
+  const [template, setTemplate] = useState(command?.template ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  const vars: string[] = [];
+  const re = /\{\{(\w+)\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(template)) !== null) {
+    if (!vars.includes(m[1])) vars.push(m[1]);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) { setError("Name is required"); return; }
+    if (!template.trim()) { setError("Template is required"); return; }
+    onSaved({
+      id:          command?.id ?? crypto.randomUUID(),
+      name:        name.trim().replace(/\s/g, "-").replace(/^\//, ""),
+      description: description,
+      template:    template,
+      created_at:  command?.created_at ?? new Date().toISOString(),
+      updated_at:  new Date().toISOString(),
+    });
+  }
+
+  return (
+    <Modal title={isEdit ? `Edit /${command!.name}` : "Add Shared Command"} onClose={onClose} error={error}>
+      <form onSubmit={handleSubmit}>
+        <div className={s["form-group"]}>
+          <label className={s["form-label"]}>Name *</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ opacity: 0.5, fontFamily: "monospace" }}>/</span>
+            <input
+              className={s["form-input"]}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="command-name"
+              required
+              style={{ fontFamily: "monospace" }}
+            />
+          </div>
+        </div>
+        <div className={s["form-group"]}>
+          <label className={s["form-label"]}>Description</label>
+          <input
+            className={s["form-input"]}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Short description shown in picker"
+          />
+        </div>
+        <div className={s["form-group"]}>
+          <label className={s["form-label"]}>Template *</label>
+          <textarea
+            className={s["form-input"]}
+            value={template}
+            onChange={(e) => setTemplate(e.target.value)}
+            rows={4}
+            placeholder={"Use {{variable}} for placeholders.\nExample: Translate to {{language}}: {{text}}"}
+            required
+            style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
+          />
+          {vars.length > 0 && (
+            <p className={s["form-hint"]}>Variables: {vars.map((v) => `{{${v}}}`).join(", ")}</p>
+          )}
+        </div>
+        <div className={s["form-actions"]}>
+          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
+          <button type="submit" className={`${s.btn} ${s["btn--primary"]}`}>
+            {isEdit ? "Save" : "Add Command"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tenant detail view
 // ---------------------------------------------------------------------------
 
@@ -191,6 +279,8 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
   const [deleting, setDeleting] = useState(false);
   const [editingPreset, setEditingPreset] = useState<TenantPreset | null | "new">(null);
   const [savingPresets, setSavingPresets] = useState(false);
+  const [editingCommand, setEditingCommand] = useState<SlashCommand | null | "new">(null);
+  const [savingCommands, setSavingCommands] = useState(false);
   const navigate = useNavigate();
   const canEditPresets = me?.role === "admin" || me?.role === "tenant_admin";
 
@@ -248,6 +338,33 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
     savePresets((tenant.chat_presets ?? []).filter((p) => p.id !== id));
   }
 
+  async function saveCommands(cmds: SlashCommand[]) {
+    setSavingCommands(true);
+    try {
+      await api.patch(`/tenants/${tenant.id}`, { slash_commands: cmds });
+      const updated = { ...tenant, slash_commands: cmds };
+      setTenant(updated);
+      onUpdated(updated);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSavingCommands(false);
+    }
+  }
+
+  function handleCommandSaved(cmd: SlashCommand) {
+    const current = tenant.slash_commands ?? [];
+    const exists = current.find((x) => x.id === cmd.id);
+    const next = exists ? current.map((x) => x.id === cmd.id ? cmd : x) : [...current, cmd];
+    saveCommands(next);
+    setEditingCommand(null);
+  }
+
+  function handleCommandDelete(id: string) {
+    if (!confirm("Remove this command?")) return;
+    saveCommands((tenant.slash_commands ?? []).filter((c) => c.id !== id));
+  }
+
 
   return (
     <>
@@ -258,6 +375,13 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
           gateways={gateways}
           onClose={() => setEditingPreset(null)}
           onSaved={handlePresetSaved}
+        />
+      )}
+      {editingCommand !== null && (
+        <TenantCommandModal
+          command={editingCommand === "new" ? undefined : editingCommand}
+          onClose={() => setEditingCommand(null)}
+          onSaved={handleCommandSaved}
         />
       )}
 
@@ -429,6 +553,69 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Slash Commands ─────────────────────────────────────────────────── */}
+      {canEditPresets && (
+        <div className={s.section}>
+          <div className={s["section-header"]}>
+            <h3>Shared Commands</h3>
+            <button
+              className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`}
+              onClick={() => setEditingCommand("new")}
+              disabled={savingCommands}
+            >
+              + Add Command
+            </button>
+          </div>
+
+          {(tenant.slash_commands ?? []).length === 0 ? (
+            <div className={s.empty}>
+              No shared commands yet. Commands defined here are available to all users in this tenant
+              via the <code>/commandname</code> shortcut in Chat.
+            </div>
+          ) : (
+            <div className={s["table-wrapper"]}>
+              <table className={s.table}>
+                <thead>
+                  <tr>
+                    <th>Command</th>
+                    <th>Description</th>
+                    <th>Template</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(tenant.slash_commands ?? []).map((cmd) => (
+                    <tr key={cmd.id}>
+                      <td><span className={s.code}>/{cmd.name}</span></td>
+                      <td style={{ opacity: 0.75 }}>{cmd.description || "—"}</td>
+                      <td style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.75, fontFamily: "monospace", fontSize: 12 }}>
+                        {cmd.template}
+                      </td>
+                      <td style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        <button
+                          className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
+                          onClick={() => setEditingCommand(cmd)}
+                          disabled={savingCommands}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`}
+                          onClick={() => handleCommandDelete(cmd.id)}
+                          disabled={savingCommands}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

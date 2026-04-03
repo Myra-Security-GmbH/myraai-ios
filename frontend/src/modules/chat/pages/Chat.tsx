@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "src/api/client";
 import type {
   ChatConversation,
   ChatFeedback,
   ChatMessage,
   ChatPreset,
+  ChatProject,
   Gateway,
   ModelPrice,
   PlaygroundToken,
+  ProjectKnowledgeText,
   ProviderMeta,
+  SlashCommand,
   Tenant,
   TenantPreset,
 } from "src/api/types";
@@ -23,6 +27,7 @@ import MessageThread from "../components/MessageThread";
 import SettingsDrawer, { type DrawerSettings } from "../components/SettingsDrawer";
 import ArtifactPanel, { type Artifact } from "../components/ArtifactPanel";
 import { Modal } from "src/common/components/Modal";
+import { VariableFillModal } from "../components/VariableFillModal";
 import chatS from "./Chat.module.scss";
 
 // ── Gear icon ──────────────────────────────────────────────────────────────
@@ -128,10 +133,29 @@ function isVisionCapable(model: string): boolean {
   return VLLM_VISION_MODELS.has(bare) || /[-_]vl[-_\d]/i.test(bare);
 }
 
+/** Build the system prompt for a project by combining instructions + knowledge files. */
+function buildProjectSystemPrompt(project: ChatProject, knowledgeFiles: ProjectKnowledgeText[]): string {
+  const parts: string[] = [];
+  if (project.instructions) parts.push(project.instructions.trim());
+  if (knowledgeFiles.length > 0) {
+    parts.push("## Knowledge Base\n\nThe following files are provided as project knowledge context:");
+    for (const f of knowledgeFiles) {
+      parts.push(`### ${f.filename}\n\n${f.extracted_text.trim()}`);
+    }
+  }
+  return parts.join("\n\n");
+}
+
 export default function Chat() {
   useDocumentTitle("Chat");
 
   const { user: me } = useAuth();
+  const [searchParams] = useSearchParams();
+
+  // ── Project context (from ?project_id= URL param) ─────────────────────────
+  const projectIdParam = searchParams.get("project_id");
+  const [activeProject, setActiveProject] = useState<ChatProject | null>(null);
+  const [projectKnowledge, setProjectKnowledge] = useState<ProjectKnowledgeText[]>([]);
 
   // ── Data ───────────────────────────────────────────────────────────────────
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -229,6 +253,10 @@ export default function Chat() {
   const [feedbackError, setFeedbackError]     = useState<string | null>(null);
   const [feedbackSaved, setFeedbackSaved]     = useState(false);
 
+  // ── Slash commands ─────────────────────────────────────────────────────────
+  const [userCommands, setUserCommands] = useState<SlashCommand[]>([]);
+  const [pendingCommand, setPendingCommand] = useState<SlashCommand | null>(null);
+
   // ── Initial data load ──────────────────────────────────────────────────────
   useEffect(() => {
     api.get<Tenant[]>("/tenants").then(setTenants).catch(() => {});
@@ -236,7 +264,32 @@ export default function Chat() {
     api.get<ProviderMeta[]>("/providers").then(setProviderMeta).catch(() => {});
     api.get<ChatConversation[]>("/conversations").then(setConversations).catch(() => {});
     api.get<ChatPreset[]>("/chat-presets").then(setPresets).catch(() => {});
+    api.get<SlashCommand[]>("/chat-commands").then(setUserCommands).catch(() => {});
   }, []);
+
+  // ── Project context: load project + knowledge when ?project_id= changes ───
+  useEffect(() => {
+    if (!projectIdParam) { setActiveProject(null); setProjectKnowledge([]); return; }
+    api.get<ChatProject>(`/projects/${projectIdParam}`)
+      .then((p) => {
+        setActiveProject(p);
+        if (p.default_gateway_id) setGatewayId(p.default_gateway_id);
+        if (p.default_model) setModel(p.default_model);
+      })
+      .catch(() => setActiveProject(null));
+    api.get<ProjectKnowledgeText[]>(`/projects/${projectIdParam}/knowledge-text`)
+      .then(setProjectKnowledge)
+      .catch(() => setProjectKnowledge([]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectIdParam]);
+
+  // Sync drawer system prompt when project or knowledge files change
+  useEffect(() => {
+    if (!activeProject) return;
+    const built = buildProjectSystemPrompt(activeProject, projectKnowledge);
+    if (built) setDrawerSettings((prev) => ({ ...prev, systemPrompt: built }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProject, projectKnowledge]);
 
   // ── Load gateways when tenant changes ─────────────────────────────────────
   useEffect(() => {
@@ -340,6 +393,7 @@ export default function Chat() {
         system_prompt: drawerSettings.systemPrompt || null,
         temperature: drawerSettings.temperature,
         max_tokens: drawerSettings.maxTokens,
+        ...(projectIdParam ? { project_id: projectIdParam } : {}),
       });
       setConversations((prev) => [conv, ...prev]);
       await loadConversation(conv.id);
@@ -532,6 +586,26 @@ export default function Chat() {
       setFeedbackError(e instanceof Error ? e.message : "Failed to save feedback");
     } finally {
       setFeedbackSaving(false);
+    }
+  }
+
+  // ── Command selection ──────────────────────────────────────────────────────
+  const activeTenant = tenants.find((t) => t.id === tenantId);
+  const tenantCommands: SlashCommand[] = activeTenant?.slash_commands ?? [];
+  const allCommands = [...tenantCommands, ...userCommands];
+
+  function handleCommandSelect(cmd: SlashCommand) {
+    setInputValue("");
+    const vars: string[] = [];
+    const re = /\{\{(\w+)\}\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(cmd.template)) !== null) {
+      if (!vars.includes(m[1])) vars.push(m[1]);
+    }
+    if (vars.length === 0) {
+      setInputValue(cmd.template);
+    } else {
+      setPendingCommand(cmd);
     }
   }
 
@@ -1321,8 +1395,18 @@ export default function Chat() {
       <div className={chatS["chat-body"]}>
         {/* Conversation sidebar */}
         <div className={chatS["conv-sidebar"]}>
+          {activeProject && (
+            <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--card-border)", background: "var(--accent-subtle)", fontSize: 12 }}>
+              <span style={{ fontWeight: 600, color: "var(--accent)" }}>{activeProject.icon} {activeProject.name}</span>
+              {" — "}
+              <a href="/projects" style={{ color: "var(--text-secondary)" }}>all projects</a>
+            </div>
+          )}
           <ConversationList
-            conversations={conversations}
+            conversations={activeProject
+              ? conversations.filter((c) => c.project_id === activeProject.id)
+              : conversations.filter((c) => !c.project_id)
+            }
             activeId={activeConvId}
             onSelect={loadConversation}
             onCreate={createConversation}
@@ -1385,6 +1469,8 @@ export default function Chat() {
             onRemoveAttachment={(idx) =>
               setPendingAttachments((prev) => prev.filter((_, i) => i !== idx))
             }
+            commands={allCommands}
+            onCommandSelect={handleCommandSelect}
           />
         </div>
       </div>
@@ -1400,6 +1486,15 @@ export default function Chat() {
           onApplyPreset={applyPreset}
           onSavePreset={savePreset}
           onDeletePreset={deletePreset}
+        />
+      )}
+
+      {/* Variable fill modal for slash commands */}
+      {pendingCommand && (
+        <VariableFillModal
+          command={pendingCommand}
+          onInsert={(text) => { setInputValue(text); setPendingCommand(null); }}
+          onCancel={() => setPendingCommand(null)}
         />
       )}
 

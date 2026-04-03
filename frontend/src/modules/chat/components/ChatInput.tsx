@@ -1,5 +1,7 @@
 import { useRef, useEffect } from "react";
 import AttachmentChip from "./AttachmentChip";
+import { CommandPicker } from "./CommandPicker";
+import { SlashCommand } from "src/api/types";
 import s from "../pages/Chat.module.scss";
 
 function SendIcon() {
@@ -43,6 +45,8 @@ interface Props {
   pendingAttachments?: PendingAttachment[];
   onAttach?: (att: PendingAttachment) => void;
   onRemoveAttachment?: (idx: number) => void;
+  commands?: SlashCommand[];
+  onCommandSelect?: (cmd: SlashCommand) => void;
 }
 
 export default function ChatInput({
@@ -55,9 +59,15 @@ export default function ChatInput({
   pendingAttachments = [],
   onAttach,
   onRemoveAttachment,
+  commands,
+  onCommandSelect,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Command picker state
+  const showPicker = value.startsWith("/") && !value.includes("\n") && !value.includes(" ") && (commands?.length ?? 0) > 0;
+  const commandQuery = showPicker ? value.slice(1) : "";
 
   // Auto-resize textarea
   useEffect(() => {
@@ -68,6 +78,15 @@ export default function ChatInput({
   }, [value]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // When the picker is open, arrow keys and Enter/Escape are handled by CommandPicker via global listener
+    if (showPicker && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Escape")) {
+      e.preventDefault();
+      return;
+    }
+    if (showPicker && e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      return; // CommandPicker handles Enter via global listener
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!isStreaming && !disabled && value.trim()) onSend();
@@ -91,7 +110,15 @@ export default function ChatInput({
 
   return (
     <div className={s["input-area"]}>
-      <div className={s["input-inner"]}>
+      <div className={s["input-inner"]} style={{ position: "relative" }}>
+        {showPicker && onCommandSelect && (
+          <CommandPicker
+            query={commandQuery}
+            commands={commands ?? []}
+            onSelect={(cmd) => { onChange(""); onCommandSelect(cmd); }}
+            onDismiss={() => onChange("")}
+          />
+        )}
         {pendingAttachments.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {pendingAttachments.map((att, idx) => (
