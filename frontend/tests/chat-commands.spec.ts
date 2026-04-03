@@ -1047,7 +1047,7 @@ test.describe("Tenants page UI — Shared Commands", () => {
 
     await page.goto(`/tenants/${tenantId}`);
     await expect(page.getByRole("heading", { name: tenantSlug, exact: true })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("Shared Commands")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Shared Commands" })).toBeVisible();
     await expect(page.getByText(/No shared commands yet/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /\+ Add Command/i })).toBeVisible();
   });

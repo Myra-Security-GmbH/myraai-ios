@@ -96,14 +96,14 @@ function CommandModal({
             style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
           />
           {vars.length > 0 && (
-            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+            <div className={s["form-hint"]}>
               Variables detected: {vars.map((v) => <code key={v} style={{ marginRight: 6, background: "var(--surface-2)", padding: "1px 4px", borderRadius: 3 }}>{`{{${v}}}`}</code>)}
             </div>
           )}
         </div>
-        <div className={s["modal-footer"]}>
-          <button type="button" className={s["btn-secondary"]} onClick={onClose}>Cancel</button>
-          <button type="submit" className={s["btn-primary"]} disabled={loading}>
+        <div className={s["form-actions"]}>
+          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
+          <button type="submit" className={`${s.btn} ${s["btn--primary"]}`} disabled={loading}>
             {loading ? "Saving…" : initial ? "Save" : "Create"}
           </button>
         </div>
@@ -148,44 +148,46 @@ export default function Commands() {
   }
 
   return (
-    <div className={s["page"]}>
+    <div className={s.page}>
       <div className={s["page-header"]}>
         <h1 className={s["page-title"]}>My Commands</h1>
-        <button className={s["btn-primary"]} onClick={() => setShowNew(true)}>+ New command</button>
+        <button className={`${s.btn} ${s["btn--primary"]}`} onClick={() => setShowNew(true)}>+ New command</button>
       </div>
 
       {loading ? (
-        <p style={{ opacity: 0.5 }}>Loading…</p>
+        <div className={s.empty}>Loading…</div>
       ) : commands.length === 0 ? (
-        <div className={s["empty-state"]}>
+        <div className={s.empty}>
           <p>No commands yet. Create one to use <code>/commandname</code> shortcuts in chat.</p>
         </div>
       ) : (
-        <table className={s["table"]}>
-          <thead>
-            <tr>
-              <th>Command</th>
-              <th>Description</th>
-              <th>Template</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {commands.map((cmd) => (
-              <tr key={cmd.id}>
-                <td><code style={{ fontFamily: "monospace" }}>/{cmd.name}</code></td>
-                <td style={{ opacity: 0.75 }}>{cmd.description || "—"}</td>
-                <td style={{ maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.75, fontFamily: "monospace", fontSize: 12 }}>
-                  {cmd.template}
-                </td>
-                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                  <button className={s["btn-secondary"]} style={{ marginRight: 6 }} onClick={() => setEditing(cmd)}>Edit</button>
-                  <button className={s["btn-danger"]} onClick={() => handleDelete(cmd.id)}>Delete</button>
-                </td>
+        <div className={s["table-wrapper"]}>
+          <table className={s.table}>
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>Description</th>
+                <th>Template</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {commands.map((cmd) => (
+                <tr key={cmd.id}>
+                  <td><code style={{ fontFamily: "monospace" }}>/{cmd.name}</code></td>
+                  <td style={{ color: "var(--text-secondary)" }}>{cmd.description || "—"}</td>
+                  <td style={{ maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-secondary)", fontFamily: "monospace", fontSize: 12 }}>
+                    {cmd.template}
+                  </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} style={{ marginRight: 6 }} onClick={() => setEditing(cmd)}>Edit</button>
+                    <button className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`} onClick={() => handleDelete(cmd.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {showNew && <CommandModal onClose={() => setShowNew(false)} onSaved={handleSaved} />}
