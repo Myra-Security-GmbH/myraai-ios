@@ -84,6 +84,7 @@ function M.register(route)
         local id, err = storage.create_conversation({
             user_id       = u.id,
             gateway_id    = body.gateway_id,
+            project_id    = nullable(body.project_id),
             title         = nullable(body.title) or "New conversation",
             model         = nullable(body.model) or "",
             system_prompt = nullable(body.system_prompt),
@@ -302,6 +303,54 @@ function M.register(route)
     route("DELETE", "^/admin/v1/chat%-presets/([^/]+)$", function(id)
         local u = ngx.ctx.admin_user
         storage.delete_preset(id, u.id)
+        send(200, { ok = true })
+    end)
+
+    -- ── Slash commands ────────────────────────────────────────────────────────
+
+    -- GET /admin/v1/chat-commands
+    route("GET", "^/admin/v1/chat%-commands$", function()
+        local u = ngx.ctx.admin_user
+        send(200, storage.list_commands(u.id))
+    end)
+
+    -- POST /admin/v1/chat-commands  { name, description?, template }
+    route("POST", "^/admin/v1/chat%-commands$", function()
+        local u    = ngx.ctx.admin_user
+        local body = read_body()
+        if not body.name or body.name == "" then
+            return send(400, { error = "name is required" })
+        end
+        if not body.template or body.template == "" then
+            return send(400, { error = "template is required" })
+        end
+        local id, err = storage.create_command({
+            user_id     = u.id,
+            name        = body.name,
+            description = body.description or "",
+            template    = body.template,
+        })
+        if not id then return send(500, { error = tostring(err) }) end
+        send(201, { id = id })
+    end)
+
+    -- PATCH /admin/v1/chat-commands/:id
+    route("PATCH", "^/admin/v1/chat%-commands/([^/]+)$", function(id)
+        local u    = ngx.ctx.admin_user
+        local body = read_body()
+        local data = {}
+        if body.name        ~= nil then data.name        = nullable(body.name) end
+        if body.description ~= nil then data.description = nullable(body.description) end
+        if body.template    ~= nil then data.template    = nullable(body.template) end
+        local err = storage.update_command(id, u.id, data)
+        if err then return send(500, { error = tostring(err) }) end
+        send(200, { ok = true })
+    end)
+
+    -- DELETE /admin/v1/chat-commands/:id
+    route("DELETE", "^/admin/v1/chat%-commands/([^/]+)$", function(id)
+        local u = ngx.ctx.admin_user
+        storage.delete_command(id, u.id)
         send(200, { ok = true })
     end)
 

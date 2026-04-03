@@ -329,6 +329,65 @@ local function migrate_columns(cfg)
         CREATE INDEX IF NOT EXISTS idx_chat_preset_user ON chat_preset(user_id);
     ]])
 
+    -- Projects tables (idempotent: CREATE TABLE IF NOT EXISTS)
+    cfg_db2:exec([[
+        CREATE TABLE IF NOT EXISTS chat_project (
+            id                 TEXT    PRIMARY KEY,
+            tenant_id          TEXT    NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+            name               TEXT    NOT NULL,
+            description        TEXT,
+            instructions       TEXT,
+            icon               TEXT    NOT NULL DEFAULT '📁',
+            color              TEXT    NOT NULL DEFAULT '#2563eb',
+            default_gateway_id TEXT    REFERENCES gateway(id) ON DELETE SET NULL,
+            default_model      TEXT,
+            created_by         TEXT    NOT NULL REFERENCES user(id),
+            created_at         INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            updated_at         INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            deleted_at         INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_project_tenant
+            ON chat_project(tenant_id, updated_at DESC) WHERE deleted_at IS NULL;
+
+        CREATE TABLE IF NOT EXISTS chat_project_member (
+            project_id TEXT NOT NULL REFERENCES chat_project(id) ON DELETE CASCADE,
+            user_id    TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+            role       TEXT NOT NULL DEFAULT 'viewer',
+            invited_by TEXT REFERENCES user(id),
+            joined_at  INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            PRIMARY KEY (project_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_proj_member_user
+            ON chat_project_member(user_id);
+
+        CREATE TABLE IF NOT EXISTS chat_project_knowledge (
+            id             TEXT    PRIMARY KEY,
+            project_id     TEXT    NOT NULL REFERENCES chat_project(id) ON DELETE CASCADE,
+            filename       TEXT    NOT NULL,
+            content_type   TEXT    NOT NULL DEFAULT 'text/plain',
+            size_bytes     INTEGER NOT NULL DEFAULT 0,
+            extracted_text TEXT    NOT NULL DEFAULT '',
+            token_count    INTEGER NOT NULL DEFAULT 0,
+            created_by     TEXT    NOT NULL REFERENCES user(id),
+            created_at     INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+            UNIQUE(project_id, filename)
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_proj_know_project
+            ON chat_project_knowledge(project_id, created_at);
+    ]])
+
+    -- Add project_id + override columns to chat_conversation (idempotent)
+    local conv_cols = {}
+    for row in cfg_db2:nrows("PRAGMA table_info(chat_conversation)") do conv_cols[row.name] = true end
+    if not conv_cols.project_id          then cfg_db2:exec("ALTER TABLE chat_conversation ADD COLUMN project_id          TEXT REFERENCES chat_project(id) ON DELETE SET NULL") end
+    if not conv_cols.gateway_id_override then cfg_db2:exec("ALTER TABLE chat_conversation ADD COLUMN gateway_id_override TEXT") end
+    if not conv_cols.model_override      then cfg_db2:exec("ALTER TABLE chat_conversation ADD COLUMN model_override      TEXT") end
+
+    -- Add model column to chat_message if absent (older deployments)
+    local msg_cols2 = {}
+    for row in cfg_db2:nrows("PRAGMA table_info(chat_message)") do msg_cols2[row.name] = true end
+    if not msg_cols2.model then cfg_db2:exec("ALTER TABLE chat_message ADD COLUMN model TEXT") end
+
     cfg_db2:close()
 end
 
@@ -1915,7 +1974,7 @@ function M.list_conversations(user_id, limit, offset)
     limit  = math.min(limit or 50, 200)
     offset = offset or 0
     return query_all(cfg_db(), string.format([[
-        SELECT id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+        SELECT id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens,
                datetime(created_at, 'unixepoch') || 'Z' AS created_at,
                datetime(updated_at, 'unixepoch') || 'Z' AS updated_at
         FROM chat_conversation
@@ -1930,9 +1989,10 @@ function M.create_conversation(data)
     local now = os.time()
     local e = exec_one(cfg_db(), [[
         INSERT INTO chat_conversation
-            (id, user_id, gateway_id, title, model, system_prompt, temperature, max_tokens, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)
+            (id, user_id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
     ]], id, data.user_id, data.gateway_id,
+        data.project_id,
         data.title or "New conversation",
         data.model or "",
         data.system_prompt,
@@ -1945,7 +2005,7 @@ end
 
 function M.get_conversation(id, user_id)
     local conv = query_one(cfg_db(), [[
-        SELECT id, user_id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+        SELECT id, user_id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens,
                datetime(created_at, 'unixepoch') || 'Z' AS created_at,
                datetime(updated_at, 'unixepoch') || 'Z' AS updated_at
         FROM chat_conversation WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1
@@ -2130,6 +2190,224 @@ end
 
 function M.delete_preset(id, user_id)
     return exec_one(cfg_db(), "DELETE FROM chat_preset WHERE id = ? AND user_id = ?", id, user_id)
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: projects
+-- ---------------------------------------------------------------------------
+
+function M.list_projects(tenant_id, user_id, is_admin)
+    if is_admin then
+        return query_all(cfg_db(), [[
+            SELECT p.id, p.name, p.description, p.icon, p.color,
+                   p.default_gateway_id, p.default_model,
+                   p.created_by,
+                   datetime(p.created_at, 'unixepoch') || 'Z' AS created_at,
+                   datetime(p.updated_at, 'unixepoch') || 'Z' AS updated_at,
+                   (SELECT COUNT(*) FROM chat_project_member pm2 WHERE pm2.project_id = p.id) AS member_count,
+                   (SELECT COUNT(*) FROM chat_project_knowledge pk WHERE pk.project_id = p.id) AS knowledge_count
+            FROM chat_project p
+            WHERE p.tenant_id = ? AND p.deleted_at IS NULL
+            ORDER BY p.updated_at DESC
+        ]], tenant_id) or setmetatable({}, cjson.array_mt)
+    else
+        return query_all(cfg_db(), [[
+            SELECT p.id, p.name, p.description, p.icon, p.color,
+                   p.default_gateway_id, p.default_model,
+                   p.created_by, pm.role AS my_role,
+                   datetime(p.created_at, 'unixepoch') || 'Z' AS created_at,
+                   datetime(p.updated_at, 'unixepoch') || 'Z' AS updated_at,
+                   (SELECT COUNT(*) FROM chat_project_member pm2 WHERE pm2.project_id = p.id) AS member_count,
+                   (SELECT COUNT(*) FROM chat_project_knowledge pk WHERE pk.project_id = p.id) AS knowledge_count
+            FROM chat_project p
+            JOIN chat_project_member pm ON pm.project_id = p.id AND pm.user_id = ?
+            WHERE p.tenant_id = ? AND p.deleted_at IS NULL
+            ORDER BY p.updated_at DESC
+        ]], user_id, tenant_id) or setmetatable({}, cjson.array_mt)
+    end
+end
+
+function M.create_project(data)
+    local id  = uuid_lib.v4()
+    local now = os.time()
+    local e = exec_one(cfg_db(), [[
+        INSERT INTO chat_project
+            (id, tenant_id, name, description, instructions, icon, color,
+             default_gateway_id, default_model, created_by, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    ]], id, data.tenant_id, data.name, data.description, data.instructions,
+        data.icon or "📁", data.color or "#2563eb",
+        data.default_gateway_id, data.default_model,
+        data.created_by, now, now)
+    if e then return nil, e end
+    -- auto-add creator as owner
+    local e2 = exec_one(cfg_db(), [[
+        INSERT OR IGNORE INTO chat_project_member (project_id, user_id, role, joined_at)
+        VALUES (?, ?, 'owner', ?)
+    ]], id, data.created_by, now)
+    if e2 then return nil, e2 end
+    return id
+end
+
+function M.get_project(id, user_id, is_admin)
+    local row
+    if is_admin then
+        row = query_one(cfg_db(), [[
+            SELECT p.id, p.name, p.description, p.instructions, p.icon, p.color,
+                   p.default_gateway_id, p.default_model, p.created_by,
+                   datetime(p.created_at, 'unixepoch') || 'Z' AS created_at,
+                   datetime(p.updated_at, 'unixepoch') || 'Z' AS updated_at
+            FROM chat_project p
+            WHERE p.id = ? AND p.deleted_at IS NULL LIMIT 1
+        ]], id)
+    else
+        row = query_one(cfg_db(), [[
+            SELECT p.id, p.name, p.description, p.instructions, p.icon, p.color,
+                   p.default_gateway_id, p.default_model, p.created_by,
+                   pm.role AS my_role,
+                   datetime(p.created_at, 'unixepoch') || 'Z' AS created_at,
+                   datetime(p.updated_at, 'unixepoch') || 'Z' AS updated_at
+            FROM chat_project p
+            JOIN chat_project_member pm ON pm.project_id = p.id AND pm.user_id = ?
+            WHERE p.id = ? AND p.deleted_at IS NULL LIMIT 1
+        ]], user_id, id)
+    end
+    if not row then return nil, "not_found" end
+    -- attach members
+    row.members = query_all(cfg_db(), [[
+        SELECT pm.user_id, pm.role,
+               u.email, u.name,
+               datetime(pm.joined_at, 'unixepoch') || 'Z' AS joined_at
+        FROM chat_project_member pm
+        JOIN user u ON u.id = pm.user_id
+        WHERE pm.project_id = ?
+        ORDER BY pm.joined_at ASC
+    ]], id) or setmetatable({}, cjson.array_mt)
+    -- attach knowledge metadata (no text)
+    row.knowledge = query_all(cfg_db(), [[
+        SELECT id, filename, content_type, size_bytes, token_count,
+               datetime(created_at, 'unixepoch') || 'Z' AS created_at
+        FROM chat_project_knowledge WHERE project_id = ?
+        ORDER BY created_at ASC
+    ]], id) or setmetatable({}, cjson.array_mt)
+    return row
+end
+
+function M.update_project(id, data)
+    local sets, params = {}, {}
+    local allowed = {"name","description","instructions","icon","color","default_gateway_id","default_model"}
+    for _, f in ipairs(allowed) do
+        if data[f] ~= nil then
+            sets[#sets+1]   = f .. " = ?"
+            params[#params+1] = data[f]
+        end
+    end
+    if #sets == 0 then return nil end
+    sets[#sets+1]   = "updated_at = ?"
+    params[#params+1] = os.time()
+    params[#params+1] = id
+    return exec_one(cfg_db(),
+        "UPDATE chat_project SET " .. table.concat(sets, ", ") .. " WHERE id = ? AND deleted_at IS NULL",
+        table.unpack(params))
+end
+
+function M.delete_project(id)
+    local now = os.time()
+    exec_one(cfg_db(), [[
+        UPDATE chat_conversation SET project_id = NULL WHERE project_id = ?
+    ]], id)
+    return exec_one(cfg_db(), [[
+        UPDATE chat_project SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL
+    ]], now, id)
+end
+
+function M.get_project_member(project_id, user_id)
+    return query_one(cfg_db(), [[
+        SELECT project_id, user_id, role,
+               datetime(joined_at, 'unixepoch') || 'Z' AS joined_at
+        FROM chat_project_member WHERE project_id = ? AND user_id = ? LIMIT 1
+    ]], project_id, user_id)
+end
+
+function M.add_project_member(project_id, user_id, role, invited_by)
+    local now = os.time()
+    return exec_one(cfg_db(), [[
+        INSERT OR REPLACE INTO chat_project_member (project_id, user_id, role, invited_by, joined_at)
+        VALUES (?, ?, ?, ?, ?)
+    ]], project_id, user_id, role or "viewer", invited_by, now)
+end
+
+function M.update_project_member_role(project_id, user_id, role)
+    return exec_one(cfg_db(), [[
+        UPDATE chat_project_member SET role = ? WHERE project_id = ? AND user_id = ?
+    ]], role, project_id, user_id)
+end
+
+function M.remove_project_member(project_id, user_id)
+    return exec_one(cfg_db(), [[
+        DELETE FROM chat_project_member WHERE project_id = ? AND user_id = ?
+    ]], project_id, user_id)
+end
+
+function M.count_project_owners(project_id)
+    local row = query_one(cfg_db(), [[
+        SELECT COUNT(*) AS n FROM chat_project_member
+        WHERE project_id = ? AND role = 'owner'
+    ]], project_id)
+    return row and row.n or 0
+end
+
+function M.list_project_knowledge(project_id)
+    return query_all(cfg_db(), [[
+        SELECT id, filename, content_type, size_bytes, token_count,
+               created_by,
+               datetime(created_at, 'unixepoch') || 'Z' AS created_at
+        FROM chat_project_knowledge WHERE project_id = ?
+        ORDER BY created_at ASC
+    ]], project_id) or setmetatable({}, cjson.array_mt)
+end
+
+function M.get_project_knowledge_text(project_id)
+    return query_all(cfg_db(), [[
+        SELECT id, filename, content_type, size_bytes, token_count, extracted_text,
+               datetime(created_at, 'unixepoch') || 'Z' AS created_at
+        FROM chat_project_knowledge WHERE project_id = ?
+        ORDER BY created_at ASC
+    ]], project_id) or setmetatable({}, cjson.array_mt)
+end
+
+function M.add_project_knowledge(data)
+    local id  = uuid_lib.v4()
+    local now = os.time()
+    local token_count = math.floor((#(data.extracted_text or "")) / 4)
+    local e = exec_one(cfg_db(), [[
+        INSERT INTO chat_project_knowledge
+            (id, project_id, filename, content_type, size_bytes, extracted_text,
+             token_count, created_by, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?)
+    ]], id, data.project_id, data.filename, data.content_type or "text/plain",
+        data.size_bytes or 0, data.extracted_text or "",
+        token_count, data.created_by, now)
+    if e then return nil, e end
+    return id
+end
+
+function M.delete_project_knowledge(id, project_id)
+    return exec_one(cfg_db(), [[
+        DELETE FROM chat_project_knowledge WHERE id = ? AND project_id = ?
+    ]], id, project_id)
+end
+
+function M.list_project_conversations(project_id, limit)
+    limit = limit or 50
+    return query_all(cfg_db(), [[
+        SELECT id, title, model,
+               datetime(created_at, 'unixepoch') || 'Z' AS created_at,
+               datetime(updated_at, 'unixepoch') || 'Z' AS updated_at
+        FROM chat_conversation
+        WHERE project_id = ? AND deleted_at IS NULL
+        ORDER BY updated_at DESC LIMIT ?
+    ]], project_id, limit) or setmetatable({}, cjson.array_mt)
 end
 
 return M

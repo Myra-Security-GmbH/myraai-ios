@@ -33,6 +33,19 @@
 --   POST   /admin/v1/client-errors
 --   GET    /admin/v1/client-errors
 --   GET    /admin/v1/audit-log
+--   GET    /admin/v1/projects
+--   POST   /admin/v1/projects
+--   GET    /admin/v1/projects/:id
+--   PATCH  /admin/v1/projects/:id
+--   DELETE /admin/v1/projects/:id
+--   POST   /admin/v1/projects/:id/members
+--   PATCH  /admin/v1/projects/:id/members/:uid
+--   DELETE /admin/v1/projects/:id/members/:uid
+--   GET    /admin/v1/projects/:id/knowledge
+--   POST   /admin/v1/projects/:id/knowledge
+--   DELETE /admin/v1/projects/:id/knowledge/:kid
+--   GET    /admin/v1/projects/:id/knowledge-text
+--   GET    /admin/v1/projects/:id/conversations
 
 local json         = require("utils.json")
 local storage      = require("storage")
@@ -245,6 +258,8 @@ route("GET", "^/admin/v1/tenants$", function()
         r.siem_config = nil
         r.chat_presets = r.chat_presets_config and json.decode(r.chat_presets_config) or json.decode("[]")
         r.chat_presets_config = nil
+        r.slash_commands = r.slash_commands_config and json.decode(r.slash_commands_config) or json.decode("[]")
+        r.slash_commands_config = nil
     end
     send(200, rows)
 end)
@@ -258,7 +273,8 @@ route("POST", "^/admin/v1/tenants$", function()
     if not b or not b.slug then return send(400, { error = "slug required" }) end
     local siem_json          = b.siem          and json.encode(b.siem)          or nil
     local chat_presets_json  = type(b.chat_presets) == "table" and json.encode(b.chat_presets) or nil
-    local id = storage.upsert_tenant(b.slug, b.plan, b.budget_usd, b.budget_period, siem_json, chat_presets_json)
+    local slash_commands_json = type(b.slash_commands) == "table" and json.encode(b.slash_commands) or nil
+    local id = storage.upsert_tenant(b.slug, b.plan, b.budget_usd, b.budget_period, siem_json, chat_presets_json, slash_commands_json)
     send(201, { id = id, slug = b.slug })
 end)
 
@@ -267,9 +283,10 @@ route("PATCH", "^/admin/v1/tenants/([^/]+)$", function(tenant_id)
     if not require_tenant_access(tenant_id) then return end
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
-    local siem_json         = (type(b.siem)          == "table") and json.encode(b.siem)          or nil
-    local chat_presets_json = (type(b.chat_presets)  == "table") and json.encode(b.chat_presets)  or nil
-    local err = storage.update_tenant(tenant_id, b.plan, nullable(b.budget_usd), b.budget_period, siem_json, chat_presets_json)
+    local siem_json           = (type(b.siem)           == "table") and json.encode(b.siem)           or nil
+    local chat_presets_json   = (type(b.chat_presets)   == "table") and json.encode(b.chat_presets)   or nil
+    local slash_commands_json = (type(b.slash_commands) == "table") and json.encode(b.slash_commands) or nil
+    local err = storage.update_tenant(tenant_id, b.plan, nullable(b.budget_usd), b.budget_period, siem_json, chat_presets_json, slash_commands_json)
     if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
@@ -903,6 +920,11 @@ end)
 -- Chat routes (conversations, messages, attachments, presets)
 -- ---------------------------------------------------------------------------
 require("admin.chat").register(route)
+
+-- ---------------------------------------------------------------------------
+-- Project routes (projects, members, knowledge)
+-- ---------------------------------------------------------------------------
+require("admin.projects").register(route)
 
 -- ---------------------------------------------------------------------------
 -- Dispatcher

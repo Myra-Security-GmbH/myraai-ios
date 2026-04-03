@@ -46,6 +46,7 @@ export interface Tenant {
   budget_period: BudgetPeriod;
   siem?: SiemConfig;
   chat_presets?: TenantPreset[];
+  slash_commands?: SlashCommand[];
   created_at: string;
 }
 
@@ -485,6 +486,7 @@ export interface ChatConversation {
   id: string;
   user_id?: string;
   gateway_id: string;
+  project_id?: string | null;
   title: string;
   model: string;
   system_prompt: string | null;
@@ -534,6 +536,15 @@ export interface ChatPreset {
   updated_at: string;
 }
 
+export interface SlashCommand {
+  id: string;
+  name: string;
+  description: string;
+  template: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ChatFeedback {
   id: string;
   conversation_id: string;
@@ -542,4 +553,48 @@ export interface ChatFeedback {
   comment: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export type ProjectRole = "owner" | "editor" | "viewer";
+
+export interface ProjectMember {
+  user_id: string;
+  role: ProjectRole;
+  email: string;
+  name: string | null;
+  joined_at: string;
+}
+
+export interface ProjectKnowledge {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  token_count: number;
+  created_by?: string;
+  created_at: string;
+}
+
+export interface ProjectKnowledgeText extends ProjectKnowledge {
+  extracted_text: string;
+}
+
+export interface ChatProject {
+  id: string;
+  tenant_id?: string;
+  name: string;
+  description: string | null;
+  instructions: string | null;
+  icon: string;
+  color: string;
+  default_gateway_id: string | null;
+  default_model: string | null;
+  created_by: string;
+  my_role?: ProjectRole;
+  created_at: string;
+  updated_at: string;
+  member_count?: number;
+  knowledge_count?: number;
+  members?: ProjectMember[];
+  knowledge?: ProjectKnowledge[];
 }

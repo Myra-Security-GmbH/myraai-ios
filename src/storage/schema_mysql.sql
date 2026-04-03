@@ -469,3 +469,76 @@ CREATE TABLE IF NOT EXISTS chat_feedback (
     CONSTRAINT fk_chat_feedback_user FOREIGN KEY (user_id)
         REFERENCES `user`(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── Slash commands ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS chat_command (
+    id          VARCHAR(36)  NOT NULL,
+    user_id     VARCHAR(36)  NOT NULL,
+    name        VARCHAR(64)  NOT NULL,
+    description VARCHAR(255) NOT NULL DEFAULT '',
+    template    TEXT         NOT NULL,
+    created_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    updated_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    PRIMARY KEY (id),
+    KEY idx_chat_command_user (user_id),
+    CONSTRAINT fk_chat_command_user FOREIGN KEY (user_id)
+        REFERENCES `user`(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── Projects ──────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS chat_project (
+    id                 VARCHAR(36)   NOT NULL,
+    tenant_id          VARCHAR(36)   NOT NULL,
+    name               VARCHAR(255)  NOT NULL,
+    description        TEXT,
+    instructions       MEDIUMTEXT,
+    icon               VARCHAR(8)    NOT NULL DEFAULT '📁',
+    color              VARCHAR(16)   NOT NULL DEFAULT '#2563eb',
+    default_gateway_id VARCHAR(36),
+    default_model      VARCHAR(128),
+    created_by         VARCHAR(36)   NOT NULL,
+    created_at         BIGINT        NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    updated_at         BIGINT        NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    deleted_at         BIGINT,
+    PRIMARY KEY (id),
+    KEY idx_chat_project_tenant (tenant_id, updated_at),
+    CONSTRAINT fk_chat_project_tenant  FOREIGN KEY (tenant_id)          REFERENCES tenant(id)  ON DELETE CASCADE,
+    CONSTRAINT fk_chat_project_creator FOREIGN KEY (created_by)         REFERENCES `user`(id),
+    CONSTRAINT fk_chat_project_gw      FOREIGN KEY (default_gateway_id) REFERENCES gateway(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS chat_project_member (
+    project_id  VARCHAR(36)  NOT NULL,
+    user_id     VARCHAR(36)  NOT NULL,
+    role        VARCHAR(16)  NOT NULL DEFAULT 'viewer',
+    invited_by  VARCHAR(36),
+    joined_at   BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    PRIMARY KEY (project_id, user_id),
+    KEY idx_chat_proj_member_user (user_id),
+    CONSTRAINT fk_proj_member_project FOREIGN KEY (project_id) REFERENCES chat_project(id) ON DELETE CASCADE,
+    CONSTRAINT fk_proj_member_user    FOREIGN KEY (user_id)    REFERENCES `user`(id)        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS chat_project_knowledge (
+    id              VARCHAR(36)  NOT NULL,
+    project_id      VARCHAR(36)  NOT NULL,
+    filename        VARCHAR(255) NOT NULL,
+    content_type    VARCHAR(128) NOT NULL DEFAULT 'text/plain',
+    size_bytes      INT          NOT NULL DEFAULT 0,
+    extracted_text  MEDIUMTEXT   NOT NULL,
+    token_count     INT          NOT NULL DEFAULT 0,
+    created_by      VARCHAR(36)  NOT NULL,
+    created_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_proj_know_name (project_id, filename),
+    KEY idx_chat_proj_know_project (project_id, created_at),
+    CONSTRAINT fk_proj_know_project FOREIGN KEY (project_id) REFERENCES chat_project(id) ON DELETE CASCADE,
+    CONSTRAINT fk_proj_know_user    FOREIGN KEY (created_by) REFERENCES `user`(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Add project_id + gateway/model override columns to conversations (idempotent via ALTER IGNORE)
+-- In MySQL 8+ use IF NOT EXISTS:
+ALTER TABLE chat_conversation
+    ADD COLUMN IF NOT EXISTS project_id          VARCHAR(36),
+    ADD COLUMN IF NOT EXISTS gateway_id_override VARCHAR(36),
+    ADD COLUMN IF NOT EXISTS model_override      VARCHAR(128);

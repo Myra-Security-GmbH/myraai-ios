@@ -201,3 +201,48 @@ CREATE TABLE IF NOT EXISTS oauth_link (
     email      TEXT,
     PRIMARY KEY (provider, subject)
 );
+
+-- ── Projects ─────────────────────────────────────────────────────────────────
+-- A project groups conversations under shared instructions and a knowledge base.
+CREATE TABLE IF NOT EXISTS chat_project (
+    id                  TEXT PRIMARY KEY,
+    tenant_id           TEXT NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    name                TEXT NOT NULL,
+    description         TEXT,
+    instructions        TEXT,            -- system prompt for all conversations in this project
+    icon                TEXT NOT NULL DEFAULT '📁',
+    color               TEXT NOT NULL DEFAULT '#2563eb',
+    default_gateway_id  TEXT REFERENCES gateway(id) ON DELETE SET NULL,
+    default_model       TEXT,
+    created_by          TEXT NOT NULL REFERENCES user(id),
+    created_at          INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    updated_at          INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    deleted_at          INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_chat_project_tenant ON chat_project(tenant_id, updated_at DESC) WHERE deleted_at IS NULL;
+
+-- Project membership: owner | editor | viewer
+CREATE TABLE IF NOT EXISTS chat_project_member (
+    project_id  TEXT NOT NULL REFERENCES chat_project(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    role        TEXT NOT NULL DEFAULT 'viewer',
+    invited_by  TEXT REFERENCES user(id),
+    joined_at   INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    PRIMARY KEY (project_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chat_proj_member_user ON chat_project_member(user_id);
+
+-- Project knowledge files (text extracted at upload time)
+CREATE TABLE IF NOT EXISTS chat_project_knowledge (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES chat_project(id) ON DELETE CASCADE,
+    filename        TEXT NOT NULL,
+    content_type    TEXT NOT NULL DEFAULT 'text/plain',
+    size_bytes      INTEGER NOT NULL DEFAULT 0,
+    extracted_text  TEXT NOT NULL DEFAULT '',
+    token_count     INTEGER NOT NULL DEFAULT 0,  -- floor(len(extracted_text)/4)
+    created_by      TEXT NOT NULL REFERENCES user(id),
+    created_at      INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    UNIQUE(project_id, filename)
+);
+CREATE INDEX IF NOT EXISTS idx_chat_proj_know_project ON chat_project_knowledge(project_id, created_at);

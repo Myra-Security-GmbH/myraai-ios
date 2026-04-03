@@ -257,6 +257,30 @@ function M.migrate(cfg)
     db:query("ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS gateway_id VARCHAR(36)")
     -- Add model to chat_message if not present (idempotent)
     db:query("ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS model VARCHAR(255)")
+    -- Add project FK to chat_conversation (idempotent — silently fails if constraint exists)
+    db:query([[
+        ALTER TABLE chat_conversation
+        ADD CONSTRAINT fk_chat_conv_project FOREIGN KEY (project_id)
+            REFERENCES chat_project(id) ON DELETE SET NULL
+    ]])
+    -- Add slash_commands_config column to tenant if not present (idempotent)
+    db:query("ALTER TABLE tenant ADD COLUMN IF NOT EXISTS slash_commands_config TEXT")
+    -- Create chat_command table if not present (idempotent)
+    db:query([[
+        CREATE TABLE IF NOT EXISTS chat_command (
+            id          VARCHAR(36)  NOT NULL,
+            user_id     VARCHAR(36)  NOT NULL,
+            name        VARCHAR(64)  NOT NULL,
+            description VARCHAR(255) NOT NULL DEFAULT '',
+            template    TEXT         NOT NULL,
+            created_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            updated_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            PRIMARY KEY (id),
+            KEY idx_chat_command_user (user_id),
+            CONSTRAINT fk_chat_command_user FOREIGN KEY (user_id)
+                REFERENCES `user`(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ]])
     -- Create chat_feedback table if not present (idempotent)
     db:query([[
         CREATE TABLE IF NOT EXISTS chat_feedback (
@@ -445,29 +469,30 @@ end
 -- Tenant write helpers
 -- ---------------------------------------------------------------------------
 
-function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config, chat_presets_config)
+function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config)
     local id = uuid()
     local db, err = get_conn()
     if not db then return nil end
     exec_one(db, [[
-        INSERT IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config)
-        VALUES (?,?,?,?,?,?,?)
-    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config, chat_presets_config)
+        INSERT IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config)
+        VALUES (?,?,?,?,?,?,?,?)
+    ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config, chat_presets_config, slash_commands_config)
     local row = query_one(db, "SELECT id FROM tenant WHERE slug = ?", slug)
     release(db)
     return row and row.id
 end
 
-function M.update_tenant(id, plan, budget_usd, budget_period, siem_config, chat_presets_config)
+function M.update_tenant(id, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config)
     local db, err = get_conn()
     if not db then return err end
     local e = exec_one(db, [[
         UPDATE tenant SET plan = COALESCE(?, plan), budget_usd = ?,
                budget_period = COALESCE(?, budget_period),
                siem_config = COALESCE(?, siem_config),
-               chat_presets_config = COALESCE(?, chat_presets_config)
+               chat_presets_config = COALESCE(?, chat_presets_config),
+               slash_commands_config = COALESCE(?, slash_commands_config)
         WHERE id = ?
-    ]], plan, budget_usd, budget_period, siem_config, chat_presets_config, id)
+    ]], plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config, id)
     release(db)
     return e
 end
@@ -781,7 +806,7 @@ function M.get_tenant(id)
     local db, err = get_conn()
     if not db then return nil end
     local row = query_one(db, [[
-        SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config,
+        SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
         FROM tenant WHERE id = ? AND deleted_at IS NULL
     ]], id)
@@ -795,14 +820,14 @@ function M.list_tenants(tenant_id_filter)
     local rows
     if tenant_id_filter then
         rows = query_all(db, [[
-            SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config,
+            SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config,
                    DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
             FROM tenant WHERE deleted_at IS NULL AND id = ?
             ORDER BY created_at DESC
         ]], tenant_id_filter) or {}
     else
         rows = query_all(db, [[
-            SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config,
+            SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config,
                    DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
             FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
         ]]) or {}
@@ -1767,7 +1792,7 @@ function M.list_conversations(user_id, limit, offset)
     local db, err = get_conn()
     if not db then return setmetatable({}, cjson.array_mt) end
     local rows = query_all(db, string.format([[
-        SELECT id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+        SELECT id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
                DATE_FORMAT(FROM_UNIXTIME(updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
         FROM chat_conversation
@@ -1786,10 +1811,11 @@ function M.create_conversation(data)
     local now = math.floor(ngx.now())
     local e = exec_one(db, [[
         INSERT INTO chat_conversation
-            (id, user_id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+            (id, user_id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens,
              created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
     ]], id, data.user_id, data.gateway_id,
+        data.project_id,
         data.title or "New conversation",
         data.model or "",
         data.system_prompt,
@@ -1805,7 +1831,7 @@ function M.get_conversation(id, user_id)
     local db, err = get_conn()
     if not db then return nil, err end
     local conv = query_one(db, [[
-        SELECT id, user_id, gateway_id, title, model, system_prompt, temperature, max_tokens,
+        SELECT id, user_id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
                DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
         FROM chat_conversation
@@ -2049,6 +2075,65 @@ function M.delete_preset(id, user_id)
 end
 
 -- ---------------------------------------------------------------------------
+-- Chat: commands (slash commands)
+-- ---------------------------------------------------------------------------
+
+function M.list_commands(user_id)
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows = query_all(db, [[
+        SELECT id, name, description, template,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+        FROM chat_command WHERE user_id = ? ORDER BY name ASC
+    ]], user_id) or {}
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+function M.create_command(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id  = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_command (id, user_id, name, description, template, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?)
+    ]], id, data.user_id, data.name, data.description or "", data.template, now, now)
+    release(db)
+    if e then return nil, e end
+    return id
+end
+
+function M.update_command(id, user_id, data)
+    local db, err = get_conn()
+    if not db then return err end
+    local sets   = {}
+    local params = {}
+    if data.name        ~= nil then sets[#sets+1] = "name = ?";        params[#params+1] = data.name end
+    if data.description ~= nil then sets[#sets+1] = "description = ?"; params[#params+1] = data.description end
+    if data.template    ~= nil then sets[#sets+1] = "template = ?";    params[#params+1] = data.template end
+    if #sets == 0 then release(db); return nil end
+    sets[#sets+1] = "updated_at = ?"
+    params[#params+1] = math.floor(ngx.now())
+    params[#params+1] = id
+    params[#params+1] = user_id
+    local sql = "UPDATE chat_command SET " .. table.concat(sets, ", ") ..
+                " WHERE id = ? AND user_id = ?"
+    local e = exec_one(db, sql, table.unpack(params))
+    release(db)
+    return e
+end
+
+function M.delete_command(id, user_id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, "DELETE FROM chat_command WHERE id = ? AND user_id = ?", id, user_id)
+    release(db)
+    return e
+end
+
+-- ---------------------------------------------------------------------------
 -- Chat feedback
 -- ---------------------------------------------------------------------------
 
@@ -2099,6 +2184,295 @@ function M.get_user_by_oauth(provider, subject)
     ]], provider, subject)
     release(db)
     return row
+end
+
+-- ---------------------------------------------------------------------------
+-- Projects
+-- ---------------------------------------------------------------------------
+
+function M.list_projects(tenant_id, user_id, is_admin)
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows
+    if is_admin then
+        rows = query_all(db, string.format([[
+            SELECT p.id, p.tenant_id, p.name, p.description, p.instructions,
+                   p.icon, p.color, p.default_gateway_id, p.default_model,
+                   p.created_by,
+                   DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
+                   m.role
+            FROM chat_project p
+            LEFT JOIN chat_project_member m ON m.project_id = p.id AND m.user_id = ?
+            WHERE p.tenant_id = ? AND p.deleted_at IS NULL
+            ORDER BY p.updated_at DESC
+            LIMIT 200
+        ]], 200), user_id, tenant_id) or {}
+    else
+        rows = query_all(db, string.format([[
+            SELECT p.id, p.tenant_id, p.name, p.description, p.instructions,
+                   p.icon, p.color, p.default_gateway_id, p.default_model,
+                   p.created_by,
+                   DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
+                   m.role
+            FROM chat_project p
+            JOIN chat_project_member m ON m.project_id = p.id AND m.user_id = ?
+            WHERE p.tenant_id = ? AND p.deleted_at IS NULL
+            ORDER BY p.updated_at DESC
+            LIMIT 200
+        ]], 200), user_id, tenant_id) or {}
+    end
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+function M.create_project(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id  = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_project
+            (id, tenant_id, name, description, instructions, icon, color,
+             default_gateway_id, default_model, created_by, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    ]], id,
+        data.tenant_id, data.name,
+        data.description, data.instructions,
+        data.icon or "📁", data.color or "#2563eb",
+        data.default_gateway_id, data.default_model,
+        data.created_by, now, now)
+    if e then release(db); return nil, e end
+    -- Auto-add creator as owner
+    local e2 = exec_one(db, [[
+        INSERT INTO chat_project_member (project_id, user_id, role, invited_by, joined_at)
+        VALUES (?,?,?,?,?)
+    ]], id, data.created_by, "owner", data.created_by, now)
+    release(db)
+    if e2 then return nil, e2 end
+    return id
+end
+
+function M.get_project(id, user_id, is_admin)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local proj
+    if is_admin then
+        proj = query_one(db, [[
+            SELECT p.id, p.tenant_id, p.name, p.description, p.instructions,
+                   p.icon, p.color, p.default_gateway_id, p.default_model,
+                   p.created_by,
+                   DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                   DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at,
+                   NULL AS role
+            FROM chat_project p
+            WHERE p.id = ? AND p.deleted_at IS NULL
+            LIMIT 1
+        ]], id)
+    else
+        proj = query_one(db, [[
+            SELECT p.id, p.tenant_id, p.name, p.description, p.instructions,
+                   p.icon, p.color, p.default_gateway_id, p.default_model,
+                   p.created_by,
+                   DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                   DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at,
+                   m.role
+            FROM chat_project p
+            JOIN chat_project_member m ON m.project_id = p.id AND m.user_id = ?
+            WHERE p.id = ? AND p.deleted_at IS NULL
+            LIMIT 1
+        ]], user_id, id)
+    end
+    if not proj then release(db); return nil, "not_found" end
+    -- Load members
+    proj.members = query_all(db, [[
+        SELECT m.user_id, m.role,
+               DATE_FORMAT(FROM_UNIXTIME(m.joined_at), '%Y-%m-%dT%H:%i:%sZ') AS joined_at,
+               u.email, u.name
+        FROM chat_project_member m
+        JOIN `user` u ON u.id = m.user_id
+        WHERE m.project_id = ?
+        ORDER BY m.joined_at ASC
+    ]], id) or {}
+    -- Load knowledge file metadata (no text body — that would be large)
+    proj.knowledge = query_all(db, [[
+        SELECT id, filename, content_type, size_bytes, token_count,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+        FROM chat_project_knowledge
+        WHERE project_id = ?
+        ORDER BY created_at ASC
+    ]], id) or {}
+    proj.members   = setmetatable(proj.members,   cjson.array_mt)
+    proj.knowledge = setmetatable(proj.knowledge, cjson.array_mt)
+    release(db)
+    return proj
+end
+
+function M.update_project(id, data)
+    local db, err = get_conn()
+    if not db then return err end
+    local sets, params = {}, {}
+    local fields = {"name","description","instructions","icon","color","default_gateway_id","default_model"}
+    for _, f in ipairs(fields) do
+        if data[f] ~= nil then
+            sets[#sets+1] = f .. " = ?"
+            params[#params+1] = data[f]
+        end
+    end
+    if #sets == 0 then release(db); return nil end
+    sets[#sets+1] = "updated_at = ?"
+    params[#params+1] = math.floor(ngx.now())
+    params[#params+1] = id
+    local e = exec_one(db, "UPDATE chat_project SET " .. table.concat(sets, ", ") .. " WHERE id = ? AND deleted_at IS NULL",
+                       table.unpack(params))
+    release(db)
+    return e
+end
+
+function M.delete_project(id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, "UPDATE chat_project SET deleted_at = ? WHERE id = ?",
+                       math.floor(ngx.now()), id)
+    -- Detach conversations
+    exec_one(db, "UPDATE chat_conversation SET project_id = NULL WHERE project_id = ?", id)
+    release(db)
+    return e
+end
+
+-- ---------------------------------------------------------------------------
+-- Project members
+-- ---------------------------------------------------------------------------
+
+function M.get_project_member(project_id, user_id)
+    local db, err = get_conn()
+    if not db then return nil end
+    local row = query_one(db, [[
+        SELECT role FROM chat_project_member WHERE project_id = ? AND user_id = ? LIMIT 1
+    ]], project_id, user_id)
+    release(db)
+    return row
+end
+
+function M.add_project_member(project_id, user_id, role, invited_by)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        INSERT INTO chat_project_member (project_id, user_id, role, invited_by, joined_at)
+        VALUES (?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE role = VALUES(role)
+    ]], project_id, user_id, role, invited_by, math.floor(ngx.now()))
+    release(db)
+    return e
+end
+
+function M.update_project_member_role(project_id, user_id, role)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        UPDATE chat_project_member SET role = ? WHERE project_id = ? AND user_id = ?
+    ]], role, project_id, user_id)
+    release(db)
+    return e
+end
+
+function M.remove_project_member(project_id, user_id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        DELETE FROM chat_project_member WHERE project_id = ? AND user_id = ?
+    ]], project_id, user_id)
+    release(db)
+    return e
+end
+
+function M.count_project_owners(project_id)
+    local db, err = get_conn()
+    if not db then return 0 end
+    local row = query_one(db, [[
+        SELECT COUNT(*) AS cnt FROM chat_project_member
+        WHERE project_id = ? AND role = 'owner'
+    ]], project_id)
+    release(db)
+    return (row and row.cnt) or 0
+end
+
+-- ---------------------------------------------------------------------------
+-- Project knowledge
+-- ---------------------------------------------------------------------------
+
+function M.list_project_knowledge(project_id)
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows = query_all(db, [[
+        SELECT id, filename, content_type, size_bytes, token_count,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+        FROM chat_project_knowledge
+        WHERE project_id = ?
+        ORDER BY created_at ASC
+    ]], project_id) or {}
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+function M.get_project_knowledge_text(project_id)
+    -- Returns all knowledge rows including extracted_text (used for context injection)
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows = query_all(db, [[
+        SELECT id, filename, token_count, extracted_text
+        FROM chat_project_knowledge
+        WHERE project_id = ?
+        ORDER BY created_at ASC
+    ]], project_id) or {}
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+function M.add_project_knowledge(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id  = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_project_knowledge
+            (id, project_id, filename, content_type, size_bytes, extracted_text, token_count, created_by, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?)
+    ]], id, data.project_id, data.filename, data.content_type or "text/plain",
+        data.size_bytes or 0, data.extracted_text or "",
+        data.token_count or 0, data.created_by, now)
+    release(db)
+    if e then return nil, e end
+    return id
+end
+
+function M.delete_project_knowledge(id, project_id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        DELETE FROM chat_project_knowledge WHERE id = ? AND project_id = ?
+    ]], id, project_id)
+    release(db)
+    return e
+end
+
+-- List conversations for a project (most recent 50)
+function M.list_project_conversations(project_id, limit)
+    limit = math.min(limit or 50, 200)
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows = query_all(db, string.format([[
+        SELECT id, gateway_id, title, model, project_id,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
+        FROM chat_conversation
+        WHERE project_id = ? AND deleted_at IS NULL
+        ORDER BY updated_at DESC
+        LIMIT %d
+    ]], limit), project_id) or {}
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
 end
 
 return M

@@ -75,10 +75,16 @@ function AnalyticsIcon() {
 function ChatIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
 }
+function ProjectsIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>;
+}
 function TokenIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
 }
 
+function CommandsIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>;
+}
 function LogoutIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
 }
@@ -184,6 +190,7 @@ export default function Sidebar() {
           <SectionLabel label="MAIN" collapsed={effectiveCollapsed} />
           <NavItem to="/dashboard" label="Dashboard" icon={<DashboardIcon />} {...navProps} />
           <NavItem to="/chat" label="Chat" icon={<ChatIcon />} {...navProps} />
+          <NavItem to="/projects" label="Projects" icon={<ProjectsIcon />} {...navProps} />
           <NavItem to="/playground" label="Playground" icon={<PlaygroundIcon />} {...navProps} />
 
           {(user?.role === "admin" || user?.role === "tenant_admin") && (<>
@@ -203,6 +210,7 @@ export default function Sidebar() {
 
           <SectionLabel label="ACCOUNT" collapsed={effectiveCollapsed} />
           <NavItem to="/profile" label="My Tokens" icon={<TokenIcon />} {...navProps} />
+          <NavItem to="/commands" label="My Commands" icon={<CommandsIcon />} {...navProps} />
         </div>
 
         <div className={`${styles["bottom-bar"]} ${effectiveCollapsed ? styles["bottom-bar--collapsed"] : ""}`}>
