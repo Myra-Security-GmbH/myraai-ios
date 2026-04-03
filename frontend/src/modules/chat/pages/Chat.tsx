@@ -21,7 +21,7 @@ import s from "src/common/components/layout/Layout.module.scss";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { useWakeLock } from "src/common/hooks/useWakeLock";
 import { useAuth } from "src/common/contexts/AuthContext";
-import ChatInput, { type PendingAttachment } from "../components/ChatInput";
+import ChatInput, { type ChatInputHandle, type PendingAttachment } from "../components/ChatInput";
 import ConversationList from "../components/ConversationList";
 import MessageThread from "../components/MessageThread";
 import SettingsDrawer, { type DrawerSettings } from "../components/SettingsDrawer";
@@ -218,6 +218,8 @@ export default function Chat() {
   });
 
   // ── Chat input ─────────────────────────────────────────────────────────────
+  const chatInputRef = useRef<ChatInputHandle>(null);
+  const focusInput = useCallback(() => { chatInputRef.current?.focus(); }, []);
   const [inputValue, setInputValue] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
@@ -229,6 +231,12 @@ export default function Chat() {
   // ── Streaming state ────────────────────────────────────────────────────────
   const [isStreaming, setIsStreaming] = useState(false);
   useWakeLock(isStreaming);
+  // Re-focus input when streaming ends (response complete or user stopped)
+  const prevIsStreamingRef = useRef(false);
+  useEffect(() => {
+    if (prevIsStreamingRef.current && !isStreaming) focusInput();
+    prevIsStreamingRef.current = isStreaming;
+  }, [isStreaming, focusInput]);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [streamingConvId, setStreamingConvId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -248,6 +256,21 @@ export default function Chat() {
   // ── UI ─────────────────────────────────────────────────────────────────────
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Ghost mode — no DB writes, no request log ──────────────────────────────
+  const [ghostMode, setGhostMode] = useState<boolean>(() =>
+    localStorage.getItem("aig-chat-ghost") === "1"
+  );
+
+  function toggleGhostMode() {
+    const next = !ghostMode;
+    setGhostMode(next);
+    localStorage.setItem("aig-chat-ghost", next ? "1" : "0");
+    // A ghost conversation and a normal conversation cannot share state
+    setActiveConvId(null);
+    setMessages([]);
+    focusInput();
+  }
 
   const [showFeedback, setShowFeedback]       = useState(false);
   const [feedbackRating, setFeedbackRating]   = useState<number | null>(null);
@@ -380,6 +403,7 @@ export default function Chat() {
         .catch(() => { setFeedbackRating(null); setFeedbackComment(""); });
       setFeedbackSaved(false);
       setFeedbackError(null);
+      focusInput();
     } catch (e) {
       setError(String(e));
     }
@@ -400,6 +424,7 @@ export default function Chat() {
       });
       setConversations((prev) => [conv, ...prev]);
       await loadConversation(conv.id);
+      focusInput();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -584,7 +609,7 @@ export default function Chat() {
         comment: feedbackComment,
       });
       setFeedbackSaved(true);
-      setTimeout(() => setShowFeedback(false), 800);
+      setTimeout(() => { setShowFeedback(false); focusInput(); }, 800);
     } catch (e: unknown) {
       setFeedbackError(e instanceof Error ? e.message : "Failed to save feedback");
     } finally {
@@ -607,6 +632,7 @@ export default function Chat() {
     }
     if (vars.length === 0) {
       setInputValue(cmd.template);
+      focusInput();
     } else {
       setPendingCommand(cmd);
     }
@@ -650,25 +676,31 @@ export default function Chat() {
     // Create conversation on first message if none active
     let convId = activeConvId;
     if (!convId) {
-      setCreating(true);
-      try {
-        const conv = await api.post<ChatConversation>("/conversations", {
-          gateway_id: gatewayId,
-          model,
-          system_prompt: drawerSettings.systemPrompt || null,
-          temperature: drawerSettings.temperature,
-          max_tokens: drawerSettings.maxTokens,
-          title: text.slice(0, 60) || "New conversation",
-        });
-        convId = conv.id;
-        setConversations((prev) => [conv, ...prev]);
+      if (ghostMode) {
+        // Ghost mode: keep conversation in memory only — no DB row
+        convId = `ghost-${crypto.randomUUID()}`;
         setActiveConvId(convId);
-      } catch (e) {
-        setError("Failed to create conversation: " + String(e));
-        setCreating(false);
-        return;
-      } finally {
-        setCreating(false);
+      } else {
+        setCreating(true);
+        try {
+          const conv = await api.post<ChatConversation>("/conversations", {
+            gateway_id: gatewayId,
+            model,
+            system_prompt: drawerSettings.systemPrompt || null,
+            temperature: drawerSettings.temperature,
+            max_tokens: drawerSettings.maxTokens,
+            title: text.slice(0, 60) || "New conversation",
+          });
+          convId = conv.id;
+          setConversations((prev) => [conv, ...prev]);
+          setActiveConvId(convId);
+        } catch (e) {
+          setError("Failed to create conversation: " + String(e));
+          setCreating(false);
+          return;
+        } finally {
+          setCreating(false);
+        }
       }
     }
 
@@ -815,33 +847,42 @@ export default function Chat() {
     setInputValue("");
     setPendingAttachments([]);
     setError(null);
+    focusInput();
 
-    // Persist user message
+    // Persist user message (skip in ghost mode)
     let userMsgId: string | null = null;
-    try {
-      const res = await api.post<{ id: string }>(`/conversations/${convId}/messages`, {
-        role: "user",
-        content: userContent,
-      });
-      userMsgId = res.id;
+    if (ghostMode) {
+      userMsgId = `ghost-msg-${crypto.randomUUID()}`;
       setMessages((prev) =>
         prev.map((m) => m.id === "__temp_user__" ? { ...m, id: userMsgId! } : m)
       );
-    } catch (e) {
-      setError("Failed to save message: " + String(e));
-      setMessages((prev) => prev.filter((m) => m.id !== "__temp_user__"));
-      return;
-    }
+    } else {
+      try {
+        const res = await api.post<{ id: string }>(`/conversations/${convId}/messages`, {
+          role: "user",
+          content: userContent,
+        });
+        userMsgId = res.id;
+        setMessages((prev) =>
+          prev.map((m) => m.id === "__temp_user__" ? { ...m, id: userMsgId! } : m)
+        );
+      } catch (e) {
+        setError("Failed to save message: " + String(e));
+        setMessages((prev) => prev.filter((m) => m.id !== "__temp_user__"));
+        return;
+      }
 
-    // Upload any attachments
-    if (pendingAttachments.length > 0 && userMsgId) {
-      for (const att of pendingAttachments) {
-        await api.post(`/conversations/${convId}/attachments`, {
-          message_id: userMsgId,
-          filename: att.filename,
-          mime_type: att.mime_type,
-          data: att.data,
-        }).catch(() => {});
+      // Upload any attachments (binary storage skipped in ghost mode;
+      // text extraction via /chat/files was already done above and is temp-only)
+      if (pendingAttachments.length > 0 && userMsgId) {
+        for (const att of pendingAttachments) {
+          await api.post(`/conversations/${convId}/attachments`, {
+            message_id: userMsgId,
+            filename: att.filename,
+            mime_type: att.mime_type,
+            data: att.data,
+          }).catch(() => {});
+        }
       }
     }
 
@@ -908,6 +949,7 @@ export default function Chat() {
       Object.entries({
         "Content-Type": "application/json",
         Authorization: `Bearer ${tok.token}`,
+        ...(ghostMode ? { "x-aig-collect-log": "false" } : {}),
         ...(needsSkill ? { "x-aig-skill": needsSkill } : {}),
         ...(drawerSettings.webSearch ? { "x-aig-web-search": "1" } : {}),
       }).filter(([, v]) => v !== undefined)
@@ -1069,28 +1111,17 @@ export default function Chat() {
     setStreamingContent(null);
     setStreamingConvId(null);
 
-    // Auto-generate title even when accumulated is empty (thinking-only models like qwen3
-    // strip all <think> blocks, leaving an empty visible response — we still want a title).
-    if (isFirstMessage && convId && text) {
+    // Auto-generate title (skip in ghost mode — no conversation row exists in DB)
+    if (!ghostMode && isFirstMessage && convId && text) {
       generateTitle(convId, text, accumulated, tok, model);
     }
 
     if (!accumulated) return;
 
-    // Persist assistant message
-    try {
-      const res = await api.post<{ id: string }>(`/conversations/${convId}/messages`, {
-        role: "assistant",
-        content: accumulated,
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cost_usd: costUsd,
-        latency_ms: latencyMs,
-        gateway_id: gatewayId,
-        model: model,
-      });
+    // Persist assistant message (skip in ghost mode)
+    if (ghostMode) {
       const assistantMsg: ChatMessage = {
-        id: res.id,
+        id: `ghost-msg-${crypto.randomUUID()}`,
         conversation_id: convId,
         parent_message_id: null,
         role: "assistant",
@@ -1107,14 +1138,45 @@ export default function Chat() {
       if (activeConvIdRef.current === convId) {
         setMessages((prev) => [...prev, assistantMsg]);
       }
-      // Update conversation updated_at in list
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === convId ? { ...c, updated_at: new Date().toISOString() } : c
-        )
-      );
-    } catch (e) {
-      setError("Failed to save assistant message: " + String(e));
+    } else {
+      try {
+        const res = await api.post<{ id: string }>(`/conversations/${convId}/messages`, {
+          role: "assistant",
+          content: accumulated,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          cost_usd: costUsd,
+          latency_ms: latencyMs,
+          gateway_id: gatewayId,
+          model: model,
+        });
+        const assistantMsg: ChatMessage = {
+          id: res.id,
+          conversation_id: convId,
+          parent_message_id: null,
+          role: "assistant",
+          content: accumulated,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          cost_usd: costUsd,
+          latency_ms: latencyMs,
+          gateway_id: gatewayId,
+          model: model,
+          created_at: new Date().toISOString(),
+          attachments: [],
+        };
+        if (activeConvIdRef.current === convId) {
+          setMessages((prev) => [...prev, assistantMsg]);
+        }
+        // Update conversation updated_at in list
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === convId ? { ...c, updated_at: new Date().toISOString() } : c
+          )
+        );
+      } catch (e) {
+        setError("Failed to save assistant message: " + String(e));
+      }
     }
   }
 
@@ -1154,6 +1216,7 @@ export default function Chat() {
         ...prev,
         { filename: file.name, mime_type: file.type, data: base64 },
       ]);
+      focusInput();
     };
     reader.readAsDataURL(file);
   }
@@ -1356,13 +1419,27 @@ export default function Chat() {
           <DownloadIcon />
         </button>
 
+        {!ghostMode && (
+          <button
+            className={chatS["icon-btn"]}
+            title="Session feedback"
+            onClick={() => { setShowFeedback(true); setFeedbackSaved(false); setFeedbackError(null); }}
+            disabled={!activeConvId}
+          >
+            <FlagIcon />
+          </button>
+        )}
+
         <button
           className={chatS["icon-btn"]}
-          title="Session feedback"
-          onClick={() => { setShowFeedback(true); setFeedbackSaved(false); setFeedbackError(null); }}
-          disabled={!activeConvId}
+          title={ghostMode
+            ? "Ghost mode on — conversation not saved or logged. Click to disable."
+            : "Enable ghost mode — conversation will not be saved or logged"}
+          onClick={toggleGhostMode}
+          style={ghostMode ? { color: "var(--accent, #0052cc)", opacity: 1 } : {}}
+          data-cy="ghost-mode-toggle"
         >
-          <FlagIcon />
+          👻
         </button>
 
         <button
@@ -1399,11 +1476,28 @@ export default function Chat() {
         >
           {error}
           <button
-            onClick={() => setError(null)}
+            onClick={() => { setError(null); focusInput(); }}
             style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#c62828" }}
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {ghostMode && (
+        <div
+          style={{
+            padding: "4px 0",
+            background: "#1a1a2e",
+            color: "#8888aa",
+            fontSize: 12,
+            textAlign: "center",
+            letterSpacing: "0.03em",
+            flexShrink: 0,
+          }}
+          data-cy="ghost-banner"
+        >
+          👻 Ghost mode — this conversation is not saved and will not be logged
         </div>
       )}
 
@@ -1412,7 +1506,7 @@ export default function Chat() {
         {showConvList && (
           <div
             className={chatS["conv-sidebar-backdrop"]}
-            onClick={() => setShowConvList(false)}
+            onClick={() => { setShowConvList(false); focusInput(); }}
           />
         )}
 
@@ -1481,6 +1575,7 @@ export default function Chat() {
           </div>
 
           <ChatInput
+            ref={chatInputRef}
             value={inputValue}
             onChange={setInputValue}
             onSend={sendMessage}
@@ -1504,7 +1599,7 @@ export default function Chat() {
           settings={drawerSettings}
           onChange={setDrawerSettings}
           onSave={saveSettings}
-          onClose={() => setShowSettings(false)}
+          onClose={() => { setShowSettings(false); focusInput(); }}
           presets={presets}
           onApplyPreset={applyPreset}
           onSavePreset={savePreset}
@@ -1516,8 +1611,8 @@ export default function Chat() {
       {pendingCommand && (
         <VariableFillModal
           command={pendingCommand}
-          onInsert={(text) => { setInputValue(text); setPendingCommand(null); }}
-          onCancel={() => setPendingCommand(null)}
+          onInsert={(text) => { setInputValue(text); setPendingCommand(null); focusInput(); }}
+          onCancel={() => { setPendingCommand(null); focusInput(); }}
         />
       )}
 
@@ -1525,7 +1620,7 @@ export default function Chat() {
       {showFeedback && (
         <Modal
           title="Session Feedback"
-          onClose={() => setShowFeedback(false)}
+          onClose={() => { setShowFeedback(false); focusInput(); }}
           error={feedbackError}
         >
           <div className={s["modal-body"]}>
@@ -1572,7 +1667,7 @@ export default function Chat() {
                 Saved ✓
               </span>
             )}
-            <button className={s["btn-secondary"]} onClick={() => setShowFeedback(false)}>
+            <button className={s["btn-secondary"]} onClick={() => { setShowFeedback(false); focusInput(); }}>
               Cancel
             </button>
             <button

@@ -1,8 +1,12 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 import AttachmentChip from "./AttachmentChip";
 import { CommandPicker } from "./CommandPicker";
 import { SlashCommand } from "src/api/types";
 import s from "../pages/Chat.module.scss";
+
+export interface ChatInputHandle {
+  focus(): void;
+}
 
 function SendIcon() {
   return (
@@ -49,7 +53,7 @@ interface Props {
   onCommandSelect?: (cmd: SlashCommand) => void;
 }
 
-export default function ChatInput({
+const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   value,
   onChange,
   onSend,
@@ -61,9 +65,13 @@ export default function ChatInput({
   onRemoveAttachment,
   commands,
   onCommandSelect,
-}: Props) {
+}, ref) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus(),
+  }));
 
   // Command picker state
   const showPicker = value.startsWith("/") && !value.includes("\n") && !value.includes(" ") && (commands?.length ?? 0) > 0;
@@ -185,4 +193,6 @@ export default function ChatInput({
       </div>
     </div>
   );
-}
+});
+
+export default ChatInput;
