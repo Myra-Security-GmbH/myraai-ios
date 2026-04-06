@@ -10,7 +10,7 @@ import { test as setup, expect } from "@playwright/test";
 import { execSync } from "child_process";
 import path from "path";
 
-const DB      = "/opt/ai-gateway/data/config.db";
+const MYSQL   = "mysql -h 172.17.0.1 -u gateway -pgateway ai_gateway -e";
 const EMAIL   = "sascha@schumann.net";
 const CODE    = "999888";
 const SESSION = path.resolve(__dirname, ".auth/session.json");
@@ -24,8 +24,8 @@ setup("authenticate", async ({ page }) => {
   const id     = execSync("cat /proc/sys/kernel/random/uuid").toString().trim();
 
   // Clean up any leftover unused OTPs for this email, then insert a fresh one
-  execSync(`sqlite3 ${DB} "DELETE FROM email_otp WHERE email='${EMAIL}' AND used_at IS NULL;"`);
-  execSync(`sqlite3 ${DB} "INSERT INTO email_otp (id, email, code_hash, expires_at, ip_addr) VALUES ('${id}', '${EMAIL}', '${hash}', ${expiry}, '127.0.0.1');"`);
+  execSync(`${MYSQL} "DELETE FROM email_otp WHERE email='${EMAIL}' AND used_at IS NULL;"`);
+  execSync(`${MYSQL} "INSERT INTO email_otp (id, email, code_hash, expires_at, ip_addr) VALUES ('${id}', '${EMAIL}', '${hash}', ${expiry}, '127.0.0.1');"`);
 
 
   await page.route("**/admin/auth/otp/request", route =>
