@@ -20,7 +20,7 @@ vi.mock("src/common/contexts/AuthContext", () => ({
 }));
 
 import { api } from "src/api/client";
-const mockApi = api as {
+const mockApi = api as unknown as {
   get: ReturnType<typeof vi.fn>;
   post: ReturnType<typeof vi.fn>;
   patch: ReturnType<typeof vi.fn>;

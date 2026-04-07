@@ -18,7 +18,7 @@ export default defineConfig({
   timeout: 30000,
   retries: 1,
   workers: 1,
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter: [["./reporters/progress.ts"], ["html", { open: "never" }]],
 
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "https://ai.myra.eu",

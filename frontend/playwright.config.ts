@@ -10,7 +10,7 @@ export default defineConfig({
   timeout: 15000,
   retries: 1,
   workers: 1,
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter: [["./reporters/progress.ts"], ["html", { open: "never" }]],
 
   use: {
     baseURL: "http://localhost:5173",

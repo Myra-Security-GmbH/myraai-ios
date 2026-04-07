@@ -24,6 +24,8 @@ considering the task done. Skipping any step is not acceptable.
    step — it hot-deploys only and does not bake the change into the image.
    - Exception: if only a config file or container environment changed (no source files),
      `sudo systemctl restart myra-ai-gateway` is sufficient for a fast bounce.
+   - **Always show the full stdout output** — never pipe through `tail`, `head`, or any
+     filter. Redirect stderr to /dev/null if needed: `bash run_docker_production.sh 2>/dev/null`
 2. **Run the relevant E2E tests** — start the Vite dev server (`cd frontend && npm run dev`)
    if it is not already running, then execute the test file for the feature you changed:
    ```bash
@@ -121,24 +123,28 @@ Before any test that sends a message:
 
 ### Running tests
 
-E2E tests require the Vite dev server running as a proxy to the Docker container:
+**Never pipe E2E test output through `tail`, `head`, or any filter.** Always capture the full output — truncating it hides failures.
 
+Both Playwright configs (`playwright.config.ts`, `playwright.docker.config.ts`) use the custom progress reporter at `reporters/progress.ts` — do not pass `--reporter=list` or any other `--reporter` flag.
+
+Run against the Docker container (preferred — no dev server needed):
 ```bash
-# Terminal 1 — keep running
-cd frontend && npm run dev
-
-# Terminal 2 — run tests
-cd frontend && ./run-e2e.sh tests/<feature>.spec.ts --reporter=list
+cd frontend && ./run-e2e.sh --config playwright.docker.config.ts
 ```
 
-Run all tests:
+Run a single spec against Docker:
 ```bash
-cd frontend && ./run-e2e.sh --reporter=list
+cd frontend && ./run-e2e.sh tests/<feature>.spec.ts --config playwright.docker.config.ts
+```
+
+Run all tests (dev-server proxy mode):
+```bash
+cd frontend && ./run-e2e.sh
 ```
 
 Run a single test by name:
 ```bash
-cd frontend && ./run-e2e.sh --grep "test name here" --reporter=list
+cd frontend && ./run-e2e.sh --grep "test name here"
 ```
 
 The Vite dev server at `http://localhost:5173` proxies `/admin/v1` and `/admin/auth` to the Docker container. **The Docker container must be running** before tests are executed.

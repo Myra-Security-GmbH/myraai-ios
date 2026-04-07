@@ -17,7 +17,7 @@ vi.mock("src/api/client", () => ({
 }));
 
 import { api } from "src/api/client";
-const mockApi = api as {
+const mockApi = api as unknown as {
   get: ReturnType<typeof vi.fn>;
   post: ReturnType<typeof vi.fn>;
 };
@@ -26,8 +26,8 @@ const mockApi = api as {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const TENANT1: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: null, created_at: "2024-01-01T00:00:00Z" };
-const TENANT2: Tenant = { id: "t2", slug: "globex", plan: "free", budget_usd: null, created_at: "2024-01-02T00:00:00Z" };
+const TENANT1: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: "2024-01-01T00:00:00Z" };
+const TENANT2: Tenant = { id: "t2", slug: "globex", plan: "free", budget_usd: null, budget_period: "monthly", created_at: "2024-01-02T00:00:00Z" };
 
 const GW1: Gateway = { id: "gw1", slug: "main-gw", tenant_id: "t1", config: {}, created_at: "2024-01-05T00:00:00Z" };
 const GW2: Gateway = { id: "gw2", slug: "dev-gw", tenant_id: "t1", config: {}, created_at: "2024-01-06T00:00:00Z" };

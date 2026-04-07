@@ -38,7 +38,7 @@ const STATS: UsageStats = {
       cost_usd: 0.05, latency_ms: 320, upstream_latency_ms: 280,
       upstream_attempts: 1, fallback_provider: null, fallback_model: null,
       saved_cost_usd: null, request_size_bytes: 512, detectors_fired: [],
-      scrub_applied: 0,
+      guardrail_latency_ms: null, scrub_applied: 0,
     },
   ],
   recent_blocked: [],

@@ -21,7 +21,7 @@ vi.mock("src/api/client", () => ({
 }));
 
 import { api } from "src/api/client";
-const mockApi = api as { get: ReturnType<typeof vi.fn> };
+const mockApi = api as unknown as { get: ReturnType<typeof vi.fn> };
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -87,6 +87,7 @@ const ANALYTICS: AnalyticsDepth = {
   by_user: [
     {
       user_id: "alice@example.com",
+      email: null,
       tenant_id: "t1",                          // acme
       requests: 300, blocked: 1, cached: 30,
       input_tokens: 400000, output_tokens: 100000,
@@ -95,6 +96,7 @@ const ANALYTICS: AnalyticsDepth = {
     },
     {
       user_id: "bob@example.com",
+      email: null,
       tenant_id: "t2",                          // devteam
       requests: 100, blocked: 0, cached: 5,
       input_tokens: 150000, output_tokens: 40000,
@@ -430,7 +432,7 @@ describe("TenantAnalytics — period selector", () => {
     await userEvent.click(screen.getByRole("button", { name: "Today" }));
     await waitFor(() => expect(mockApi.get.mock.calls.length).toBeGreaterThan(callsBefore));
     const analyticsCalls = mockApi.get.mock.calls.filter(
-      ([p]: [string]) => p.includes("/stats/analytics")
+      ([p]: string[]) => p.includes("/stats/analytics")
     );
     expect(analyticsCalls.length).toBeGreaterThanOrEqual(2);
   });
