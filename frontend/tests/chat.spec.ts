@@ -35,7 +35,9 @@ async function clickNewChat(page: Page) {
   await page.waitForTimeout(300);
 }
 
-/** Select the first available gateway + model from the config bar. */
+/** Select the first available gateway + model from the config bar.
+ *  Handles both normal mode (gateway+model selects) and preset mode
+ *  (tenant has chat_presets — gateway select is replaced by preset buttons). */
 async function selectFirstGateway(page: Page): Promise<boolean> {
   // Tenant select
   const tenantSel = page.locator("select").first();
@@ -45,7 +47,19 @@ async function selectFirstGateway(page: Page): Promise<boolean> {
   await tenantSel.selectOption({ index: 1 });
   await page.waitForTimeout(400);
 
-  // Gateway select
+  // Determine mode: preset mode (only 1 select remains) vs normal mode (2+ selects)
+  const selectCount = await page.locator("select").count();
+  if (selectCount < 2) {
+    // Preset mode — click the first preset button
+    const presetBtn = page.locator("[data-testid='config-preset-btn']").first();
+    const visible = await presetBtn.isVisible({ timeout: 3000 }).catch(() => false);
+    if (!visible) return false;
+    await presetBtn.click();
+    await page.waitForTimeout(300);
+    return true;
+  }
+
+  // Normal mode — Gateway select
   const gatewaySel = page.locator("select").nth(1);
   await gatewaySel.waitFor({ state: "visible", timeout: 5000 });
   const gwOptions = await gatewaySel.locator("option").count();

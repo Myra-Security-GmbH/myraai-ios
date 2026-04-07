@@ -66,18 +66,52 @@ function M.register(route)
 
     -- ── Conversations ───────────────────────────────────────────────────────
 
-    -- GET /admin/v1/conversations?limit=50&offset=0
+    -- GET /admin/v1/conversations?limit=50&offset=0&archived=1
     route("GET", "^/admin/v1/conversations$", function()
         local u    = ngx.ctx.admin_user
         local args = ngx.req.get_uri_args()
-        local rows = storage.list_conversations(u.id, tonumber(args.limit), tonumber(args.offset))
+        local rows = storage.list_conversations(u.id, tonumber(args.limit), tonumber(args.offset),
+                         { archived = args.archived == "1" })
         send(200, rows)
     end)
 
-    -- POST /admin/v1/conversations  { gateway_id, title?, model?, system_prompt?, temperature?, max_tokens? }
+    -- POST /admin/v1/conversations  { gateway_id, title?, model?, system_prompt?, temperature?, max_tokens?, source_share_token? }
     route("POST", "^/admin/v1/conversations$", function()
         local u    = ngx.ctx.admin_user
         local body = read_body()
+
+        -- Fork from a share token
+        if body.source_share_token then
+            local share = storage.get_share_by_token(body.source_share_token)
+            if not share then return send(404, { error = "share not found" }) end
+            local snapshot = json.decode(share.snapshot_json)
+            if not snapshot then return send(500, { error = "invalid snapshot" }) end
+            if not body.gateway_id or body.gateway_id == "" then
+                return send(400, { error = "gateway_id is required" })
+            end
+            local new_id, err = storage.create_conversation({
+                user_id   = u.id,
+                gateway_id = body.gateway_id,
+                title     = snapshot.title or "Shared conversation",
+                model     = "",
+            })
+            if not new_id then return send(500, { error = tostring(err) }) end
+            local base_time = math.floor(ngx.now())
+            for i, m in ipairs(snapshot.messages or {}) do
+                storage.append_message({
+                    conversation_id  = new_id,
+                    role             = m.role,
+                    content          = m.content,
+                    gateway_id       = m.gateway_id,
+                    model            = m.model,
+                    created_at       = base_time + i,
+                })
+            end
+            local conv, e2 = storage.get_conversation(new_id, u.id)
+            if not conv then return send(500, { error = tostring(e2) }) end
+            return send(201, conv)
+        end
+
         if not body.gateway_id or body.gateway_id == "" then
             return send(400, { error = "gateway_id is required" })
         end
@@ -109,17 +143,20 @@ function M.register(route)
         send(200, conv)
     end)
 
-    -- PATCH /admin/v1/conversations/:id  { title?, model?, system_prompt?, temperature?, max_tokens?, gateway_id? }
+    -- PATCH /admin/v1/conversations/:id  { title?, model?, system_prompt?, temperature?, max_tokens?, gateway_id?, starred?, archived_at?, memory_disabled? }
     route("PATCH", "^/admin/v1/conversations/([^/]+)$", function(id)
         local u    = ngx.ctx.admin_user
         local body = read_body()
         local data = {}
-        if body.title         ~= nil then data.title         = nullable(body.title) end
-        if body.model         ~= nil then data.model         = nullable(body.model) end
-        if body.system_prompt ~= nil then data.system_prompt = nullable(body.system_prompt) end
-        if body.temperature   ~= nil then data.temperature   = nullable(body.temperature) end
-        if body.max_tokens    ~= nil then data.max_tokens    = nullable(body.max_tokens) end
-        if body.gateway_id    ~= nil then data.gateway_id    = nullable(body.gateway_id) end
+        if body.title           ~= nil then data.title           = nullable(body.title) end
+        if body.model           ~= nil then data.model           = nullable(body.model) end
+        if body.system_prompt   ~= nil then data.system_prompt   = nullable(body.system_prompt) end
+        if body.temperature     ~= nil then data.temperature     = nullable(body.temperature) end
+        if body.max_tokens      ~= nil then data.max_tokens      = nullable(body.max_tokens) end
+        if body.gateway_id      ~= nil then data.gateway_id      = nullable(body.gateway_id) end
+        if body.starred         ~= nil then data.starred         = (tonumber(body.starred) == 0) and 0 or 1 end
+        if body.memory_disabled ~= nil then data.memory_disabled = (tonumber(body.memory_disabled) == 0) and 0 or 1 end
+        if body.archived_at     ~= nil then data.archived_at     = (body.archived_at == json.null) and ngx.null or body.archived_at end
         local err = storage.update_conversation(id, u.id, data)
         if err then return send(500, { error = tostring(err) }) end
         send(200, { ok = true })
@@ -132,7 +169,56 @@ function M.register(route)
         send(200, { ok = true })
     end)
 
-    -- ── Feedback ─────────────────────────────────────────────────────────────
+    -- ── Share links ───────────────────────────────────────────────────────────
+
+    -- POST /admin/v1/conversations/:id/share — create/refresh share link
+    route("POST", "^/admin/v1/conversations/([^/]+)/share$", function(id)
+        local u = ngx.ctx.admin_user
+        local conv, err = storage.get_conversation(id, u.id)
+        if not conv then
+            return send(err == "not_found" and 404 or 500, { error = tostring(err) })
+        end
+        -- Build snapshot: strip system_prompt and per-message cost/token fields
+        local snapshot_msgs = {}
+        for _, m in ipairs(conv.messages or {}) do
+            if m.role ~= "system" then
+                snapshot_msgs[#snapshot_msgs + 1] = {
+                    id         = m.id,
+                    role       = m.role,
+                    content    = m.content,
+                    gateway_id = m.gateway_id,
+                    model      = m.model,
+                    created_at = m.created_at,
+                    attachments = m.attachments or {},
+                }
+            end
+        end
+        local snapshot = json.encode({
+            title    = conv.title,
+            messages = snapshot_msgs,
+        })
+        local token = ngx.md5(id .. u.id .. tostring(ngx.now())):lower()
+        local ok, e2 = storage.upsert_share(id, u.id, token, snapshot)
+        if not ok then return send(500, { error = tostring(e2) }) end
+        local base = os.getenv("AIG_SHARE_BASE_URL") or (ngx.var.scheme .. "://" .. (ngx.var.http_host or "localhost"))
+        send(201, { token = token, url = base .. "/shared/" .. token })
+    end)
+
+    -- DELETE /admin/v1/conversations/:id/share — revoke share link
+    route("DELETE", "^/admin/v1/conversations/([^/]+)/share$", function(id)
+        local u = ngx.ctx.admin_user
+        storage.delete_share(id, u.id)
+        send(200, { ok = true })
+    end)
+
+    -- GET /admin/v1/conversations/:id/share — get existing share token if any
+    route("GET", "^/admin/v1/conversations/([^/]+)/share$", function(id)
+        local u   = ngx.ctx.admin_user
+        local row = storage.get_share_by_conv(id, u.id)
+        if not row then return send(404, { error = "not_shared" }) end
+        local base = os.getenv("AIG_SHARE_BASE_URL") or (ngx.var.scheme .. "://" .. (ngx.var.http_host or "localhost"))
+        send(200, { token = row.token, url = base .. "/shared/" .. row.token })
+    end)
 
     route("GET", "^/admin/v1/conversations/([^/]+)/feedback$", function(conv_id)
         local u  = ngx.ctx.admin_user
@@ -183,6 +269,7 @@ function M.register(route)
             latency_ms        = nullable(body.latency_ms),
             gateway_id        = nullable(body.gateway_id),
             model             = nullable(body.model),
+            created_at        = tonumber(body.created_at) or nil,
         })
         if not mid then return send(500, { error = tostring(err) }) end
         send(201, { id = mid })
@@ -889,6 +976,61 @@ a { color: #1a6fb5; }
         ngx.status = 200
         ngx.print(pdf_data)
         ngx.exit(200)
+    end)
+
+    -- ── Memories ───────────────────────────────────────────────────────────────
+
+    -- GET /admin/v1/memories — list all memories for current user
+    route("GET", "^/admin/v1/memories$", function()
+        local u = ngx.ctx.admin_user
+        send(200, storage.list_memories(u.id))
+    end)
+
+    -- POST /admin/v1/memories — create a memory  { content, type?, source? }
+    route("POST", "^/admin/v1/memories$", function()
+        local u    = ngx.ctx.admin_user
+        local body = read_body()
+        if not body.content or body.content == "" then
+            return send(400, { error = "content is required" })
+        end
+        local valid_types   = { fact = true, preference = true, instruction = true }
+        local valid_sources = { manual = true, auto = true }
+        local mtype  = body.type   or "fact"
+        local msource = body.source or "manual"
+        if not valid_types[mtype]   then return send(400, { error = "invalid type" }) end
+        if not valid_sources[msource] then return send(400, { error = "invalid source" }) end
+        local id, err = storage.create_memory({
+            user_id = u.id,
+            content = body.content,
+            type    = mtype,
+            source  = msource,
+        })
+        if not id then return send(500, { error = tostring(err) }) end
+        -- Return the full memory object
+        local mems = storage.list_memories(u.id)
+        for _, m in ipairs(mems) do
+            if m.id == id then return send(201, m) end
+        end
+        send(201, { id = id, content = body.content, type = mtype, source = msource })
+    end)
+
+    -- PATCH /admin/v1/memories/:id — update memory content  { content }
+    route("PATCH", "^/admin/v1/memories/([^/]+)$", function(id)
+        local u    = ngx.ctx.admin_user
+        local body = read_body()
+        if not body.content or body.content == "" then
+            return send(400, { error = "content is required" })
+        end
+        local err = storage.update_memory(id, u.id, body.content)
+        if err then return send(500, { error = tostring(err) }) end
+        send(200, { ok = true })
+    end)
+
+    -- DELETE /admin/v1/memories/:id — delete a memory
+    route("DELETE", "^/admin/v1/memories/([^/]+)$", function(id)
+        local u = ngx.ctx.admin_user
+        storage.delete_memory(id, u.id)
+        send(200, { ok = true })
     end)
 
 end

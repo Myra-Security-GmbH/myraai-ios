@@ -542,3 +542,10 @@ ALTER TABLE chat_conversation
     ADD COLUMN IF NOT EXISTS project_id          VARCHAR(36),
     ADD COLUMN IF NOT EXISTS gateway_id_override VARCHAR(36),
     ADD COLUMN IF NOT EXISTS model_override      VARCHAR(128);
+
+-- Starring + archiving
+ALTER TABLE chat_conversation
+    ADD COLUMN IF NOT EXISTS starred     TINYINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS archived_at BIGINT  NULL;
+ALTER TABLE chat_conversation
+    ADD INDEX IF NOT EXISTS idx_conv_user_star (user_id, starred, updated_at);

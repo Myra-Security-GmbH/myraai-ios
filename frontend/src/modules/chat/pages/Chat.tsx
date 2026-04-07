@@ -4,6 +4,7 @@ import { api } from "src/api/client";
 import type {
   ChatConversation,
   ChatFeedback,
+  ChatMemory,
   ChatMessage,
   ChatPreset,
   ChatProject,
@@ -28,6 +29,7 @@ import SettingsDrawer, { type DrawerSettings } from "../components/SettingsDrawe
 import ArtifactPanel, { type Artifact } from "../components/ArtifactPanel";
 import { Modal } from "src/common/components/Modal";
 import { VariableFillModal } from "../components/VariableFillModal";
+import MemoriesPanel from "../components/MemoriesPanel";
 import chatS from "./Chat.module.scss";
 
 // ── Gear icon ──────────────────────────────────────────────────────────────
@@ -76,6 +78,28 @@ function FlagIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
       <line x1="4" y1="22" x2="4" y2="15" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+  );
+}
+
+function MemoryIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26A7 7 0 0 1 12 2z" />
+      <line x1="10" y1="20" x2="14" y2="20" />
+      <line x1="10" y1="22" x2="14" y2="22" />
     </svg>
   );
 }
@@ -137,6 +161,13 @@ function isVisionCapable(model: string): boolean {
 function buildProjectSystemPrompt(project: ChatProject, knowledgeFiles: ProjectKnowledgeText[]): string {
   const parts: string[] = [];
   if (project.instructions) parts.push(project.instructions.trim());
+  // Guide the model to annotate code blocks with filenames so they can be saved back
+  parts.push(
+    "When the user asks you to create or update a file, output it as a fenced code block " +
+    "where the very first line is a comment containing only the filename " +
+    "(e.g. `# utils.py` for Python, `// index.ts` for TypeScript, `-- schema.sql` for SQL). " +
+    "Do not include any other text on that first line."
+  );
   if (knowledgeFiles.length > 0) {
     parts.push("## Knowledge Base\n\nThe following files are provided as project knowledge context:");
     for (const f of knowledgeFiles) {
@@ -154,6 +185,7 @@ export default function Chat() {
 
   // ── Project context (from ?project_id= URL param) ─────────────────────────
   const projectIdParam = searchParams.get("project_id");
+  const convParam      = searchParams.get("conv");
   const [activeProject, setActiveProject] = useState<ChatProject | null>(null);
   const [projectKnowledge, setProjectKnowledge] = useState<ProjectKnowledgeText[]>([]);
 
@@ -163,6 +195,7 @@ export default function Chat() {
   const [models, setModels] = useState<ModelPrice[]>([]);
   const [providerMeta, setProviderMeta] = useState<ProviderMeta[]>([]);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [presets, setPresets] = useState<ChatPreset[]>([]);
 
   // ── Config bar state (persisted to localStorage) ───────────────────────────
@@ -279,6 +312,18 @@ export default function Chat() {
   const [feedbackError, setFeedbackError]     = useState<string | null>(null);
   const [feedbackSaved, setFeedbackSaved]     = useState(false);
 
+  // ── Share modal ────────────────────────────────────────────────────────────
+  const [showShareModal, setShowShareModal]   = useState(false);
+  const [shareUrl, setShareUrl]               = useState<string | null>(null);
+  const [shareToken, setShareToken]           = useState<string | null>(null);
+  const [shareLoading, setShareLoading]       = useState(false);
+  const [shareCopied, setShareCopied]         = useState(false);
+
+  // ── Memories ───────────────────────────────────────────────────────────────
+  const [memories, setMemories] = useState<ChatMemory[]>([]);
+  const [showMemories, setShowMemories] = useState(false);
+  const [memToast, setMemToast] = useState<string | null>(null);
+
   // ── Slash commands ─────────────────────────────────────────────────────────
   const [userCommands, setUserCommands] = useState<SlashCommand[]>([]);
   const [pendingCommand, setPendingCommand] = useState<SlashCommand | null>(null);
@@ -291,6 +336,7 @@ export default function Chat() {
     api.get<ChatConversation[]>("/conversations").then(setConversations).catch(() => {});
     api.get<ChatPreset[]>("/chat-presets").then(setPresets).catch(() => {});
     api.get<SlashCommand[]>("/chat-commands").then(setUserCommands).catch(() => {});
+    api.get<ChatMemory[]>("/memories").then(setMemories).catch(() => {});
   }, []);
 
   // ── Project context: load project + knowledge when ?project_id= changes ───
@@ -308,6 +354,16 @@ export default function Chat() {
       .catch(() => setProjectKnowledge([]));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectIdParam]);
+
+  // Auto-load a specific conversation when ?conv= is present in the URL
+  useEffect(() => {
+    if (!convParam || conversations.length === 0) return;
+    if (activeConvId === convParam) return;
+    if (conversations.find((c) => c.id === convParam)) {
+      loadConversation(convParam);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convParam, conversations]);
 
   // Sync drawer system prompt when project or knowledge files change
   useEffect(() => {
@@ -648,7 +704,57 @@ export default function Chat() {
     }
   }
 
-  // ── Send message ───────────────────────────────────────────────────────────
+  async function starConversation(id: string, starred: boolean) {
+    setConversations((prev) => prev.map((c) => c.id === id ? { ...c, starred: starred ? 1 : 0 } : c));
+    await api.patch(`/conversations/${id}`, { starred: starred ? 1 : 0 }).catch(() => {});
+  }
+
+  async function archiveConversation(id: string) {
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (activeConvId === id) { setActiveConvId(null); setMessages([]); }
+    await api.patch(`/conversations/${id}`, { archived_at: Math.floor(Date.now() / 1000) }).catch(() => {});
+  }
+
+  async function unarchiveConversation(id: string) {
+    await api.patch(`/conversations/${id}`, { archived_at: null }).catch(() => {});
+    setShowArchived(false);
+    api.get<ChatConversation[]>("/conversations").then(setConversations).catch(() => {});
+  }
+
+  function toggleArchivedView() {
+    const next = !showArchived;
+    setShowArchived(next);
+    const url = next ? "/conversations?archived=1" : "/conversations";
+    api.get<ChatConversation[]>(url).then(setConversations).catch(() => {});
+  }
+
+  // ── Share conversation ─────────────────────────────────────────────────────
+  async function openShareModal() {
+    if (!activeConvId) return;
+    setShowShareModal(true);
+    setShareUrl(null);
+    setShareToken(null);
+    setShareCopied(false);
+    setShareLoading(true);
+    try {
+      const data = await api.post<{ token: string; url: string }>(
+        `/conversations/${activeConvId}/share`, {}
+      );
+      setShareUrl(data.url);
+      setShareToken(data.token);
+    } catch {
+      // ignore — shareUrl stays null, modal shows error
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function revokeShare() {
+    if (!activeConvId) return;
+    await api.delete(`/conversations/${activeConvId}/share`).catch(() => {});
+    setShareUrl(null);
+    setShareToken(null);
+  }
   async function sendMessage() {
     const text = inputValue.trim();
     if (!text && pendingAttachments.length === 0) return;
@@ -672,6 +778,8 @@ export default function Chat() {
 
     // Track whether this is the very first message (for auto-title)
     const isFirstMessage = messages.length === 0;
+    // Was a conversation pre-created via the "New Conversation" button?
+    const hadExistingConv = !!activeConvId;
 
     // Create conversation on first message if none active
     let convId = activeConvId;
@@ -690,6 +798,7 @@ export default function Chat() {
             temperature: drawerSettings.temperature,
             max_tokens: drawerSettings.maxTokens,
             title: text.slice(0, 60) || "New conversation",
+            ...(projectIdParam ? { project_id: projectIdParam } : {}),
           });
           convId = conv.id;
           setConversations((prev) => [conv, ...prev]);
@@ -702,6 +811,13 @@ export default function Chat() {
           setCreating(false);
         }
       }
+    }
+
+    // If the user's first message goes into a pre-created "New conversation", immediately
+    // rename it from the message text so there's always a meaningful fallback title
+    // even if generateTitle() later fails or the stream errors out.
+    if (!ghostMode && isFirstMessage && hadExistingConv && convId && text) {
+      renameConversation(convId, text.slice(0, 60));
     }
 
     // Build content — plain text or content blocks if attachments
@@ -891,9 +1007,19 @@ export default function Chat() {
       .filter((m) => m.id !== "__temp_user__")
       .concat({ ...tempUserMsg, id: userMsgId ?? "__temp_user__" });
 
+    const activeConv = conversations.find(c => c.id === activeConvId);
+    const memoryDisabled = activeConv?.memory_disabled === 1;
+    const memBlock = (!memoryDisabled && memories.length > 0)
+      ? "\n\n---\n## What I know about you\n" + memories.map(m => `- ${m.content}`).join("\n")
+      : "";
+    const memInstruction = !memoryDisabled
+      ? "\n\nWhen the user states a personal fact, preference, or instruction worth remembering across conversations, emit it exactly as:\n<memory type=\"fact|preference|instruction\">concise fact in third-person</memory>\nThis tag is invisible to the user. Use sparingly — only for durable facts."
+      : "";
+    const systemContent = (drawerSettings.systemPrompt || "") + memBlock + memInstruction;
+
     const apiMessages = [
-      ...(drawerSettings.systemPrompt
-        ? [{ role: "system", content: drawerSettings.systemPrompt }]
+      ...(systemContent
+        ? [{ role: "system", content: systemContent }]
         : []),
       ...history.map((m) => {
         let content: unknown = m.content;
@@ -1089,6 +1215,11 @@ export default function Chat() {
         if ((err as Error)?.name === "AbortError") {
           break streaming; // User stopped — save partial content
         } else {
+          // Still attempt auto-title on error — generateTitle makes a separate gateway request
+          // and fails silently, so this is safe even if the main request failed.
+          if (!ghostMode && isFirstMessage && convId && text) {
+            generateTitle(convId, text, accumulated, tok, model);
+          }
           setProcessingStatus(null);
           setError(String(err));
           setIsStreaming(false);
@@ -1114,6 +1245,31 @@ export default function Chat() {
     // Auto-generate title (skip in ghost mode — no conversation row exists in DB)
     if (!ghostMode && isFirstMessage && convId && text) {
       generateTitle(convId, text, accumulated, tok, model);
+    }
+
+    if (!accumulated) return;
+
+    // Extract <memory> tags emitted by the model, strip them from visible content
+    {
+      const memTagRe = /<memory(?:\s+type="([^"]+)")?>([\s\S]*?)<\/memory>/g;
+      let visibleContent = accumulated;
+      let match;
+      const currentMemoryDisabled = conversations.find(c => c.id === convId)?.memory_disabled === 1;
+      while ((match = memTagRe.exec(accumulated)) !== null) {
+        const mtype = (match[1] || "fact") as ChatMemory["type"];
+        const content = match[2].trim();
+        visibleContent = visibleContent.replace(match[0], "");
+        if (!currentMemoryDisabled && content) {
+          api.post<ChatMemory>("/memories", { content, type: mtype, source: "auto" })
+            .then((m) => {
+              setMemories((prev) => [...prev, m]);
+              setMemToast(`Remembered: ${content}`);
+              setTimeout(() => setMemToast(null), 3000);
+            })
+            .catch(() => {}); // silent — never block response path
+        }
+      }
+      accumulated = visibleContent.trim();
     }
 
     if (!accumulated) return;
@@ -1302,6 +1458,35 @@ export default function Chat() {
     navigator.clipboard.writeText(text).catch(() => {});
   }
 
+  // ── File-saved injection: post a user message so the model knows the file ───
+  async function handleFileSaved(filename: string, content: string, lang: string) {
+    const convId = activeConvId;
+    if (!convId) return; // no conversation yet — system prompt will pick up the new file on next load
+    const fence = lang || "text";
+    const msgContent = `[File saved to project: ${filename}]\n\`\`\`${fence}\n${content}\n\`\`\``;
+    try {
+      const { id } = await api.post<{ id: string }>(`/conversations/${convId}/messages`, {
+        role: "user",
+        content: msgContent,
+      });
+      const injected: ChatMessage = {
+        id,
+        conversation_id: convId,
+        parent_message_id: null,
+        role: "user",
+        content: msgContent,
+        input_tokens: null,
+        output_tokens: null,
+        cost_usd: null,
+        latency_ms: null,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, injected]);
+    } catch {
+      // non-critical — save already succeeded, just couldn't inject context
+    }
+  }
+
   // ── Artifact panel — derived from streaming or last assistant message ───────
   const artifactSource = isStreaming
     ? (streamingContent ?? "")
@@ -1336,6 +1521,7 @@ export default function Chat() {
                 <button
                   key={p.id}
                   type="button"
+                  data-testid="config-preset-btn"
                   onClick={() => {
                     setSelectedPresetId(p.id);
                     setGatewayId(p.gateway_id);
@@ -1417,6 +1603,33 @@ export default function Chat() {
           disabled={!activeConvId || messages.length === 0}
         >
           <DownloadIcon />
+        </button>
+
+        {!ghostMode && (
+          <button
+            className={chatS["icon-btn"]}
+            title="Share conversation"
+            onClick={openShareModal}
+            disabled={!activeConvId}
+            data-cy="share-btn"
+          >
+            <ShareIcon />
+          </button>
+        )}
+
+        <button
+          className={chatS["icon-btn"]}
+          title={`Memories${memories.length > 0 ? ` (${memories.length})` : ""}`}
+          onClick={() => setShowMemories(true)}
+          data-cy="memories-btn"
+          style={{ position: "relative" }}
+        >
+          <MemoryIcon />
+          {memories.length > 0 && (
+            <span style={{ fontSize: "9px", position: "absolute", top: 2, right: 2, background: "var(--accent, #7c3aed)", color: "#fff", borderRadius: "50%", width: 12, height: 12, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>
+              {memories.length > 9 ? "9+" : memories.length}
+            </span>
+          )}
         </button>
 
         {!ghostMode && (
@@ -1529,6 +1742,11 @@ export default function Chat() {
             onCreate={() => { createConversation(); setShowConvList(false); }}
             onRename={renameConversation}
             onDelete={deleteConversation}
+            onStar={starConversation}
+            onArchive={archiveConversation}
+            onUnarchive={unarchiveConversation}
+            showArchived={showArchived}
+            onToggleArchived={toggleArchivedView}
             creating={creating}
             streamingConvId={streamingConvId}
           />
@@ -1561,6 +1779,8 @@ export default function Chat() {
               isStreaming={isStreaming && activeConvId === streamingConvId}
               processingStatus={activeConvId === streamingConvId ? processingStatus : null}
               streamingThinkingDurationMs={activeConvId === streamingConvId ? streamingThinkingDurationMs : null}
+              projectId={projectIdParam}
+              onFileSaved={projectIdParam ? handleFileSaved : null}
               onCopy={copyToClipboard}
               onEdit={editMessage}
               onRegenerate={regenerate}
@@ -1679,6 +1899,79 @@ export default function Chat() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {showShareModal && (
+        <Modal title="Share conversation" onClose={() => setShowShareModal(false)}>
+          {shareLoading ? (
+            <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Generating link…</p>
+          ) : shareUrl ? (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <input
+                  readOnly
+                  value={shareUrl}
+                  data-cy="share-url-input"
+                  style={{
+                    flex: 1, padding: "7px 10px", fontSize: 13,
+                    border: "1px solid var(--card-border)", borderRadius: 6,
+                    background: "var(--input-bg)", color: "var(--text-primary)",
+                    outline: "none",
+                  }}
+                  onFocus={e => e.target.select()}
+                />
+                <button
+                  className={s["btn"] + " " + s["btn--primary"] + " " + s["btn--sm"]}
+                  data-cy="share-copy-btn"
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareUrl).then(() => {
+                      setShareCopied(true);
+                      setTimeout(() => setShareCopied(false), 2000);
+                    });
+                  }}
+                >
+                  {shareCopied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  className={s["btn"] + " " + s["btn--danger"] + " " + s["btn--sm"]}
+                  data-cy="share-revoke-btn"
+                  onClick={revokeShare}
+                >
+                  Revoke link
+                </button>
+              </div>
+            </>
+          ) : (
+            <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+              Failed to generate share link.
+            </p>
+          )}
+        </Modal>
+      )}
+
+      {showMemories && (
+        <MemoriesPanel
+          memories={memories}
+          activeConvId={activeConvId}
+          onClose={() => setShowMemories(false)}
+          onMemoriesChange={setMemories}
+          onConvMemoryDisabledChange={(convId, disabled) => {
+            setConversations(prev => prev.map(c => c.id === convId ? { ...c, memory_disabled: disabled ? 1 : 0 } : c));
+          }}
+        />
+      )}
+
+      {memToast && (
+        <div data-cy="memory-toast" style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "var(--surface-2, #222)", color: "var(--text-primary, #fff)",
+          padding: "8px 16px", borderRadius: 8, fontSize: 13, zIndex: 9999,
+          boxShadow: "0 2px 12px rgba(0,0,0,0.25)", pointerEvents: "none",
+        }}>
+          {memToast}
+        </div>
       )}
     </div>
   );

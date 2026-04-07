@@ -9,6 +9,9 @@ interface Props {
   isStreaming: boolean;
   processingStatus?: string | null;
   streamingThinkingDurationMs?: number | null;
+  /** If set, code blocks with a filename comment get a "Save to Project" card */
+  projectId?: string | null;
+  onFileSaved?: ((filename: string, content: string, lang: string) => void) | null;
   onCopy: (text: string) => void;
   onEdit?: (id: string, content: string) => void;
   onRegenerate?: () => void;
@@ -29,6 +32,8 @@ export default function MessageThread({
   isStreaming,
   processingStatus,
   streamingThinkingDurationMs,
+  projectId,
+  onFileSaved,
   onCopy,
   onEdit,
   onRegenerate,
@@ -133,6 +138,8 @@ export default function MessageThread({
             isLast={idx === allMessages.length - 1}
             isStreaming={isThisBubbleStreaming}
             thinkingDurationMs={isThisBubbleStreaming ? streamingThinkingDurationMs : null}
+            projectId={projectId}
+            onFileSaved={onFileSaved}
             onCopy={onCopy}
             onEdit={onEdit}
             onRegenerate={idx === allMessages.length - 1 && msg.role === "assistant" ? onRegenerate : undefined}

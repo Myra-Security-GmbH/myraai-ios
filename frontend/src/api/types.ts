@@ -482,6 +482,15 @@ export interface AnalyticsDepth {
 // Chat types
 // ---------------------------------------------------------------------------
 
+export interface ChatMemory {
+  id:         string;
+  content:    string;
+  type:       "fact" | "preference" | "instruction";
+  source:     "manual" | "auto";
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ChatConversation {
   id: string;
   user_id?: string;
@@ -492,9 +501,17 @@ export interface ChatConversation {
   system_prompt: string | null;
   temperature: number;
   max_tokens: number;
+  starred?: number;          // 0 | 1
+  archived_at?: number | null; // unix seconds
+  memory_disabled?: number;  // 0 | 1
   created_at: string;
   updated_at: string;
   messages?: ChatMessage[];
+}
+
+export interface ConversationShare {
+  token: string;
+  url:   string;
 }
 
 export interface ChatMessage {

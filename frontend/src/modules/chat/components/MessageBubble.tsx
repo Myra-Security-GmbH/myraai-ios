@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, isValidElement } from "react";
+import { memo, useState, useCallback, useContext, createContext, isValidElement } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -12,6 +12,7 @@ import type { Components } from "react-markdown";
 import type { ChatMessage } from "src/api/types";
 import AttachmentChip from "./AttachmentChip";
 import ThinkingBlock from "./ThinkingBlock";
+import { SaveToProjectCard } from "./SaveToProjectCard";
 import s from "../pages/Chat.module.scss";
 
 function fmtCost(usd: number | null) {
@@ -68,10 +69,35 @@ function extractText(node: React.ReactNode): string {
   return "";
 }
 
-function CodeBlock({ inline, className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
+// Matches first-line filename comments across common languages:
+// # filename.py  // index.ts  -- schema.sql  % script.m  ; config.asm
+const FILENAME_COMMENT_RE = /^(?:#|\/\/|--|%|;)\s*([\w\-./ ]+\.\w+)\s*$/;
+
+/** Context passed into CodeBlock without prop-drilling through ReactMarkdown */
+interface ProjectCtx {
+  projectId: string | null;
+  onFileSaved: ((filename: string, content: string, lang: string) => void) | null;
+}
+const ProjectIdContext = createContext<ProjectCtx>({ projectId: null, onFileSaved: null });
+
+function CodeBlock({ className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
+  const { projectId, onFileSaved } = useContext(ProjectIdContext);
   const lang = /language-(\w+)/.exec(className ?? "")?.[1] ?? "";
-  const code = extractText(children).replace(/\n$/, "");
+  const rawCode = extractText(children).replace(/\n$/, "");
   const [codeCopied, setCodeCopied] = useState(false);
+
+  // Render as inline code when:
+  //   • no language tag (backtick spans never have one), AND
+  //   • no newline in content (single-line fenced blocks with no lang tag also qualify)
+  // This also fixes react-markdown v10 dropping the `inline` prop entirely.
+  const isInline = !lang && !rawCode.includes("\n");
+
+  // Detect optional filename comment on the first line
+  const firstLine = rawCode.split("\n")[0] ?? "";
+  const filenameMatch = !isInline ? FILENAME_COMMENT_RE.exec(firstLine) : null;
+  const detectedFilename = filenameMatch?.[1]?.trim() ?? null;
+  // Strip the filename comment line from the displayed/copied code
+  const code = detectedFilename ? rawCode.split("\n").slice(1).join("\n") : rawCode;
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(code);
@@ -79,32 +105,42 @@ function CodeBlock({ inline, className, children }: { inline?: boolean; classNam
     setTimeout(() => setCodeCopied(false), 1500);
   }, [code]);
 
-  if (inline) {
+  if (isInline) {
     return <code className={className}>{children}</code>;
   }
   return (
-    <div style={{ borderRadius: 8, overflow: "hidden", margin: "0.75em 0", border: "1px solid var(--card-border)" }}>
-      <div style={{
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        padding: "4px 12px", background: "var(--table-row-hover)", fontSize: 11,
-        color: "var(--text-secondary)", borderBottom: "1px solid var(--card-border)",
-      }}>
-        <span>{lang || "code"}</span>
-        <button
-          onClick={handleCopy}
-          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", padding: "2px 6px" }}
-        >
-          {codeCopied ? "Copied!" : "Copy"}
-        </button>
+    <>
+      <div style={{ borderRadius: 8, overflow: "hidden", margin: "0.75em 0", border: "1px solid var(--card-border)" }}>
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "4px 12px", background: "var(--table-row-hover)", fontSize: 11,
+          color: "var(--text-secondary)", borderBottom: "1px solid var(--card-border)",
+        }}>
+          <span>{detectedFilename ?? lang ?? "code"}</span>
+          <button
+            onClick={handleCopy}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", padding: "2px 6px" }}
+          >
+            {codeCopied ? "Copied!" : "Copy"}
+          </button>
+        </div>
+        <pre style={{ margin: 0, padding: "12px 16px", overflowX: "auto" }}>
+          <code className={className}>{detectedFilename ? code : children}</code>
+        </pre>
       </div>
-      <pre style={{ margin: 0, padding: "12px 16px", overflowX: "auto" }}>
-        <code className={className}>{children}</code>
-      </pre>
-    </div>
+      {detectedFilename && projectId && (
+        <SaveToProjectCard
+          filename={detectedFilename}
+          content={code}
+          projectId={projectId}
+          onSaved={onFileSaved ? () => onFileSaved(detectedFilename, code, lang) : undefined}
+        />
+      )}
+    </>
   );
 }
 
-const MD_COMPONENTS: Components = {
+const MD_COMPONENTS_DEFAULT: Components = {
   code: CodeBlock as Components["code"],
 };
 
@@ -153,6 +189,10 @@ interface Props {
   isStreaming?: boolean;
   /** Duration of the <think> phase in ms — only provided for the live streaming bubble */
   thinkingDurationMs?: number | null;
+  /** If set, code blocks with a filename comment get a "Save to Project" card */
+  projectId?: string | null;
+  /** Called after a file is saved so Chat.tsx can inject a context-refresh message */
+  onFileSaved?: ((filename: string, content: string, lang: string) => void) | null;
   onCopy: (text: string) => void;
   onEdit?: (id: string, content: string) => void;
   onRegenerate?: () => void;
@@ -163,12 +203,15 @@ const MessageBubble = memo(function MessageBubble({
   isLast,
   isStreaming,
   thinkingDurationMs,
+  projectId,
+  onFileSaved,
   onCopy,
   onEdit,
   onRegenerate,
 }: Props) {
   const isUser = message.role === "user";
   const [editing, setEditing] = useState(false);
+
   const [editValue, setEditValue] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -315,13 +358,15 @@ const MessageBubble = memo(function MessageBubble({
                       durationMs={thinkingDurationMs}
                     />
                   )}
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkEmoji]}
-                    rehypePlugins={[rehypeKatex, rehypeHighlight]}
-                    components={MD_COMPONENTS}
-                  >
-                    {textContent}
-                  </ReactMarkdown>
+                  <ProjectIdContext.Provider value={{ projectId: projectId ?? null, onFileSaved: onFileSaved ?? null }}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkEmoji]}
+                      rehypePlugins={[rehypeKatex, rehypeHighlight]}
+                      components={MD_COMPONENTS_DEFAULT}
+                    >
+                      {textContent}
+                    </ReactMarkdown>
+                  </ProjectIdContext.Provider>
                 </>
               )}
               {isStreaming && isLast && <span className={s["streaming-cursor"]} />}

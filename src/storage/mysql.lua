@@ -301,6 +301,45 @@ function M.migrate(cfg)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ]])
 
+    -- Create chat_share table if not present (idempotent)
+    db:query([[
+        CREATE TABLE IF NOT EXISTS chat_share (
+            id              VARCHAR(36)  NOT NULL,
+            conversation_id VARCHAR(36)  NOT NULL,
+            user_id         VARCHAR(36)  NOT NULL,
+            token           VARCHAR(64)  NOT NULL,
+            snapshot_json   LONGTEXT     NOT NULL,
+            created_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_share_conv  (conversation_id),
+            UNIQUE KEY uq_share_token (token),
+            CONSTRAINT fk_share_conv FOREIGN KEY (conversation_id)
+                REFERENCES chat_conversation(id) ON DELETE CASCADE,
+            CONSTRAINT fk_share_user FOREIGN KEY (user_id)
+                REFERENCES `user`(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ]])
+
+    -- Add memory_disabled to chat_conversation (idempotent)
+    db:query("ALTER TABLE chat_conversation ADD COLUMN IF NOT EXISTS memory_disabled TINYINT NOT NULL DEFAULT 0")
+
+    -- Create chat_memory table if not present (idempotent)
+    db:query([[
+        CREATE TABLE IF NOT EXISTS chat_memory (
+            id          VARCHAR(36)  NOT NULL,
+            user_id     VARCHAR(36)  NOT NULL,
+            content     TEXT         NOT NULL,
+            type        VARCHAR(16)  NOT NULL DEFAULT 'fact',
+            source      VARCHAR(16)  NOT NULL DEFAULT 'manual',
+            created_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            updated_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            PRIMARY KEY (id),
+            KEY idx_memory_user (user_id, created_at),
+            CONSTRAINT fk_memory_user FOREIGN KEY (user_id)
+                REFERENCES `user`(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ]])
+
     db:set_keepalive(0, 5)
 end
 
@@ -1786,20 +1825,25 @@ end
 -- Chat: conversations
 -- ---------------------------------------------------------------------------
 
-function M.list_conversations(user_id, limit, offset)
+function M.list_conversations(user_id, limit, offset, opts)
     limit  = math.min(limit or 50, 200)
     offset = offset or 0
+    opts   = opts or {}
     local db, err = get_conn()
     if not db then return setmetatable({}, cjson.array_mt) end
+    local archive_filter = opts.archived
+        and "AND archived_at IS NOT NULL"
+        or  "AND archived_at IS NULL"
     local rows = query_all(db, string.format([[
         SELECT id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens,
+               starred, archived_at, memory_disabled,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
                DATE_FORMAT(FROM_UNIXTIME(updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
         FROM chat_conversation
-        WHERE user_id = ? AND deleted_at IS NULL
-        ORDER BY updated_at DESC
+        WHERE user_id = ? AND deleted_at IS NULL %s
+        ORDER BY starred DESC, updated_at DESC
         LIMIT %d OFFSET %d
-    ]], limit, offset), user_id) or {}
+    ]], archive_filter, limit, offset), user_id) or {}
     release(db)
     return setmetatable(rows, cjson.array_mt)
 end
@@ -1832,6 +1876,7 @@ function M.get_conversation(id, user_id)
     if not db then return nil, err end
     local conv = query_one(db, [[
         SELECT id, user_id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens,
+               starred, archived_at, memory_disabled,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
                DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
         FROM chat_conversation
@@ -1885,6 +1930,16 @@ function M.update_conversation(id, user_id, data)
     if data.temperature   ~= nil then sets[#sets+1] = "temperature = ?";   params[#params+1] = data.temperature end
     if data.max_tokens    ~= nil then sets[#sets+1] = "max_tokens = ?";    params[#params+1] = data.max_tokens end
     if data.gateway_id    ~= nil then sets[#sets+1] = "gateway_id = ?";    params[#params+1] = data.gateway_id end
+    if data.starred          ~= nil then sets[#sets+1] = "starred = ?";          params[#params+1] = data.starred end
+    if data.memory_disabled  ~= nil then sets[#sets+1] = "memory_disabled = ?";  params[#params+1] = data.memory_disabled end
+    if data.archived_at   ~= nil then
+        if data.archived_at == ngx.null then
+            sets[#sets+1] = "archived_at = NULL"
+        else
+            sets[#sets+1] = "archived_at = ?"
+            params[#params+1] = data.archived_at
+        end
+    end
     if #sets == 0 then release(db); return nil end
     sets[#sets+1] = "updated_at = ?"
     params[#params+1] = math.floor(ngx.now())
@@ -1915,7 +1970,7 @@ function M.append_message(data)
     local db, err = get_conn()
     if not db then return nil, err end
     local id  = uuid()
-    local now = math.floor(ngx.now())
+    local now = data.created_at or math.floor(ngx.now())
     local e = exec_one(db, [[
         INSERT INTO chat_message
             (id, conversation_id, parent_message_id, role, content,
@@ -2201,6 +2256,8 @@ function M.list_projects(tenant_id, user_id, is_admin)
                    p.created_by,
                    DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
                    DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
+                   (SELECT COUNT(*) FROM chat_project_member  WHERE project_id = p.id) AS member_count,
+                   (SELECT COUNT(*) FROM chat_project_knowledge WHERE project_id = p.id) AS knowledge_count,
                    m.role
             FROM chat_project p
             LEFT JOIN chat_project_member m ON m.project_id = p.id AND m.user_id = ?
@@ -2215,6 +2272,8 @@ function M.list_projects(tenant_id, user_id, is_admin)
                    p.created_by,
                    DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
                    DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
+                   (SELECT COUNT(*) FROM chat_project_member  WHERE project_id = p.id) AS member_count,
+                   (SELECT COUNT(*) FROM chat_project_knowledge WHERE project_id = p.id) AS knowledge_count,
                    m.role
             FROM chat_project p
             JOIN chat_project_member m ON m.project_id = p.id AND m.user_id = ?
@@ -2416,6 +2475,21 @@ function M.list_project_knowledge(project_id)
     return setmetatable(rows, cjson.array_mt)
 end
 
+function M.get_project_knowledge_item(kid, project_id)
+    -- Returns a single knowledge row including extracted_text
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local rows = query_all(db, [[
+        SELECT id, filename, content_type, size_bytes, token_count, extracted_text,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+        FROM chat_project_knowledge
+        WHERE id = ? AND project_id = ?
+        LIMIT 1
+    ]], kid, project_id) or {}
+    release(db)
+    return rows[1]
+end
+
 function M.get_project_knowledge_text(project_id)
     -- Returns all knowledge rows including extracted_text (used for context injection)
     local db, err = get_conn()
@@ -2447,12 +2521,135 @@ function M.add_project_knowledge(data)
     return id
 end
 
+function M.upsert_project_knowledge(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local now = math.floor(ngx.now())
+    -- Rough token estimate: ~4 chars per token
+    local token_count = math.floor((#(data.extracted_text or "")) / 4)
+    local e = exec_one(db, [[
+        INSERT INTO chat_project_knowledge
+            (id, project_id, filename, content_type, size_bytes, extracted_text, token_count, created_by, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE
+            extracted_text = VALUES(extracted_text),
+            content_type   = VALUES(content_type),
+            size_bytes     = VALUES(size_bytes),
+            token_count    = VALUES(token_count)
+    ]], uuid(), data.project_id, data.filename,
+        data.content_type or "text/plain",
+        data.size_bytes or 0,
+        data.extracted_text or "",
+        token_count,
+        data.created_by, now)
+    release(db)
+    if e then return nil, e end
+    return true
+end
+
 function M.delete_project_knowledge(id, project_id)
     local db, err = get_conn()
     if not db then return err end
     local e = exec_one(db, [[
         DELETE FROM chat_project_knowledge WHERE id = ? AND project_id = ?
     ]], id, project_id)
+    release(db)
+    return e
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: share links
+-- ---------------------------------------------------------------------------
+
+function M.upsert_share(conv_id, user_id, token, snapshot_json)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    -- Atomic delete-then-insert within the same connection
+    exec_one(db, "DELETE FROM chat_share WHERE conversation_id = ?", conv_id)
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_share (id, conversation_id, user_id, token, snapshot_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ]], uuid(), conv_id, user_id, token, snapshot_json, now)
+    release(db)
+    if e then return nil, e end
+    return true
+end
+
+function M.delete_share(conv_id, user_id)
+    local db, err = get_conn()
+    if not db then return err end
+    exec_one(db, "DELETE FROM chat_share WHERE conversation_id = ? AND user_id = ?",
+             conv_id, user_id)
+    release(db)
+    return nil
+end
+
+function M.get_share_by_token(token)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local row = query_one(db,
+        "SELECT conversation_id, user_id, snapshot_json FROM chat_share WHERE token = ?",
+        token)
+    release(db)
+    return row
+end
+
+function M.get_share_by_conv(conv_id, user_id)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local row = query_one(db,
+        "SELECT token FROM chat_share WHERE conversation_id = ? AND user_id = ?",
+        conv_id, user_id)
+    release(db)
+    return row
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat: memories
+-- ---------------------------------------------------------------------------
+
+function M.list_memories(user_id)
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows = query_all(db, [[
+        SELECT id, content, type, source,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+        FROM chat_memory WHERE user_id = ? ORDER BY created_at ASC
+    ]], user_id) or {}
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+function M.create_memory(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id  = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO chat_memory (id, user_id, content, type, source, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?)
+    ]], id, data.user_id, data.content, data.type or "fact", data.source or "manual", now, now)
+    release(db)
+    if e then return nil, e end
+    return id
+end
+
+function M.update_memory(id, user_id, content)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        UPDATE chat_memory SET content = ?, updated_at = ? WHERE id = ? AND user_id = ?
+    ]], content, math.floor(ngx.now()), id, user_id)
+    release(db)
+    return e
+end
+
+function M.delete_memory(id, user_id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, "DELETE FROM chat_memory WHERE id = ? AND user_id = ?", id, user_id)
     release(db)
     return e
 end

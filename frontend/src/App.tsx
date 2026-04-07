@@ -26,6 +26,7 @@ import Commands from "src/modules/commands/pages/Commands";
 import Chat from "src/modules/chat/pages/Chat";
 import Projects from "src/modules/projects/pages/Projects";
 import LoginPage from "src/pages/LoginPage";
+import SharedConversation from "src/pages/SharedConversation";
 
 function AppShell() {
   return (
@@ -65,6 +66,7 @@ export default function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/shared/:token" element={<SharedConversation />} />
             <Route path="/*" element={
               <AuthGuard>
                 <AppShell />

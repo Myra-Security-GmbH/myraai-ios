@@ -746,3 +746,27 @@ table.table tbody tr.blocked td {
   word-break: break-all;
   color: var(--badge-success-text);
 }
+
+// ── Save-to-project card (shown below code blocks in project chat) ──────────
+
+.save-to-project-card {
+  display: flex;
+  align-items: center;
+  gap: tools.pixelToRem(8);
+  padding: tools.pixelToRem(6) tools.pixelToRem(10);
+  background: var(--section-bg);
+  border: 1px solid var(--card-border);
+  border-radius: tools.pixelToRem(6);
+  margin-top: tools.pixelToRem(4);
+}
+
+.save-filename {
+  font-family: monospace;
+  font-size: tools.pixelToRem(12);
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
