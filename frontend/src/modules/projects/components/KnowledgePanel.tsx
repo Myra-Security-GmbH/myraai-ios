@@ -12,11 +12,21 @@ function TrashIcon() {
 function FileIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>;
 }
+function DownloadIcon() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.36"/></svg>;
+}
+function LinkIcon() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>;
+}
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+interface KnowledgeItem extends ProjectKnowledge {
+  extracted_text?: string;
 }
 
 interface Props {
@@ -25,6 +35,7 @@ interface Props {
 }
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const adminBase = (import.meta.env.VITE_ADMIN_URL as string | undefined) ?? "/admin/v1";
 
 export default function KnowledgePanel({ projectId, canEdit }: Props) {
   const [files, setFiles] = useState<ProjectKnowledge[]>([]);
@@ -32,6 +43,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -76,6 +88,29 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
     } catch (e) {
       alert("Delete failed: " + String(e));
     }
+  }
+
+  async function handleDownload(f: ProjectKnowledge) {
+    try {
+      const item = await api.get<KnowledgeItem>(`/projects/${projectId}/knowledge/${f.id}`);
+      const blob = new Blob([item.extracted_text ?? ""], { type: item.content_type || "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = item.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("Download failed: " + String(e));
+    }
+  }
+
+  function handleCopyUrl(f: ProjectKnowledge) {
+    const url = `${adminBase}/projects/${projectId}/knowledge/${f.id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedId(f.id);
+      setTimeout(() => setCopiedId((prev) => (prev === f.id ? null : prev)), 1500);
+    });
   }
 
   if (loading) return <div className={s.empty}>Loading…</div>;
@@ -139,7 +174,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
                 <th>Size</th>
                 <th>Tokens (est.)</th>
                 <th>Uploaded</th>
-                {canEdit && <th />}
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -154,19 +189,39 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
                   <td style={{ color: "var(--text-secondary)" }}>{fmtSize(f.size_bytes)}</td>
                   <td style={{ color: "var(--text-secondary)" }}>{f.token_count.toLocaleString()}</td>
                   <td style={{ color: "var(--text-secondary)" }}>{new Date(f.created_at).toLocaleDateString()}</td>
-                  {canEdit && (
-                    <td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <button
+                      type="button"
+                      className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
+                      onClick={() => handleDownload(f)}
+                      title="Download file"
+                      data-cy={`download-knowledge-${f.id}`}
+                    >
+                      <DownloadIcon />
+                    </button>
+                    <button
+                      type="button"
+                      className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
+                      onClick={() => handleCopyUrl(f)}
+                      title="Copy reference URL"
+                      data-cy={`copy-url-knowledge-${f.id}`}
+                      style={{ marginLeft: 4 }}
+                    >
+                      {copiedId === f.id ? "✓" : <LinkIcon />}
+                    </button>
+                    {canEdit && (
                       <button
                         type="button"
                         className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`}
                         onClick={() => handleDelete(f.id, f.filename)}
                         title="Remove file"
                         data-cy={`delete-knowledge-${f.id}`}
+                        style={{ marginLeft: 4 }}
                       >
                         <TrashIcon />
                       </button>
-                    </td>
-                  )}
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

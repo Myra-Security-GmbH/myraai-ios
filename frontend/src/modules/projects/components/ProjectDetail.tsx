@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "src/api/client";
 import type { ChatProject, ChatConversation, Gateway, Tenant } from "src/api/types";
 import { useAuth } from "src/common/contexts/AuthContext";
@@ -52,7 +52,10 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
   const [project, setProject] = useState<ChatProject | null>(initialProject);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [loading, setLoading] = useState(!initialProject);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const VALID_TABS: Tab[] = ["overview", "knowledge", "members", "conversations"];
+  const tabParam = searchParams.get("tab") as Tab | null;
+  const tab: Tab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : "overview";
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
@@ -167,7 +170,11 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
             key={t}
             type="button"
             className={`${s.tab} ${tab === t ? s["tab--active"] : ""}`}
-            onClick={() => setTab(t)}
+            onClick={() => setSearchParams(prev => {
+              if (t === "overview") prev.delete("tab");
+              else prev.set("tab", t);
+              return prev;
+            })}
           >
             {t === "knowledge" && <FilesIcon />}
             {t === "members" && <UsersIcon />}
@@ -325,7 +332,7 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
                   </thead>
                   <tbody>
                     {conversations.map((c) => (
-                      <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/chat?project_id=${projectId}`)}>
+                      <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/chat?project_id=${projectId}&conv=${c.id}`)}>
                         <td>{c.title || "Untitled"}</td>
                         <td style={{ color: "var(--text-secondary)" }}>{c.model}</td>
                         <td style={{ color: "var(--text-secondary)" }}>{new Date(c.updated_at).toLocaleDateString()}</td>

@@ -15,6 +15,8 @@
 -- Project knowledge:
 --   GET    /admin/v1/projects/:id/knowledge
 --   POST   /admin/v1/projects/:id/knowledge        (multipart or JSON with extracted_text)
+--   GET    /admin/v1/projects/:id/knowledge/:kid   (single item with extracted_text)
+--   PUT    /admin/v1/projects/:id/knowledge/:fname  (upsert by filename)
 --   DELETE /admin/v1/projects/:id/knowledge/:kid
 -- Project conversations:
 --   GET    /admin/v1/projects/:id/conversations
@@ -35,7 +37,7 @@ local function send(status, body)
     ngx.header["Access-Control-Allow-Origin"]      = cors_origin()
     ngx.header["Access-Control-Allow-Credentials"] = "true"
     ngx.header["Access-Control-Allow-Headers"]     = "Content-Type, Authorization, x-aig-token"
-    ngx.header["Access-Control-Allow-Methods"]     = "GET, POST, PATCH, DELETE, OPTIONS"
+    ngx.header["Access-Control-Allow-Methods"]     = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
     ngx.print(json.encode(body))
 end
 
@@ -321,6 +323,52 @@ function M.register(route)
             if r.id == id then inserted = r; break end
         end
         send(201, inserted or { id = id })
+    end)
+
+    -- GET /admin/v1/projects/:id/knowledge/:kid
+    -- Returns a single knowledge item including extracted_text (for download / reference)
+    route("GET", "^/admin/v1/projects/([^/]+)/knowledge/([^/]+)$", function(project_id, kid)
+        local proj = require_project_access(project_id, "viewer")
+        if not proj then return end
+        local item = storage.get_project_knowledge_item(kid, project_id)
+        if not item then send(404, { error = "not found" }); return end
+        send(200, item)
+    end)
+
+    -- PUT /admin/v1/projects/:id/knowledge/:filename
+    -- Body: { extracted_text, content_type?, size_bytes? }
+    -- Upserts a knowledge entry by filename (insert or replace content).
+    route("PUT", "^/admin/v1/projects/([^/]+)/knowledge/([^/]+)$", function(project_id, encoded_filename)
+        local _, my_role = require_project_access(project_id, "editor")
+        if not _ then return end
+        if my_role ~= "admin" and my_role ~= "owner" and my_role ~= "editor" then
+            send(403, { error = "forbidden" }); return
+        end
+
+        local filename = ngx.unescape_uri(encoded_filename)
+        local body = read_body()
+        if body.extracted_text == nil then
+            send(400, { error = "extracted_text is required" }); return
+        end
+
+        local text = body.extracted_text
+        local ok, err = storage.upsert_project_knowledge({
+            project_id     = project_id,
+            filename       = filename,
+            content_type   = nullable(body.content_type) or "text/plain",
+            size_bytes     = tonumber(body.size_bytes) or #text,
+            extracted_text = text,
+            created_by     = ngx.ctx.admin_user.id,
+        })
+        if not ok then send(500, { error = err or "upsert failed" }); return end
+
+        -- Return the updated metadata row
+        local rows = storage.list_project_knowledge(project_id)
+        local row
+        for _, r in ipairs(rows) do
+            if r.filename == filename then row = r; break end
+        end
+        send(200, row or { ok = true, filename = filename })
     end)
 
     -- DELETE /admin/v1/projects/:id/knowledge/:kid
