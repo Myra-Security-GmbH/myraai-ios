@@ -11,7 +11,7 @@ import { execSync } from "child_process";
 import path from "path";
 
 const MYSQL   = "mysql -h 172.17.0.1 -u gateway -pgateway ai_gateway -e";
-const EMAIL   = "sascha@schumann.net";
+const EMAIL   = "info@schumann.net";
 const CODE    = "999888";
 const SESSION = path.resolve(__dirname, ".auth/session.json");
 

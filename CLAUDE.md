@@ -14,11 +14,110 @@ These instructions apply to every session in this repository. Follow them exactl
 - Screenshots in documentation must reflect the actual current UI.
 - If something cannot be done correctly, say so — do not produce low-quality output.
 
+### Mandatory completion checklist — every feature
+
+After writing any frontend or backend code, you MUST complete these steps in order before
+considering the task done. Skipping any step is not acceptable.
+
+1. **Rebuild the Docker image** — run `bash run_docker_production.sh` from
+   `/home/sas/work/ai-gateway/`. Never use `bash build_frontend.sh` alone as the final
+   step — it hot-deploys only and does not bake the change into the image.
+   - Exception: if only a config file or container environment changed (no source files),
+     `sudo systemctl restart myra-ai-gateway` is sufficient for a fast bounce.
+2. **Run the relevant E2E tests** — start the Vite dev server (`cd frontend && npm run dev`)
+   if it is not already running, then execute the test file for the feature you changed:
+   ```bash
+   cd frontend && ./run-e2e.sh tests/<feature>.spec.ts --reporter=list
+   ```
+3. **If any test fails**, fix the code, repeat step 1, and re-run. Do not mark the task
+   complete while a test is failing.
+4. **Run the full suite** when the change is broad or touches shared code:
+   ```bash
+   cd frontend && ./run-e2e.sh --reporter=list
+   ```
+
 ---
 
 ## E2E Testing — MANDATORY for every feature
 
 **Every feature must ship with a full Playwright E2E test suite. No manual testing is acceptable.**
+
+### Test quality rules — non-negotiable
+
+These rules apply to every test in the suite. Violating them is the same as having no test.
+
+#### No silent skip guards
+
+**Never use `test.skip()` to hide a missing precondition.** If the chat input is not
+visible, the gateway selector has no options, or any other required state is absent,
+the test must **fail loudly** — not skip silently. A skipped test gives false confidence.
+
+```typescript
+// WRONG — hides broken state
+if (!await input.isVisible().catch(() => false)) {
+  test.skip(true, "Chat input not visible");
+  return;
+}
+
+// RIGHT — the precondition is set up explicitly before the test body runs
+// Use beforeEach or a setup helper that selects a gateway/model via the API,
+// and fail the test if setup itself fails.
+```
+
+#### Always assert the inference response, not just the request
+
+Any test that sends a message to the inference API (the gateway) must assert that a
+**model response was received** — not just that the user message appeared optimistically.
+
+```typescript
+// WRONG — only checks the user message echo
+await expect(page.getByText(marker)).toBeVisible({ timeout: 5000 });
+
+// RIGHT — also waits for and checks the assistant's reply
+await expect(page.locator("[data-cy=assistant-message]").last())
+  .not.toBeEmpty({ timeout: 30000 });
+```
+
+#### Always assert error banners are absent after success
+
+After any inference call, file upload, or form submission that is expected to succeed,
+explicitly assert that no error message is shown:
+
+```typescript
+await expect(page.getByText(/failed to fetch/i)).not.toBeVisible();
+await expect(page.getByText(/error/i).first()).not.toBeVisible();
+```
+
+#### No hardcoded waits
+
+`waitForTimeout` is banned except as an absolute last resort with a comment explaining
+why no condition-based wait is possible. Use Playwright's built-in condition waiters:
+
+```typescript
+// WRONG
+await page.waitForTimeout(1500);
+
+// RIGHT
+await expect(page.locator("[data-cy=response-bubble]")).toBeVisible({ timeout: 15000 });
+```
+
+#### Inference path must be exercised end-to-end
+
+In the E2E test environment, `VITE_GATEWAY_URL` is unset so inference requests resolve
+to a relative `/v1/` path, which the Vite dev server **proxies to the local host openresty
+at `127.0.0.1:8081`**. Use gateways whose provider keys are encrypted with the dev master
+key (e.g. the `myratest` tenant's "SAFE local only" / vllm preset). The "PII claude-sonnet-4-6"
+preset uses Anthropic keys encrypted with the production master key and will fail with
+"Provider API key unavailable" in the local test environment — do not rely on it for
+inference assertions; use it only for CORS/header regression tests where a provider-level
+error is acceptable.
+
+Before any test that sends a message:
+
+1. Select a gateway and model explicitly via the UI or API helpers.
+2. Confirm the chat input is enabled (not disabled/hidden).
+3. Send the message and assert both user message and assistant response are visible.
+4. Assert no error banner is visible.
 
 ### Running tests
 
@@ -29,20 +128,40 @@ E2E tests require the Vite dev server running as a proxy to the Docker container
 cd frontend && npm run dev
 
 # Terminal 2 — run tests
-cd frontend && npx playwright test tests/<feature>.spec.ts --reporter=list
+cd frontend && ./run-e2e.sh tests/<feature>.spec.ts --reporter=list
 ```
 
 Run all tests:
 ```bash
-cd frontend && npx playwright test --reporter=list
+cd frontend && ./run-e2e.sh --reporter=list
 ```
 
 Run a single test by name:
 ```bash
-cd frontend && npx playwright test --grep "test name here" --reporter=list
+cd frontend && ./run-e2e.sh --grep "test name here" --reporter=list
 ```
 
 The Vite dev server at `http://localhost:5173` proxies `/admin/v1` and `/admin/auth` to the Docker container. **The Docker container must be running** before tests are executed.
+
+### Preventing concurrent runs
+
+`run-e2e.sh` wraps `npx playwright test` with an exclusive `flock` lock so only
+one Playwright process can run at a time on this machine. Tests create and delete
+fixtures in the shared MySQL database — two simultaneous runs will corrupt each
+other's state.
+
+```bash
+# Use run-e2e.sh instead of npx playwright test directly
+cd frontend && ./run-e2e.sh --config playwright.docker.config.ts --reporter=list
+```
+
+If you see `ERROR: Another Playwright run is already in progress (PID ...)`,
+either wait for it to finish or, if that PID is no longer running, remove the
+stale lock:
+
+```bash
+rm /tmp/ai-gateway-playwright.lock
+```
 
 ### Coverage requirements
 
@@ -114,7 +233,7 @@ E2E tests must cover every action a user can realistically take on a feature. A 
 - Playwright `baseURL` is `http://localhost:5173` (Vite dev proxy → Docker)
 - Admin API base: `http://localhost:5173/admin/v1`
 - Use **tenant `myratest`** for all test fixtures that require a tenant
-- Default test user: `sascha@schumann.net` (admin role)
+- Default test user: `info@schumann.net` (admin role) — use this for all E2E test fixtures, never `sascha@schumann.net`
 - Session is pre-authenticated via `tests/auth.setup.ts` — all tests in the `chromium` project start already logged in
 
 ### File location
@@ -208,10 +327,36 @@ Never build a custom modal overlay — always use `<Modal>`.
 
 ---
 
+## Restarting the gateway
+
+Two commands exist — use the right one:
+
+| Situation | Command |
+|---|---|
+| Container crashed / needs a bounce | `sudo systemctl restart myra-ai-gateway` |
+| Code changed (Lua, frontend, docs) | `bash run_docker_production.sh` |
+| Documentation changed + PDF needs updating | `bash run_docker_production.sh --pdf` |
+
+`sudo systemctl restart myra-ai-gateway` restarts the container instantly without rebuilding anything.
+It is safe to use any time the image is already up-to-date.
+
+`run_docker_production.sh` does a full rebuild: docs → PDF → frontend → Docker image → container restart.
+Use it whenever any source file changed.
+
+The service unit is at `/etc/systemd/system/myra-ai-gateway.service` and is enabled on boot.
+
+---
+
 ## Lua / backend changes
 
 ```bash
 bash run_docker_production.sh
+```
+
+PDF generation is skipped by default (it is slow). Pass `--pdf` to include it:
+
+```bash
+bash run_docker_production.sh --pdf
 ```
 
 Lua files are **baked into the Docker image** — they are NOT volume-mounted.
@@ -240,8 +385,7 @@ After any change to files under `docs/docs.md/`:
 After any UI change that affects documentation screenshots, rebuild them:
 
 ```bash
-cd frontend
-npx playwright test tests/screenshots.spec.ts \
+cd frontend && ./run-e2e.sh tests/screenshots.spec.ts \
   --config playwright.production.config.ts --project=chromium
 ```
 
@@ -262,7 +406,8 @@ then bakes everything into the Docker image. Running it earlier embeds stale out
 ```
 1. bash build_frontend.sh          # hot-deploy frontend to running container
 2. (run E2E tests to verify)
-3. npx playwright test screenshots  # capture screenshots against the running container
+3. cd frontend && ./run-e2e.sh tests/screenshots.spec.ts \
+      --config playwright.production.config.ts --project=chromium   # capture screenshots
 4. bash run_docker_production.sh   # LAST: gen_docs + gen_pdf + full image rebuild + container restart
 ```
 
