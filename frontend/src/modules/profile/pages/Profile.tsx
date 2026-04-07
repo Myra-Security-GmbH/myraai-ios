@@ -161,12 +161,6 @@ export default function Profile() {
             <div className={s["stat-label"]}>Email</div>
             <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{me?.email}</div>
           </div>
-          {me?.name && (
-            <div className={s["stat-card"]}>
-              <div className={s["stat-label"]}>Name</div>
-              <div className={`${s["stat-value"]} ${s["stat-value--text"]}`}>{me.name}</div>
-            </div>
-          )}
           <div className={s["stat-card"]}>
             <div className={s["stat-label"]}>Role</div>
             <div className={s["stat-value"]} style={{ marginTop: 6 }}>
