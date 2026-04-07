@@ -12,7 +12,7 @@ import type { Components } from "react-markdown";
 import type { ChatMessage } from "src/api/types";
 import AttachmentChip from "./AttachmentChip";
 import ThinkingBlock from "./ThinkingBlock";
-import { SaveToProjectCard } from "./SaveToProjectCard";
+import { SaveToProjectCard, SaveAllCard, type FileEntry } from "./SaveToProjectCard";
 import s from "../pages/Chat.module.scss";
 
 function fmtCost(usd: number | null) {
@@ -77,11 +77,56 @@ const FILENAME_COMMENT_RE = /^(?:#|\/\/|--|%|;)\s*([\w\-./ ]+\.\w+)\s*$/;
 interface ProjectCtx {
   projectId: string | null;
   onFileSaved: ((filename: string, content: string, lang: string) => void) | null;
+  /** True when a SaveAllCard is handling the batch — individual cards are suppressed */
+  hideSaveCard: boolean;
+  /** Fingerprint → filename for heading-before-block detection (Qwen3 / non-compliant models) */
+  codeToFilename: Map<string, string>;
 }
-const ProjectIdContext = createContext<ProjectCtx>({ projectId: null, onFileSaved: null });
+const ProjectIdContext = createContext<ProjectCtx>({ projectId: null, onFileSaved: null, hideSaveCard: false, codeToFilename: new Map() });
+
+/**
+ * Scan markdown text for fenced code blocks that carry a filename, via two patterns:
+ *   1. First line inside the fence is a comment: ```bash\n# script.sh\n...```
+ *   2. A markdown heading immediately before the fence: ## script.sh\n```bash\n...```
+ * Returns an array of FileEntry and a map from code fingerprint → filename (for CodeBlock lookup).
+ */
+function scanFilenameBlocks(text: string): { entries: FileEntry[]; codeToFilename: Map<string, string> } {
+  const entries: FileEntry[] = [];
+  const codeToFilename = new Map<string, string>();
+
+  // Pattern 1: filename comment as first line inside the fence
+  for (const m of text.matchAll(/```(\w*)\n([\s\S]*?)\n```/g)) {
+    const lang = m[1] ?? "";
+    const body = m[2] ?? "";
+    const firstLine = body.split("\n")[0] ?? "";
+    const match = FILENAME_COMMENT_RE.exec(firstLine);
+    if (match) {
+      const filename = match[1].trim();
+      const content = body.split("\n").slice(1).join("\n");
+      entries.push({ filename, content, lang });
+    }
+  }
+
+  // Pattern 2: markdown heading (# / ## / ###) immediately before the fence
+  // Handles models that put "# filename.sh" as a heading outside the block
+  for (const m of text.matchAll(/^#{1,3}\s+([\w\-./ ]+\.\w+)\s*\n+```(\w*)\n([\s\S]*?)\n```/gm)) {
+    const filename = m[1].trim();
+    const lang = m[2] ?? "";
+    const body = m[3] ?? "";
+    // Skip if already captured via pattern 1 (first-line comment)
+    const firstLine = body.split("\n")[0] ?? "";
+    if (FILENAME_COMMENT_RE.exec(firstLine)) continue;
+    const content = body;
+    entries.push({ filename, content, lang });
+    // Store fingerprint so CodeBlock can find the filename
+    codeToFilename.set(body.trim().slice(0, 120), filename);
+  }
+
+  return { entries, codeToFilename };
+}
 
 function CodeBlock({ className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
-  const { projectId, onFileSaved } = useContext(ProjectIdContext);
+  const { projectId, onFileSaved, hideSaveCard, codeToFilename } = useContext(ProjectIdContext);
   const lang = /language-(\w+)/.exec(className ?? "")?.[1] ?? "";
   const rawCode = extractText(children).replace(/\n$/, "");
   const [codeCopied, setCodeCopied] = useState(false);
@@ -92,12 +137,14 @@ function CodeBlock({ className, children }: { inline?: boolean; className?: stri
   // This also fixes react-markdown v10 dropping the `inline` prop entirely.
   const isInline = !lang && !rawCode.includes("\n");
 
-  // Detect optional filename comment on the first line
+  // Detect filename: first try comment on first line, then heading-before-block map
   const firstLine = rawCode.split("\n")[0] ?? "";
   const filenameMatch = !isInline ? FILENAME_COMMENT_RE.exec(firstLine) : null;
-  const detectedFilename = filenameMatch?.[1]?.trim() ?? null;
-  // Strip the filename comment line from the displayed/copied code
-  const code = detectedFilename ? rawCode.split("\n").slice(1).join("\n") : rawCode;
+  const detectedFilename = filenameMatch?.[1]?.trim()
+    ?? codeToFilename.get(rawCode.trim().slice(0, 120))
+    ?? null;
+  // Strip the filename comment line from displayed/copied code (pattern 1 only)
+  const code = filenameMatch ? rawCode.split("\n").slice(1).join("\n") : rawCode;
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(code);
@@ -128,7 +175,7 @@ function CodeBlock({ className, children }: { inline?: boolean; className?: stri
           <code className={className}>{detectedFilename ? code : children}</code>
         </pre>
       </div>
-      {detectedFilename && projectId && (
+      {detectedFilename && projectId && !hideSaveCard && (
         <SaveToProjectCard
           filename={detectedFilename}
           content={code}
@@ -211,9 +258,9 @@ const MessageBubble = memo(function MessageBubble({
 }: Props) {
   const isUser = message.role === "user";
   const [editing, setEditing] = useState(false);
-
   const [editValue, setEditValue] = useState("");
   const [copied, setCopied] = useState(false);
+  const [useIndividual, setUseIndividual] = useState(false);
 
   const blocks = parseContent(message.content);
   const docxBlocks = blocks.filter(
@@ -358,15 +405,38 @@ const MessageBubble = memo(function MessageBubble({
                       durationMs={thinkingDurationMs}
                     />
                   )}
-                  <ProjectIdContext.Provider value={{ projectId: projectId ?? null, onFileSaved: onFileSaved ?? null }}>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkEmoji]}
-                      rehypePlugins={[rehypeKatex, rehypeHighlight]}
-                      components={MD_COMPONENTS_DEFAULT}
-                    >
-                      {textContent}
-                    </ReactMarkdown>
-                  </ProjectIdContext.Provider>
+                  {(() => {
+                    const { entries: fileBlocks, codeToFilename } = (projectId && !isStreaming && !isUser)
+                      ? scanFilenameBlocks(textContent)
+                      : { entries: [], codeToFilename: new Map<string, string>() };
+                    const useConsolidated = fileBlocks.length > 1 && !useIndividual;
+                    return (
+                      <>
+                        <ProjectIdContext.Provider value={{
+                          projectId: projectId ?? null,
+                          onFileSaved: onFileSaved ?? null,
+                          hideSaveCard: useConsolidated,
+                          codeToFilename,
+                        }}>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkEmoji]}
+                            rehypePlugins={[rehypeKatex, rehypeHighlight]}
+                            components={MD_COMPONENTS_DEFAULT}
+                          >
+                            {textContent}
+                          </ReactMarkdown>
+                        </ProjectIdContext.Provider>
+                        {useConsolidated && projectId && (
+                          <SaveAllCard
+                            files={fileBlocks}
+                            projectId={projectId}
+                            onFileSaved={onFileSaved}
+                            onSwitchToIndividual={() => setUseIndividual(true)}
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
                 </>
               )}
               {isStreaming && isLast && <span className={s["streaming-cursor"]} />}

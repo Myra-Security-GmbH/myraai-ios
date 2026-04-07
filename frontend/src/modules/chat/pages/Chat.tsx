@@ -164,9 +164,12 @@ function buildProjectSystemPrompt(project: ChatProject, knowledgeFiles: ProjectK
   // Guide the model to annotate code blocks with filenames so they can be saved back
   parts.push(
     "When the user asks you to create or update a file, output it as a fenced code block " +
-    "where the very first line is a comment containing only the filename " +
-    "(e.g. `# utils.py` for Python, `// index.ts` for TypeScript, `-- schema.sql` for SQL). " +
-    "Do not include any other text on that first line."
+    "where the very first line INSIDE the code fence is a comment containing only the filename. " +
+    "Do NOT put the filename as a heading or text outside/before the code block. " +
+    "The filename comment must be literally the first line inside the fence. Examples:\n" +
+    "```bash\n# check_ssh.sh\n#!/bin/sh\n...\n```\n" +
+    "```typescript\n// api.ts\nexport const api = {};\n```\n" +
+    "```sql\n-- schema.sql\nCREATE TABLE users (id INT);\n```"
   );
   if (knowledgeFiles.length > 0) {
     parts.push("## Knowledge Base\n\nThe following files are provided as project knowledge context:");
@@ -181,7 +184,7 @@ export default function Chat() {
   useDocumentTitle("Chat");
 
   const { user: me } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // ── Project context (from ?project_id= URL param) ─────────────────────────
   const projectIdParam = searchParams.get("project_id");
@@ -479,6 +482,7 @@ export default function Chat() {
         ...(projectIdParam ? { project_id: projectIdParam } : {}),
       });
       setConversations((prev) => [conv, ...prev]);
+      setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set("conv", conv.id); return p; });
       await loadConversation(conv.id);
       focusInput();
     } catch (e) {
@@ -803,6 +807,7 @@ export default function Chat() {
           convId = conv.id;
           setConversations((prev) => [conv, ...prev]);
           setActiveConvId(convId);
+          setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set("conv", convId!); return p; });
         } catch (e) {
           setError("Failed to create conversation: " + String(e));
           setCreating(false);
@@ -1459,11 +1464,10 @@ export default function Chat() {
   }
 
   // ── File-saved injection: post a user message so the model knows the file ───
-  async function handleFileSaved(filename: string, content: string, lang: string) {
+  async function handleFileSaved(filename: string, _content: string, _lang: string) {
     const convId = activeConvId;
     if (!convId) return; // no conversation yet — system prompt will pick up the new file on next load
-    const fence = lang || "text";
-    const msgContent = `[File saved to project: ${filename}]\n\`\`\`${fence}\n${content}\n\`\`\``;
+    const msgContent = `[File saved to project: ${filename}]`;
     try {
       const { id } = await api.post<{ id: string }>(`/conversations/${convId}/messages`, {
         role: "user",
@@ -1727,7 +1731,7 @@ export default function Chat() {
         <div className={`${chatS["conv-sidebar"]} ${showConvList ? chatS["conv-sidebar--open"] : ""}`}>
           {activeProject && (
             <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--card-border)", background: "var(--accent-subtle)", fontSize: 12 }}>
-              <span style={{ fontWeight: 600, color: "var(--accent)" }}>{activeProject.icon} {activeProject.name}</span>
+              <a href={`/projects/${activeProject.id}`} style={{ fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}>{activeProject.icon} {activeProject.name}</a>
               {" — "}
               <a href="/projects" style={{ color: "var(--text-secondary)" }}>all projects</a>
             </div>
@@ -1738,7 +1742,7 @@ export default function Chat() {
               : conversations.filter((c) => !c.project_id)
             }
             activeId={activeConvId}
-            onSelect={(id) => { loadConversation(id); setShowConvList(false); }}
+            onSelect={(id) => { setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set("conv", id); return p; }); loadConversation(id); setShowConvList(false); }}
             onCreate={() => { createConversation(); setShowConvList(false); }}
             onRename={renameConversation}
             onDelete={deleteConversation}

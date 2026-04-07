@@ -59,7 +59,7 @@ export default function MessageThread({
         scrollRafRef.current = null;
         if (!isUserScrolled.current) {
           isProgrammaticScroll.current = true;
-          bottomRef.current?.scrollIntoView({ behavior: "instant" });
+          bottomRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
         }
       });
     } else {

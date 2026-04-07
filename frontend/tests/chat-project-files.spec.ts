@@ -284,4 +284,111 @@ test.describe("Chat — Save to Project file feature", () => {
       await deleteProject(page, projectId);
     }
   });
+
+  // ── 7. Batch: Save All card appears for multiple filename blocks ───────────
+
+  test("Save All card appears when assistant message has multiple filename blocks", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, `test-batch-${Date.now()}`);
+    const convId = await createConversation(page, gatewayId, projectId);
+    const ts = Date.now();
+    const files = [
+      { filename: `utils-${ts}.py`,   ext: "py",  code: "def util(): pass" },
+      { filename: `schema-${ts}.sql`, ext: "sql", code: "CREATE TABLE t (id INT);" },
+      { filename: `api-${ts}.ts`,     ext: "ts",  code: "export const api = {};" },
+    ];
+    const content = files.map(f => makeAssistantMsg(f.filename, f.ext, f.code)).join("\n\n");
+    try {
+      await appendAssistantMessage(page, convId, content);
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+
+      // Consolidated card must appear
+      await expect(page.getByRole("button", { name: "Save All to Project" })).toBeVisible({ timeout: 10000 });
+      // Individual "Save to Project" buttons must NOT be visible
+      await expect(page.getByRole("button", { name: "Save to Project" })).not.toBeVisible();
+      // All filenames listed in the batch card
+      for (const f of files) {
+        await expect(page.getByText(f.filename).first()).toBeVisible();
+      }
+    } finally {
+      await deleteConversation(page, convId);
+      await deleteProject(page, projectId);
+    }
+  });
+
+  // ── 8. Batch: Save All saves all files and injects context messages ────────
+
+  test("Save All to Project saves all files and injects a context message per file", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, `test-batch-save-${Date.now()}`);
+    const convId = await createConversation(page, gatewayId, projectId);
+    const ts = Date.now();
+    const files = [
+      { filename: `alpha-${ts}.py`,   ext: "py",  code: "def alpha(): pass" },
+      { filename: `beta-${ts}.sql`,   ext: "sql", code: "CREATE TABLE beta (id INT);" },
+      { filename: `gamma-${ts}.ts`,   ext: "ts",  code: "export const gamma = 1;" },
+    ];
+    const content = files.map(f => makeAssistantMsg(f.filename, f.ext, f.code)).join("\n\n");
+    try {
+      await appendAssistantMessage(page, convId, content);
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+
+      await expect(page.getByRole("button", { name: "Save All to Project" })).toBeVisible({ timeout: 10000 });
+      await page.getByRole("button", { name: "Save All to Project" }).click();
+      await expect(page.getByText("✓ All saved")).toBeVisible({ timeout: 10000 });
+
+      // All files must be in the knowledge base
+      const rows = await listKnowledge(page, projectId);
+      for (const f of files) {
+        const entry = rows.find(r => r.filename === f.filename);
+        expect(entry, `${f.filename} must be in knowledge base`).toBeTruthy();
+        expect(entry!.token_count, "token_count > 0").toBeGreaterThan(0);
+      }
+
+      // A context injection message must appear in the thread for each file
+      for (const f of files) {
+        await expect(page.getByText(`[File saved to project: ${f.filename}]`)).toBeVisible({ timeout: 5000 });
+      }
+    } finally {
+      await deleteConversation(page, convId);
+      const rows = await listKnowledge(page, projectId);
+      for (const r of rows) await deleteKnowledgeEntry(page, projectId, r.id);
+      await deleteProject(page, projectId);
+    }
+  });
+
+  // ── 9. Batch: "Save individually" switches to per-file cards ─────────────
+
+  test("Save individually button re-shows individual Save to Project cards", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, `test-individual-${Date.now()}`);
+    const convId = await createConversation(page, gatewayId, projectId);
+    const ts = Date.now();
+    const files = [
+      { filename: `x-${ts}.py`,  ext: "py",  code: "x = 1" },
+      { filename: `y-${ts}.ts`,  ext: "ts",  code: "const y = 2;" },
+    ];
+    const content = files.map(f => makeAssistantMsg(f.filename, f.ext, f.code)).join("\n\n");
+    try {
+      await appendAssistantMessage(page, convId, content);
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+
+      // Batch card visible initially
+      await expect(page.getByRole("button", { name: "Save All to Project" })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole("button", { name: "Save individually" })).toBeVisible();
+
+      // Click "Save individually"
+      await page.getByRole("button", { name: "Save individually" }).click();
+
+      // Batch card must disappear; individual cards must appear
+      await expect(page.getByRole("button", { name: "Save All to Project" })).not.toBeVisible();
+      await expect(page.getByRole("button", { name: "Save to Project" })).toHaveCount(2);
+    } finally {
+      await deleteConversation(page, convId);
+      await deleteProject(page, projectId);
+    }
+  });
 });
