@@ -52,19 +52,19 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to add a Google AI Studio API key:
 
 1. Open **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to configure.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Keys** tab.
-   ⇒ The key management page opens.
+   - The key management page opens.
 4. Click on the **Add Key** button.
-   ⇒ The key form opens.
+   - The key form opens.
 5. Select `gemini` from the **Provider** drop-down list.
-   ⇒ The provider is set.
+   - The provider is set.
 6. Enter `default` in the **Alias** text field (or a custom alias if you store multiple keys).
-   ⇒ The alias is set.
+   - The alias is set.
 7. Enter your Google AI Studio API key (starting with `AIza`) in the **Key** text field.
-   ⇒ The key value is set.
+   - The key value is set.
 8. Click on the **Save** button.
 
 → The provider key is encrypted and stored. The gateway uses it for all Gemini requests on this gateway.
@@ -116,15 +116,15 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to configure the Vertex AI variant:
 
 1. Open **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to configure.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Configuration** tab.
-   ⇒ The configuration form opens.
+   - The configuration form opens.
 4. Enter your Google Cloud project ID in the **Vertex project** text field.
-   ⇒ The project is set.
+   - The project is set.
 5. Enter the Google Cloud region in the **Vertex region** text field (for example, `us-central1`).
-   ⇒ The region is set.
+   - The region is set.
 6. Click on the **Save** button.
 
 → The Vertex AI configuration is saved.

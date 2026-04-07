@@ -1,4 +1,4 @@
-#! /bin/sh
+#!/usr/bin/env bash
 
 exec 200>/tmp/ai-gateway-gen-docs.lock
 flock -n 200 || { echo "gen_docs.sh is already running"; exit 1; }

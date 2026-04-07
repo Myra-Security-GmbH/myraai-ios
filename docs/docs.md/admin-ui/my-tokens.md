@@ -30,14 +30,14 @@ The view lists all tokens belonging to the currently logged-in user. Each row sh
 ► Proceed as follows to create an inference token:
 
 1. Click the **+ New Token** button.
-   ⇒ A creation form appears.
+   - A creation form appears.
 2. Select the gateway you want the token to access from the **Gateway** drop-down list. Gateways are listed as `tenant/gateway-slug`.
 3. If required, enter a descriptive name in the **Label** text field.
 4. If required, set an expiry date in the **Expiry date** field.
 5. If required, enter a maximum spend in USD in the **Spend budget** text field.
 6. If required, set a request rate limit in the **Rate limit** field.
 7. Click the **Create Token** button.
-   ⇒ The token value appears on screen.
+   - The token value appears on screen.
 8. Copy the token value immediately.
 
 > ⚠️ **Caution:** The token is shown once only and cannot be retrieved again. Store it securely before closing the dialog.

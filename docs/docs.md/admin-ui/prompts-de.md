@@ -21,7 +21,7 @@ Die meisten Prompts liefern bessere Ergebnisse, wenn Sie kurzen Kontext ergänze
 3. Hängen Sie ein Dokument über das **Büroklammer**-Symbol an oder ziehen Sie eine Datei in den Nachrichtenbereich.
 4. Kopieren Sie einen Prompt von dieser Seite und fügen Sie ihn in das Eingabefeld ein.
 5. Drücken Sie **Enter** oder klicken Sie auf **Senden**.
-   ⇒ Das Modell antwortet auf Basis des Dokumentinhalts.
+   - Das Modell antwortet auf Basis des Dokumentinhalts.
 
 → Der Prompt wird an das Modell gesendet und eine Antwort erscheint im Chat.
 

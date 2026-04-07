@@ -52,19 +52,19 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to add an Anthropic provider key:
 
 1. Open **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to configure.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Keys** tab.
-   ⇒ The key management page opens.
+   - The key management page opens.
 4. Click on the **Add Key** button.
-   ⇒ The key form opens.
+   - The key form opens.
 5. Select `anthropic` from the **Provider** drop-down list.
-   ⇒ The provider is set.
+   - The provider is set.
 6. Enter `default` in the **Alias** text field (or a custom alias if you store multiple keys).
-   ⇒ The alias is set.
+   - The alias is set.
 7. Enter your Anthropic API key (starting with `sk-ant-`) in the **Key** text field.
-   ⇒ The key value is set.
+   - The key value is set.
 8. Click on the **Save** button.
 
 → The provider key is encrypted and stored. The gateway uses it for all Anthropic requests on this gateway.

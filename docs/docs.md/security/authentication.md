@@ -97,9 +97,9 @@ Select `inference` for standard API access.
 ► Proceed as follows to create a user:
 
 1. Click on **Users** in the left sidebar.
-   ⇒ The user list opens.
+   - The user list opens.
 2. Click on the **New User** button.
-   ⇒ The New User form opens.
+   - The New User form opens.
 3. Select the tenant from the **Tenant** drop-down list.
 4. Enter the email address in the **Email** text field.
 5. If required, enter a display name in the **Name** text field.
@@ -123,11 +123,11 @@ Select `inference` for standard API access.
 ► Proceed as follows to create a token:
 
 1. Click on **Users** in the left sidebar.
-   ⇒ The user list opens.
+   - The user list opens.
 2. Click on the user you want to create a token for.
-   ⇒ The user detail page opens.
+   - The user detail page opens.
 3. Click on the **New Token** button.
-   ⇒ The New Token form opens.
+   - The New Token form opens.
 4. Select the gateway from the **Gateway** drop-down list.
 5. Enter a label in the **Label** text field.
 6. If required, enter an expiry date in the **Expires At** field.
@@ -145,9 +145,9 @@ Select `inference` for standard API access.
 ► Proceed as follows to revoke a token:
 
 1. Click on **Users** in the left sidebar.
-   ⇒ The user list opens.
+   - The user list opens.
 2. Click on the user whose token you want to revoke.
-   ⇒ The user detail page opens, showing the token list.
+   - The user detail page opens, showing the token list.
 3. Click on the delete icon next to the token.
 
 → The token is revoked immediately. In-flight requests that have already passed the authentication phase complete normally.
@@ -164,9 +164,9 @@ Select `inference` for standard API access.
 ► Proceed as follows to disable authentication on a gateway:
 
 1. Click on **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to configure.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Config** tab.
 4. Toggle the **Auth Required** switch to off.
 5. Click on the **Save** button.

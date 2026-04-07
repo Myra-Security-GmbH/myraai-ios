@@ -122,7 +122,7 @@ With `min_ratio: 0.05`, even a small fraction of Cyrillic characters triggers de
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Language** button.
-   ⇒ A collapsed language guardrail card appears at the bottom of the list.
+   - A collapsed language guardrail card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block` or `flag`.

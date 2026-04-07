@@ -59,12 +59,12 @@ ACCESS_KEY_ID:SECRET_ACCESS_KEY:SESSION_TOKEN
 ► Proceed as follows to add a BYOK key:
 
 1. Click on **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to configure.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Keys** tab.
 4. Click on the **Add Key** button.
-   ⇒ The Add Key form opens.
+   - The Add Key form opens.
 5. Select the provider from the **Provider** drop-down list.
 6. Enter an alias in the **Alias** text field. Leave the value as `default` unless you need multiple keys for the same provider.
 7. Paste the API key into the **Key** text field.
@@ -79,11 +79,11 @@ ACCESS_KEY_ID:SECRET_ACCESS_KEY:SESSION_TOKEN
 ► Proceed as follows to delete a BYOK key:
 
 1. Click on **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway whose key you want to delete.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Keys** tab.
-   ⇒ The key list appears.
+   - The key list appears.
 4. Click on the delete icon next to the key you want to remove.
 
 → The key is deleted immediately.

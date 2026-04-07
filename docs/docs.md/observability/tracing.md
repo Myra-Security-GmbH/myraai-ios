@@ -16,15 +16,15 @@ Tracing is opt-in and has no effect on request latency. All writes are fire-and-
 ► Proceed as follows to enable tracing on a gateway:
 
 1. Open the gateway in the admin UI.
-   ⇒ The gateway detail page appears.
+   - The gateway detail page appears.
 2. Click on the **Config** tab.
-   ⇒ The gateway configuration panel opens.
+   - The gateway configuration panel opens.
 3. Scroll to the **Tracing** section.
 4. Toggle the **Enabled** control to on.
 5. If required, toggle **Include bodies** to record the full message array in the `request_received` step.
-   ⇒ Enable this for debugging only. It stores prompt text in the trace table.
+   - Enable this for debugging only. It stores prompt text in the trace table.
 6. Click the **Save** button.
-   ⇒ The updated configuration is applied within seconds.
+   - The updated configuration is applied within seconds.
 
 → Tracing is active for all subsequent requests through this gateway.
 
@@ -196,7 +196,7 @@ When gateway tracing is enabled, each log entry contains a `trace_id` field. Use
    curl "https://<your-gateway-host>/admin/v1/logs/log_abc789"
    ```
 
-   ⇒ The response contains a `trace_id` field, for example `"trc_abc123"`.
+   - The response contains a `trace_id` field, for example `"trc_abc123"`.
 
 2. Fetch the full trace using the `trace_id`.
 

@@ -242,6 +242,102 @@ def mark_small_tables(content: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Column-width hints for reference tables
+# ---------------------------------------------------------------------------
+#
+# WeasyPrint uses table-layout:auto by default, which lets the Description
+# column claim most of the available width and squeezes the first (Field /
+# Header / Parameter) column to its minimum breakable width.  Identifiers
+# like ``provider_base_urls`` (18 chars) end up wrapping to a second line
+# even though there is room if the column gets a fair share.
+#
+# Fix: detect known reference-table patterns by the first <th> text, inject
+# a <colgroup> with proportional <col style="width:N%"> elements, and set
+# table-layout:fixed so WeasyPrint honours the declared widths.
+
+# Map (first_col_label, col_count) → list of percentage widths.
+# Widths must sum to 100; last column may be omitted (takes the remainder).
+_COLGROUP_RULES: dict[tuple[str, int], list[int]] = {
+    # Field | Type | Default | Description
+    ("field",        4): [25, 12, 15, 48],
+    ("parameter",    4): [25, 12, 15, 48],
+    ("option",       4): [25, 12, 15, 48],
+    ("setting",      4): [25, 12, 15, 48],
+    ("config key",   4): [25, 12, 15, 48],
+    # Header | Type | Description
+    ("header",       3): [32, 13, 55],
+    ("request header", 3): [32, 13, 55],
+    # Name | Type | Description  /  Key | Type | Description
+    ("name",         3): [28, 14, 58],
+    ("key",          3): [28, 14, 58],
+    # Provider | Override value | When to use
+    ("provider",     3): [20, 30, 50],
+    # Feature | Limitation
+    ("feature",      2): [50, 50],
+    # Command | Description
+    ("command",      2): [28, 72],
+    # Signal word | When to use  (signal-word tables in PROMPT_DOCU / troubleshooting)
+    ("signal word",  2): [22, 78],
+}
+
+_TABLE_FULL_RE  = re.compile(r'(<table)([^>]*>)(.*?)(</table>)', re.DOTALL | re.IGNORECASE)
+_THEAD_RE       = re.compile(r'<thead[^>]*>(.*?)</thead>', re.DOTALL | re.IGNORECASE)
+_TH_RE          = re.compile(r'<th[^>]*>(.*?)</th>', re.DOTALL | re.IGNORECASE)
+
+
+def inject_colgroup_hints(content: str) -> str:
+    """
+    Inject <colgroup> width hints into reference tables so WeasyPrint does not
+    squeeze the first (Field/Header/Parameter) column.
+    """
+    count = 0
+
+    def _patch_table(m: re.Match) -> str:
+        nonlocal count
+        tag_open  = m.group(1)   # "<table"
+        tag_attrs = m.group(2)   # e.g. ' class="small-table">'
+        body      = m.group(3)   # everything between opening and closing tags
+        tag_close = m.group(4)   # "</table>"
+
+        # Find <thead> to count columns and read first-column header text
+        thead_m = _THEAD_RE.search(body)
+        if not thead_m:
+            return m.group(0)
+        ths = _TH_RE.findall(thead_m.group(1))
+        col_count = len(ths)
+        if col_count < 2:
+            return m.group(0)
+
+        # Strip tags and normalise first-column header text
+        first_hdr = re.sub(r"<[^>]+>", "", ths[0]).strip().lower()
+
+        widths = _COLGROUP_RULES.get((first_hdr, col_count))
+        if widths is None:
+            return m.group(0)
+
+        # Build <colgroup>
+        cols_html = "".join(f'<col style="width:{w}%">' for w in widths)
+        colgroup  = f"<colgroup>{cols_html}</colgroup>"
+
+        # Add table-layout:fixed to the opening tag attrs (before the closing >)
+        raw_attrs = tag_attrs.rstrip(">").rstrip()
+        if "table-layout" not in raw_attrs:
+            if 'style="' in raw_attrs:
+                raw_attrs = raw_attrs.replace('style="', 'style="table-layout:fixed;', 1)
+            else:
+                raw_attrs += ' style="table-layout:fixed"'
+        new_open = tag_open + raw_attrs + ">"
+
+        count += 1
+        return new_open + colgroup + body + tag_close
+
+    content = _TABLE_FULL_RE.sub(_patch_table, content)
+    if count:
+        print(f"  Injected colgroup width hints into {count} reference table(s)")
+    return content
+
+
+# ---------------------------------------------------------------------------
 # <wbr> injection for td code identifiers
 # ---------------------------------------------------------------------------
 #
@@ -1053,6 +1149,7 @@ def main():
     content = strip_inline_toc(content)
     content = compact_terminal_sections(content)
     content = mark_small_tables(content)
+    content = inject_colgroup_hints(content)
     content = inject_wbr_in_td_code(content)
     content = inject_version_into_cover(content, _version)
     content = render_mermaid_diagrams(content)

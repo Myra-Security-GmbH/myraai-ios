@@ -89,7 +89,7 @@ Not all views are visible to all users. The sidebar shows only the views the cur
 ► Proceed as follows to navigate to a view:
 
 1. Click any entry in the sidebar.
-   ⇒ The selected view opens in the main area. The active view is highlighted in the sidebar. No page reload occurs — the panel uses client-side navigation.
+   - The selected view opens in the main area. The active view is highlighted in the sidebar. No page reload occurs — the panel uses client-side navigation.
 
 → The selected view is displayed in the main area.
 

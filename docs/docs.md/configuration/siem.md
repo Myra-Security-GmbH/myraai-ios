@@ -260,17 +260,17 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to configure gateway-level SIEM integration:
 
 1. Click on **Gateways** in the left sidebar.
-   ⇒ The **Gateways** list opens.
+   - The **Gateways** list opens.
 2. Click on the gateway.
-   ⇒ The gateway detail view opens.
+   - The gateway detail view opens.
 3. Click on the **Edit** button.
-   ⇒ The gateway edit dialog opens.
+   - The gateway edit dialog opens.
 4. Scroll to the **SIEM Integration** section.
 5. Select a backend type from the **Type** drop-down list.
 6. Select the events you want forwarded in the **Events** section.
 7. Enter the backend-specific fields (URL, token, host/port) as shown in the [Per-backend configuration examples](#per-backend-configuration-examples).
 8. Click on the **Save** button.
-   ⇒ The gateway forwards matching events to the configured SIEM backend.
+   - The gateway forwards matching events to the configured SIEM backend.
 
 → The gateway-level SIEM configuration is active. It overrides the tenant default for this gateway.
 
@@ -300,7 +300,7 @@ The tenant-level SIEM configuration applies to all gateways under the tenant tha
    }
    ```
 
-   ⇒ The tenant SIEM configuration is saved.
+   - The tenant SIEM configuration is saved.
 
 → All gateways under the tenant forward matching events to the configured SIEM backend, unless they have a gateway-level override.
 

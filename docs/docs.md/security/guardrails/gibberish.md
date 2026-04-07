@@ -117,7 +117,7 @@ Tighter thresholds to catch more marginal responses — useful for structured-ou
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Gibberish** button.
-   ⇒ A collapsed gibberish detector card appears at the bottom of the list.
+   - A collapsed gibberish detector card appears at the bottom of the list.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block` or `flag`.

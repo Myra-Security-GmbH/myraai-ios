@@ -19,7 +19,7 @@ The playground supports up to four model panels side by side. All panels receive
 ► Proceed as follows to add a model panel:
 
 1. Click the **+ Add Model** button.
-   ⇒ A new panel opens (up to four panels total).
+   - A new panel opens (up to four panels total).
 2. Select a provider and model in the new panel.
 
 → The new panel is ready to receive prompts.

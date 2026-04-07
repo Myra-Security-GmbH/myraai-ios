@@ -104,7 +104,7 @@ Guardrails are configured using the visual **Guardrail Builder**, which is avail
 ► Proceed as follows to create a guardrail:
 
 1. Open the gateway detail page or the **New Gateway** modal.
-   ⇒ The Guardrail Builder appears at the bottom of the page or modal.
+   - The Guardrail Builder appears at the bottom of the page or modal.
 2. Click on the button for the guardrail type you want to add:
    - **+ Regex / Pattern** — named pattern library and custom regex
    - **+ Keyword** — exact string matching
@@ -112,7 +112,7 @@ Guardrails are configured using the visual **Guardrail Builder**, which is avail
    - **+ Presidio (NLP)** — NLP-based PII detection
    - **+ Prompt Guard** — semantic safety classification (Llama Guard 3, locally hosted)
    - **+ PII Protector** — reversible PII tokenisation
-   ⇒ A collapsed guardrail card appears at the bottom of the list.
+   - A collapsed guardrail card appears at the bottom of the list.
 3. Click on the guardrail card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block`, `scrub` (not available on Keyword, Jailbreak, or Prompt Guard), or `flag`.
@@ -130,9 +130,9 @@ Guardrails are configured using the visual **Guardrail Builder**, which is avail
 ► Proceed as follows to edit a guardrail:
 
 1. Open the gateway detail page.
-   ⇒ The Guardrail Builder shows the configured guardrail list.
+   - The Guardrail Builder shows the configured guardrail list.
 2. Click on the guardrail card you want to edit.
-   ⇒ The card expands to show the configuration fields.
+   - The card expands to show the configuration fields.
 3. Update the required fields.
 4. Click on the **Save Guardrails** button.
 
@@ -145,9 +145,9 @@ Guardrails are configured using the visual **Guardrail Builder**, which is avail
 ► Proceed as follows to delete a guardrail:
 
 1. Open the gateway detail page.
-   ⇒ The Guardrail Builder shows the configured guardrail list.
+   - The Guardrail Builder shows the configured guardrail list.
 2. Click on the **×** button on the right side of the guardrail card header you want to remove.
-   ⇒ The card is removed from the list immediately.
+   - The card is removed from the list immediately.
 3. Click on the **Save Guardrails** button.
 
 → The guardrail is deleted. The **Execution plan** table updates to reflect the removal.

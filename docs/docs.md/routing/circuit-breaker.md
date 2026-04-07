@@ -73,21 +73,21 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to configure the circuit breaker for a gateway:
 
 1. Open **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to configure.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Configuration** tab.
-   ⇒ The configuration form opens.
+   - The configuration form opens.
 4. Toggle the **Circuit breaker enabled** toggle on.
-   ⇒ The circuit breaker configuration fields appear.
+   - The circuit breaker configuration fields appear.
 5. Enter a value in the **Failure threshold** text field.
-   ⇒ The failure threshold is set.
+   - The failure threshold is set.
 6. Enter a value in the **Window** text field (in seconds).
-   ⇒ The counting window is set.
+   - The counting window is set.
 7. Enter a value in the **Cooldown** text field (in milliseconds).
-   ⇒ The cooldown period is set.
+   - The cooldown period is set.
 8. If required, edit the **Failure status codes** field to customise which HTTP status codes count as failures.
-   ⇒ The status code list is updated.
+   - The status code list is updated.
 9. Click on the **Save** button.
 
 → The circuit breaker configuration is saved and takes effect immediately.

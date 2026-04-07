@@ -102,7 +102,7 @@ Logging happens after the response is sent. It adds no latency to the request pa
 ► Proceed as follows to query request logs via the API:
 
 1. Send a `GET` request to `/admin/v1/logs` with an admin token.
-   ⇒ The endpoint accepts the following query parameters:
+   - The endpoint accepts the following query parameters:
 
    | Parameter | Description |
    |-----------|-------------|
@@ -119,7 +119,7 @@ Logging happens after the response is sent. It adds no latency to the request pa
 
 2. If filtering blocked requests, add `blocked=true` to the query string.
 3. If filtering by time range, add `from` and `to` parameters in ISO 8601 format.
-   ⇒ The API returns a paginated list of log entries matching the filter.
+   - The API returns a paginated list of log entries matching the filter.
 
 > ⭐ **Example:**
 > ```bash
@@ -153,7 +153,7 @@ Payload logging is controlled at two levels: per-gateway and per-request.
      -d '{"config": {"log_payloads": false}}'
    ```
 
-   ⇒ The `prompt` and `response` fields are set to `null` for every subsequent request through that gateway.
+   - The `prompt` and `response` fields are set to `null` for every subsequent request through that gateway.
 
 → The gateway no longer stores prompt or response text in log entries.
 
@@ -170,7 +170,7 @@ Payload logging is controlled at two levels: per-gateway and per-request.
      ...
    ```
 
-   ⇒ The log entry is written with metadata only; `prompt` and `response` are set to `null`.
+   - The log entry is written with metadata only; `prompt` and `response` are set to `null`.
 
 2. If you want to skip the log entry entirely, include `x-aig-collect-log: false` instead.
 
@@ -181,7 +181,7 @@ Payload logging is controlled at two levels: per-gateway and per-request.
      ...
    ```
 
-   ⇒ No log entry is written for this request.
+   - No log entry is written for this request.
 
 → The specified request is either logged without payload text, or not logged at all.
 

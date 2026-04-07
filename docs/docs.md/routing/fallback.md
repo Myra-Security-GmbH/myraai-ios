@@ -91,23 +91,23 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to add fallback providers to a routing rule:
 
 1. Open **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to configure.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Routing** tab.
-   ⇒ The rule list opens.
+   - The rule list opens.
 4. Click on the routing rule you want to edit.
-   ⇒ The rule editor opens.
+   - The rule editor opens.
 5. Scroll to the **Fallbacks** section.
-   ⇒ The fallbacks list is visible.
+   - The fallbacks list is visible.
 6. Click on the **Add Fallback** button.
-   ⇒ A new fallback row appears.
+   - A new fallback row appears.
 7. Select the fallback provider from the **Provider** drop-down list.
-   ⇒ The provider is set.
+   - The provider is set.
 8. Enter the model name in the **Model** text field.
-   ⇒ The model is set.
+   - The model is set.
 9. Repeat steps 6–8 for each additional fallback provider, in the order the gateway should try them.
-   ⇒ Each fallback is added to the list.
+   - Each fallback is added to the list.
 10. Click on the **Save** button.
 
 → The routing rule is updated with the configured fallback chain.

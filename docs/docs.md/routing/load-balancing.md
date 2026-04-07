@@ -88,29 +88,29 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to configure load balancing on a routing rule:
 
 1. Open **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to configure.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Routing** tab.
-   ⇒ The rule list opens.
+   - The rule list opens.
 4. Click on the **Add Rule** button, or click on an existing rule to edit it.
-   ⇒ The rule editor opens.
+   - The rule editor opens.
 5. Select **Load balance** from the **Action type** drop-down list.
-   ⇒ The load balancing configuration section appears.
+   - The load balancing configuration section appears.
 6. Select the strategy from the **Strategy** drop-down list (`weighted_random` or `round_robin`).
-   ⇒ The strategy is set.
+   - The strategy is set.
 7. Click on the **Add Target** button.
-   ⇒ A target row appears.
+   - A target row appears.
 8. Select the provider from the **Provider** drop-down list.
-   ⇒ The provider is set.
+   - The provider is set.
 9. Enter the model name in the **Model** text field.
-   ⇒ The model is set.
+   - The model is set.
 10. Enter a weight value in the **Weight** text field.
-    ⇒ The weight is set.
+    - The weight is set.
 11. Repeat steps 7–10 for each additional target.
-    ⇒ Each target is added to the list.
+    - Each target is added to the list.
 12. If required, enter a field name in the **Sticky field** text field and a TTL value in the **Sticky TTL** text field to enable sticky sessions.
-    ⇒ Sticky session configuration is set.
+    - Sticky session configuration is set.
 13. Click on the **Save** button.
 
 → The routing rule is saved with the load balancing configuration.

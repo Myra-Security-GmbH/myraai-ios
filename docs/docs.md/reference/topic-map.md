@@ -4,7 +4,7 @@ Browse all documentation topics by category.
 
 <div class="grid cards" markdown>
 
--   **Using the product**
+-   **Getting started**
 
     ---
 
@@ -14,12 +14,17 @@ Browse all documentation topics by category.
     - [Quick start](../getting-started/quick-start.md)
     - [Interface overview](../admin-ui/views-overview.md)
     - [Signing in](../admin-ui/authentication.md)
+
+-   **Using the product**
+
+    ---
+
     - [Dashboard](../observability/dashboard.md)
     - [Chat](../admin-ui/chat.md)
     - [Projects](../admin-ui/projects.md)
     - [Playground](../observability/playground.md)
 
--   **Account management**
+-   **My account**
 
     ---
 
@@ -77,7 +82,7 @@ Browse all documentation topics by category.
     - [Overview](../integrations/overview.md)
     - [Claude Code](../integrations/claude-code.md)
 
--   **Background and reference**
+-   **Reference**
 
     ---
 
@@ -98,8 +103,8 @@ Browse all documentation topics by category.
     - [Error codes](../api-reference/error-codes.md)
     - [Configuration reference](../reference/config-reference.md)
     - [Glossary](../reference/glossary.md)
+    - [Topic map](../reference/topic-map.md)
     - [What's new](../reference/changelog.md)
     - [Index](../reference/index.md)
-    - [Topic map](../reference/topic-map.md)
 
 </div>

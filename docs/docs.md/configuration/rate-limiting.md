@@ -70,15 +70,15 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to configure a gateway-level rate limit:
 
 1. Click on **Gateways** in the left sidebar.
-   ⇒ The **Gateways** list opens.
+   - The **Gateways** list opens.
 2. Click on the gateway.
-   ⇒ The gateway detail view opens.
+   - The gateway detail view opens.
 3. Click on the **Config** tab.
-   ⇒ The configuration form opens.
+   - The configuration form opens.
 4. Enter the maximum number of requests in the **Requests** text field.
 5. Enter the window duration in seconds in the **Window** text field.
 6. Click on the **Save** button.
-   ⇒ The rate limit is applied to all requests through the gateway.
+   - The rate limit is applied to all requests through the gateway.
 
 → The gateway enforces the new rate limit for all subsequent requests.
 
@@ -100,15 +100,15 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to configure a per-token rate limit:
 
 1. Click on **Users** in the left sidebar.
-   ⇒ The **Users** list opens.
+   - The **Users** list opens.
 2. Click on the user.
-   ⇒ The user detail view opens.
+   - The user detail view opens.
 3. Click on the **New Token** button.
-   ⇒ The **New Token** dialog opens.
+   - The **New Token** dialog opens.
 4. Enter the maximum number of requests in the **Requests** text field.
 5. Enter the window duration in seconds in the **Window** text field.
 6. Click on the **Save** button.
-   ⇒ The new token appears in the token list with the configured rate limit.
+   - The new token appears in the token list with the configured rate limit.
 
 → The token rate limit is active for all requests authenticated with that token.
 

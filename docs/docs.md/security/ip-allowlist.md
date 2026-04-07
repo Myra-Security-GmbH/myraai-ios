@@ -58,9 +58,9 @@ The `blocked_by` field identifies the IP allowlist as the reason, which distingu
 ► Proceed as follows to add an IP allowlist entry:
 
 1. Click on **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to restrict.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Config** tab.
 4. Locate the **IP Allowlist** field.
 5. Enter one IP address or CIDR range per line in the **IP Allowlist** field.
@@ -75,9 +75,9 @@ The `blocked_by` field identifies the IP allowlist as the reason, which distingu
 ► Proceed as follows to remove an IP allowlist entry:
 
 1. Click on **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway whose allowlist you want to modify.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Config** tab.
 4. Locate the **IP Allowlist** field.
 5. Delete the entry or entries you want to remove.

@@ -48,7 +48,7 @@ Before you begin, ensure the following conditions are met:
 
 1. Navigate to `/login`.
 2. Click the **Continue with Google** button.
-   ⇒ The system redirects you to Google's consent screen.
+   - The system redirects you to Google's consent screen.
 3. Authenticate with your Google account.
 
 → The system returns you to the dashboard.
@@ -68,7 +68,7 @@ Before you begin, ensure the following conditions are met:
 3. Enter your email address in the **Email** text field.
 4. If required, check **Stay logged in for 30 days on this device** to extend your session to 30 days.
 5. Click the **Send code** button.
-   ⇒ The system sends a 6-digit code to your email address. The code expires after 15 minutes and can only be used once.
+   - The system sends a 6-digit code to your email address. The code expires after 15 minutes and can only be used once.
 6. Enter the code in the **One-time code** text field.
 7. Click the **Verify** button.
 

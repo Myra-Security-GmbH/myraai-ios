@@ -113,14 +113,14 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to configure a gateway budget:
 
 1. Click on **Gateways** in the left sidebar.
-   ⇒ The **Gateways** list opens.
+   - The **Gateways** list opens.
 2. Click on the gateway.
-   ⇒ The gateway detail view opens.
+   - The gateway detail view opens.
 3. Click on the **Config** tab.
-   ⇒ The configuration form opens.
+   - The configuration form opens.
 4. Enter the spend cap in the **Budget (USD)** text field.
 5. Click on the **Save** button.
-   ⇒ The budget of the gateway is applied to all requests through the gateway.
+   - The budget of the gateway is applied to all requests through the gateway.
 
 → The gateway enforces the budget. Requests are blocked once the configured spend cap is reached.
 
@@ -138,14 +138,14 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to configure a per-token budget:
 
 1. Click on **Users** in the left sidebar.
-   ⇒ The **Users** list opens.
+   - The **Users** list opens.
 2. Click on the user.
-   ⇒ The user detail view opens.
+   - The user detail view opens.
 3. Create or open a token.
-   ⇒ The token dialog opens.
+   - The token dialog opens.
 4. Enter the spend cap in the **Budget (USD)** text field.
 5. Click on the **Save** button.
-   ⇒ The budget is applied to all requests authenticated with that token.
+   - The budget is applied to all requests authenticated with that token.
 
 → The token budget is active immediately. Requests using that token are blocked once the spend cap is reached.
 
@@ -165,13 +165,13 @@ Use the reset action to clear accumulated spend so that requests can resume. Res
 ► Proceed as follows to reset a gateway budget:
 
 1. Click on **Gateways** in the left sidebar.
-   ⇒ The **Gateways** list opens.
+   - The **Gateways** list opens.
 2. Click on the gateway.
-   ⇒ The gateway detail view opens.
+   - The gateway detail view opens.
 3. Click on the **Config** tab.
-   ⇒ The configuration form opens.
+   - The configuration form opens.
 4. Click on the **Reset budget** button.
-   ⇒ Accumulated spend for the current period is cleared.
+   - Accumulated spend for the current period is cleared.
 
 → The spend counter of the gateway resets to zero. Requests are accepted again up to the configured budget cap.
 
@@ -183,11 +183,11 @@ Use the reset action to clear accumulated spend so that requests can resume. Res
 ► Proceed as follows to reset a user token budget:
 
 1. Click on **Users** in the left sidebar.
-   ⇒ The **Users** list opens.
+   - The **Users** list opens.
 2. Click on the user.
-   ⇒ The user detail view opens.
+   - The user detail view opens.
 3. Click on the **Reset budget** action for the token.
-   ⇒ Accumulated spend for that token is cleared.
+   - Accumulated spend for that token is cleared.
 
 → The spend counter of the token resets to zero. Requests authenticated with that token are accepted again up to the configured budget cap.
 

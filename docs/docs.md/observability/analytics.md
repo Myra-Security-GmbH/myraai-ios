@@ -153,7 +153,7 @@ Clicking any row in the **By Tenant** tab opens a slide-in panel on the right si
 ► Proceed as follows to close the tenant detail panel:
 
 1. Click outside the panel or click the **×** button.
-   ⇒ The panel closes.
+   - The panel closes.
 
 → The tenant detail panel is closed.
 

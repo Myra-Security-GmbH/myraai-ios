@@ -23,13 +23,14 @@ Each feature is rated on two axes:
 10. [Model Switching Mid-Conversation](#10-model-switching-mid-conversation)
 11. [Agent Orchestration (Claude Code Teams)](#11-agent-orchestration-claude-code-teams)
 12. [Minor UX Gaps](#12-minor-ux-gaps)
+12a. [Our Differentiators (not in Claude.ai)](#12a-our-differentiators-not-in-claudeai)
 13. [Summary Table](#13-summary-table)
 
 ---
 
 ## 1. Projects
 
-**Importance: critical | Effort: ~15–20 days**
+**Importance: critical | Effort: ~15–20 days | ✅ SHIPPED**
 
 ### What Claude.ai does
 
@@ -45,58 +46,12 @@ Projects appear as a top-level item in the left sidebar above individual convers
 
 ### What we have
 
-We have **Presets** (name + system prompt + model + temperature + max_tokens, one-click apply) and per-conversation system prompts. There is no concept of a shared knowledge base attached to a configuration, and no grouping of conversations under a parent project entity.
+**Fully shipped.** Backend: `admin/projects.lua` with full CRUD (`GET/POST/PATCH/DELETE /projects`, `/projects/{id}/members`, `/projects/{id}/knowledge`, `/projects/{id}/conversations`). Frontend: `Projects.tsx` list/detail page, `ProjectCreateModal`, `ProjectDetail` panel, `KnowledgePanel` with drag-and-drop upload, `MembersDrawer` for role management. Project instructions are injected into every conversation that belongs to the project; knowledge files are prepended as context.
 
-### Why it matters
+### Remaining gaps vs Claude.ai
 
-Projects solve the most common enterprise chat workflow: *"I want every conversation about our codebase to have these 10 files and this system prompt, without copying them every time."* Without projects, users either:
-- Paste the same files and instructions manually each time (tedious, error-prone), or
-- Put everything into one very long conversation until it hits the context limit.
-
-For a B2B gateway product, Projects are the feature most likely to cause enterprise prospects to choose Claude.ai over ours — it is the killer feature that makes Claude.ai feel like a professional tool rather than a playground.
-
-### Implementation plan
-
-**Backend (Lua/SQL) — ~8 days**
-
-New tables:
-```sql
-projects (
-  id TEXT PK, tenant_id TEXT, name TEXT, description TEXT,
-  instructions TEXT,          -- system prompt injected into every conversation
-  created_by TEXT,            -- user_id
-  created_at INTEGER, updated_at INTEGER, deleted_at INTEGER
-)
-
-project_knowledge (
-  id TEXT PK, project_id TEXT FK, filename TEXT,
-  content_type TEXT,          -- text/plain, application/pdf, …
-  extracted_text TEXT,        -- plain text (extracted at upload time)
-  size_bytes INTEGER, created_at INTEGER
-)
-
-project_members (
-  project_id TEXT FK, user_id TEXT FK, role TEXT,  -- owner | editor | viewer
-  joined_at INTEGER
-)
-```
-
-Conversations gain a nullable `project_id FK projects.id`. Admin API routes:
-- `GET/POST /projects`
-- `GET/PATCH/DELETE /projects/{id}`
-- `GET/POST /projects/{id}/knowledge` (upload file, multipart)
-- `DELETE /projects/{id}/knowledge/{kid}`
-- `GET/POST /projects/{id}/members`
-
-The chat message handler in `admin/api.lua` must inject project instructions before the conversation's own system prompt, and prepend knowledge file contents (similar to how we currently handle uploaded attachments but at project scope, cached by `project_id`).
-
-**Frontend (React) — ~7 days**
-
-- Projects section in the left sidebar above conversations (collapsible, with "New project" button)
-- Project detail panel: name/instructions editor, knowledge file list with drag-and-drop upload
-- Conversations inside a project show the project name as a breadcrumb
-- "Move conversation to project" action in the conversation context menu
-- Project knowledge displayed as read-only file chips in the chat input area when inside a project
+- "Move conversation to project" context menu action (the API exists; UI not yet wired)
+- Project knowledge file chips shown in the chat input bar when the active conversation is inside a project
 
 ---
 
@@ -108,13 +63,15 @@ The chat message handler in `admin/api.lua` must inject project instructions bef
 
 The word "skills" spans three related but distinct features in the Claude ecosystem:
 
-#### 2a. Slash Commands (prompt templates)
+#### 2a. Slash Commands (prompt templates) — ✅ SHIPPED
 
 Typing `/` in the chat input opens an autocomplete menu of saved prompt templates. Each slash command has a short name, a description, and a template body that may include `{{placeholder}}` variables. Selecting a command fills the input box with the expanded template, which the user can edit before sending. Users can define their own commands; admins can define organization-wide commands.
 
 Example: `/summarize` → `Summarize the following in 3 bullet points:\n\n{{text}}`
 
 This is distinct from our current presets (which set the whole conversation configuration) — slash commands are per-message prompt shortcuts.
+
+**Shipped implementation:** Commands are stored as JSON on the tenant record (`slash_commands` field). The chat input intercepts `/` and renders a `CommandPicker` autocomplete popover; selecting a command with `{{variable}}` placeholders opens a `VariableFillModal` for tab-navigable placeholder filling before insertion. A dedicated `Commands.tsx` management page lives in the admin sidebar. Scope is tenant-wide (not per-user personal commands — that remains a gap vs Claude.ai).
 
 #### 2b. Integrations (native connectors to external services)
 
@@ -146,7 +103,7 @@ In the Claude Code CLI, skills are markdown files in `.claude/commands/` that de
 
 ### What we have
 
-We have presets (whole-conversation configuration templates), file attachments, and the server-side `x-aig-skill` header for DOCX/XLSX/PPTX/PDF processing (Anthropic Skills API). We do not have per-message slash commands, external service connectors, or MCP configuration in the UI.
+We have presets (whole-conversation configuration templates), file attachments, and the server-side `x-aig-skill` header for DOCX/XLSX/PPTX/PDF processing (Anthropic Skills API). **Slash commands are now shipped** (tenant-wide `/` autocomplete with `{{variable}}` support). We do not have per-user personal commands, external service connectors, or MCP configuration in the UI.
 
 ### Why it matters
 
@@ -156,19 +113,9 @@ We have presets (whole-conversation configuration templates), file attachments, 
 
 ### Implementation plan
 
-**Slash commands — ~4 days**
+**Slash commands — ✅ SHIPPED (~4 days as estimated)**
 
-Backend:
-```sql
-chat_commands (
-  id TEXT PK, tenant_id TEXT, user_id TEXT (nullable = org-wide),
-  name TEXT UNIQUE, description TEXT, template TEXT,
-  created_at INTEGER
-)
-```
-API: `GET/POST /chat-commands`, `PATCH/DELETE /chat-commands/{id}`.
-
-Frontend: Intercept keydown `/` in the chat textarea. Show an autocomplete popover (filtered list of commands matching the typed text). On select, replace the input value with the expanded template (with `{{placeholders}}` highlighted for tab-navigation). "Manage commands" link opens a settings panel.
+Implemented as tenant-level JSON on the `tenants` table (not a separate `chat_commands` table). Management via the Commands admin page. Chat input intercepts `/`, shows `CommandPicker` popover, `VariableFillModal` handles `{{placeholder}}` expansion. Remaining gap: per-user personal commands (currently commands are tenant-wide only).
 
 **External integrations — ~10 days each for major connectors**
 
@@ -540,12 +487,28 @@ These are individually small but collectively important for product polish.
 
 ---
 
+## 12a. Our Differentiators (not in Claude.ai)
+
+Features we ship that Claude.ai does not offer:
+
+| Feature | Description |
+|---|---|
+| **Ghost mode** | Ephemeral chat toggle (👻) — no DB writes, no request log, no attachment storage. Unique privacy feature for sensitive conversations. Claude.ai has no equivalent. |
+| **Multi-provider routing** | Any conversation can transparently route to 22 providers (OpenAI, Anthropic, Gemini, Bedrock, vLLM, Ollama, …) with automatic fallback, load balancing, and circuit breaker — all within the same chat UI. Claude.ai is Claude-only. |
+| **Cost visibility** | Per-message token count + cost (USD) shown inline. Budget caps enforced at gateway level. Claude.ai shows no cost information. |
+| **Bring Your Own Key** | Users/tenants supply their own provider API keys. Claude.ai has no BYOK concept. |
+| **Admin observability** | Full request logs, Prometheus metrics, SIEM integration, OTel tracing. Enterprise-grade audit trail Claude.ai does not expose. |
+| **On-premise / self-hosted** | The entire stack (including Chat UI) runs in a Docker container on private infrastructure. Claude.ai requires a cloud account. |
+
+---
+
 ## 13. Summary Table
 
 | Feature | Claude.ai | Us | Importance | Effort |
 |---|---|---|---|---|
-| **Projects** (grouping, knowledge base, shared instructions) | ✅ | ❌ | critical | 15–20 d |
-| **Slash commands** (per-message prompt templates) | ✅ | ❌ | high | 4 d |
+| **Projects** (grouping, knowledge base, shared instructions) | ✅ | ✅ | critical | ~~15–20 d~~ shipped |
+| **Slash commands** (per-message prompt templates) | ✅ | ✅ (tenant-wide) | high | ~~4 d~~ shipped |
+| **Ghost mode** (ephemeral no-log chat) | ❌ | ✅ | medium | shipped — our differentiator |
 | **External integrations** (GitHub, Drive, Jira…) | ✅ | ❌ | high | 10–15 d each |
 | **MCP server connections** | ✅ | ❌ | high | 5 d |
 | **Memory system** (auto + manual, cross-conversation) | ✅ | ❌ | high | 8–10 d |
@@ -570,12 +533,12 @@ These are individually small but collectively important for product polish.
 ### Priority order for implementation
 
 **Phase 1 — Structural (highest ROI, unblocks everything else):**
-1. Projects (~15–20 d) — organizational foundation; required before knowledge base, sharing, or team features
+1. ~~Projects (~15–20 d)~~ ✅ **SHIPPED**
 2. Memory (~8–10 d) — personalization; high user satisfaction delta; reuses existing embedding infrastructure
 
 **Phase 2 — Collaboration and discovery:**
 3. Conversation share links (~4 d) — viral growth driver; minimal backend complexity
-4. Slash commands (~4 d) — power user productivity; easy to ship
+4. ~~Slash commands (~4 d)~~ ✅ **SHIPPED** (tenant-wide; per-user personal commands still outstanding)
 5. Starring + archiving (~2 d) — essential housekeeping for growing history
 6. Semantic search (~5 d) — unlocks the value of stored conversation history
 
@@ -592,5 +555,5 @@ These are individually small but collectively important for product polish.
 14. Agent task panel (~20–30 d) — long runway; begin architecture now
 
 **Total estimated effort to reach feature parity with Claude.ai web:**
-~130–160 engineering-days for one full-stack developer.
-~60–70 days if Projects + Memory + Sharing + Slash Commands + Artifacts are the target scope (the features users will actually notice most).
+~~130–160~~ now **~110–130 engineering-days** (Projects + Slash Commands shipped).
+~~60–70~~ now **~45–50 days** to reach the most impactful scope (Memory + Sharing + Artifacts + remaining gaps).

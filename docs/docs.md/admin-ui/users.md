@@ -51,7 +51,7 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to create a user:
 
 1. Click the **+ New User** button.
-   ⇒ A creation form appears.
+   - A creation form appears.
 2. Enter the email address of the user in the **Email** text field.
 3. If required, enter a display name in the **Name** text field.
 4. Select a role from the **Role** drop-down list.
@@ -70,11 +70,11 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to edit a user:
 
 1. Click the row for the user you want to edit.
-   ⇒ The user detail panel opens.
+   - The user detail panel opens.
 2. Click the **Edit** button.
-   ⇒ The edit form opens.
+   - The edit form opens.
 3. Update the **Email** text field, the **Name** text field, or the **Role** drop-down list as required.
-   ⇒ `admin` users can additionally select a different tenant from the **Tenant** drop-down list. `tenant_admin` users cannot change a user's tenant.
+   - `admin` users can additionally select a different tenant from the **Tenant** drop-down list. `tenant_admin` users cannot change a user's tenant.
 4. Click the **Save** button.
 
 → The updated details appear in the user table.
@@ -92,7 +92,7 @@ Before you begin, ensure the following conditions are met:
 ► Proceed as follows to delete a user:
 
 1. Click the row for the user you want to delete.
-   ⇒ The user detail panel opens.
+   - The user detail panel opens.
 2. Click the **Delete User** button.
 
 → The user is removed immediately. All inference tokens associated with that user are revoked.

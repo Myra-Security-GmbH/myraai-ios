@@ -52,9 +52,9 @@ Consumer
 └──────────────────────────────────────────┘
           │                    │
    ┌──────┴──────┐      ┌──────┴──────┐
-   │  SQLite DB  │      │  Upstream   │
-   │ config.db   │      │  Providers  │
-   │  logs.db    │      │ (21 total)  │
+   │  MySQL /    │      │  Upstream   │
+   │  MariaDB    │      │  Providers  │
+   │             │      │ (22 total)  │
    └─────────────┘      └─────────────┘
 ```
 
@@ -70,8 +70,8 @@ Consumer
 | Layer | Technology | Notes |
 |---|---|---|
 | HTTP server | nginx + OpenResty (LuaJIT 2.1) | JIT-compiled Lua, co-routines for streaming |
-| Config & persistent state | SQLite (dev) / PostgreSQL (prod) | Gateway config, tokens, routing rules, pricing |
-| Request logs | SQLite `logs.db` (dev) / ClickHouse or Loki (prod) | Structured JSON per request |
+| Config & persistent state | MySQL / MariaDB | Gateway config, tokens, routing rules, pricing; PostgreSQL also supported via `storage/postgres.lua` |
+| Request logs | MySQL / MariaDB (`request_logs` table) | Structured JSON per request; ClickHouse or Loki for high-volume deployments |
 | Hot state | `ngx.shared.dict` (single-server) / Redis (distributed) | Rate limits, config cache, Prometheus counters, BYOK cache |
 | Encryption | AES-256-CBC + PKCS7 via OpenSSL | BYOK provider keys at rest (`AIG_MASTER_KEY` env var) |
 | AWS auth | SigV4 signing (`src/utils/sigv4.lua`) | Used by Bedrock provider |
@@ -88,7 +88,12 @@ Consumer
 src/
   core/
     gateway.lua          # Nginx phase hooks: access(), content(), log()
+    pipeline.lua         # Ordered middleware chain builder
     context.lua          # Per-request context object (tenant, gateway, provider, tokens…)
+    app_config.lua       # Runtime config loader (gateway.lua → Lua table)
+    config.lua           # Config defaults and schema
+    circuit_breaker.lua  # Per-provider circuit breaker (CLOSED → OPEN → HALF_OPEN)
+    errors.lua           # Structured error helpers
 
   providers/
     init.lua             # Provider registry — maps provider name → module
@@ -97,7 +102,7 @@ src/
     anthropic.lua        # Anthropic Messages API adapter
     gemini.lua           # Google Gemini (GenerateContent) adapter
     azure.lua            # Azure OpenAI (API key header, deployment routing)
-    bedrock.lua          # AWS Bedrock (SigV4 auth, InvokeModel API)
+    bedrock.lua          # AWS Bedrock (SigV4 auth, Converse API)
     vertex.lua           # Google Vertex AI (x-goog-api-key, project config)
     mistral.lua          # Mistral AI (OpenAI-compatible)
     groq.lua             # Groq (OpenAI-compatible)
@@ -114,21 +119,32 @@ src/
     cohere.lua           # Cohere v2 Chat API (native format)
     huggingface.lua      # HuggingFace Inference API (org/model routing)
     ollama.lua           # Ollama local server (OpenAI-compatible)
+    vllm.lua             # vLLM local/self-hosted server (OpenAI-compatible; vllm/ prefix)
 
   cache/
+    key.lua              # Cache key construction (SHA-256 of canonical body)
     semantic.lua         # Vector-similarity cache: embed prompt → cosine search → serve hit
                          # Store path is async (ngx.timer.at); query path is synchronous
 
   middleware/
-    auth.lua             # Bearer / x-aig-token / x-api-key validation
-    cache_check.lua      # SHA-256 exact-match lookup; semantic cache fallback
-    cache_store.lua      # Persist non-streaming 200 responses; async semantic embedding store
-    cost.lua             # Token counting + budget counter increment
-    guardrails.lua       # Request-phase guardrail pipeline entry point
-    guardrails_response.lua  # Response-phase guardrail pipeline entry point
-    quota.lua            # Budget hard-stop enforcement
     request_id.lua       # Generate/forward X-Request-Id; init OTel trace context
+    tenant.lua           # Resolve {tenant_slug}/{gateway_slug} → UUIDs; load gateway config
+    auth.lua             # Bearer / x-aig-token / x-api-key validation
+    rate_limit.lua       # Sliding-window rate limit (dual-bucket approx)
+    quota.lua            # Budget hard-stop enforcement
+    ip_allowlist.lua     # CIDR allowlist check
+    cache_check.lua      # SHA-256 exact-match lookup; semantic cache fallback
+    guardrails.lua       # Request-phase guardrail pipeline entry point
+    transform.lua        # Parse + normalize body; collect x-aig-meta-* headers
+    routing.lua          # Invoke routing engine → resolve provider, model, fallbacks
+    byok.lua             # Decrypt and inject provider API key
+    web_search.lua       # Optional two-leg agentic search loop (Brave API)
     upstream.lua         # Provider HTTP call with retry + fallback chain; inject traceparent
+    guardrails_response.lua  # Response-phase guardrail pipeline entry point
+    send_response.lua    # Write buffered response body to client
+    cost.lua             # Token counting + budget counter increment
+    cache_store.lua      # Persist non-streaming 200 responses; async semantic embedding store
+    log.lua              # Structured JSON log writer (log phase)
 
   guardrails/
     orchestrator.lua     # Tier 1 → Tier 2 sequencing, action merging
@@ -148,32 +164,59 @@ src/
     logger.lua           # Structured JSON log writer; fires SIEM + OTel emit at log phase
     tracer.lua           # OpenTelemetry: W3C traceparent propagation + OTLP/HTTP span export
     siem.lua             # Async security event delivery (Splunk HEC / ES / Vector / Syslog CEF)
+    metrics.lua          # Prometheus counter exposition
     cost_table.lua       # Model → price per 1K tokens lookup table
 
   routing/
     engine.lua           # Rule evaluator (condition → action)
+    load_balance.lua     # Weighted-random / round-robin / sticky-session target selection
 
   auth/
     byok.lua             # Provider key encryption/decryption (AES-256-CBC)
 
   admin/
     api.lua              # REST admin API (tenant/gateway/user/token CRUD + playground)
+    auth.lua             # Admin session guard (JWT cookie validation)
+    auth_handlers.lua    # OTP + Google OAuth login/logout handlers
+    chat.lua             # Conversation + message + preset + file + export endpoints
+    monitor.lua          # Real-time monitor dashboard + JSON stats endpoint
+    projects.lua         # Projects, members, knowledge, and project-conversation endpoints
 
   storage/
-    sqlite.lua           # SQLite connection wrapper + all DB queries
-    schema_config.sql    # Config DB schema (tenants, gateways, tokens, rules…)
-    schema_logs.sql      # Logs DB schema (request_logs)
+    init.lua             # Storage backend abstraction (selects mysql / postgres / sqlite)
+    mysql.lua            # MySQL / MariaDB driver + all DB queries (production)
+    postgres.lua         # PostgreSQL driver + all DB queries
+    sqlite.lua           # SQLite driver (development / testing only)
+    schema_config.sql    # Config DB schema (SQLite DDL)
+    schema_logs.sql      # Logs DB schema (SQLite DDL)
+    schema_mysql.sql     # Config + logs schema for MySQL 8.0+ (production DDL)
 
   state/
     init.lua             # State backend abstraction (shared_dict ↔ Redis)
+    shared_dict.lua      # ngx.shared.dict backend (single-server)
+    redis.lua            # Redis backend (distributed deployments)
 
   utils/
     sigv4.lua            # AWS SigV4 request signing (used by Bedrock)
-    # + shared helpers: HTTP, JSON, crypto, string, uuid
+    budget.lua           # Budget counter helpers (micro-dollar arithmetic)
+    crypto.lua           # AES-256-CBC helpers (wraps resty.aes)
+    email.lua            # Sendmail wrapper for OTP delivery
+    fetch_url.lua        # Async HTTP page fetch (used by web search)
+    http.lua             # Shared HTTP client helpers
+    json.lua             # cjson wrapper with nil-safe helpers
+    jwt.lua              # HS256 JWT sign / verify
+    postgres.lua         # Low-level PostgreSQL connection helpers
+    redis.lua            # Low-level Redis connection helpers
+    request.lua          # Request body parsing helpers
+    search.lua           # Brave Search API client
+    thinking.lua         # <think> block stripping helpers
+    trace.lua            # Internal trace helpers
+    uuid.lua             # UUID v4 generation
+    webhook.lua          # Async webhook delivery (budget_exceeded, blocked, circuit_open)
 
 config/
-  gateway.lua            # Runtime config: DB paths, master key, defaults
-  nginx.conf             # nginx server blocks and lua_shared_dict declarations
+  gateway.lua            # Runtime config: DB connection, master key, defaults
+  nginx.docker.conf      # nginx server blocks and lua_shared_dict declarations (Docker)
 
 frontend/                # React + TypeScript admin UI (Vite build)
 scripts/
@@ -224,7 +267,7 @@ test-runner.sh           # Unified test runner (lua-syntax | backend | frontend 
     │
     ▼  ── ngx.log phase (best-effort, after response sent) ─────
     │
-    ├─ 17. logger           Write structured JSON to logs.db
+    ├─ 17. logger           Write structured JSON to request_logs table
     │                       → SIEM async delivery (Splunk/ES/Vector/Syslog) if configured
     │                       → OTel OTLP span export (async) if otlp_endpoint configured
     └─ 18. metrics          Increment Prometheus counters in aig_metrics shared dict
@@ -368,9 +411,9 @@ Tenant  (id, slug, plan, budget_limit, deleted_at)
 
 ## 7. Storage & State
 
-### Config database (SQLite / PostgreSQL)
+### Config database (MySQL / MariaDB)
 
-Stores durable configuration that changes infrequently: tenants, gateways, tokens, routing rules, provider keys, pricing.
+Stores durable configuration that changes infrequently: tenants, gateways, tokens, routing rules, provider keys, pricing. Production uses MySQL / MariaDB via `storage/mysql.lua`; PostgreSQL is also supported via `storage/postgres.lua`; SQLite is available for development/testing only.
 
 Gateway config is loaded from the DB and cached in `aig_config` shared dict for `config_cache_ttl` seconds (default: 30 s) to avoid per-request DB reads.
 
@@ -391,36 +434,19 @@ Gateway config is loaded from the DB and cached in `aig_config` shared dict for 
 | `email_otp` | id, email, code_hash (SHA-256), expires_at, used_at, ip_addr |
 | `oauth_link` | user_id, provider, subject (Google sub), email |
 
-### Log database (SQLite / ClickHouse)
+### Log database (MySQL / MariaDB)
 
-Two tables in `logs.db`:
+One table in the same database:
 
-**`request_logs`** — one row per request. In development: `logs.db` via `storage/sqlite.lua`. In production: swap for UDP → Vector/Loki or HTTP → ClickHouse.
+**`request_logs`** — one row per request.
 
 **Key fields:** `request_id`, `tenant_id`, `gateway_id`, `provider`, `model`, `status`, `cached`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `cost_usd`, `latency_ms`, `upstream_latency_ms`, `time_to_first_token_ms`, `blocked`, `blocked_by`, `prompt`, `response`, `meta`
-
-**`semantic_cache`** — one row per stored embedding.
-
-| Column | Type | Description |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `gateway_id` | TEXT | Gateway scope |
-| `model` | TEXT | Model name (candidates filtered by gateway + model) |
-| `prompt_hash` | TEXT | SHA-256 of prompt text (dedup guard) |
-| `embedding` | TEXT | JSON float array |
-| `response_body` | TEXT | Cached response body |
-| `cost_usd` | REAL | Cost of the original upstream call |
-| `created_at` | INTEGER | Unix seconds |
-| `expires_at` | INTEGER | Unix seconds (created_at + `ttl`) |
-| `hit_count` | INTEGER | Incremented on each semantic cache hit |
-
-Index on `(gateway_id, model, created_at DESC)` for efficient candidate retrieval.
 
 ### Caching
 
 **Exact-match cache** (`aig_cache` shared dict): keyed on SHA-256(provider:model:canonical_body). `stream`, `user`, and `metadata` fields are excluded before hashing; all other request fields are included. TTL configured per gateway via `cache_ttl` (seconds). Hit returns `X-AIG-Cache: HIT`.
 
-**Semantic cache** (`semantic_cache` table in `logs.db`): activated per gateway via `semantic_cache.enabled`. On an exact-match miss, the incoming prompt is embedded via a configurable OpenAI-compatible endpoint and compared (cosine similarity) against stored embeddings filtered by `(gateway_id, model)`. If `best_score ≥ threshold` (default 0.95), the stored response is returned with `X-AIG-Cache: SEMANTIC_HIT` and `X-AIG-Similarity: <score>`. The store path is fully asynchronous (`ngx.timer.at(0, ...)`): after a successful upstream response, the prompt is embedded and inserted into `semantic_cache`. Streaming responses are not semantically cached.
+**Semantic cache** (`semantic_cache` table in the database): activated per gateway via `semantic_cache.enabled`. On an exact-match miss, the incoming prompt is embedded via a configurable OpenAI-compatible endpoint and compared (cosine similarity) against stored embeddings filtered by `(gateway_id, model)`. If `best_score ≥ threshold` (default 0.95), the stored response is returned with `X-AIG-Cache: SEMANTIC_HIT` and `X-AIG-Similarity: <score>`. The store path is fully asynchronous (`ngx.timer.at(0, ...)`): after a successful upstream response, the prompt is embedded and inserted into `semantic_cache`. Streaming responses are not semantically cached.
 
 ### Shared memory (`ngx.shared.dict`)
 
@@ -477,6 +503,7 @@ provider.parse_sse_chunk(line)       -- streaming: parse one SSE line → {delta
 | Cohere | Cohere v2 Chat | Bearer | Native format, different schema |
 | HuggingFace | Inference API | Bearer | org/model routing (HuggingFaceH4/, tiiuae/, etc.) |
 | Ollama | OpenAI-compat | None | Local server; base URL from `provider_base_urls.ollama` |
+| vLLM | OpenAI-compat | None (optional) | Local/self-hosted vLLM; `vllm/` prefix stripped; `provider_base_urls.vllm` |
 
 ### Compat endpoint model resolution
 
@@ -509,6 +536,8 @@ Rule
        provider:   "anthropic"
        model:      "claude-sonnet-4-6"
        fallbacks:  [{provider, model}, …]
+       -- OR --
+       load_balance: { strategy, targets, sticky }
 ```
 
 **Condition fields:** `model`, `provider`, `tenant_id`, `header:{name}`, `meta:{key}`
@@ -529,6 +558,23 @@ upstream.lua attempts:
 ```
 
 BYOK keys are re-fetched and decrypted each time the active provider changes during the fallback walk. `fallback_provider` and `fallback_model` are recorded in the request log.
+
+### Load balancing (`routing/load_balance.lua`)
+
+A rule can use `load_balance` instead of `provider`/`model` to distribute traffic across multiple targets:
+
+| Strategy | Behaviour |
+|---|---|
+| `weighted_random` | Probabilistic selection proportional to `weight` (default) |
+| `round_robin` | Sequential rotation via atomic shared-dict counter |
+
+`weight: 0` disables a target without removing it from config. Non-selected active targets are automatically used as fallbacks on provider failure.
+
+**Sticky sessions** — `sticky.field` (supports `meta.<key>` notation) pins a session to one target for `sticky.ttl` seconds; state kept in the shared-dict/Redis backend.
+
+### Circuit breaker (`core/circuit_breaker.lua`)
+
+Per-provider state machine: **CLOSED → OPEN → HALF_OPEN → CLOSED**. Configured per gateway under `circuit_breaker`. State is stored in `ngx.shared` dicts (or Redis); no DB writes. Open breakers are skipped before each upstream attempt, advancing directly to the next fallback. Status visible via `GET /admin/v1/gateways/{id}/circuit-breaker`.
 
 ---
 
@@ -643,7 +689,7 @@ Synthetic blocked responses match the request wire format (OpenAI streaming, Ope
 
 ### Structured request log
 
-Written at the log phase after every request. Schema lives in `storage/schema_logs.sql`. Fields:
+Written at the log phase after every request. Schema lives in `storage/schema_mysql.sql` (`request_logs` table). Fields:
 
 ```
 request_id, tenant_id, gateway_id, user_id, token_label,
@@ -676,7 +722,7 @@ Payload logging can be disabled globally (`log_payloads: false` in gateway confi
 
 `GET /admin/v1/tenants/{id}/analytics` returns per-tenant timeseries + top models, used by the cost analytics drilldown page.
 
-Buckets are aligned to bucket boundaries. Missing buckets are zero-filled in Lua before returning. SQLite integer division is enforced by embedding the bucket-size-in-ms as an integer literal in the SQL string (binding it as a Lua number causes SQLite to use REAL division, producing one row per request).
+Buckets are aligned to bucket boundaries. Missing buckets are zero-filled in Lua before returning.
 
 ### Prometheus metrics
 
@@ -751,6 +797,7 @@ React 19 + TypeScript SPA built with Vite. Proxied through Vite dev server (`/ad
 | Prices | Model price table management |
 | Guardrails | Guardrail configuration builder (GuardrailBuilder UI) |
 | Monitor | Real-time monitoring with optional tenant filter |
+| Projects | Project CRUD, member management, knowledge base, project-scoped conversations |
 | Playground | Interactive model comparison UI (see below) |
 | Chat | Persistent multi-turn conversation UI |
 
@@ -795,6 +842,7 @@ Full-featured conversational AI console (`/chat` route):
 - **Artifact panel** — HTML/SVG fenced blocks ≥ 8 lines rendered in a sandboxed `<iframe>` beside the thread
 - **Auto-title generation** — background call after first exchange; Qwen3 `/no_think` prefix; `<think>` block stripping; handles incomplete excerpts robustly
 - **Auto-continue** — if `finish_reason: "length"`, automatically sends "Continue" up to 10 times
+- **Ghost mode** — ephemeral chat toggle (👻 button): no DB writes, no request log (`x-aig-collect-log: false`), no attachment storage, no auto-title; banner shown while active; export and feedback buttons hidden
 - **File attachments** — images, PDF, DOCX, XLSX, CSV, TXT, MD via drag-and-drop or paperclip button
 - **Export** — PDF (WeasyPrint server-side) and Markdown (client-side)
 
@@ -854,9 +902,8 @@ server {
 └──────────────┬───────────────────┘
                │
      ┌─────────┴─────────┐
-     │     SQLite         │
-     │  config.db         │
-     │  logs.db           │
+     │  MySQL / MariaDB   │
+     │  (host:3306)       │
      └────────────────────┘
 ```
 
@@ -879,11 +926,8 @@ State is shared across workers via `ngx.shared.dict`. No external processes requ
          └───────────────────────────────────┘
               │
          ┌────┴──────────┐
-         │  PostgreSQL   │  ← config DB
-         └───────────────┘
-              │
-         ┌────┴──────────┐
-         │  ClickHouse   │  ← request logs
+         │  MySQL /      │  ← config + logs DB
+         │  MariaDB      │
          └───────────────┘
 ```
 

@@ -15,7 +15,7 @@ fi
 
 # ── 2. Add Topic Map to nav if missing ──────────────────────────────────────
 if ! grep -q 'topic-map.md' "$MKDOCS"; then
-  sed -i 's|    - reference/glossary.md|    - reference/glossary.md\n    - Topic Map: reference/topic-map.md|' "$MKDOCS"
+  sed -i 's|    - Glossary: reference/glossary.md|    - Glossary: reference/glossary.md\n    - Topic map: reference/topic-map.md|' "$MKDOCS"
   echo "Added Topic Map to mkdocs.yml nav"
 fi
 
@@ -55,19 +55,24 @@ def page_title(path, explicit=None):
         pass
     return path.split('/')[-1].replace('.md', '').replace('-', ' ').replace('_', ' ').title()
 
-# Parse nav_lines into sections grouped by "# Part N — Name" comments.
+# Parse nav_lines into sections.
+#
+# Top-level named sections ("  - Name:") become section cards in the topic map.
+# Single pages and child pages are collected under the current section.
+# Sub-section headers at depth 2+ are skipped (they don't become separate cards).
 #
 # Handled patterns (indented with spaces as in mkdocs.yml):
-#   "  # Part N — Name"          → start a new topic-map section card
-#   "  - Name:"                   → named sub-section; pages added to current Part card
-#   "  - Title: file.md"          → top-level single page; added to current Part card
-#   "  - file.md"                 → top-level single page (no title); added to current Part card
+#   "  - Name:"                   → start new section card
+#   "  - Title: file.md"          → top-level single page; added to Home card
+#   "  - file.md"                 → top-level single page; added to Home card
 #   "    - SubName:"              → sub-section header at depth 2; skip
 #   "    - Title: file.md"        → child page (depth 2)
 #   "    - file.md"               → child page (depth 2, title from file)
 #   "      - SubName:"            → sub-section header at depth 3; skip
-#   "      - Title: file.md"      → grandchild page (depth 3); flattened into current Part card
+#   "      - Title: file.md"      → grandchild page (depth 3)
 #   "      - file.md"             → grandchild page (depth 3, title from file)
+#   "        - Title: file.md"    → great-grandchild page (depth 4)
+#   "        - file.md"           → great-grandchild page (depth 4)
 
 sections = []   # [(section_name, [(title, path), ...])]
 cur_section = None
@@ -78,22 +83,21 @@ def flush():
         sections.append((cur_section, list(cur_pages)))
 
 for line in nav_lines:
-    # "  # Part N — Name"  →  new section card
-    m = re.match(r'^\s+#\s+Part\s+\d+\s+[-\u2014]+\s+(.+)', line)
-    if m:
+    # Skip comment lines
+    if re.match(r'^\s+#', line):
+        continue
+
+    # "  - Name:"  →  top-level named section; start new section card
+    if re.match(r'^  - [^:]+:\s*$', line):
         flush()
-        cur_section = m.group(1).strip()
+        cur_section = re.match(r'^  - ([^:]+):\s*$', line).group(1).strip()
         cur_pages   = []
         continue
 
-    # "  - Name:"  →  top-level named sub-section; don't flush, just continue adding to current Part
-    if re.match(r'^  - [^:]+:\s*$', line):
-        continue
-
-    # "  - Title: file.md"  →  top-level single page with explicit title
+    # "  - Title: file.md"  →  top-level single page with explicit title (e.g. Home)
     m = re.match(r'^  - ([^:]+):\s+(\S+\.md)\s*$', line)
-    if m and cur_section is not None:
-        cur_pages.append((page_title(m.group(2).strip(), m.group(1).strip()), m.group(2).strip()))
+    if m:
+        # Single top-level pages (like Home) are not collected into the topic map
         continue
 
     # "  - file.md"  →  top-level single page, title from file
@@ -106,31 +110,18 @@ for line in nav_lines:
     if cur_section is None:
         continue
 
-    # "    - SubName:"  or  "      - SubName:"  →  sub-section header, skip
-    if re.match(r'^    - [^:]+:\s*$', line) or re.match(r'^      - [^:]+:\s*$', line):
+    # "    - SubName:"  or deeper named sub-sections → skip
+    if re.match(r'^( {4})+- [^:]+:\s*$', line):
         continue
 
-    # "    - Title: file.md"  →  child with explicit title (depth 2)
-    m = re.match(r'^    - ([^:]+):\s+(\S+\.md)\s*$', line)
+    # Any "    - Title: file.md" at depth 2, 3, 4 → child page with explicit title
+    m = re.match(r'^ {4,}- ([^:]+):\s+(\S+\.md)\s*$', line)
     if m:
         cur_pages.append((page_title(m.group(2).strip(), m.group(1).strip()), m.group(2).strip()))
         continue
 
-    # "    - file.md"  →  child without title (depth 2)
-    m = re.match(r'^    - (\S+\.md)\s*$', line)
-    if m:
-        path = m.group(1).strip()
-        cur_pages.append((page_title(path), path))
-        continue
-
-    # "      - Title: file.md"  →  grandchild with explicit title (depth 3)
-    m = re.match(r'^      - ([^:]+):\s+(\S+\.md)\s*$', line)
-    if m:
-        cur_pages.append((page_title(m.group(2).strip(), m.group(1).strip()), m.group(2).strip()))
-        continue
-
-    # "      - file.md"  →  grandchild without title (depth 3)
-    m = re.match(r'^      - (\S+\.md)\s*$', line)
+    # Any "    - file.md" at depth 2, 3, 4 → child page, title from file
+    m = re.match(r'^ {4,}- (\S+\.md)\s*$', line)
     if m:
         path = m.group(1).strip()
         cur_pages.append((page_title(path), path))

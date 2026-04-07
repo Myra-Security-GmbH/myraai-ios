@@ -95,11 +95,13 @@ Requests flow through a fixed middleware chain in phase order:
 | Cohere | Cohere Chat API | Bearer | Native request/response translation |
 | HuggingFace | OpenAI-compatible | Bearer | Org-prefix routing (`tiiuae/`, `bigcode/`, etc.) |
 | Ollama | OpenAI-compatible | None | Local inference; `OLLAMA_BASE_URL` env; `think` flag support |
+| vLLM | OpenAI-compatible | None (optional) | Local/self-hosted vLLM server; `vllm/` prefix stripped; per-model port overrides; `provider_base_urls.vllm` config |
 
 ### Endpoints
 
 - **Native:** `/v1/{tenant}/{gateway}/{provider}/chat/completions`
 - **Unified (OpenAI-compat):** `/v1/{tenant}/{gateway}/compat/chat/completions` — provider inferred from model name
+- **vLLM native:** `/v1/{tenant}/{gateway}/vllm/chat/completions` — direct vLLM local server routing
 
 ### Compat Model Resolution (3-tier)
 
@@ -970,6 +972,23 @@ All endpoints are under `/admin/v1/`.
 | POST | `/auth/otp/verify` | Verify OTP, issue session cookie |
 | POST | `/auth/logout` | Clear session |
 
+### Projects
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/projects` | List projects visible to the requesting user |
+| POST | `/projects` | Create project (name, description, instructions, icon, color, gateway_id, model) |
+| GET | `/projects/{id}` | Get project with members and knowledge items |
+| PATCH | `/projects/{id}` | Update project settings |
+| DELETE | `/projects/{id}` | Delete project |
+| POST | `/projects/{id}/members` | Add member to project (`user_id`, `role`) |
+| PATCH | `/projects/{id}/members/{uid}` | Update member role |
+| DELETE | `/projects/{id}/members/{uid}` | Remove member |
+| GET | `/projects/{id}/knowledge` | List knowledge items attached to project |
+| POST | `/projects/{id}/knowledge` | Upload knowledge item (multipart or JSON with `extracted_text`) |
+| DELETE | `/projects/{id}/knowledge/{kid}` | Delete knowledge item |
+| GET | `/projects/{id}/conversations` | List conversations scoped to this project |
+
 ### Client Error Reporting
 
 | Method | Path | Description |
@@ -1185,6 +1204,20 @@ After the first exchange in a new conversation, a non-blocking background reques
 ### Auto-Continue
 
 If the model returns `finish_reason: "max_tokens"`, the chat automatically continues with `"Continue"` injected as the next user message, up to 10 times. Accumulated content is stitched together into a single assistant message.
+
+### Ghost Mode
+
+A privacy toggle in the Chat UI that makes conversations completely ephemeral:
+
+- Enabled via the 👻 button in the toolbar; state persisted in `localStorage` (`aig-chat-ghost`)
+- **No DB writes** — conversation and messages exist only in memory; no row is created in `conversations` or `messages`
+- **No request log** — `x-aig-collect-log: false` header sent on every inference request; the gateway skips the log-phase DB write
+- **No attachment storage** — file text extraction still works (used for context injection) but no binary is persisted
+- **No auto-title generation** — skipped because there is no conversation row to update
+- **Export hidden** — export buttons are not shown while ghost mode is active
+- **Feedback hidden** — session feedback button suppressed (no conversation to attach it to)
+- A prominent banner ("👻 Ghost mode — this conversation is not saved and will not be logged") appears below the config bar while active
+- Switching conversations resets in-memory state; switching off ghost mode starts a fresh normal conversation
 
 ### Background Streaming
 

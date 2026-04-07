@@ -133,7 +133,7 @@ The `count` field indicates the number of URLs being fetched.
      }'
    ```
 
-   ⇒ The gateway configuration is updated immediately.
+   - The gateway configuration is updated immediately.
 
 → Web search is active for all subsequent requests through this gateway.
 
@@ -155,7 +155,7 @@ The `count` field indicates the number of URLs being fetched.
      }'
    ```
 
-   ⇒ The gateway runs the two-leg agentic flow and injects search results before the final model call.
+   - The gateway runs the two-leg agentic flow and injects search results before the final model call.
 
 → The model response includes context from live web search results.
 

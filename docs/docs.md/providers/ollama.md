@@ -64,13 +64,13 @@ Run `ollama list` to see locally available models.
 ► Proceed as follows to configure Ollama on a gateway:
 
 1. Open **Gateways** in the left sidebar.
-   ⇒ The gateway list opens.
+   - The gateway list opens.
 2. Click on the gateway you want to configure.
-   ⇒ The gateway detail page opens.
+   - The gateway detail page opens.
 3. Click on the **Configuration** tab.
-   ⇒ The configuration form opens.
+   - The configuration form opens.
 4. Enter the Ollama base URL in the **Ollama base URL** text field (default: `http://localhost:11434`).
-   ⇒ The base URL is set.
+   - The base URL is set.
 5. Click on the **Save** button.
 
 → The Ollama configuration is saved. The gateway routes Ollama requests to the specified host.

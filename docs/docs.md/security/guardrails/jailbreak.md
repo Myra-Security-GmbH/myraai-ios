@@ -112,7 +112,7 @@ The jailbreak guardrail catches literal, unmodified phrases only. Creative rephr
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Jailbreak** button.
-   ⇒ A collapsed jailbreak guardrail card appears at the bottom of the list, pre-configured with the 18 built-in phrases.
+   - A collapsed jailbreak guardrail card appears at the bottom of the list, pre-configured with the 18 built-in phrases.
 3. Click on the card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block` or `flag`.
