@@ -2,7 +2,7 @@
 
 **Stack:** OpenResty (LuaJIT)
 **Pattern:** Multi-tenant reverse proxy with a middleware chain across three Nginx phases (access → content → log)
-**Storage:** SQLite (dev/single-server), MySQL 8.0+, or PostgreSQL (production)
+**Storage:** MySQL 8.0+ / MariaDB
 **State:** `ngx.shared.dict` (single-server) or Redis (distributed)
 
 ---
@@ -338,7 +338,7 @@ Embedding-based similarity cache that serves near-duplicate and rephrased prompt
 - `0.95` — balanced (recommended starting point)
 - `0.92–0.94` — loose (rephrased or expanded questions; higher false-positive risk)
 
-**Storage:** `semantic_cache` table in the logs SQLite database. Entries indexed by `(gateway_id, model, created_at DESC)`.
+**Storage:** `semantic_cache` table in MySQL, indexed by `(gateway_id, model, created_at DESC)`.
 
 **Constraints:**
 - Streaming responses are not semantically cached
@@ -864,7 +864,15 @@ Tenant
 │   ├── Auth Tokens
 │   └── Routing Rules
 ├── Users (admin / member / viewer)
-└── User-Gateway Access Matrix
+│   ├── User-Gateway Access Matrix
+│   ├── Chat Commands (personal slash commands)
+│   └── Memories (personalisation facts)
+└── Projects
+    ├── Project Members (owner / editor / viewer)
+    ├── Knowledge Items (text + optional binary blob)
+    └── Conversations
+        ├── Messages
+        └── Attachments
 ```
 
 ---
@@ -892,27 +900,44 @@ All endpoints are under `/admin/v1/`.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/tenants/{id}/users` | List users |
+| GET | `/users` | List all users (admin only) |
+| GET | `/tenants/{id}/users` | List users scoped to a tenant |
 | POST | `/tenants/{id}/users` | Create user |
+| GET | `/users/{id}` | Get user |
 | PATCH | `/users/{id}` | Update user |
 | DELETE | `/users/{id}` | Delete user (disables tokens) |
+| POST | `/users/{id}/resend-invite` | Re-send invitation email |
 | DELETE | `/users/{id}/budget` | Reset all token budgets for a user |
 | GET | `/gateways/{id}/tokens` | List gateway tokens |
 | POST | `/gateways/{id}/tokens` | Create gateway token |
 | DELETE | `/gateways/{id}/tokens/{tid}` | Revoke token |
 | GET | `/users/{id}/tokens` | List user tokens |
 | POST | `/users/{id}/tokens` | Create user token |
+| GET | `/me/tokens` | List caller's own tokens |
+| POST | `/me/tokens` | Create a token for the caller |
+| DELETE | `/me/tokens/{token_id}` | Revoke one of the caller's tokens |
 
 ### Access Control & Keys
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/users/{id}/gateways` | List gateways user has access to |
-| POST | `/users/{id}/gateways/{gw_id}` | Grant user gateway access |
-| DELETE | `/users/{id}/gateways/{gw_id}` | Revoke user gateway access |
 | GET | `/gateways/{id}/keys` | List provider key configs |
 | POST | `/gateways/{id}/keys` | Store encrypted provider key |
 | DELETE | `/gateways/{id}/keys/{provider}/{alias}` | Delete provider key |
+
+### Gateway Status & Monitoring
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/gateways/{id}/circuit-breaker` | Circuit breaker state per provider |
+| GET | `/gateways/{id}/guardrail-stats` | Aggregated guardrail hit counts |
+| GET | `/gateways/{id}/guardrail-events` | Recent per-request guardrail events |
+| GET | `/gateways/{id}/spend` | Current spend for this gateway |
+| GET | `/gateways/{id}/traces` | List traces for this gateway |
+| GET | `/tenants/{id}/spend` | Current spend for this tenant |
+| GET | `/traces/{id}` | Get full trace with steps |
+| GET | `/providers` | List all provider configurations |
+| GET | `/audit-log` | Query the audit log (admin only) |
 
 ### Routing Rules
 
@@ -941,6 +966,7 @@ All endpoints are under `/admin/v1/`.
 | GET | `/stats/analytics` | Latency percentiles (p50/p95/p99), top models by volume, and usage by tenant — all scoped to `?since=<unix_ms>` (default: last 24 h) |
 | GET | `/tenants/{id}/analytics` | Per-tenant timeseries + top models for the analytics drilldown page |
 | GET | `/logs` | Query request logs (filters: `tenant_id`, `gateway_id`, `provider`, `since`, `limit`, `offset`) |
+| GET | `/logs/{id}` | Get a single request log entry |
 
 ### Playground
 
@@ -953,24 +979,53 @@ All endpoints are under `/admin/v1/`.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/conversations` | List conversations (all visible to the requesting user) |
-| POST | `/conversations` | Create conversation (gateway_id, model, system_prompt, temperature, max_tokens) |
+| GET | `/conversations` | List conversations (`?archived=1` to include archived) |
+| POST | `/conversations` | Create conversation (`gateway_id`, `model`, `system_prompt`, `temperature`, `max_tokens`; or `source_share_token` to fork from a share) |
 | GET | `/conversations/{id}` | Get conversation with all messages |
-| PATCH | `/conversations/{id}` | Update title / model / settings |
+| PATCH | `/conversations/{id}` | Update title, model, settings, `starred` (0/1), `archived_at`, `memory_disabled` |
 | DELETE | `/conversations/{id}` | Delete conversation and all messages |
 | POST | `/conversations/{id}/messages` | Append a message (role, content, tokens, cost, latency) |
 | PATCH | `/conversations/{id}/messages/{mid}` | Edit message content |
 | DELETE | `/conversations/{id}/messages/{mid}` | Delete a message |
 | POST | `/conversations/{id}/attachments` | Upload attachment (base64, stored in DB) |
+| GET | `/conversations/{id}/share` | Get share link for a conversation |
+| POST | `/conversations/{id}/share` | Create share link; returns `{token, url}` |
+| DELETE | `/conversations/{id}/share` | Revoke share link |
+| GET | `/conversations/{id}/feedback` | Get session feedback (rating + comment) |
+| PUT | `/conversations/{id}/feedback` | Save session feedback (`rating` 1–5, optional `comment`) |
+| GET | `/attachments/{aid}` | Fetch attachment data (base64 + metadata) |
+| DELETE | `/attachments/{aid}` | Delete attachment |
 | GET | `/chat-presets` | List saved chat presets |
 | POST | `/chat-presets` | Create preset (name, model, system_prompt, temperature, max_tokens) |
 | PATCH | `/chat-presets/{id}` | Update preset |
 | DELETE | `/chat-presets/{id}` | Delete preset |
-| POST | `/chat/files` | Extract text from uploaded file (DOCX, PDF, image via MinerU/OCR; spreadsheet via Files API) |
+| GET | `/chat-commands` | List personal slash commands |
+| POST | `/chat-commands` | Create slash command (`name`, `description`, `template`) |
+| PATCH | `/chat-commands/{id}` | Update slash command |
+| DELETE | `/chat-commands/{id}` | Delete slash command |
+| GET | `/memories` | List personal memory items |
+| POST | `/memories` | Create memory (`content`, `type`: fact/preference/instruction, `source`: manual/auto) |
+| PATCH | `/memories/{id}` | Update memory content or type |
+| DELETE | `/memories/{id}` | Delete memory |
+| POST | `/chat/files` | Extract text from uploaded file (PDF, DOCX, PPTX via server-side extraction; image via MinerU/OCR; spreadsheet via Files API) |
 | POST | `/chat/export-pdf` | Render conversation markdown as PDF; returns binary `application/pdf` |
-| POST | `/auth/otp/request` | Request OTP email for email-code login |
-| POST | `/auth/otp/verify` | Verify OTP, issue session cookie |
-| POST | `/auth/logout` | Clear session |
+
+### Shared Conversations (public, no auth)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/share/{token}` | View a shared conversation snapshot (title + messages); no authentication required |
+
+### Authentication
+
+| Method | Path | Description |
+|---|---|---|
+| GET  | `/admin/auth/me` | Return current session user |
+| POST | `/admin/auth/otp/request` | Request OTP email for email-code login |
+| POST | `/admin/auth/otp/verify` | Verify OTP, issue session cookie |
+| POST | `/admin/auth/logout` | Clear session |
+| GET  | `/admin/auth/google` | Initiate Google OAuth2 SSO flow |
+| GET  | `/admin/auth/google/callback` | Google OAuth2 callback; issues session cookie |
 
 ### Projects
 
@@ -985,8 +1040,13 @@ All endpoints are under `/admin/v1/`.
 | PATCH | `/projects/{id}/members/{uid}` | Update member role |
 | DELETE | `/projects/{id}/members/{uid}` | Remove member |
 | GET | `/projects/{id}/knowledge` | List knowledge items attached to project |
-| POST | `/projects/{id}/knowledge` | Upload knowledge item (multipart or JSON with `extracted_text`) |
-| DELETE | `/projects/{id}/knowledge/{kid}` | Delete knowledge item |
+| POST | `/projects/{id}/knowledge` | Upload plain-text knowledge item (JSON with `extracted_text`) |
+| POST | `/projects/{id}/knowledge/upload` | Upload binary file (PDF/DOCX/XLSX/PPTX); server-side text extraction; original binary stored |
+| PUT | `/projects/{id}/knowledge/{filename}` | Upsert knowledge item by filename |
+| GET | `/projects/{id}/knowledge/{kid}` | Get single knowledge item with `extracted_text` |
+| GET | `/projects/{id}/knowledge/{kid}/download` | Download original binary; 404 for text-only (`source='text'`) items |
+| DELETE | `/projects/{id}/knowledge/{kid}` | Delete knowledge item and blob (CASCADE) |
+| GET | `/projects/{id}/knowledge-text` | Get all extracted text concatenated (used for context injection) |
 | GET | `/projects/{id}/conversations` | List conversations scoped to this project |
 
 ### Client Error Reporting
@@ -1176,12 +1236,93 @@ Attached via paperclip button or drag-and-drop. Supported formats:
 | Plain text (`.txt`) | Anthropic native document block |
 | **Markdown (`.md`)** | Decoded in-browser (base64 → UTF-8); injected as text block `[Document: filename]\n\ncontent`; shown as chip |
 | Word (`.docx`) | Server-side text extraction via `/chat/files`; content injected as text block; shown as chip |
+| PowerPoint (`.pptx`) | Server-side slide text extraction via `/chat/files` (Python zipfile + XML); content injected as text block; shown as chip |
 | CSV / TSV | Server-side file upload via Files API; sent as `document` with file reference |
 | Excel (`.xlsx`, `.xlsm`) | Same as CSV |
 | OpenDocument (`.ods`) | Same as CSV |
 
 - Attachments shown as chips in the input bar and in the sent user bubble (filename only, no content dump)
-- Drop zone overlay with label "Images · PDF · DOCX · XLSX · ODS · CSV · TXT · MD"
+- Drop zone overlay with label "Images · PDF · DOCX · PPTX · XLSX · ODS · CSV · TXT · MD"
+
+### Slash Commands
+
+Personal shortcuts that expand into prompt templates. Managed via the admin UI or `GET/POST/PATCH/DELETE /chat-commands`.
+
+- Each command has a `name` (the `/slash-trigger`), an optional `description`, and a `template` string
+- Templates support `{{variable}}` placeholders; the frontend shows a fill-in dialog before sending
+- Commands are user-scoped — each user's command list is private
+- Tenant-level presets can also carry a `slash_commands` array that surfaces to all users on that tenant
+- Triggered in the chat input by typing `/` — a picker overlay filters commands as the user types
+
+### Memories
+
+A personalisation layer that persists facts, preferences, and instructions across conversations.
+
+- Each memory has: `content` (string), `type` (`fact` | `preference` | `instruction`), `source` (`manual` | `auto`), `created_at`, `updated_at`
+- `auto` memories are written by the model when it detects a user preference worth remembering
+- `manual` memories are created by the user directly in the Memories panel
+- Memories are injected into the system prompt for every conversation under the user
+- Per-conversation opt-out: `memory_disabled: 1` on the conversation suppresses injection for that conversation only
+- CRUD via `GET/POST /memories`, `PATCH/DELETE /memories/{id}`
+
+### Conversation Sharing
+
+Read-only public share links for individual conversations.
+
+- `POST /conversations/{id}/share` — creates a share link; returns `{ token, url }` where URL is `/shared/{token}`
+- `GET /conversations/{id}/share` — retrieve the active share link for a conversation
+- `DELETE /conversations/{id}/share` — revoke the share link (public access immediately disabled)
+- The public viewer (`GET /share/{token}`) requires no authentication and renders the conversation snapshot (title + messages)
+- **Fork from share:** `POST /conversations` with `source_share_token` creates a new editable copy of the shared conversation under the caller's account
+- Share snapshots are fixed at creation time — subsequent messages do not appear in the shared view
+
+### Conversation Feedback, Starring, and Archiving
+
+**Feedback:** After each conversation a user can submit a star rating (1–5) and optional comment via `PUT /conversations/{id}/feedback`. The current feedback is retrieved with `GET /conversations/{id}/feedback`.
+
+**Starring:** `PATCH /conversations/{id}` with `starred: 1` marks a conversation as a favourite; `starred: 0` unmarks it. Starred conversations can be filtered in the list.
+
+**Archiving:** `PATCH /conversations/{id}` with `archived_at: <timestamp>` archives the conversation (hidden from the default list). `GET /conversations?archived=1` retrieves archived conversations. Set `archived_at: null` to restore.
+
+### Project Knowledge Base
+
+Each project can hold a library of files that the model reads on demand during conversations.
+
+#### File upload (Knowledge panel)
+
+Files are uploaded via the project detail page (Knowledge tab) or by drag-and-drop:
+
+| Type | Size limit | Handling |
+|---|---|---|
+| Plain text (`.txt`, `.md`, `.csv`, `.json`, `.xml`, etc.) | 5 MB | Text read client-side; stored as `extracted_text` |
+| PDF (`.pdf`) | 20 MB | Server-side extraction via `fitz` (PyMuPDF) fast path; MinerU OCR fallback |
+| Word (`.docx`) | 20 MB | Server-side XML extraction (Python zipfile + regex) |
+| Excel (`.xlsx`, `.xls`, `.ods`) | 20 MB | Server-side XML → CSV conversion |
+| PowerPoint (`.pptx`) | 20 MB | Server-side slide text extraction (Python zipfile + `xml.etree`) |
+
+Binary uploads (`source='upload'`) store the original file in `chat_project_knowledge_blob` (CASCADE-deleted with the row). The download endpoint (`GET /knowledge/:kid/download`) returns the original binary. Text-only items (`source='text'`) return 404 from the download endpoint.
+
+#### On-demand reading during inference
+
+Project knowledge files are **not** injected into the system prompt verbatim. Instead, the system prompt includes a file index and instructions:
+
+```
+## Project Knowledge Files
+
+The following files are available in this project's knowledge base.
+To read the full content of a file, emit exactly: <read_file>filename</read_file>
+
+- report.pdf
+- schema.sql
+```
+
+When the model emits a `<read_file>filename</read_file>` tag:
+1. The frontend strips the tag from the visible assistant bubble
+2. Fetches the file's `extracted_text` via the single-item knowledge API
+3. Injects the content as a follow-up user message (`[File: filename]\n\ncontent`)
+4. Makes a second inference request with the enriched context
+
+A cap of 5 file reads per response (`MAX_FILE_READS`) prevents infinite loops. Missing files inject `[File not found: filename]` gracefully.
 
 ### Input Box
 
@@ -1279,6 +1420,7 @@ Gateway-level web search (`aig_status: "fetching"`) shows `🔎 Fetching N URL(s
     "max_candidates": 100,
     "ttl": 86400
   },
+  "webhooks": null,
   "siem": null,
   "tracing": {
     "otlp_endpoint": null,
