@@ -1,0 +1,186 @@
+// TenantAnalytics.module.scss — styles for analytics sub-components
+
+// ── OverviewChart ────────────────────────────────────────────────────────────
+
+.overview-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  opacity: 0.7;
+}
+
+.legend-line {
+  width: 10px;
+  height: 2px;
+  display: inline-block;
+}
+
+// ── LatencyStrip ─────────────────────────────────────────────────────────────
+
+.latency-strip {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.latency-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--section-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 8px 16px;
+}
+
+.latency-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  min-width: 24px;
+}
+
+.latency-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.latency-caption {
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+  padding-left: 4px;
+}
+
+// ── ProportionBar ────────────────────────────────────────────────────────────
+
+.proportion-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.proportion-track {
+  flex: 1;
+  height: 6px;
+  background: var(--card-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.proportion-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--badge-success-text, #16a34a);
+  // width is set inline (computed percentage)
+}
+
+.proportion-pct {
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+  min-width: 32px;
+  text-align: right;
+}
+
+// ── BudgetBar ────────────────────────────────────────────────────────────────
+
+.budget-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+}
+
+.budget-track {
+  height: 6px;
+  background: var(--card-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.budget-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+  // width + background are set inline (computed from data)
+}
+
+// ── BarChart ─────────────────────────────────────────────────────────────────
+
+.no-spend {
+  display: flex;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+// ── DetailPanel (tenant slide-over) ──────────────────────────────────────────
+
+.detail-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 200;
+}
+
+.detail-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 480px;
+  max-width: 100vw;
+  background: var(--card-bg);
+  border-left: 1px solid var(--card-border);
+  z-index: 201;
+  overflow-y: auto;
+  padding: 28px 28px 40px;
+}
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.detail-tenant-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.detail-badges {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.spend-chart { margin-top: 4px; }

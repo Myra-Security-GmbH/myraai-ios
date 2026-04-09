@@ -29,7 +29,10 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--accent, #0052cc);
+  /* Safari < 16.4 fallback, then color-mix for modern browsers */
+  background: rgba(0, 82, 204, 0.10);
   background: color-mix(in srgb, var(--accent, #0052cc) 10%, transparent);
+  border: 1px solid rgba(0, 82, 204, 0.25);
   border: 1px solid color-mix(in srgb, var(--accent, #0052cc) 25%, transparent);
   padding: 1px 6px;
   border-radius: 4px;

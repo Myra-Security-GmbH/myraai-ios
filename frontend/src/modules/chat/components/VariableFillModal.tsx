@@ -58,9 +58,9 @@ export function VariableFillModal({ command, onInsert, onCancel }: Props) {
         <div style={{ marginBottom: 12, padding: "8px 10px", background: "var(--surface-2)", borderRadius: 6, fontSize: 12, fontFamily: "monospace", color: "var(--text-secondary)", wordBreak: "break-word" }}>
           {preview}
         </div>
-        <div className={s["modal-footer"]}>
-          <button type="button" className={s["btn-secondary"]} onClick={onCancel}>Cancel</button>
-          <button type="submit" className={s["btn-primary"]}>Insert →</button>
+        <div className={s["form-actions"]}>
+          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onCancel}>Cancel</button>
+          <button type="submit" className={`${s.btn} ${s["btn--primary"]}`}>Insert →</button>
         </div>
       </form>
     </Modal>

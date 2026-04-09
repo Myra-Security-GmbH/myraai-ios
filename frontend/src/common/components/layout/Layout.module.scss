@@ -496,6 +496,7 @@ table.table tbody tr.blocked td {
   padding: tools.pixelToRem(28);
   width: tools.pixelToRem(480);
   max-width: 90vw;
+  max-height: 90vh;
   max-height: 90dvh;
   overflow-y: auto;
 
@@ -580,6 +581,7 @@ table.table tbody tr.blocked td {
 .detail-panel {
   display: flex;
   flex-direction: column;
+  height: 100vh;
   height: 100dvh;
   background: var(--content-bg);
   overflow: hidden;
@@ -646,6 +648,11 @@ table.table tbody tr.blocked td {
     color: #002b4a;
     border-bottom-color: #002b4a;
   }
+}
+
+// Section block within a card/panel — provides top spacing between sections
+.section {
+  margin-top: tools.pixelToRem(24);
 }
 
 // Section header within a tab panel (title + action button)
@@ -769,4 +776,21 @@ table.table tbody tr.blocked td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+// ── Utility classes ──────────────────────────────────────────────────────────
+
+// Truncate overflowing text with an ellipsis — use on table cells and flex children
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+// Horizontal divider — use instead of inline-styled <hr>
+.divider {
+  border: none;
+  border-top: 1px solid var(--card-border);
+  margin: tools.pixelToRem(16) 0;
 }

@@ -10,6 +10,7 @@ import {
 } from "src/api/types";
 import { fmtNumber, fmtCost, fmtMs } from "src/common/utils/format";
 import s from "src/common/components/layout/Layout.module.scss";
+import ta from "./TenantAnalytics.module.scss";
 
 function fmtRate(numerator: number, denominator: number): string {
   if (denominator === 0) return "—";
@@ -49,15 +50,15 @@ function OverviewChart({ data }: { data: TimeseriesPoint[] }) {
   }).join(" ");
   return (
     <div className={s.card} style={{ marginBottom: 20 }}>
-      <div className={s["card-header"]} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className={`${s["card-header"]} ${ta["overview-chart-header"]}`}>
         <h2 className={s["card-title"]}>30-Day Overview</h2>
-        <div style={{ display: "flex", gap: 16, fontSize: 11, color: "var(--text-secondary)" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 10, height: 10, background: "var(--badge-success-text, #16a34a)", borderRadius: 2, display: "inline-block", opacity: 0.7 }} />
+        <div className={ta["chart-legend"]}>
+          <span className={ta["legend-item"]}>
+            <span className={ta["legend-dot"]} style={{ background: "var(--badge-success-text, #16a34a)" }} />
             Cost
           </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 10, height: 2, background: "#3b82f6", display: "inline-block" }} />
+          <span className={ta["legend-item"]}>
+            <span className={ta["legend-line"]} style={{ background: "#3b82f6" }} />
             Requests
           </span>
         </div>
@@ -82,20 +83,14 @@ function LatencyStrip({ percentiles }: { percentiles: LatencyPercentiles }) {
     ["p99", percentiles.p99],
   ];
   return (
-    <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+    <div className={ta["latency-strip"]}>
       {items.map(([label, val]) => (
-        <div key={label} style={{
-          display: "flex", alignItems: "center", gap: 8,
-          background: "var(--section-bg)", border: "1px solid var(--card-border)",
-          borderRadius: 8, padding: "8px 16px",
-        }}>
-          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--text-secondary)", minWidth: 24 }}>{label}</span>
-          <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>{val != null ? `${val} ms` : "—"}</span>
+        <div key={label} className={ta["latency-item"]}>
+          <span className={ta["latency-label"]}>{label}</span>
+          <span className={ta["latency-value"]}>{val != null ? `${val} ms` : "—"}</span>
         </div>
       ))}
-      <span style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 4 }}>
-        Latency percentiles (non-blocked)
-      </span>
+      <span className={ta["latency-caption"]}>Latency percentiles (non-blocked)</span>
     </div>
   );
 }
@@ -103,11 +98,11 @@ function LatencyStrip({ percentiles }: { percentiles: LatencyPercentiles }) {
 function ProportionBar({ value, max }: { value: number; max: number }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 120 }}>
-      <div style={{ flex: 1, height: 6, background: "var(--card-border)", borderRadius: 3, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: "var(--badge-success-text, #16a34a)", borderRadius: 3 }} />
+    <div className={ta["proportion-bar"]}>
+      <div className={ta["proportion-track"]}>
+        <div className={ta["proportion-fill"]} style={{ width: `${pct}%` }} />
       </div>
-      <span style={{ fontSize: 11, color: "var(--text-secondary)", minWidth: 32, textAlign: "right" as const }}>{pct}%</span>
+      <span className={ta["proportion-pct"]}>{pct}%</span>
     </div>
   );
 }
@@ -117,12 +112,12 @@ function BudgetBar({ used, total, fmtFn = fmtCost }: { used: number; total: numb
   const color = pct >= 100 ? "#dc2626" : pct >= 80 ? "#d97706" : "var(--badge-success-text, #16a34a)";
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>
+      <div className={ta["budget-label-row"]}>
         <span>{fmtFn(used)}</span>
         <span>{fmtFn(total)}</span>
       </div>
-      <div style={{ height: 6, background: "var(--card-border)", borderRadius: 3, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.3s" }} />
+      <div className={ta["budget-track"]}>
+        <div className={ta["budget-fill"]} style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
   );
@@ -132,7 +127,7 @@ function BarChart({ data, height = 72 }: { data: TimeseriesPoint[]; height?: num
   if (!data.length) return <div style={{ height }} />;
   const max = Math.max(...data.map(d => d.cost_usd));
   if (max === 0) return (
-    <div style={{ height, display: "flex", alignItems: "center", fontSize: 12, color: "var(--text-secondary)" }}>
+    <div className={ta["no-spend"]} style={{ height }}>
       No spend in this period
     </div>
   );
@@ -169,20 +164,15 @@ function DetailPanel({
 
   return (
     <>
-      <div onClick={onClose}
-        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 200 }} />
-      <div style={{
-        position: "fixed", top: 0, right: 0, bottom: 0, width: 480, maxWidth: "100vw",
-        background: "var(--card-bg)", borderLeft: "1px solid var(--card-border)",
-        zIndex: 201, overflowY: "auto", padding: "28px 28px 40px",
-      }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
+      <div onClick={onClose} className={ta["detail-backdrop"]} />
+      <div className={ta["detail-drawer"]}>
+        <div className={ta["detail-header"]}>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
+            <div className={ta["detail-tenant-name"]}>
               <span className={s.code}>{tenant.tenant}</span>
             </div>
             {tenantMeta && (
-              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <div className={ta["detail-badges"]}>
                 <span className={`${s.badge} ${s["badge--neutral"]}`}>{tenantMeta.plan}</span>
                 {tenantMeta.budget_usd != null && (
                   <span className={`${s.badge} ${s["badge--neutral"]}`}>
@@ -199,15 +189,15 @@ function DetailPanel({
           </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
+        <div className={s["stats-grid"]} style={{ marginBottom: 24 }}>
           {([
             ["Requests",    fmtNumber(tenant.requests)],
             ["Cost",        fc(tenant.cost_usd)],
             ["Avg Latency", fmtMs(tenant.avg_latency_ms)],
           ] as [string, string][]).map(([label, value]) => (
-            <div key={label} style={{ background: "var(--section-bg)", borderRadius: 8, padding: "12px 14px", border: "1px solid var(--card-border)" }}>
-              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--text-secondary)", marginBottom: 6 }}>{label}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>{value}</div>
+            <div key={label} className={s["stat-card"]}>
+              <div className={s["stat-label"]}>{label}</div>
+              <div className={s["stat-value"]}>{value}</div>
             </div>
           ))}
         </div>
@@ -234,8 +224,8 @@ function DetailPanel({
                   {detail!.top_models.map((m: TopModelRow, i: number) => (
                     <tr key={i}>
                       <td>
-                        <div className={s.mono} style={{ fontSize: 11 }}>{m.model}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{m.provider}</div>
+                        <div className={`${s.mono} ${s.truncate}`} style={{ fontSize: 11, maxWidth: 160 }}>{m.model}</div>
+                        <div className={s["stat-label"]}>{m.provider}</div>
                       </td>
                       <td>{fmtNumber(m.requests)}</td>
                       <td>{fc(m.cost_usd)}</td>

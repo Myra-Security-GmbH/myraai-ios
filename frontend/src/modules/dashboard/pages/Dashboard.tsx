@@ -312,7 +312,7 @@ export default function Dashboard() {
                     {analytics.top_models.slice(0, 5).map((row, i) => (
                       <tr key={i}>
                         <td>{row.provider}</td>
-                        <td className={s.mono} style={{ fontSize: 11 }}>{row.model}</td>
+                        <td className={`${s.mono} ${s.truncate}`} style={{ fontSize: 11, maxWidth: 160 }}>{row.model}</td>
                         <td>{fmtNumber(row.requests)}</td>
                         <td>{row.cost_usd > 0 ? `$${row.cost_usd.toFixed(4)}` : "—"}</td>
                         <td>{fmtNumber(row.avg_latency_ms)} ms</td>

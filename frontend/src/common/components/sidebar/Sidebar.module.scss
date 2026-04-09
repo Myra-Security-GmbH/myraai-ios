@@ -33,6 +33,16 @@
   --table-header-bg: #f9fafb;
   --table-row-hover: #f9fafb;
   --blocked-row-bg: #fee2e2;
+  /* Aliases — modules that use shorter variable names */
+  --accent:     #0052cc;
+  --primary:    #002b4a;
+  --border:     var(--card-border);
+  --surface-1:  var(--card-bg);
+  --surface-2:  var(--section-bg);
+  --bg:         var(--content-bg);
+  --bg-subtle:  var(--section-bg);
+  --text-muted: var(--text-secondary);
+  --text:       var(--text-primary);
 }
 
 [data-theme="dark"] {
@@ -66,6 +76,9 @@
   --table-header-bg: #0a1520;
   --table-row-hover: #0d1b2a;
   --blocked-row-bg: rgba(220, 38, 38, 0.15);
+  /* Dark-mode accent aliases */
+  --accent:  #29d9ff;
+  --primary: #29d9ff;
 }
 
 .sidebar {
@@ -73,6 +86,7 @@
   flex-direction: column;
   width: tools.pixelToRem(240);
   min-width: tools.pixelToRem(240);
+  height: 100vh;
   height: 100dvh;
   position: sticky;
   top: 0;
@@ -89,6 +103,8 @@
     left: 0;
     height: 100dvh;
     z-index: 200;
+    height: 100vh;
+    height: 100dvh;
     transform: translateX(-100%);
     // Always show full width on mobile regardless of collapsed state
     width: tools.pixelToRem(240) !important;

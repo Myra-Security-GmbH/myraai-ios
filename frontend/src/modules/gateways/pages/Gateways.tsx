@@ -82,7 +82,7 @@ function CreateGatewayModal({ tenantId, onClose, onCreated }: {
               <span className={s["form-label"]} style={{ margin: 0 }}>Require auth token</span>
             </label>
           </div>
-          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          <hr className={s.divider} />
           <GuardrailBuilder value={guardrails} onChange={setGuardrails} />
           <div className={s["form-actions"]}>
             <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
@@ -266,7 +266,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
               <span className={s["form-label"]} style={{ margin: 0 }}>Log request/response payloads</span>
             </label>
           </div>
-          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          <hr className={s.divider} />
           <div className={s["form-group"]}>
             <label className={s["form-label"]}>Provider Base URLs</label>
             <p className={s["form-hint"]} style={{ marginBottom: 8 }}>Override the upstream URL for a provider (e.g. Ollama on a custom host/port).</p>
@@ -300,7 +300,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
               onClick={() => setBaseUrls((prev) => [...prev, { provider: "", url: "" }])}
             >+ Add URL override</button>
           </div>
-          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          <hr className={s.divider} />
           <div className={s["form-group"]}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
               <input type="checkbox" checked={cbEnabled} onChange={(e) => setCbEnabled(e.target.checked)} />
@@ -335,7 +335,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
               </div>
             )}
           </div>
-          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          <hr className={s.divider} />
           {/* Webhooks */}
           <div className={s["form-group"]}>
             <label className={s["form-label"]}>Webhook</label>
@@ -375,7 +375,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
               </>
             )}
           </div>
-          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          <hr className={s.divider} />
           {/* SIEM */}
           <div className={s["form-group"]}>
             <label className={s["form-label"]} style={{ display: "flex", alignItems: "center", gap: 6 }}>SIEM Integration <DocLink path="/configuration/siem/" label="SIEM docs" /></label>
@@ -467,7 +467,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
               </>
             )}
           </div>
-          <hr style={{ border: "none", borderTop: "1px solid var(--border, #e4e4e7)", margin: "16px 0" }} />
+          <hr className={s.divider} />
           {/* Request Tracing */}
           <div className={s["form-group"]}>
             <label className={s["form-label"]} style={{ display: "flex", alignItems: "center", gap: 6 }}>Request Tracing <DocLink path="/observability/tracing/" label="Tracing docs" /></label>

@@ -30,7 +30,7 @@ import SharedConversation from "src/pages/SharedConversation";
 
 function AppShell() {
   return (
-    <div style={{ display: "flex", minHeight: "100dvh" }}>
+    <div style={{ display: "flex", minHeight: "100vh" }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflowX: "hidden", backgroundColor: "var(--content-bg)" }}>
         <Routes>

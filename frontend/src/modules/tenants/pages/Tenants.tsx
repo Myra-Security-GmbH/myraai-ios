@@ -595,7 +595,7 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
                     <tr key={cmd.id}>
                       <td><span className={s.code}>/{cmd.name}</span></td>
                       <td style={{ opacity: 0.75 }}>{cmd.description || "—"}</td>
-                      <td style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.75, fontFamily: "monospace", fontSize: 12 }}>
+                      <td className={s.truncate} style={{ maxWidth: 240, opacity: 0.75, fontFamily: "monospace", fontSize: 12 }}>
                         {cmd.template}
                       </td>
                       <td style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>

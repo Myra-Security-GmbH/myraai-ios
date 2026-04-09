@@ -176,7 +176,7 @@ export default function Commands() {
                 <tr key={cmd.id}>
                   <td><code style={{ fontFamily: "monospace" }}>/{cmd.name}</code></td>
                   <td style={{ color: "var(--text-secondary)" }}>{cmd.description || "—"}</td>
-                  <td style={{ maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-secondary)", fontFamily: "monospace", fontSize: 12 }}>
+                  <td className={s.truncate} style={{ maxWidth: 320, color: "var(--text-secondary)", fontFamily: "monospace", fontSize: 12 }}>
                     {cmd.template}
                   </td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>

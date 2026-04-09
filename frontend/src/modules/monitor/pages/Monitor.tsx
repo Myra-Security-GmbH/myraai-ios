@@ -247,7 +247,7 @@ export default function Monitor() {
                         <td className={s.mono} style={{ fontSize: 11 }}>{fmtDateTime(row.ts)}</td>
                         <td><span className={s.code}>{row.tenant ?? row.tenant_id?.slice(0, 8)}</span></td>
                         <td>{row.provider}</td>
-                        <td className={s.mono} style={{ fontSize: 11, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{row.model}</td>
+                        <td className={`${s.mono} ${s.truncate}`} style={{ fontSize: 11, maxWidth: 160 }}>{row.model}</td>
                         <td>
                           {row.blocked ? (
                             <span className={`${s.badge} ${s["badge--error"]}`}>[{row.blocked_by ?? "blocked"}]</span>
