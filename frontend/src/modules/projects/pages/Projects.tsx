@@ -28,6 +28,9 @@ export default function Projects() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "owner" | "editor" | "viewer">("all");
+  const [sort, setSort] = useState<"activity" | "edited" | "created">("activity");
 
   const isAdmin = me?.role === "admin";
   // For admins without a personal tenant, fall back to first loaded tenant.
@@ -68,6 +71,30 @@ export default function Projects() {
   }
 
   const canCreate = me?.role === "admin" || me?.role === "tenant_admin";
+
+  const displayProjects = projects
+    .filter((p) => {
+      if (filter === "owner")  return p.my_role === "owner";
+      if (filter === "editor") return p.my_role === "editor";
+      if (filter === "viewer") return p.my_role === "viewer";
+      return true;
+    })
+    .filter((p) => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      if (sort === "activity") {
+        const ta = a.last_conversation_at ? new Date(a.last_conversation_at).getTime() : 0;
+        const tb = b.last_conversation_at ? new Date(b.last_conversation_at).getTime() : 0;
+        return tb - ta;
+      }
+      if (sort === "edited") {
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
   if (loading) {
     return (
@@ -112,6 +139,43 @@ export default function Projects() {
 
       {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
 
+      <div className={s["list-toolbar"]}>
+        <input
+          type="search"
+          className={s["form-input"]}
+          placeholder="Search projects…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          data-cy="projects-search"
+          style={{ flex: "1 1 200px", minWidth: 0 }}
+        />
+        <div style={{ display: "flex", gap: 4 }}>
+          {(["all", "owner", "editor", "viewer"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              className={`${s["picker-btn"]} ${filter === f ? s["picker-btn--selected"] : ""}`}
+              style={{ fontSize: 13 }}
+              onClick={() => setFilter(f)}
+              data-cy={`filter-${f}`}
+            >
+              {{ all: "All", owner: "Your projects", editor: "Team", viewer: "Shared with you" }[f]}
+            </button>
+          ))}
+        </div>
+        <select
+          className={s["form-select"]}
+          value={sort}
+          onChange={(e) => setSort(e.target.value as typeof sort)}
+          style={{ flex: "0 0 auto" }}
+          data-cy="projects-sort"
+        >
+          <option value="activity">Recent Activity</option>
+          <option value="edited">Last edited</option>
+          <option value="created">Date created</option>
+        </select>
+      </div>
+
       {projects.length === 0 ? (
         <div className={s.empty}>
           <p style={{ margin: "0 0 16px" }}>No projects yet.</p>
@@ -122,49 +186,55 @@ export default function Projects() {
           )}
         </div>
       ) : (
-        <div className={s["table-wrapper"]}>
-          <table className={s.table} data-cy="projects-table">
-            <thead>
-              <tr>
-                {["Project", "Description", "Members", "Files", "Role", "Updated"].map((h) => (
-                  <th key={h}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((p) => (
-                <tr
-                  key={p.id}
-                  onClick={() => navigate(`/projects/${p.id}`)}
-                  style={{ cursor: "pointer" }}
-                  data-cy={`project-row-${p.id}`}
-                >
-                  <td>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      <FolderIcon color={p.color} />
-                      <strong style={{ fontWeight: 500 }}>{p.icon} {p.name}</strong>
-                    </span>
-                  </td>
-                  <td style={{ color: "var(--text-secondary)" }}>
-                    {p.description ? p.description.slice(0, 60) + (p.description.length > 60 ? "…" : "") : "—"}
-                  </td>
-                  <td>{p.member_count ?? 0}</td>
-                  <td>{p.knowledge_count ?? 0}</td>
-                  <td>
-                    {(p.my_role ?? (isAdmin ? "admin" : null)) && (
-                      <span className={`${s.badge} ${s["badge--neutral"]}`}>
-                        {p.my_role ?? "admin"}
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
-                    {new Date(p.updated_at).toLocaleDateString()}
-                  </td>
+        <>
+          {displayProjects.length === 0 ? (
+            <div className={s.empty}>No projects match your search.</div>
+          ) : (
+          <div className={s["table-wrapper"]}>
+            <table className={s.table} data-cy="projects-table">
+              <thead>
+                <tr>
+                  {["Project", "Description", "Members", "Files", "Role", "Updated"].map((h) => (
+                    <th key={h}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {displayProjects.map((p) => (
+                  <tr
+                    key={p.id}
+                    onClick={() => navigate(`/projects/${p.id}`)}
+                    style={{ cursor: "pointer" }}
+                    data-cy={`project-row-${p.id}`}
+                  >
+                    <td>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <FolderIcon color={p.color} />
+                        <strong style={{ fontWeight: 500 }}>{p.icon} {p.name}</strong>
+                      </span>
+                    </td>
+                    <td style={{ color: "var(--text-secondary)" }}>
+                      {p.description ? p.description.slice(0, 60) + (p.description.length > 60 ? "…" : "") : "—"}
+                    </td>
+                    <td>{p.member_count ?? 0}</td>
+                    <td>{p.knowledge_count ?? 0}</td>
+                    <td>
+                      {(p.my_role ?? (isAdmin ? "admin" : null)) && (
+                        <span className={`${s.badge} ${s["badge--neutral"]}`}>
+                          {p.my_role ?? "admin"}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                      {new Date(p.updated_at).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          )}
+        </>
       )}
 
       {showCreate && (

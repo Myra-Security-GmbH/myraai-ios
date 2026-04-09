@@ -10,6 +10,7 @@
  *   6. Permissions        — API-level checks
  *   7. Regression         — last-owner guard, detach on delete, gateway dropdown
  *   8. Counts (Bug fixes) — member_count / knowledge_count in list (was always 0)
+ *   9. Search/Filter/Sort toolbar — search bar, role filter buttons, sort select
  */
 
 import { test, expect, Page } from "@playwright/test";
@@ -928,4 +929,281 @@ test.describe("Projects — Knowledge download & URL", () => {
     }
   });
 
+});
+
+// ─── Suite 9: Search / Filter / Sort toolbar ──────────────────────────────────
+//
+// To test role-based filters we need projects with known my_role values for the
+// test user (info@schumann.net, admin).  Strategy:
+//   - owner project  : created by admin → auto-added as owner
+//   - editor project : create with admin as owner, add a temp second owner, then
+//                      PATCH admin's role to "editor"
+//   - viewer project : same setup, PATCH admin to "viewer"
+//
+// The temp user is created via POST /tenants/:id/users and deleted in cleanup.
+// All filter assertions reload the page so they test the full data flow.
+// ---------------------------------------------------------------------------
+
+const AUTH_BASE = (process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173") + "/admin/auth";
+
+/** Return the current user's id and tenant_id from /admin/auth/me */
+async function getMe(page: Page): Promise<{ id: string; tenant_id: string }> {
+  const r = await page.context().request.get(`${AUTH_BASE}/me`);
+  expect(r.ok(), "GET /auth/me").toBeTruthy();
+  return r.json();
+}
+
+/** Create a throwaway tenant member user; returns their id */
+async function createTempUser(page: Page, tenantId: string, email: string): Promise<string> {
+  const r = await page.context().request.post(`${ADMIN_BASE}/tenants/${tenantId}/users`, {
+    data: { email, role: "member" },
+  });
+  expect(r.ok(), `create temp user ${email}: ${await r.text()}`).toBeTruthy();
+  const body = await r.json() as { id: string };
+  return body.id;
+}
+
+/** Delete a user via the admin API; silently ignores errors (cleanup helper) */
+async function deleteTempUser(page: Page, userId: string) {
+  await page.context().request.delete(`${ADMIN_BASE}/users/${userId}`).catch(() => {});
+}
+
+/**
+ * Demote the admin user's role in a project.
+ * Requires at least one other owner to be present first (last-owner guard).
+ * Adds `secondOwnerId` as owner, then patches `adminId` to `newRole`.
+ */
+async function demoteAdminInProject(
+  page: Page,
+  projectId: string,
+  adminId: string,
+  secondOwnerId: string,
+  newRole: "editor" | "viewer",
+) {
+  // Add second owner
+  const addResp = await page.context().request.post(`${ADMIN_BASE}/projects/${projectId}/members`, {
+    data: { user_id: secondOwnerId, role: "owner" },
+  });
+  expect(addResp.ok(), `add second owner: ${await addResp.text()}`).toBeTruthy();
+
+  // Demote admin
+  const patchResp = await page.context().request.patch(
+    `${ADMIN_BASE}/projects/${projectId}/members/${adminId}`,
+    { data: { role: newRole } },
+  );
+  expect(patchResp.ok(), `demote admin to ${newRole}: ${await patchResp.text()}`).toBeTruthy();
+}
+
+test.describe("Search/Filter/Sort toolbar", () => {
+
+  // ── Toolbar visibility ─────────────────────────────────────────────────────
+
+  test("toolbar elements are present on the projects list page", async ({ page }) => {
+    await page.goto("/projects");
+    await expect(page.locator("[data-cy=projects-search]")).toBeVisible({ timeout: 8000 });
+    await expect(page.locator("[data-cy=filter-all]")).toBeVisible();
+    await expect(page.locator("[data-cy=filter-owner]")).toBeVisible();
+    await expect(page.locator("[data-cy=filter-editor]")).toBeVisible();
+    await expect(page.locator("[data-cy=filter-viewer]")).toBeVisible();
+    const sel = page.locator("[data-cy=projects-sort]");
+    await expect(sel).toBeVisible();
+    await expect(sel.locator("option[value=activity]")).toHaveText("Recent Activity");
+    await expect(sel.locator("option[value=edited]")).toHaveText("Last edited");
+    await expect(sel.locator("option[value=created]")).toHaveText("Date created");
+  });
+
+  // ── Search ─────────────────────────────────────────────────────────────────
+
+  test("search filters by name — matching project visible, non-matching hidden", async ({ page }) => {
+    const marker = `xzqm-${Date.now()}`;
+    const pid1 = await apiCreateProject(page, `E2E-search-baseline-${Date.now()}`);
+    const pid2 = await apiCreateProject(page, `${marker}-target`);
+    try {
+      await page.goto("/projects");
+      await expect(page.locator("[data-cy=projects-search]")).toBeVisible({ timeout: 8000 });
+      await expect(page.locator(`[data-cy="project-row-${pid1}"]`)).toBeVisible();
+      await expect(page.locator(`[data-cy="project-row-${pid2}"]`)).toBeVisible();
+
+      await page.locator("[data-cy=projects-search]").fill(marker);
+      await expect(page.locator(`[data-cy="project-row-${pid2}"]`)).toBeVisible({ timeout: 3000 });
+      await expect(page.locator(`[data-cy="project-row-${pid1}"]`)).not.toBeVisible();
+
+      // Clear — both reappear
+      await page.locator("[data-cy=projects-search]").fill("");
+      await expect(page.locator(`[data-cy="project-row-${pid1}"]`)).toBeVisible({ timeout: 3000 });
+    } finally {
+      await apiDeleteProject(page, pid1);
+      await apiDeleteProject(page, pid2);
+    }
+  });
+
+  test("search with no matches shows empty-state message", async ({ page }) => {
+    await page.goto("/projects");
+    await expect(page.locator("[data-cy=projects-search]")).toBeVisible({ timeout: 8000 });
+    await page.locator("[data-cy=projects-search]").fill("zzz-no-match-ever-zzz");
+    await expect(page.locator("text=No projects match your search.")).toBeVisible({ timeout: 3000 });
+  });
+
+  // ── Filter: Your projects (owner) ─────────────────────────────────────────
+
+  test("'Your projects' shows only owner-role project, hides editor-role project", async ({ page }) => {
+    // ownerPid: admin is owner (default after create)
+    // editorPid: admin is demoted to editor
+    const { id: adminId, tenant_id: tenantId } = await getMe(page);
+    const ownerPid  = await apiCreateProject(page, `E2E-filter-owner-${Date.now()}`);
+    const editorPid = await apiCreateProject(page, `E2E-filter-editor-${Date.now()}`);
+    const tmpEmail  = `tmp-filter-${Date.now()}@example.invalid`;
+    const tmpUserId = await createTempUser(page, tenantId, tmpEmail);
+
+    try {
+      await demoteAdminInProject(page, editorPid, adminId, tmpUserId, "editor");
+
+      await page.goto("/projects");
+      await expect(page.locator("[data-cy=filter-owner]")).toBeVisible({ timeout: 8000 });
+
+      // Reload to get fresh data
+      await page.reload();
+      await expect(page.locator("[data-cy=filter-owner]")).toBeVisible({ timeout: 8000 });
+
+      await page.locator("[data-cy=filter-owner]").click();
+
+      await expect(page.locator(`[data-cy="project-row-${ownerPid}"]`)).toBeVisible({ timeout: 3000 });
+      await expect(page.locator(`[data-cy="project-row-${editorPid}"]`)).not.toBeVisible();
+    } finally {
+      await apiDeleteProject(page, ownerPid);
+      await apiDeleteProject(page, editorPid);
+      await deleteTempUser(page, tmpUserId);
+    }
+  });
+
+  // ── Filter: Team (editor) ──────────────────────────────────────────────────
+
+  test("'Team' filter shows editor-role project, hides owner-role project", async ({ page }) => {
+    const { id: adminId, tenant_id: tenantId } = await getMe(page);
+    const ownerPid  = await apiCreateProject(page, `E2E-team-owner-${Date.now()}`);
+    const editorPid = await apiCreateProject(page, `E2E-team-editor-${Date.now()}`);
+    const tmpEmail  = `tmp-team-${Date.now()}@example.invalid`;
+    const tmpUserId = await createTempUser(page, tenantId, tmpEmail);
+
+    try {
+      await demoteAdminInProject(page, editorPid, adminId, tmpUserId, "editor");
+
+      await page.goto("/projects");
+      await page.reload();
+      await expect(page.locator("[data-cy=filter-editor]")).toBeVisible({ timeout: 8000 });
+
+      await page.locator("[data-cy=filter-editor]").click();
+
+      await expect(page.locator(`[data-cy="project-row-${editorPid}"]`)).toBeVisible({ timeout: 3000 });
+      await expect(page.locator(`[data-cy="project-row-${ownerPid}"]`)).not.toBeVisible();
+    } finally {
+      await apiDeleteProject(page, ownerPid);
+      await apiDeleteProject(page, editorPid);
+      await deleteTempUser(page, tmpUserId);
+    }
+  });
+
+  // ── Filter: Shared with you (viewer) ──────────────────────────────────────
+
+  test("'Shared with you' shows viewer-role project, hides owner-role project", async ({ page }) => {
+    const { id: adminId, tenant_id: tenantId } = await getMe(page);
+    const ownerPid  = await apiCreateProject(page, `E2E-shared-owner-${Date.now()}`);
+    const viewerPid = await apiCreateProject(page, `E2E-shared-viewer-${Date.now()}`);
+    const tmpEmail  = `tmp-shared-${Date.now()}@example.invalid`;
+    const tmpUserId = await createTempUser(page, tenantId, tmpEmail);
+
+    try {
+      await demoteAdminInProject(page, viewerPid, adminId, tmpUserId, "viewer");
+
+      await page.goto("/projects");
+      await page.reload();
+      await expect(page.locator("[data-cy=filter-viewer]")).toBeVisible({ timeout: 8000 });
+
+      await page.locator("[data-cy=filter-viewer]").click();
+
+      await expect(page.locator(`[data-cy="project-row-${viewerPid}"]`)).toBeVisible({ timeout: 3000 });
+      await expect(page.locator(`[data-cy="project-row-${ownerPid}"]`)).not.toBeVisible();
+    } finally {
+      await apiDeleteProject(page, ownerPid);
+      await apiDeleteProject(page, viewerPid);
+      await deleteTempUser(page, tmpUserId);
+    }
+  });
+
+  // ── Filter: All ────────────────────────────────────────────────────────────
+
+  test("'All' shows projects of every role (owner and editor) together", async ({ page }) => {
+    const { id: adminId, tenant_id: tenantId } = await getMe(page);
+    const ownerPid  = await apiCreateProject(page, `E2E-all-owner-${Date.now()}`);
+    const editorPid = await apiCreateProject(page, `E2E-all-editor-${Date.now()}`);
+    const tmpEmail  = `tmp-all-${Date.now()}@example.invalid`;
+    const tmpUserId = await createTempUser(page, tenantId, tmpEmail);
+
+    try {
+      await demoteAdminInProject(page, editorPid, adminId, tmpUserId, "editor");
+
+      await page.goto("/projects");
+      await page.reload();
+      await expect(page.locator("[data-cy=filter-all]")).toBeVisible({ timeout: 8000 });
+
+      // "All" is the default; both should be present
+      await expect(page.locator(`[data-cy="project-row-${ownerPid}"]`)).toBeVisible({ timeout: 3000 });
+      await expect(page.locator(`[data-cy="project-row-${editorPid}"]`)).toBeVisible();
+
+      // Switch away then back to "All"
+      await page.locator("[data-cy=filter-owner]").click();
+      await page.locator("[data-cy=filter-all]").click();
+      await expect(page.locator(`[data-cy="project-row-${ownerPid}"]`)).toBeVisible({ timeout: 3000 });
+      await expect(page.locator(`[data-cy="project-row-${editorPid}"]`)).toBeVisible();
+    } finally {
+      await apiDeleteProject(page, ownerPid);
+      await apiDeleteProject(page, editorPid);
+      await deleteTempUser(page, tmpUserId);
+    }
+  });
+
+  // ── Sort ───────────────────────────────────────────────────────────────────
+
+  test("changing sort does not crash and table remains visible", async ({ page }) => {
+    const pid = await apiCreateProject(page, `E2E-sort-${Date.now()}`);
+    try {
+      await page.goto("/projects");
+      await expect(page.locator("[data-cy=projects-sort]")).toBeVisible({ timeout: 8000 });
+
+      await page.locator("[data-cy=projects-sort]").selectOption("edited");
+      await expect(page.locator("[data-cy=projects-table]")).toBeVisible({ timeout: 3000 });
+
+      await page.locator("[data-cy=projects-sort]").selectOption("created");
+      await expect(page.locator("[data-cy=projects-table]")).toBeVisible({ timeout: 3000 });
+
+      await page.locator("[data-cy=projects-sort]").selectOption("activity");
+      await expect(page.locator("[data-cy=projects-table]")).toBeVisible({ timeout: 3000 });
+    } finally {
+      await apiDeleteProject(page, pid);
+    }
+  });
+
+  test("'Date created' sort puts the newest project first", async ({ page }) => {
+    const pid1 = await apiCreateProject(page, `E2E-sort-first-${Date.now()}`);
+    // Small delay so created_at timestamps differ
+    await new Promise((r) => setTimeout(r, 1100));
+    const pid2 = await apiCreateProject(page, `E2E-sort-second-${Date.now()}`);
+    try {
+      await page.goto("/projects");
+      await page.reload();
+      await expect(page.locator("[data-cy=projects-sort]")).toBeVisible({ timeout: 8000 });
+
+      await page.locator("[data-cy=projects-sort]").selectOption("created");
+      // pid2 was created later → should appear before pid1 in the table
+      const rows = page.locator("[data-cy=projects-table] tbody tr");
+      const firstRowId  = await rows.first().getAttribute("data-cy");
+      const secondRowId = await rows.nth(1).getAttribute("data-cy");
+      // The most recently created project should come first
+      expect(firstRowId).toContain(pid2);
+      expect(secondRowId).toContain(pid1);
+    } finally {
+      await apiDeleteProject(page, pid1);
+      await apiDeleteProject(page, pid2);
+    }
+  });
 });

@@ -611,6 +611,7 @@ export interface ChatProject {
   my_role?: ProjectRole;
   created_at: string;
   updated_at: string;
+  last_conversation_at?: string | null;
   member_count?: number;
   knowledge_count?: number;
   members?: ProjectMember[];

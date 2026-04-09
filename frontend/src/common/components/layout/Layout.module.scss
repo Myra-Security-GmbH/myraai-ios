@@ -690,6 +690,15 @@ table.table tbody tr.blocked td {
   }
 }
 
+// Filter toolbar for list pages (projects, etc.)
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: tools.pixelToRem(10);
+  flex-wrap: wrap;
+  margin-bottom: tools.pixelToRem(16);
+}
+
 // Icon/color pickers (project create/edit)
 .picker-row {
   display: flex;

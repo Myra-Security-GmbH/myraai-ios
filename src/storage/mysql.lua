@@ -2262,7 +2262,9 @@ function M.list_projects(tenant_id, user_id, is_admin)
                    DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
                    (SELECT COUNT(*) FROM chat_project_member  WHERE project_id = p.id) AS member_count,
                    (SELECT COUNT(*) FROM chat_project_knowledge WHERE project_id = p.id) AS knowledge_count,
-                   m.role
+                   (SELECT DATE_FORMAT(FROM_UNIXTIME(MAX(c.updated_at)), '%%Y-%%m-%%dT%%H:%%i:%%sZ')
+                    FROM chat_conversation c WHERE c.project_id = p.id AND c.deleted_at IS NULL) AS last_conversation_at,
+                   m.role AS my_role
             FROM chat_project p
             LEFT JOIN chat_project_member m ON m.project_id = p.id AND m.user_id = ?
             WHERE p.tenant_id = ? AND p.deleted_at IS NULL
@@ -2278,7 +2280,9 @@ function M.list_projects(tenant_id, user_id, is_admin)
                    DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
                    (SELECT COUNT(*) FROM chat_project_member  WHERE project_id = p.id) AS member_count,
                    (SELECT COUNT(*) FROM chat_project_knowledge WHERE project_id = p.id) AS knowledge_count,
-                   m.role
+                   (SELECT DATE_FORMAT(FROM_UNIXTIME(MAX(c.updated_at)), '%%Y-%%m-%%dT%%H:%%i:%%sZ')
+                    FROM chat_conversation c WHERE c.project_id = p.id AND c.deleted_at IS NULL) AS last_conversation_at,
+                   m.role AS my_role
             FROM chat_project p
             JOIN chat_project_member m ON m.project_id = p.id AND m.user_id = ?
             WHERE p.tenant_id = ? AND p.deleted_at IS NULL
@@ -2328,7 +2332,7 @@ function M.get_project(id, user_id, is_admin)
                    p.created_by,
                    DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
                    DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at,
-                   NULL AS role
+                   NULL AS my_role
             FROM chat_project p
             WHERE p.id = ? AND p.deleted_at IS NULL
             LIMIT 1
@@ -2340,7 +2344,7 @@ function M.get_project(id, user_id, is_admin)
                    p.created_by,
                    DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
                    DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at,
-                   m.role
+                   m.role AS my_role
             FROM chat_project p
             JOIN chat_project_member m ON m.project_id = p.id AND m.user_id = ?
             WHERE p.id = ? AND p.deleted_at IS NULL
