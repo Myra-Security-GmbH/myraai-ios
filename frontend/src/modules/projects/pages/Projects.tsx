@@ -140,6 +140,8 @@ export default function Projects() {
       {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
 
       <div className={s["list-toolbar"]}>
+
+        {/* Row 1 — search */}
         <input
           type="search"
           className={s["form-input"]}
@@ -147,33 +149,42 @@ export default function Projects() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           data-cy="projects-search"
-          style={{ flex: "1 1 200px", minWidth: 0 }}
         />
-        <div style={{ display: "flex", gap: 4 }}>
-          {(["all", "owner", "editor", "viewer"] as const).map((f) => (
-            <button
-              key={f}
-              type="button"
-              className={`${s["picker-btn"]} ${filter === f ? s["picker-btn--selected"] : ""}`}
-              style={{ fontSize: 13 }}
-              onClick={() => setFilter(f)}
-              data-cy={`filter-${f}`}
+
+        {/* Row 2 — filter pills left, sort right */}
+        <div className={s["list-toolbar-row"]}>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {(["all", "owner", "editor", "viewer"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={`${s["picker-btn"]} ${filter === f ? s["picker-btn--selected"] : ""}`}
+                style={{ fontSize: 13 }}
+                onClick={() => setFilter(f)}
+                data-cy={`filter-${f}`}
+              >
+                {{ all: "All", owner: "Your projects", editor: "Team", viewer: "Shared with you" }[f]}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <span style={{ fontSize: 13, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+              Sort by
+            </span>
+            <select
+              className={s["form-select"]}
+              value={sort}
+              onChange={(e) => setSort(e.target.value as typeof sort)}
+              style={{ width: "auto" }}
+              data-cy="projects-sort"
             >
-              {{ all: "All", owner: "Your projects", editor: "Team", viewer: "Shared with you" }[f]}
-            </button>
-          ))}
+              <option value="activity">Recent Activity</option>
+              <option value="edited">Last edited</option>
+              <option value="created">Date created</option>
+            </select>
+          </div>
         </div>
-        <select
-          className={s["form-select"]}
-          value={sort}
-          onChange={(e) => setSort(e.target.value as typeof sort)}
-          style={{ flex: "0 0 auto" }}
-          data-cy="projects-sort"
-        >
-          <option value="activity">Recent Activity</option>
-          <option value="edited">Last edited</option>
-          <option value="created">Date created</option>
-        </select>
+
       </div>
 
       {projects.length === 0 ? (

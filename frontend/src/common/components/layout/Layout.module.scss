@@ -693,10 +693,18 @@ table.table tbody tr.blocked td {
 // Filter toolbar for list pages (projects, etc.)
 .list-toolbar {
   display: flex;
-  align-items: center;
-  gap: tools.pixelToRem(10);
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: tools.pixelToRem(8);
   margin-bottom: tools.pixelToRem(16);
+}
+
+// Second row inside .list-toolbar: filter pills left, sort right
+.list-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: tools.pixelToRem(8);
+  flex-wrap: wrap;
 }
 
 // Icon/color pickers (project create/edit)
