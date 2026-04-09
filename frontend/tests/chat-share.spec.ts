@@ -10,8 +10,8 @@
 
 import { test, expect, type Page } from "@playwright/test";
 
-const ADMIN_BASE = "http://localhost:5173/admin/v1";
-const SHARE_BASE = "http://localhost:5173/share";
+const ADMIN_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/admin/v1`;
+const SHARE_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/share`;
 
 // ---------------------------------------------------------------------------
 // Helpers

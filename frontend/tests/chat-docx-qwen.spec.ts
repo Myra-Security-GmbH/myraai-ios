@@ -108,6 +108,7 @@ async function waitForStreamingDone(page: Page, timeoutMs = 90_000) {
 
 test.describe(`Chat — .docx upload with ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`, () => {
   test.setTimeout(120_000);
+  let testStartTime: number;
   const FIXTURE = path.resolve(__dirname, "fixtures/eiffel-tower.docx");
 
   test.beforeEach(async ({ page }) => {

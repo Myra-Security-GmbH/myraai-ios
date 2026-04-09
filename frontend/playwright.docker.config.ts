@@ -10,8 +10,9 @@ import path from "path";
 
 const SESSION = path.resolve(__dirname, "tests/.auth/docker-session.json");
 
-// Make the admin API base URL available to test files
+// Make base URLs available to test files
 process.env.PLAYWRIGHT_ADMIN_URL = "https://ai-api-admin.myra.eu";
+process.env.PLAYWRIGHT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "https://ai.myra.eu";
 
 export default defineConfig({
   testDir: "./tests",

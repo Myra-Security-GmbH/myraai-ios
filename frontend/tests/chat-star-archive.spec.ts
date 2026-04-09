@@ -12,7 +12,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // The session cookie is for localhost — always go through the Vite proxy.
-const ADMIN_BASE = "http://localhost:5173/admin/v1";
+const ADMIN_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/admin/v1`;
 
 // ---------------------------------------------------------------------------
 // Helpers

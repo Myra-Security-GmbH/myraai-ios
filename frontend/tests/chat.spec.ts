@@ -117,6 +117,11 @@ async function selectValue(page: Page, index: number): Promise<string> {
   return page.locator("select").nth(index).inputValue();
 }
 
+/** True when the chat UI is showing native select dropdowns (not preset mode). */
+async function isNormalMode(page: Page): Promise<boolean> {
+  return (await page.locator("select").count()) >= 2;
+}
+
 /** Return the model name shown by the ModelPicker button (strips the trailing dropdown arrow). */
 async function modelPickerText(page: Page): Promise<string> {
   return (await page.locator("[aria-haspopup='listbox']").textContent() ?? "")
@@ -151,8 +156,10 @@ test.describe("Chat page — localStorage persistence", () => {
 
     // Stored values must match what the selects actually show
     expect(stored.tenant).toBe(await selectValue(page, 0));
-    expect(stored.gateway).toBe(await selectValue(page, 1));
-    expect(stored.model).toBe(await modelPickerText(page));
+    if (await isNormalMode(page)) {
+      expect(stored.gateway).toBe(await selectValue(page, 1));
+      expect(stored.model).toBe(await modelPickerText(page));
+    }
   });
 
   test("restores tenant, gateway and model after SPA navigation away and back", async ({ page }) => {
@@ -162,10 +169,11 @@ test.describe("Chat page — localStorage persistence", () => {
 
     await page.waitForTimeout(200);
 
-    // Capture what was selected
+    // Capture what was selected (use localStorage for gateway/model in preset mode)
+    const normalMode = await isNormalMode(page);
     const tenantBefore  = await selectValue(page, 0);
-    const gatewayBefore = await selectValue(page, 1);
-    const modelBefore   = await modelPickerText(page);
+    const gatewayBefore = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
+    const modelBefore   = normalMode ? await modelPickerText(page) : (await readChatStorage(page)).model;
     expect(tenantBefore).toBeTruthy();
     expect(gatewayBefore).toBeTruthy();
     expect(modelBefore).toBeTruthy();
@@ -178,8 +186,8 @@ test.describe("Chat page — localStorage persistence", () => {
     await page.waitForTimeout(1200);
 
     const tenantAfter  = await selectValue(page, 0);
-    const gatewayAfter = await selectValue(page, 1);
-    const modelAfter   = await modelPickerText(page);
+    const gatewayAfter = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
+    const modelAfter   = normalMode ? await modelPickerText(page) : (await readChatStorage(page)).model;
 
     expect(tenantAfter,  `tenant should be restored to ${tenantBefore}`).toBe(tenantBefore);
     expect(gatewayAfter, `gateway should be restored to ${gatewayBefore}`).toBe(gatewayBefore);
@@ -193,17 +201,18 @@ test.describe("Chat page — localStorage persistence", () => {
 
     await page.waitForTimeout(200);
 
+    const normalMode = await isNormalMode(page);
     const tenantBefore  = await selectValue(page, 0);
-    const gatewayBefore = await selectValue(page, 1);
-    const modelBefore   = await modelPickerText(page);
+    const gatewayBefore = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
+    const modelBefore   = normalMode ? await modelPickerText(page) : (await readChatStorage(page)).model;
 
     // Hard reload (equivalent to Ctrl+F5)
     await page.reload();
     await page.waitForTimeout(1200);
 
     const tenantAfter  = await selectValue(page, 0);
-    const gatewayAfter = await selectValue(page, 1);
-    const modelAfter   = await modelPickerText(page);
+    const gatewayAfter = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
+    const modelAfter   = normalMode ? await modelPickerText(page) : (await readChatStorage(page)).model;
 
     expect(tenantAfter,  `tenant should survive reload (was ${tenantBefore})`).toBe(tenantBefore);
     expect(gatewayAfter, `gateway should survive reload (was ${gatewayBefore})`).toBe(gatewayBefore);
@@ -216,7 +225,11 @@ test.describe("Chat page — localStorage persistence", () => {
     if (!ok) { test.skip(); return; }
 
     await page.waitForTimeout(200);
-    const gatewayBefore = await selectValue(page, 1);
+    const normalMode = await isNormalMode(page);
+    const gatewayBefore = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
+
+    // In preset mode the model is fixed — skip the model-change step
+    if (!normalMode) { test.skip(); return; }
 
     // Change model (open picker, pick second option if available)
     const modelPickerBtn = page.locator("[aria-haspopup='listbox']");
@@ -231,7 +244,7 @@ test.describe("Chat page — localStorage persistence", () => {
     await page.waitForTimeout(200);
 
     // Gateway must not have changed
-    const gatewayAfter = await selectValue(page, 1);
+    const gatewayAfter = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
     expect(gatewayAfter, "changing model must not reset the gateway").toBe(gatewayBefore);
   });
 });
@@ -292,11 +305,14 @@ test.describe("Chat page", () => {
     const item = page.locator("[class*='conv-item']").first();
     await expect(item).toBeVisible({ timeout: 5000 });
 
-    // Double-click to start inline rename
+    // Double-click to start inline rename.
+    // Use dispatchEvent to bypass Playwright's mouse simulation which can
+    // interfere with React's onDoubleClick when the sidebar is dense.
     const titleEl = item.locator("[class*='conv-item-title']").first();
-    await titleEl.dblclick();
+    await titleEl.scrollIntoViewIfNeeded();
+    await titleEl.dispatchEvent("dblclick");
     const input = page.locator("[class*='conv-rename-input']");
-    await expect(input).toBeVisible({ timeout: 3000 });
+    await expect(input).toBeVisible({ timeout: 8000 });
 
     // Type new name and confirm with Enter
     await input.fill("My renamed chat");

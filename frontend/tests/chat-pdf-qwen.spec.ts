@@ -112,6 +112,7 @@ async function waitForStreamingDone(page: Page, timeoutMs = 120_000) {
 
 test.describe(`Chat — PDF upload with ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`, () => {
   test.setTimeout(180_000); // MinerU page rendering adds latency
+  let testStartTime: number;
   const FIXTURE = path.resolve(__dirname, "fixtures/eiffel-tower.pdf");
 
   test.beforeEach(async ({ page }) => {

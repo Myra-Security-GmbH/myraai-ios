@@ -68,7 +68,7 @@ test.describe("Tenants page", () => {
     const rows = page.locator("tbody tr");
     if (await rows.count() === 0) { test.skip(); return; }
     await rows.first().click();
-    await page.getByRole("button", { name: /^Edit$/i }).click();
+    await page.getByRole("button", { name: /^Edit$/i }).first().click();
     await expect(page.getByRole("heading", { name: /Edit:/i })).toBeVisible();
     await expect(page.getByLabel("Plan")).toBeVisible();
     await expect(page.getByLabel("Budget (USD)")).toBeVisible();

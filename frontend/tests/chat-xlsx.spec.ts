@@ -49,12 +49,34 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
   await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
   await page.waitForTimeout(400);
 
-  const gatewaySel = page.locator("select").nth(1);
-  await gatewaySel.waitFor({ state: "visible", timeout: 5000 });
-  const gatewayOption = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
-  if ((await gatewayOption.count()) === 0) return false;
-  await gatewaySel.selectOption({ label: (await gatewayOption.first().textContent()) ?? TARGET_GATEWAY });
-  await page.waitForTimeout(400);
+  // Gateway — native select OR preset mode
+  const hasGatewaySelect = await page.locator("select").nth(1)
+    .isVisible({ timeout: 2000 }).catch(() => false);
+
+  if (hasGatewaySelect) {
+    const gatewaySel = page.locator("select").nth(1);
+    const gatewayOption = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
+    if ((await gatewayOption.count()) === 0) return false;
+    await gatewaySel.selectOption({ label: (await gatewayOption.first().textContent()) ?? TARGET_GATEWAY });
+    await page.waitForTimeout(400);
+  } else {
+    // Preset mode: find the preset for our target model via admin API and click its button.
+    const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
+    if (!tenantsResp.ok()) return false;
+    const tenantList = await tenantsResp.json() as Array<{
+      id: string; slug: string;
+      chat_presets?: Array<{ id: string; name: string; model: string; gateway_id: string }>;
+    }>;
+    const tenant = tenantList.find((t) => t.slug === TARGET_TENANT);
+    if (!tenant) return false;
+    const preset = (tenant.chat_presets ?? []).find((p) => p.model === TARGET_MODEL);
+    if (!preset) return false;
+    const presetBtn = page.locator("button").filter({ hasText: new RegExp(`^\\s*${preset.name}\\s*$`) });
+    if (!(await presetBtn.isVisible({ timeout: 3000 }).catch(() => false))) return false;
+    await presetBtn.click();
+    await page.waitForTimeout(400);
+    return true;
+  }
 
   const modelBtn = page.locator("[aria-haspopup='listbox']");
   await modelBtn.waitFor({ state: "visible", timeout: 5000 });
