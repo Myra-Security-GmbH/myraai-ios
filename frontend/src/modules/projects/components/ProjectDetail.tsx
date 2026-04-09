@@ -27,7 +27,7 @@ function FilesIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>;
 }
 
-type Tab = "overview" | "knowledge" | "members" | "conversations";
+type Tab = "overview" | "files" | "members" | "conversations";
 
 const ROLE_BADGE: Record<string, string> = {
   owner:  s["badge--success"],
@@ -53,7 +53,7 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [loading, setLoading] = useState(!initialProject);
   const [searchParams, setSearchParams] = useSearchParams();
-  const VALID_TABS: Tab[] = ["overview", "knowledge", "members", "conversations"];
+  const VALID_TABS: Tab[] = ["overview", "files", "members", "conversations"];
   const tabParam = searchParams.get("tab") as Tab | null;
   const tab: Tab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : "overview";
   const [editing, setEditing] = useState(false);
@@ -165,7 +165,7 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
 
       {/* Tabs */}
       <div className={s.tabs}>
-        {(["overview", "knowledge", "members", "conversations"] as Tab[]).map((t) => (
+        {(["overview", "files", "members", "conversations"] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -176,7 +176,7 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
               return prev;
             })}
           >
-            {t === "knowledge" && <FilesIcon />}
+            {t === "files" && <FilesIcon />}
             {t === "members" && <UsersIcon />}
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -236,7 +236,7 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
                     <div className={s["stat-value"]}>{project.members?.length ?? project.member_count ?? 0}</div>
                   </div>
                   <div className={s["stat-card"]}>
-                    <div className={s["stat-label"]}>Knowledge Files</div>
+                    <div className={s["stat-label"]}>Files</div>
                     <div className={s["stat-value"]}>{project.knowledge?.length ?? project.knowledge_count ?? 0}</div>
                   </div>
                 </div>
@@ -253,7 +253,7 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
           </div>
         )}
 
-        {tab === "knowledge" && (
+        {tab === "files" && (
           <KnowledgePanel projectId={projectId} canEdit={!!canEdit} />
         )}
 
@@ -351,7 +351,7 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
       {showDeleteConfirm && (
         <Modal title="Delete Project?" onClose={() => setShowDeleteConfirm(false)}>
           <p style={{ margin: "0 0 8px", color: "var(--text-secondary)" }}>
-            This will permanently delete <strong>{project.name}</strong> and remove all its members and knowledge files. Conversations will be detached but not deleted.
+            This will permanently delete <strong>{project.name}</strong> and remove all its members and files. Conversations will be detached but not deleted.
           </p>
           <p style={{ margin: "0 0 4px", fontSize: 13, color: "var(--text-secondary)" }}>This cannot be undone.</p>
           <div className={s["form-actions"]}>

@@ -111,7 +111,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
   }
 
   async function handleDelete(id: string, filename: string) {
-    if (!confirm(`Remove "${filename}" from project knowledge?`)) return;
+    if (!confirm(`Remove "${filename}" from this project?`)) return;
     try {
       await api.delete(`/projects/${projectId}/knowledge/${id}`);
       setFiles((prev) => prev.filter((f) => f.id !== id));
@@ -157,7 +157,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
     <div style={{ maxWidth: 720 }}>
       <div className={s["section-header"]}>
         <div>
-          <h3 className={s["section-title"]}>Knowledge Files</h3>
+          <h3 className={s["section-title"]}>Files</h3>
           <p className={s["page-subtitle"]} style={{ marginTop: 2 }}>
             Files available for the model to read on demand. Plain text up to 5 MB or PDF/DOCX/XLSX/PPTX up to 20 MB.
           </p>

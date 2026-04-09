@@ -231,7 +231,7 @@ test.describe("Projects — Knowledge Files", () => {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Knowledge Upload" })).toBeVisible({ timeout: 8000 });
 
-      await page.getByRole("button", { name: /knowledge/i }).click();
+      await page.getByRole("button", { name: /files/i }).click();
 
       const uploadBtn = page.locator("[data-cy=upload-knowledge-btn]");
       await expect(uploadBtn, "upload button must be visible for owner").toBeVisible({ timeout: 5000 });
@@ -264,7 +264,7 @@ test.describe("Projects — Knowledge Files", () => {
 
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Knowledge Delete" })).toBeVisible({ timeout: 8000 });
-      await page.getByRole("button", { name: /knowledge/i }).click();
+      await page.getByRole("button", { name: /files/i }).click();
       await expect(page.getByText("delete-me.txt")).toBeVisible({ timeout: 5000 });
 
       page.on("dialog", (dialog) => dialog.accept());
@@ -289,7 +289,7 @@ test.describe("Projects — Knowledge Files", () => {
 
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Knowledge List" })).toBeVisible({ timeout: 8000 });
-      await page.getByRole("button", { name: /knowledge/i }).click();
+      await page.getByRole("button", { name: /files/i }).click();
 
       await expect(page.getByText("file1.txt")).toBeVisible({ timeout: 5000 });
       await expect(page.getByText("file2.txt")).toBeVisible({ timeout: 5000 });
@@ -303,7 +303,7 @@ test.describe("Projects — Knowledge Files", () => {
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Drop Zone" })).toBeVisible({ timeout: 8000 });
-      await page.getByRole("button", { name: /knowledge/i }).click();
+      await page.getByRole("button", { name: /files/i }).click();
       await expect(page.locator("[data-cy=knowledge-drop-zone]")).toBeVisible({ timeout: 5000 });
     } finally {
       await apiDeleteProject(page, pid);
@@ -315,7 +315,7 @@ test.describe("Projects — Knowledge Files", () => {
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Large File Reject" })).toBeVisible({ timeout: 8000 });
-      await page.getByRole("button", { name: /knowledge/i }).click();
+      await page.getByRole("button", { name: /files/i }).click();
 
       const uploadBtn = page.locator("[data-cy=upload-knowledge-btn]");
       await expect(uploadBtn, "upload button must be visible for owner").toBeVisible({ timeout: 5000 });
@@ -768,13 +768,13 @@ test.describe("Projects — Counts (Bug fixes)", () => {
 
 test.describe("Projects — Tab URL routing", () => {
 
-  test("direct URL with ?tab=knowledge renders the Knowledge tab", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Tab URL Knowledge");
+  test("direct URL with ?tab=files renders the Files tab", async ({ page }) => {
+    const pid = await apiCreateProject(page, "E2E Tab URL Files");
     try {
-      await page.goto(`/projects/${pid}?tab=knowledge`);
-      await expect(page.getByRole("heading", { name: "E2E Tab URL Knowledge" })).toBeVisible({ timeout: 8000 });
-      // Knowledge tab button must be active
-      const knowledgeTab = page.getByRole("button", { name: /knowledge/i });
+      await page.goto(`/projects/${pid}?tab=files`);
+      await expect(page.getByRole("heading", { name: "E2E Tab URL Files" })).toBeVisible({ timeout: 8000 });
+      // Files tab button must be active
+      const knowledgeTab = page.getByRole("button", { name: /^files$/i });
       await expect(knowledgeTab).toHaveClass(/tab--active/, { timeout: 5000 });
       // Overview tab must not be active
       const overviewTab = page.getByRole("button", { name: /overview/i });
@@ -870,7 +870,7 @@ test.describe("Projects — Knowledge download & URL", () => {
     const content = "Hello from knowledge download test";
     const kid = await uploadKnowledgeEntry(page, pid, filename, content);
     try {
-      await page.goto(`/projects/${pid}?tab=knowledge`);
+      await page.goto(`/projects/${pid}?tab=files`);
       await expect(page.getByText(filename)).toBeVisible({ timeout: 8000 });
 
       // Verify the single-item API endpoint returns extracted_text
@@ -894,7 +894,7 @@ test.describe("Projects — Knowledge download & URL", () => {
     const filename = `url-test-${Date.now()}.md`;
     const kid = await uploadKnowledgeEntry(page, pid, filename, "# Reference test");
     try {
-      await page.goto(`/projects/${pid}?tab=knowledge`);
+      await page.goto(`/projects/${pid}?tab=files`);
       await expect(page.getByText(filename)).toBeVisible({ timeout: 8000 });
 
       await page.locator(`[data-cy="copy-url-knowledge-${kid}"]`).click();
@@ -916,7 +916,7 @@ test.describe("Projects — Knowledge download & URL", () => {
     const filename = `buttons-test-${Date.now()}.txt`;
     const kid = await uploadKnowledgeEntry(page, pid, filename, "button visibility test");
     try {
-      await page.goto(`/projects/${pid}?tab=knowledge`);
+      await page.goto(`/projects/${pid}?tab=files`);
       await expect(page.getByText(filename)).toBeVisible({ timeout: 8000 });
 
       // As admin/owner: all three buttons present

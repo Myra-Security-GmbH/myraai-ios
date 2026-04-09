@@ -410,8 +410,8 @@ test.describe("Project knowledge — binary file upload", () => {
     test("uploading a PDF via the UI shows the file in the knowledge table", async ({ page }) => {
       await page.goto(`/projects/${projectId}`);
       // Navigate to the Knowledge tab
-      const knowledgeTab = page.getByRole("button", { name: /knowledge/i })
-        .or(page.getByRole("tab", { name: /knowledge/i }));
+      const knowledgeTab = page.getByRole("button", { name: /^files$/i })
+        .or(page.getByRole("tab", { name: /^files$/i }));
       await knowledgeTab.waitFor({ state: "visible", timeout: 10000 });
       await knowledgeTab.click();
 
