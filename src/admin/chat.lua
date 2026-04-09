@@ -668,6 +668,56 @@ except Exception:
             mime = "text/plain"
         end
 
+        -- .pptx: extract slide text server-side, upload as plain text to Files API
+        if mime == "application/vnd.openxmlformats-officedocument.presentationml.presentation" then
+            local tmpfile = "/tmp/aig_pptx_" .. ngx.now() .. "_" .. math.random(100000) .. ".pptx"
+            local f = io.open(tmpfile, "wb")
+            if not f then
+                return send(500, { error = "Failed to create temp file for pptx extraction" })
+            end
+            f:write(bin)
+            f:close()
+
+            local script = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, zipfile, re
+import xml.etree.ElementTree as ET
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+    slides = sorted([n for n in z.namelist() if re.match(r'ppt/slides/slide\d+\.xml', n)],
+                    key=lambda x: int(re.search(r'\d+', x).group()))
+    NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    texts = []
+    for name in slides:
+        root = ET.fromstring(z.read(name).decode('utf-8', 'replace'))
+        slide_texts = [t.text for t in root.iter('{' + NS + '}t') if t.text and t.text.strip()]
+        if slide_texts:
+            texts.append('\n'.join(slide_texts))
+    print('\n\n---\n\n'.join(texts))
+except Exception:
+    sys.exit(1)
+]])
+                sf:close()
+            end
+            local pipe = io.popen("python3 " .. script .. " " .. tmpfile .. " 2>/dev/null", "r")
+            local text_data = pipe and pipe:read("*a") or ""
+            if pipe then pipe:close() end
+            os.remove(tmpfile)
+            os.remove(script)
+
+            text_data = text_data:gsub("^%s+", ""):gsub("%s+$", "")
+            if text_data == "" then
+                return send(422, { error = "Could not extract text from .pptx file" })
+            end
+
+            -- Replace bin/mime so the Files API upload below sends the text as plain text
+            bin  = text_data
+            mime = "text/plain"
+            body.filename = body.filename:gsub("%.pptx$", ".txt")
+        end
+
         -- Image via MinerU: send directly (no rasterization needed).
         -- Triggered when extract_text=true for non-vision-capable vLLM models.
         if mime:match("^image/") and body.extract_text then

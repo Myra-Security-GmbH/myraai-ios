@@ -154,7 +154,7 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,.pdf,text/plain,.txt,.md,text/markdown,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.csv,text/csv,.tsv,text/tab-separated-values,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsm,application/vnd.ms-excel.sheet.macroenabled.12,.ods,application/vnd.oasis.opendocument.spreadsheet"
+                accept="image/*,.pdf,text/plain,.txt,.md,text/markdown,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.csv,text/csv,.tsv,text/tab-separated-values,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsm,application/vnd.ms-excel.sheet.macroenabled.12,.ods,application/vnd.oasis.opendocument.spreadsheet,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
                 style={{ display: "none" }}
                 onChange={handleFileChange}
               />

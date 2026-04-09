@@ -172,10 +172,13 @@ function buildProjectSystemPrompt(project: ChatProject, knowledgeFiles: ProjectK
     "```sql\n-- schema.sql\nCREATE TABLE users (id INT);\n```"
   );
   if (knowledgeFiles.length > 0) {
-    parts.push("## Knowledge Base\n\nThe following files are provided as project knowledge context:");
-    for (const f of knowledgeFiles) {
-      parts.push(`### ${f.filename}\n\n${f.extracted_text.trim()}`);
-    }
+    const fileList = knowledgeFiles.map((f) => `- ${f.filename}`).join("\n");
+    parts.push(
+      "## Project Knowledge Files\n\n" +
+      "The following files are available in this project's knowledge base. " +
+      "To read the full content of a file, emit exactly: <read_file>filename</read_file>\n\n" +
+      fileList
+    );
   }
   return parts.join("\n\n");
 }
@@ -216,6 +219,9 @@ export default function Chat() {
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const activeConvIdRef = useRef<string | null>(null);
   useEffect(() => { activeConvIdRef.current = activeConvId; }, [activeConvId]);
+  // Tracks which conversation ID is currently being fetched — prevents double-load
+  // when onSelect calls setSearchParams+loadConversation and the effect fires a second time.
+  const loadingConvRef = useRef<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   // ── Settings drawer ────────────────────────────────────────────────────────
@@ -362,6 +368,7 @@ export default function Chat() {
   useEffect(() => {
     if (!convParam || conversations.length === 0) return;
     if (activeConvId === convParam) return;
+    if (loadingConvRef.current === convParam) return; // already loading — skip duplicate
     if (conversations.find((c) => c.id === convParam)) {
       loadConversation(convParam);
     }
@@ -440,22 +447,25 @@ export default function Chat() {
 
   // ── Load conversation messages ─────────────────────────────────────────────
   async function loadConversation(id: string) {
+    loadingConvRef.current = id;
     try {
       const conv = await api.get<ChatConversation>(`/conversations/${id}`);
       setMessages(conv.messages ?? []);
       setActiveConvId(id);
-      // Sync settings from conversation
-      if (conv.model) setModel(conv.model);
+      // Sync settings from conversation — but never override gateway/model in preset mode
+      // (the active preset owns those; loadConversation must not stomp the user's selection)
+      if (!usePresetMode) {
+        if (conv.model) setModel(conv.model);
+        if (conv.gateway_id && conv.gateway_id !== gatewayId) {
+          setGatewayId(conv.gateway_id);
+        }
+      }
       setDrawerSettings({
         systemPrompt: conv.system_prompt ?? "",
         temperature: conv.temperature ?? 0.7,
         maxTokens: conv.max_tokens ?? 2048,
         webSearch: false,
       });
-      if (conv.gateway_id && conv.gateway_id !== gatewayId) {
-        // Find tenant for this gateway
-        setGatewayId(conv.gateway_id);
-      }
       // Load existing feedback (silently — 404 means none yet)
       api.get<ChatFeedback>(`/conversations/${id}/feedback`)
         .then((fb) => { setFeedbackRating(fb.rating); setFeedbackComment(fb.comment ?? ""); })
@@ -465,6 +475,8 @@ export default function Chat() {
       focusInput();
     } catch (e) {
       setError(String(e));
+    } finally {
+      if (loadingConvRef.current === id) loadingConvRef.current = null;
     }
   }
 
@@ -762,8 +774,18 @@ export default function Chat() {
   async function sendMessage() {
     const text = inputValue.trim();
     if (!text && pendingAttachments.length === 0) return;
-    if (!gatewayId) { setError("Select a gateway first"); return; }
-    if (!model) { setError("Select a model first"); return; }
+
+    // In preset mode: derive gateway + model directly from the selected preset.
+    // This is the authoritative source — never use gatewayId/model state which
+    // may have been transiently overridden by loadConversation.
+    const activePreset = usePresetMode
+      ? (tenantPresets.find((p) => p.id === selectedPresetId) ?? tenantPresets[0])
+      : null;
+    const effectiveGatewayId = activePreset?.gateway_id ?? gatewayId;
+    const effectiveModel     = activePreset?.model      ?? model;
+
+    if (!effectiveGatewayId) { setError("Select a gateway first"); return; }
+    if (!effectiveModel) { setError("Select a model first"); return; }
     if (!playToken) { setError("No gateway token — select a gateway"); return; }
 
     // Refresh token if expiring soon OR if it belongs to a different gateway
@@ -772,11 +794,11 @@ export default function Chat() {
       ? tokenExpiresAt.current.getTime() - Date.now()
       : null;
     let currentTok: PlaygroundToken | null = playToken;
-    const currentGateway = gateways.find((g) => g.id === gatewayId);
+    const currentGateway = gateways.find((g) => g.id === effectiveGatewayId);
     const tokenMismatch = currentGateway && playToken.gateway_slug !== currentGateway.slug;
     const tokenExpiring = tokenAge !== null && tokenAge < 60_000;
     if (tokenMismatch || tokenExpiring) {
-      currentTok = await refreshToken(gatewayId);
+      currentTok = await refreshToken(effectiveGatewayId);
     }
     if (!currentTok) { setError("No gateway token — could not refresh"); return; }
 
@@ -796,8 +818,8 @@ export default function Chat() {
         setCreating(true);
         try {
           const conv = await api.post<ChatConversation>("/conversations", {
-            gateway_id: gatewayId,
-            model,
+            gateway_id: effectiveGatewayId,
+            model: effectiveModel,
             system_prompt: drawerSettings.systemPrompt || null,
             temperature: drawerSettings.temperature,
             max_tokens: drawerSettings.maxTokens,
@@ -833,7 +855,7 @@ export default function Chat() {
       const unsupported: string[] = [];
       for (const att of pendingAttachments) {
         if (att.mime_type.startsWith("image/")) {
-          if (model.startsWith("claude-") || isVisionCapable(model)) {
+          if (effectiveModel.startsWith("claude-") || isVisionCapable(effectiveModel)) {
             // Anthropic and vision-capable vLLM models: send image_url directly
             blocks.push({
               type: "image_url",
@@ -845,7 +867,7 @@ export default function Chat() {
             try {
               setProcessingStatus(`Analyzing image "${att.filename}" with MinerU…`);
               const res = await api.post<{ text: string }>("/chat/files", {
-                gateway_id: gatewayId,
+                gateway_id: effectiveGatewayId,
                 filename: att.filename,
                 mime_type: att.mime_type,
                 data: att.data,
@@ -866,13 +888,13 @@ export default function Chat() {
           const decoded = new TextDecoder("utf-8").decode(bytes);
           blocks.push({ type: "md", filename: att.filename, text: decoded });
         } else if (att.mime_type === "application/pdf" || att.mime_type === "text/plain") {
-          if (att.mime_type === "application/pdf" && !model.startsWith("claude-")) {
+          if (att.mime_type === "application/pdf" && !effectiveModel.startsWith("claude-")) {
             // Non-Anthropic model: extract PDF text via MinerU
             let extractedText: string;
             try {
               setProcessingStatus(`Extracting text from "${att.filename}" with MinerU…`);
               const res = await api.post<{ text: string }>("/chat/files", {
-                gateway_id: gatewayId,
+                gateway_id: effectiveGatewayId,
                 filename: att.filename,
                 mime_type: att.mime_type,
                 data: att.data,
@@ -897,7 +919,7 @@ export default function Chat() {
           try {
             setProcessingStatus(`Extracting text from "${att.filename}"…`);
             const res = await api.post<{ text: string }>("/chat/files", {
-              gateway_id: gatewayId,
+              gateway_id: effectiveGatewayId,
               filename: att.filename,
               mime_type: att.mime_type,
               data: att.data,
@@ -917,13 +939,14 @@ export default function Chat() {
           att.mime_type === "text/tab-separated-values" ||
           att.mime_type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
           att.mime_type === "application/vnd.ms-excel.sheet.macroenabled.12" ||
-          att.mime_type === "application/vnd.oasis.opendocument.spreadsheet"
+          att.mime_type === "application/vnd.oasis.opendocument.spreadsheet" ||
+          att.mime_type === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         ) {
           let fileId: string;
           try {
             setProcessingStatus(`Uploading "${att.filename}"…`);
             const res = await api.post<{ file_id: string }>("/chat/files", {
-              gateway_id: gatewayId,
+              gateway_id: effectiveGatewayId,
               filename: att.filename,
               mime_type: att.mime_type,
               data: att.data,
@@ -942,7 +965,7 @@ export default function Chat() {
       if (unsupported.length > 0) {
         setError(
           `Unsupported file type(s): ${unsupported.join(", ")}. ` +
-          `Supported: images (JPEG, PNG, GIF, WebP), PDF, plain text, Markdown (.md), Word (.docx), CSV, TSV, Excel (.xlsx, .xlsm), OpenDocument (.ods).`
+          `Supported: images (JPEG, PNG, GIF, WebP), PDF, plain text, Markdown (.md), Word (.docx), CSV, TSV, Excel (.xlsx, .xlsm), OpenDocument (.ods), PowerPoint (.pptx).`
         );
         return;
       }
@@ -1088,11 +1111,18 @@ export default function Chat() {
 
     let continueCount = 0;
     const MAX_CONTINUATIONS = 10;
+    let fileReadCount = 0;
+    const MAX_FILE_READS = 5;
+    let pendingFileInjection: string | null = null;
 
     streaming: while (true) {
-      const reqMessages = continueCount === 0
-        ? apiMessages
-        : [...apiMessages, { role: "assistant", content: accumulated }, { role: "user", content: "Continue" }];
+      const reqMessages = (() => {
+        if (continueCount === 0 && pendingFileInjection === null) return apiMessages;
+        const msgs = [...apiMessages, { role: "assistant", content: accumulated }];
+        msgs.push({ role: "user", content: pendingFileInjection ?? "Continue" });
+        return msgs;
+      })();
+      pendingFileInjection = null; // consumed
 
       let finishReason: string | null = null;
 
@@ -1102,7 +1132,7 @@ export default function Chat() {
           signal: abort.signal,
           headers: reqHeaders,
           body: JSON.stringify({
-            model,
+            model: effectiveModel,
             messages: reqMessages,
             temperature: drawerSettings.temperature,
             max_tokens: drawerSettings.maxTokens,
@@ -1238,6 +1268,38 @@ export default function Chat() {
         continueCount++;
         continue streaming;
       }
+
+      // Detect <read_file> tags emitted by the model — only in project context
+      if (!abort.signal.aborted && projectKnowledge.length > 0 && fileReadCount < MAX_FILE_READS) {
+        const readFileRe = /<read_file>([\s\S]*?)<\/read_file>/g;
+        const fileMatches: RegExpExecArray[] = [];
+        let fm: RegExpExecArray | null;
+        while ((fm = readFileRe.exec(accumulated)) !== null) fileMatches.push(fm);
+
+        if (fileMatches.length > 0) {
+          let cleaned = accumulated;
+          const injectionParts: string[] = [];
+          for (const m of fileMatches) {
+            const requestedName = m[1].trim();
+            cleaned = cleaned.replace(m[0], "");
+            const kf = projectKnowledge.find(
+              (f) => f.filename === requestedName || f.filename.endsWith("/" + requestedName)
+            );
+            if (kf) {
+              injectionParts.push(`## File: ${kf.filename}\n\n\`\`\`\n${kf.extracted_text.trim()}\n\`\`\``);
+            } else {
+              injectionParts.push(`## File: ${requestedName}\n\n[File not found in project knowledge]`);
+            }
+          }
+          accumulated = cleaned.trim();
+          setStreamingContent(accumulated);
+          pendingFileInjection = injectionParts.join("\n\n---\n\n");
+          fileReadCount += fileMatches.length;
+          setProcessingStatus(`Reading ${fileMatches.map((m) => m[1].trim()).join(", ")}…`);
+          continue streaming;
+        }
+      }
+
       break streaming;
     }
 

@@ -4,6 +4,7 @@
 .chat-page {
   display: flex;
   flex-direction: column;
+  height: 100vh;
   height: 100dvh;
   overflow: hidden;
   background: var(--content-bg);
@@ -579,6 +580,7 @@
   inset: 0;
   z-index: 150;
   background: rgba(0, 82, 204, 0.07);
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
