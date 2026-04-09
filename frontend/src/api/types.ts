@@ -588,6 +588,7 @@ export interface ProjectKnowledge {
   content_type: string;
   size_bytes: number;
   token_count: number;
+  source: "text" | "upload";
   created_by?: string;
   created_at: string;
 }

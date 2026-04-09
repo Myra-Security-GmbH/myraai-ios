@@ -536,6 +536,16 @@ CREATE TABLE IF NOT EXISTS chat_project_knowledge (
     CONSTRAINT fk_proj_know_user    FOREIGN KEY (created_by) REFERENCES `user`(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Original binary for knowledge files uploaded via the /knowledge/upload endpoint.
+-- Kept in a separate table so list/context-injection queries never load the blob.
+CREATE TABLE IF NOT EXISTS chat_project_knowledge_blob (
+    knowledge_id    VARCHAR(36)  NOT NULL,
+    data            LONGBLOB     NOT NULL,
+    PRIMARY KEY (knowledge_id),
+    CONSTRAINT fk_proj_know_blob FOREIGN KEY (knowledge_id)
+        REFERENCES chat_project_knowledge(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Add project_id + gateway/model override columns to conversations (idempotent via ALTER IGNORE)
 -- In MySQL 8+ use IF NOT EXISTS:
 ALTER TABLE chat_conversation

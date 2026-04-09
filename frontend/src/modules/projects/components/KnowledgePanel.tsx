@@ -34,7 +34,18 @@ interface Props {
   canEdit: boolean;
 }
 
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const BINARY_TYPES = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
+const BINARY_EXTS = /\.(pdf|docx|xlsx|xls|ods|pptx)$/i;
+
+const MAX_TEXT_BYTES = 5 * 1024 * 1024;
+const MAX_BINARY_BYTES = 20 * 1024 * 1024;
 const adminBase = (import.meta.env.VITE_ADMIN_URL as string | undefined) ?? "/admin/v1";
 
 export default function KnowledgePanel({ projectId, canEdit }: Props) {
@@ -54,20 +65,39 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
   }, [projectId]);
 
   async function uploadFile(file: File) {
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setUploadError(`${file.name} exceeds 5 MB limit`); return;
+    const isBinary = BINARY_TYPES.has(file.type) || BINARY_EXTS.test(file.name);
+    const limit = isBinary ? MAX_BINARY_BYTES : MAX_TEXT_BYTES;
+    if (file.size > limit) {
+      setUploadError(`${file.name} exceeds ${isBinary ? "20 MB" : "5 MB"} limit`);
+      return;
     }
     setUploadError(null);
     setUploading(true);
     try {
-      const text = await file.text();
-      const item = await api.post<ProjectKnowledge>(`/projects/${projectId}/knowledge`, {
-        filename: file.name,
-        content_type: file.type || "text/plain",
-        size_bytes: file.size,
-        extracted_text: text,
-      });
-      setFiles((prev) => [...prev, item]);
+      if (isBinary) {
+        const buf = await file.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 8192) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+        }
+        const b64 = btoa(binary);
+        const item = await api.post<ProjectKnowledge>(`/projects/${projectId}/knowledge/upload`, {
+          filename: file.name,
+          mime_type: file.type || "application/octet-stream",
+          data: b64,
+        });
+        setFiles((prev) => [...prev, item]);
+      } else {
+        const text = await file.text();
+        const item = await api.post<ProjectKnowledge>(`/projects/${projectId}/knowledge`, {
+          filename: file.name,
+          content_type: file.type || "text/plain",
+          size_bytes: file.size,
+          extracted_text: text,
+        });
+        setFiles((prev) => [...prev, item]);
+      }
     } catch (e) {
       setUploadError("Upload failed: " + String(e));
     } finally {
@@ -92,14 +122,22 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
 
   async function handleDownload(f: ProjectKnowledge) {
     try {
-      const item = await api.get<KnowledgeItem>(`/projects/${projectId}/knowledge/${f.id}`);
-      const blob = new Blob([item.extracted_text ?? ""], { type: item.content_type || "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = item.filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (f.source === "upload") {
+        const downloadUrl = `${adminBase}/projects/${projectId}/knowledge/${f.id}/download`;
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = f.filename;
+        a.click();
+      } else {
+        const item = await api.get<KnowledgeItem>(`/projects/${projectId}/knowledge/${f.id}`);
+        const blob = new Blob([item.extracted_text ?? ""], { type: item.content_type || "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = item.filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
     } catch (e) {
       alert("Download failed: " + String(e));
     }
@@ -121,7 +159,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
         <div>
           <h3 className={s["section-title"]}>Knowledge Files</h3>
           <p className={s["page-subtitle"]} style={{ marginTop: 2 }}>
-            Text files injected into the system prompt for every conversation in this project. Max 5 MB, plain text or markdown.
+            Files available for the model to read on demand. Plain text up to 5 MB or PDF/DOCX/XLSX/PPTX up to 20 MB.
           </p>
         </div>
         {canEdit && (
@@ -132,7 +170,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
             disabled={uploading}
             data-cy="upload-knowledge-btn"
           >
-            <UploadIcon /> {uploading ? "Uploading…" : "Upload File"}
+            <UploadIcon /> {uploading ? "Processing…" : "Upload File"}
           </button>
         )}
       </div>
@@ -154,7 +192,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
         ref={inputRef}
         type="file"
         multiple
-        accept=".txt,.md,.csv,.json,.yaml,.yml,.xml,.html,.htm,.rst,.log"
+        accept=".txt,.md,.csv,.json,.yaml,.yml,.xml,.html,.htm,.rst,.log,.pdf,.docx,.xlsx,.xls,.ods,.pptx"
         style={{ display: "none" }}
         onChange={(e) => handleFiles(e.target.files)}
       />

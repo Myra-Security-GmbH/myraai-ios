@@ -14,7 +14,7 @@
 
 import { test, expect, Page } from "@playwright/test";
 
-const ADMIN_BASE = "http://localhost:5173/admin/v1";
+const ADMIN_BASE = (process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173") + "/admin/v1";
 
 // ---------------------------------------------------------------------------
 // Helpers

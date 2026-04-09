@@ -323,6 +323,10 @@ function M.migrate(cfg)
     -- Add memory_disabled to chat_conversation (idempotent)
     db:query("ALTER TABLE chat_conversation ADD COLUMN IF NOT EXISTS memory_disabled TINYINT NOT NULL DEFAULT 0")
 
+    -- Add source column to chat_project_knowledge (idempotent)
+    -- 'text' = plain-text upload (no blob); 'upload' = binary file with blob stored
+    db:query("ALTER TABLE chat_project_knowledge ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'text'")
+
     -- Create chat_memory table if not present (idempotent)
     db:query([[
         CREATE TABLE IF NOT EXISTS chat_memory (
@@ -2466,6 +2470,7 @@ function M.list_project_knowledge(project_id)
     if not db then return setmetatable({}, cjson.array_mt) end
     local rows = query_all(db, [[
         SELECT id, filename, content_type, size_bytes, token_count,
+               COALESCE(source, 'text') AS source,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
         FROM chat_project_knowledge
         WHERE project_id = ?
@@ -2481,6 +2486,7 @@ function M.get_project_knowledge_item(kid, project_id)
     if not db then return nil, err end
     local rows = query_all(db, [[
         SELECT id, filename, content_type, size_bytes, token_count, extracted_text,
+               COALESCE(source, 'text') AS source,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
         FROM chat_project_knowledge
         WHERE id = ? AND project_id = ?
@@ -2511,11 +2517,11 @@ function M.add_project_knowledge(data)
     local now = math.floor(ngx.now())
     local e = exec_one(db, [[
         INSERT INTO chat_project_knowledge
-            (id, project_id, filename, content_type, size_bytes, extracted_text, token_count, created_by, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?)
+            (id, project_id, filename, content_type, size_bytes, extracted_text, token_count, source, created_by, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
     ]], id, data.project_id, data.filename, data.content_type or "text/plain",
         data.size_bytes or 0, data.extracted_text or "",
-        data.token_count or 0, data.created_by, now)
+        data.token_count or 0, data.source or "text", data.created_by, now)
     release(db)
     if e then return nil, e end
     return id
@@ -2555,6 +2561,26 @@ function M.delete_project_knowledge(id, project_id)
     ]], id, project_id)
     release(db)
     return e
+end
+
+function M.store_project_knowledge_blob(knowledge_id, data)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        INSERT INTO chat_project_knowledge_blob (knowledge_id, data) VALUES (?, ?)
+    ]], knowledge_id, data)
+    release(db)
+    return e
+end
+
+function M.get_project_knowledge_blob(knowledge_id)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local rows = query_all(db, [[
+        SELECT data FROM chat_project_knowledge_blob WHERE knowledge_id = ?
+    ]], knowledge_id)
+    release(db)
+    return rows and rows[1] and rows[1].data
 end
 
 -- ---------------------------------------------------------------------------

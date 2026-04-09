@@ -384,6 +384,390 @@ function M.register(route)
         send(200, { ok = true })
     end)
 
+    -- POST /admin/v1/projects/:id/knowledge/upload
+    -- Body: { filename, mime_type, data: base64 }
+    -- Decodes the binary, extracts text server-side, stores both text and original blob.
+    -- Supported: application/pdf, .docx, .xlsx, .xls, .ods, .pptx
+    route("POST", "^/admin/v1/projects/([^/]+)/knowledge/upload$", function(project_id)
+        local _, my_role = require_project_access(project_id, "editor")
+        if not _ then return end
+        if my_role ~= "admin" and my_role ~= "owner" and my_role ~= "editor" then
+            send(403, { error = "forbidden" }); return
+        end
+
+        local body = read_body()
+        if not body.filename or body.filename == "" then
+            send(400, { error = "filename is required" }); return
+        end
+        if not body.data or body.data == "" then
+            send(400, { error = "data is required" }); return
+        end
+
+        local bin = ngx.decode_base64(body.data)
+        if not bin then
+            send(400, { error = "data is not valid base64" }); return
+        end
+
+        local MAX_BINARY = 20 * 1024 * 1024  -- 20 MB raw
+        if #bin > MAX_BINARY then
+            send(413, { error = "File exceeds 20 MB limit" }); return
+        end
+
+        local mime = body.mime_type or "application/octet-stream"
+        local fname = body.filename
+        local ext = fname:match("%.([^%.]+)$") or ""
+        ext = ext:lower()
+
+        -- Resolve mime from extension when browser sends a generic type
+        if ext == "pdf"  then mime = "application/pdf" end
+        if ext == "docx" then mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" end
+        if ext == "xlsx" then mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" end
+        if ext == "xls"  then mime = "application/vnd.ms-excel" end
+        if ext == "ods"  then mime = "application/vnd.oasis.opendocument.spreadsheet" end
+        if ext == "pptx" then mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation" end
+
+        local extracted_text = nil
+        local rand_sfx = math.floor(ngx.now() * 1000) .. "_" .. math.random(100000)
+
+        -- ── DOCX ─────────────────────────────────────────────────────────────
+        if mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" then
+            local tmpfile = "/tmp/aig_proj_" .. rand_sfx .. ".docx"
+            local f = io.open(tmpfile, "wb"); if f then f:write(bin); f:close() end
+            local script = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, zipfile, re
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+    xml = z.read('word/document.xml').decode('utf-8', 'replace')
+    txt = re.sub(r'<[^>]+>', '', xml)
+    txt = re.sub(r'[ \t]+', ' ', txt)
+    txt = re.sub(r'\n{3,}', '\n\n', txt.strip())
+    print(txt)
+except Exception:
+    sys.exit(1)
+]])
+                sf:close()
+            end
+            local pipe = io.popen("python3 " .. script .. " " .. tmpfile .. " 2>/dev/null", "r")
+            extracted_text = pipe and pipe:read("*a") or ""
+            if pipe then pipe:close() end
+            os.remove(tmpfile); os.remove(script)
+            extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
+            if extracted_text == "" then
+                send(422, { error = "Could not extract text from .docx file" }); return
+            end
+
+        -- ── XLSX / XLS ────────────────────────────────────────────────────────
+        elseif mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            or mime == "application/vnd.ms-excel"
+            or mime == "application/vnd.ms-excel.sheet.macroenabled.12" then
+            local tmpfile = "/tmp/aig_proj_" .. rand_sfx .. ".xlsx"
+            local csvfile = tmpfile .. ".csv"
+            local f = io.open(tmpfile, "wb"); if f then f:write(bin); f:close() end
+            local script = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, zipfile, csv, io, re
+import xml.etree.ElementTree as ET
+NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+def col_index(ref):
+    col = re.sub(r'\d+', '', ref)
+    result = 0
+    for c in col:
+        result = result * 26 + (ord(c.upper()) - ord('A') + 1)
+    return result - 1
+try:
+    xlsx_path, out_path = sys.argv[1], sys.argv[2]
+    with zipfile.ZipFile(xlsx_path) as z:
+        names = z.namelist()
+        shared = []
+        if 'xl/sharedStrings.xml' in names:
+            root = ET.fromstring(z.read('xl/sharedStrings.xml'))
+            for si in root.findall('{' + NS + '}si'):
+                parts = [t.text or '' for t in si.iter('{' + NS + '}t')]
+                shared.append(''.join(parts))
+        sheets = sorted([n for n in names if re.match(r'xl/worksheets/sheet\d+\.xml', n)])
+        with io.open(out_path, 'w', newline='', encoding='utf-8') as fout:
+            w = csv.writer(fout)
+            for sp in sheets:
+                root = ET.fromstring(z.read(sp))
+                for row in root.findall('.//{' + NS + '}row'):
+                    cmap = {}
+                    for cell in row.findall('{' + NS + '}c'):
+                        r = cell.get('r', '')
+                        col = col_index(r) if r else len(cmap)
+                        t = cell.get('t', '')
+                        v_el = cell.find('{' + NS + '}v')
+                        val = ''
+                        if t == 's' and v_el is not None:
+                            idx = int(v_el.text or 0)
+                            val = shared[idx] if 0 <= idx < len(shared) else ''
+                        elif t == 'inlineStr':
+                            is_el = cell.find('.//{' + NS + '}t')
+                            val = (is_el.text or '') if is_el is not None else ''
+                        elif v_el is not None:
+                            val = v_el.text or ''
+                        cmap[col] = val
+                    if cmap:
+                        mx = max(cmap.keys())
+                        rd = [cmap.get(i, '') for i in range(mx + 1)]
+                        while rd and rd[-1] == '':
+                            rd.pop()
+                        if rd:
+                            w.writerow(rd)
+except Exception:
+    sys.exit(1)
+]])
+                sf:close()
+            end
+            os.execute("python3 " .. script .. " " .. tmpfile .. " " .. csvfile .. " 2>/dev/null")
+            os.remove(tmpfile); os.remove(script)
+            local cf = io.open(csvfile, "rb")
+            extracted_text = cf and cf:read("*a") or ""
+            if cf then cf:close() end
+            os.remove(csvfile)
+            extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
+            if extracted_text == "" then
+                send(422, { error = "Could not convert spreadsheet to CSV" }); return
+            end
+
+        -- ── ODS ───────────────────────────────────────────────────────────────
+        elseif mime == "application/vnd.oasis.opendocument.spreadsheet" then
+            local tmpfile = "/tmp/aig_proj_" .. rand_sfx .. ".ods"
+            local csvfile = tmpfile .. ".csv"
+            local f = io.open(tmpfile, "wb"); if f then f:write(bin); f:close() end
+            local script = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, zipfile, csv, io
+import xml.etree.ElementTree as ET
+NS = {'t': 'urn:oasis:names:tc:opendocument:xmlns:table:1.0',
+      'tx': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0'}
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+    root = ET.fromstring(z.read('content.xml'))
+    out = io.open(sys.argv[2], 'w', newline='', encoding='utf-8')
+    w = csv.writer(out)
+    for sheet in root.findall('.//t:table', NS):
+        for row in sheet.findall('t:table-row', NS):
+            cells = []
+            for cell in row.findall('t:table-cell', NS):
+                repeat_n = int(cell.get('{urn:oasis:names:tc:opendocument:xmlns:table:1.0}number-columns-repeated') or 1)
+                parts = [p.text or '' for p in cell.findall('.//tx:p', NS)]
+                val = ' '.join(parts)
+                cells.extend([val] * repeat_n)
+            while cells and cells[-1] == '':
+                cells.pop()
+            if cells:
+                w.writerow(cells)
+    out.close()
+except Exception:
+    sys.exit(1)
+]])
+                sf:close()
+            end
+            os.execute("python3 " .. script .. " " .. tmpfile .. " " .. csvfile .. " 2>/dev/null")
+            os.remove(tmpfile); os.remove(script)
+            local cf = io.open(csvfile, "rb")
+            extracted_text = cf and cf:read("*a") or ""
+            if cf then cf:close() end
+            os.remove(csvfile)
+            extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
+            if extracted_text == "" then
+                send(422, { error = "Could not convert .ods to CSV" }); return
+            end
+
+        -- ── PPTX ──────────────────────────────────────────────────────────────
+        elseif mime == "application/vnd.openxmlformats-officedocument.presentationml.presentation" then
+            local tmpfile = "/tmp/aig_proj_" .. rand_sfx .. ".pptx"
+            local f = io.open(tmpfile, "wb"); if f then f:write(bin); f:close() end
+            local script = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, zipfile, re
+import xml.etree.ElementTree as ET
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+    slides = sorted([n for n in z.namelist() if re.match(r'ppt/slides/slide\d+\.xml', n)],
+                    key=lambda x: int(re.search(r'\d+', x).group()))
+    NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    texts = []
+    for name in slides:
+        root = ET.fromstring(z.read(name).decode('utf-8', 'replace'))
+        slide_texts = [t.text for t in root.iter('{' + NS + '}t') if t.text and t.text.strip()]
+        if slide_texts:
+            texts.append('\n'.join(slide_texts))
+    print('\n\n---\n\n'.join(texts))
+except Exception:
+    sys.exit(1)
+]])
+                sf:close()
+            end
+            local pipe = io.popen("python3 " .. script .. " " .. tmpfile .. " 2>/dev/null", "r")
+            extracted_text = pipe and pipe:read("*a") or ""
+            if pipe then pipe:close() end
+            os.remove(tmpfile); os.remove(script)
+            extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
+            if extracted_text == "" then
+                send(422, { error = "Could not extract text from .pptx file" }); return
+            end
+
+        -- ── PDF ───────────────────────────────────────────────────────────────
+        elseif mime == "application/pdf" then
+            local tmpfile = "/tmp/aig_proj_" .. rand_sfx .. ".pdf"
+            local f = io.open(tmpfile, "wb"); if f then f:write(bin); f:close() end
+            local script = tmpfile .. ".py"
+            local sf = io.open(script, "w")
+            if sf then
+                sf:write([[
+import sys, base64, json, io, fitz
+from urllib.request import urlopen, Request
+from PIL import Image, ImageEnhance, ImageFilter
+
+MINERU_URL     = "http://172.28.0.1:8084/v1/chat/completions"
+MAX_PAGES      = 20
+TEXT_THRESHOLD = 50
+STRIPS         = 2
+FOOTER_RATIO   = 0.91
+
+def extract_page_text(page):
+    footer_y = page.rect.height * FOOTER_RATIO
+    blocks = page.get_text("blocks", sort=True)
+    main_parts, footer_parts = [], []
+    for b in blocks:
+        _x0, y0, _x1, _y1, text = b[0], b[1], b[2], b[3], b[4]
+        txt = text.strip()
+        if not txt:
+            continue
+        if y0 >= footer_y:
+            footer_parts.append(txt)
+        else:
+            main_parts.append(txt)
+    result = "\n".join(main_parts)
+    if footer_parts:
+        result += "\n\n[Briefkopf/Letterhead]\n" + "\n".join(footer_parts)
+    return result
+
+def enhance_scan(pil_img):
+    img = pil_img.convert("L")
+    img = ImageEnhance.Contrast(img).enhance(1.8)
+    img = img.filter(ImageFilter.SHARPEN)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+def call_mineru(png_bytes):
+    b64 = base64.b64encode(png_bytes).decode()
+    payload = json.dumps({
+        "model": "mineru2",
+        "messages": [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}},
+            {"type": "text", "text": "Convert this document page to markdown."}
+        ]}],
+        "max_tokens": 2048
+    }).encode()
+    req = Request(MINERU_URL, data=payload, headers={"Content-Type": "application/json"})
+    with urlopen(req, timeout=120) as r:
+        data = json.loads(r.read())
+    return data["choices"][0]["message"]["content"]
+
+try:
+    doc = fitz.open(sys.argv[1])
+    pages_md = []
+    for i, page in enumerate(doc):
+        if i >= MAX_PAGES:
+            break
+        text = extract_page_text(page)
+        if len(text) >= TEXT_THRESHOLD:
+            pages_md.append(text)
+            continue
+        pix = page.get_pixmap(dpi=150)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        strip_h = img.height // STRIPS
+        strip_parts = []
+        for s in range(STRIPS):
+            y0 = s * strip_h
+            y1 = img.height if s == STRIPS - 1 else y0 + strip_h
+            strip = img.crop((0, y0, img.width, y1))
+            md = call_mineru(enhance_scan(strip))
+            if md.strip():
+                strip_parts.append(md)
+        pages_md.append("\n".join(strip_parts))
+    print("\n\n---\n\n".join(pages_md))
+except Exception as e:
+    print("ERROR:" + str(e), file=sys.stderr)
+    sys.exit(1)
+]])
+                sf:close()
+            end
+            local pipe = io.popen("python3 " .. script .. " " .. tmpfile .. " 2>/dev/null", "r")
+            extracted_text = pipe and pipe:read("*a") or ""
+            if pipe then pipe:close() end
+            os.remove(tmpfile); os.remove(script)
+            extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
+            if extracted_text == "" then
+                send(422, { error = "Could not extract text from PDF" }); return
+            end
+
+        else
+            send(422, { error = "Unsupported file type: " .. mime .. ". Use the plain-text upload for .txt/.md/.csv files." }); return
+        end
+
+        -- Persist knowledge row + blob
+        local token_count = math.floor(#extracted_text / 4)
+        local id, err = storage.add_project_knowledge({
+            project_id     = project_id,
+            filename       = fname,
+            content_type   = mime,
+            size_bytes     = #bin,
+            extracted_text = extracted_text,
+            token_count    = token_count,
+            source         = "upload",
+            created_by     = ngx.ctx.admin_user.id,
+        })
+        if not id then send(500, { error = err or "insert failed" }); return end
+
+        local blob_err = storage.store_project_knowledge_blob(id, bin)
+        if blob_err then
+            -- Non-fatal: metadata was saved; blob storage failure is logged but not surfaced
+            ngx.log(ngx.ERR, "blob store failed for knowledge " .. id .. ": " .. tostring(blob_err))
+        end
+
+        -- Return the newly created metadata row
+        local rows = storage.list_project_knowledge(project_id)
+        local inserted
+        for _, r in ipairs(rows) do
+            if r.id == id then inserted = r; break end
+        end
+        send(201, inserted or { id = id })
+    end)
+
+    -- GET /admin/v1/projects/:id/knowledge/:kid/download
+    -- Returns the original binary for files uploaded via /knowledge/upload.
+    -- Must come before the generic /knowledge/:kid route.
+    route("GET", "^/admin/v1/projects/([^/]+)/knowledge/([^/]+)/download$", function(project_id, kid)
+        local proj = require_project_access(project_id, "viewer")
+        if not proj then return end
+        local item = storage.get_project_knowledge_item(kid, project_id)
+        if not item then send(404, { error = "not found" }); return end
+        if item.source ~= "upload" then
+            send(404, { error = "no original file stored for this entry" }); return
+        end
+        local blob = storage.get_project_knowledge_blob(kid)
+        if not blob then send(404, { error = "blob not found" }); return end
+        ngx.header["Content-Type"]        = item.content_type or "application/octet-stream"
+        ngx.header["Content-Disposition"] = 'attachment; filename="' .. item.filename .. '"'
+        ngx.header["Content-Length"]      = #blob
+        ngx.status = 200
+        ngx.print(blob)
+        ngx.exit(200)
+    end)
+
     -- ── Project conversations ─────────────────────────────────────────────────
 
     -- GET /admin/v1/projects/:id/conversations?limit=50
