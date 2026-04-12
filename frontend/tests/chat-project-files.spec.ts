@@ -1,17 +1,18 @@
 /**
- * chat-project-files.spec.ts — E2E tests for the "Save to Project" file feature.
+ * chat-project-files.spec.ts — E2E tests for the artifact card + "Save to Project" feature.
  *
- * The feature lets the model output a code block whose first line is a filename
- * comment (e.g. `# utils.py`). A "Save to Project" card is rendered below the
- * block. Clicking Save:
+ * When a model output contains a code block whose first line is a filename comment
+ * (e.g. `# utils.py`), an artifact card is rendered in the chat instead of inline code.
+ * Clicking the card opens a side panel. In project context, the panel shows a
+ * "Save to Project" button which:
  *   1. Upserts the file into the project knowledge base (PUT /projects/:id/knowledge/:filename)
  *   2. Injects a synthetic user message into the conversation so the model's
  *      context reflects the updated file content.
  *
  * Coverage:
- *   1. Save card appears in project chat when assistant message has filename comment
- *   2. Save card absent in non-project chat (same code block format)
- *   3. Clicking Save → card shows ✓ Saved
+ *   1. Artifact card appears in project chat when assistant message has filename comment
+ *   2. Artifact card is visible in non-project chat; panel has no Save button
+ *   3. Clicking artifact card opens panel; clicking Save in panel → ✓ Saved
  *   4. File appears in project knowledge base after save
  *   5. Context injection message appears in thread after save
  *   6. Upsert: saving same filename again updates token_count, no duplicate row
@@ -115,9 +116,9 @@ function makeAssistantMsg(filename: string, ext: string, code: string): string {
 
 test.describe("Chat — Save to Project file feature", () => {
 
-  // ── 1. Save card visible in project chat ─────────────────────────────────
+  // ── 1. Artifact card visible in project chat ─────────────────────────────
 
-  test("Save to Project card appears for filename-comment code block in project chat", async ({ page }) => {
+  test("artifact card appears for filename-comment code block in project chat", async ({ page }) => {
     const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
     const projectId = await createProject(page, tenantId, `test-save-files-${Date.now()}`);
     const convId = await createConversation(page, gatewayId, projectId);
@@ -127,18 +128,20 @@ test.describe("Chat — Save to Project file feature", () => {
       await setChatPreferences(page, gatewayId, tenantId);
       await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
 
+      // Artifact card must appear with the filename; full code must NOT be shown inline
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
       await expect(page.getByText("reverse.py").first()).toBeVisible({ timeout: 10000 });
-      await expect(page.getByRole("button", { name: "Save to Project" })).toBeVisible({ timeout: 5000 });
-      await expect(page.getByText(/save failed/i)).not.toBeVisible();
+      // "Save to Project" is in the panel, not the thread
+      await expect(page.getByRole("button", { name: "Save to Project" })).not.toBeVisible();
     } finally {
       await deleteConversation(page, convId);
       await deleteProject(page, projectId);
     }
   });
 
-  // ── 2. Save card absent outside project chat ──────────────────────────────
+  // ── 2. Artifact card visible in non-project chat; no Save button ─────────
 
-  test("Save to Project card is absent in non-project chat", async ({ page }) => {
+  test("artifact card is visible in non-project chat but has no Save button", async ({ page }) => {
     const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
     const convId = await createConversation(page, gatewayId);
     try {
@@ -147,16 +150,21 @@ test.describe("Chat — Save to Project file feature", () => {
       await setChatPreferences(page, gatewayId, tenantId);
       await page.goto(`/chat?conv=${convId}`);
 
+      // Artifact card is always shown for named code blocks
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
       await expect(page.getByText("reverse.py").first()).toBeVisible({ timeout: 10000 });
-      await expect(page.getByRole("button", { name: "Save to Project" })).not.toBeVisible();
+      // Open the panel — no Save button without project context
+      await page.locator("[data-cy=artifact-card]").click();
+      await expect(page.locator("[data-cy=panel-download-btn]")).toBeVisible({ timeout: 5000 });
+      await expect(page.locator("[data-cy=panel-save-btn]")).not.toBeVisible();
     } finally {
       await deleteConversation(page, convId);
     }
   });
 
-  // ── 3. Clicking Save shows ✓ Saved ────────────────────────────────────────
+  // ── 3. Click card → panel → Save shows ✓ Saved ───────────────────────────
 
-  test("clicking Save to Project shows Saved confirmation", async ({ page }) => {
+  test("clicking artifact card opens panel; clicking Save in panel shows Saved confirmation", async ({ page }) => {
     const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
     const projectId = await createProject(page, tenantId, `test-save-confirm-${Date.now()}`);
     const convId = await createConversation(page, gatewayId, projectId);
@@ -166,10 +174,15 @@ test.describe("Chat — Save to Project file feature", () => {
       await setChatPreferences(page, gatewayId, tenantId);
       await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
 
-      await expect(page.getByRole("button", { name: "Save to Project" })).toBeVisible({ timeout: 10000 });
-      await page.getByRole("button", { name: "Save to Project" }).click();
+      // Click artifact card to open panel
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
+      await page.locator("[data-cy=artifact-card]").click();
 
-      await expect(page.getByText("✓ Saved")).toBeVisible({ timeout: 8000 });
+      // Save button appears in panel header (project context)
+      await expect(page.locator("[data-cy=panel-save-btn]")).toBeVisible({ timeout: 5000 });
+      await page.locator("[data-cy=panel-save-btn]").click();
+
+      await expect(page.locator("[data-cy=panel-save-btn]")).toHaveText("✓", { timeout: 8000 });
       await expect(page.getByText(/save failed/i)).not.toBeVisible();
     } finally {
       await deleteConversation(page, convId);
@@ -192,9 +205,12 @@ test.describe("Chat — Save to Project file feature", () => {
       await setChatPreferences(page, gatewayId, tenantId);
       await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
 
-      await expect(page.getByRole("button", { name: "Save to Project" })).toBeVisible({ timeout: 10000 });
-      await page.getByRole("button", { name: "Save to Project" }).click();
-      await expect(page.getByText("✓ Saved")).toBeVisible({ timeout: 8000 });
+      // Open panel and save
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
+      await page.locator("[data-cy=artifact-card]").click();
+      await expect(page.locator("[data-cy=panel-save-btn]")).toBeVisible({ timeout: 5000 });
+      await page.locator("[data-cy=panel-save-btn]").click();
+      await expect(page.locator("[data-cy=panel-save-btn]")).toHaveText("✓", { timeout: 8000 });
 
       const rows = await listKnowledge(page, projectId);
       const entry = rows.find(r => r.filename === filename);
@@ -221,9 +237,12 @@ test.describe("Chat — Save to Project file feature", () => {
       await setChatPreferences(page, gatewayId, tenantId);
       await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
 
-      await expect(page.getByRole("button", { name: "Save to Project" })).toBeVisible({ timeout: 10000 });
-      await page.getByRole("button", { name: "Save to Project" }).click();
-      await expect(page.getByText("✓ Saved")).toBeVisible({ timeout: 8000 });
+      // Open panel and save via panel button
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
+      await page.locator("[data-cy=artifact-card]").click();
+      await expect(page.locator("[data-cy=panel-save-btn]")).toBeVisible({ timeout: 5000 });
+      await page.locator("[data-cy=panel-save-btn]").click();
+      await expect(page.locator("[data-cy=panel-save-btn]")).toHaveText("✓", { timeout: 8000 });
 
       // Injection message visible in the thread
       await expect(page.getByText(`[File saved to project: ${filename}]`)).toBeVisible({ timeout: 5000 });
@@ -269,9 +288,12 @@ test.describe("Chat — Save to Project file feature", () => {
       await setChatPreferences(page, gatewayId, tenantId);
       await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
 
-      await expect(page.getByRole("button", { name: "Save to Project" })).toBeVisible({ timeout: 10000 });
-      await page.getByRole("button", { name: "Save to Project" }).click();
-      await expect(page.getByText("✓ Saved")).toBeVisible({ timeout: 8000 });
+      // Open panel and save via panel button
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
+      await page.locator("[data-cy=artifact-card]").click();
+      await expect(page.locator("[data-cy=panel-save-btn]")).toBeVisible({ timeout: 5000 });
+      await page.locator("[data-cy=panel-save-btn]").click();
+      await expect(page.locator("[data-cy=panel-save-btn]")).toHaveText("✓", { timeout: 8000 });
 
       const rowsAfter = await listKnowledge(page, projectId);
       const entries = rowsAfter.filter(r => r.filename === filename);
@@ -359,9 +381,9 @@ test.describe("Chat — Save to Project file feature", () => {
     }
   });
 
-  // ── 9. Batch: "Save individually" switches to per-file cards ─────────────
+  // ── 9. Batch: "Save individually" hides the SaveAll card ─────────────────
 
-  test("Save individually button re-shows individual Save to Project cards", async ({ page }) => {
+  test("Save individually button hides SaveAll card; artifact cards remain visible", async ({ page }) => {
     const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
     const projectId = await createProject(page, tenantId, `test-individual-${Date.now()}`);
     const convId = await createConversation(page, gatewayId, projectId);
@@ -376,19 +398,564 @@ test.describe("Chat — Save to Project file feature", () => {
       await setChatPreferences(page, gatewayId, tenantId);
       await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
 
-      // Batch card visible initially
+      // Batch card visible initially; individual artifact cards visible too
       await expect(page.getByRole("button", { name: "Save All to Project" })).toBeVisible({ timeout: 10000 });
       await expect(page.getByRole("button", { name: "Save individually" })).toBeVisible();
+      await expect(page.locator("[data-cy=artifact-card]")).toHaveCount(2, { timeout: 5000 });
 
       // Click "Save individually"
       await page.getByRole("button", { name: "Save individually" }).click();
 
-      // Batch card must disappear; individual cards must appear
+      // Batch card must disappear; individual artifact cards remain; no Save buttons in thread
       await expect(page.getByRole("button", { name: "Save All to Project" })).not.toBeVisible();
-      await expect(page.getByRole("button", { name: "Save to Project" })).toHaveCount(2);
+      await expect(page.locator("[data-cy=artifact-card]")).toHaveCount(2);
+      await expect(page.getByRole("button", { name: "Save to Project" })).not.toBeVisible();
     } finally {
       await deleteConversation(page, convId);
       await deleteProject(page, projectId);
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Artifact card UX
+// ---------------------------------------------------------------------------
+
+test.describe("Chat — artifact card UX", () => {
+
+  // ── Named code block renders as card, not inline code ────────────────────
+  test("named code block renders as artifact card with no inline code", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const convId = await createConversation(page, gatewayId);
+    try {
+      const code = "def reverse(s):\n    return s[::-1]";
+      await appendAssistantMessage(page, convId, makeAssistantMsg("reverse.py", "py", code));
+
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}`);
+
+      // Card must be visible
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
+      // Filename label shown on card
+      await expect(page.getByText("reverse.py").first()).toBeVisible();
+      // Full code must NOT be shown inline in the chat bubble
+      await expect(page.getByText("def reverse(s):")).not.toBeVisible();
+    } finally {
+      await deleteConversation(page, convId);
+    }
+  });
+
+  // ── Clicking artifact card opens the side panel ───────────────────────────
+  test("clicking artifact card opens the artifact panel with code tab", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const convId = await createConversation(page, gatewayId);
+    try {
+      const code = "def hello():\n    print('Hello')";
+      await appendAssistantMessage(page, convId, makeAssistantMsg("hello.py", "py", code));
+
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}`);
+
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
+      await page.locator("[data-cy=artifact-card]").click();
+
+      // Panel must open and show the code
+      await expect(page.locator("[data-cy=panel-copy-btn]")).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText("def hello():")).toBeVisible({ timeout: 5000 });
+    } finally {
+      await deleteConversation(page, convId);
+    }
+  });
+
+  // ── Panel download button visible ─────────────────────────────────────────
+  test("artifact panel shows download button", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const convId = await createConversation(page, gatewayId);
+    try {
+      await appendAssistantMessage(page, convId, makeAssistantMsg("data.sql", "sql", "SELECT * FROM users;"));
+
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}`);
+
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
+      await page.locator("[data-cy=artifact-card]").click();
+
+      await expect(page.locator("[data-cy=panel-download-btn]")).toBeVisible({ timeout: 5000 });
+    } finally {
+      await deleteConversation(page, convId);
+    }
+  });
+
+  // ── HTML artifact shows Preview tab in panel ──────────────────────────────
+  test("HTML artifact card opens panel with Preview tab", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const convId = await createConversation(page, gatewayId);
+    try {
+      const html = "# index.html\n<!DOCTYPE html><html><head><title>Test</title></head><body><h1>Hello</h1><p>World</p><div>Line</div><span>Another</span><p>More</p></body></html>";
+      await appendAssistantMessage(page, convId, `\`\`\`html\n${html}\n\`\`\``);
+
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}`);
+
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
+      await page.locator("[data-cy=artifact-card]").click();
+
+      // Preview tab must exist and be active by default for html
+      await expect(page.getByRole("button", { name: "Preview", exact: true })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole("button", { name: "Code", exact: true })).toBeVisible();
+    } finally {
+      await deleteConversation(page, convId);
+    }
+  });
+
+  // ── Anonymous (no filename) code block stays inline ───────────────────────
+  test("anonymous code block without filename stays inline (no artifact card)", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const convId = await createConversation(page, gatewayId);
+    try {
+      // No filename comment on first line
+      await appendAssistantMessage(page, convId, "Here is some code:\n\n```python\ndef anonymous():\n    pass\n```");
+
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}`);
+
+      await page.waitForLoadState("networkidle");
+      // No artifact card — code rendered inline
+      await expect(page.locator("[data-cy=artifact-card]")).not.toBeVisible();
+      // Code IS shown inline
+      await expect(page.getByText("def anonymous():")).toBeVisible({ timeout: 10000 });
+    } finally {
+      await deleteConversation(page, convId);
+    }
+  });
+
+  // ── Panel Download button on card works ───────────────────────────────────
+  test("card download button triggers a file download without opening the panel", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const convId = await createConversation(page, gatewayId);
+    try {
+      await appendAssistantMessage(page, convId, makeAssistantMsg("script.sh", "sh", "#!/bin/sh\necho hello"));
+
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}`);
+
+      await expect(page.locator("[data-cy=artifact-card]")).toBeVisible({ timeout: 10000 });
+
+      // Download button is on the card; clicking it triggers a download
+      const [download] = await Promise.all([
+        page.waitForEvent("download"),
+        page.locator("[data-cy=artifact-card-download]").click(),
+      ]);
+      expect(download.suggestedFilename()).toBe("script.sh");
+
+      // Panel should NOT have opened (no copy button visible)
+      await expect(page.locator("[data-cy=panel-copy-btn]")).not.toBeVisible();
+    } finally {
+      await deleteConversation(page, convId);
+    }
+  });
+
+  // ── Multiple named blocks: each gets a card ───────────────────────────────
+  test("multiple named blocks in one message each get an artifact card", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const convId = await createConversation(page, gatewayId);
+    const ts = Date.now();
+    const files = [
+      { filename: `a-${ts}.py`,  ext: "py",  code: "a = 1" },
+      { filename: `b-${ts}.ts`,  ext: "ts",  code: "const b = 2;" },
+    ];
+    const content = files.map(f => makeAssistantMsg(f.filename, f.ext, f.code)).join("\n\n");
+    try {
+      await appendAssistantMessage(page, convId, content);
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}`);
+
+      await expect(page.locator("[data-cy=artifact-card]")).toHaveCount(2, { timeout: 10000 });
+    } finally {
+      await deleteConversation(page, convId);
+    }
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// Project context banner + pill
+// ---------------------------------------------------------------------------
+
+test.describe("Chat — project context banner and pill", () => {
+
+  test("project banner is visible in message area when in project context", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, "Banner Test Project");
+    const convId = await createConversation(page, gatewayId, projectId);
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // Banner must show project name
+      await expect(page.getByText("Banner Test Project").first()).toBeVisible({ timeout: 8000 });
+
+      // "Open project" link must point to /projects/:id
+      const openLink = page.getByRole("link", { name: /open project/i });
+      await expect(openLink).toBeVisible();
+      await expect(openLink).toHaveAttribute("href", `/projects/${projectId}`);
+
+      // "Exit project" link must point to /chat
+      const exitLink = page.getByRole("link", { name: /exit project/i });
+      await expect(exitLink).toBeVisible();
+      await expect(exitLink).toHaveAttribute("href", "/chat");
+    } finally {
+      await deleteConversation(page, convId);
+      await deleteProject(page, projectId);
+    }
+  });
+
+  test("project banner is absent in normal (non-project) chat", async ({ page }) => {
+    const { gatewayId, tenantId } = await getFirstTenantAndGateway(page);
+    const convResp = await page.context().request.post(`${ADMIN_BASE}/conversations`, {
+      data: { gateway_id: gatewayId, title: "Normal chat" },
+    });
+    expect(convResp.ok()).toBeTruthy();
+    const convId = ((await convResp.json()) as { id: string }).id;
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}`);
+      await page.waitForLoadState("networkidle");
+
+      await expect(page.getByRole("link", { name: /open project/i })).not.toBeVisible();
+      await expect(page.getByRole("link", { name: /exit project/i })).not.toBeVisible();
+    } finally {
+      await page.context().request.delete(`${ADMIN_BASE}/conversations/${convId}`).catch(() => {});
+    }
+  });
+
+  test("banner shows file count when project has knowledge files", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, "Banner Files Project");
+    const convId = await createConversation(page, gatewayId, projectId);
+    const knResp = await page.context().request.post(`${ADMIN_BASE}/projects/${projectId}/knowledge`, {
+      data: { filename: "notes.txt", content_type: "text/plain", size_bytes: 5, extracted_text: "hello" },
+    });
+    expect(knResp.ok()).toBeTruthy();
+    const knId = ((await knResp.json()) as { id: string }).id;
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      await expect(page.getByText(/1 file/)).toBeVisible({ timeout: 8000 });
+    } finally {
+      await deleteConversation(page, convId);
+      await page.context().request.delete(`${ADMIN_BASE}/projects/${projectId}/knowledge/${knId}`).catch(() => {});
+      await deleteProject(page, projectId);
+    }
+  });
+
+  test("exit project link navigates away from project context", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, "Exit Nav Project");
+    const convId = await createConversation(page, gatewayId, projectId);
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      await expect(page.getByRole("link", { name: /exit project/i })).toBeVisible({ timeout: 8000 });
+      await page.getByRole("link", { name: /exit project/i }).click();
+
+      await expect(page).toHaveURL(/\/chat/, { timeout: 5000 });
+      await expect(page).not.toHaveURL(/project_id/);
+      await expect(page.getByRole("link", { name: /exit project/i })).not.toBeVisible();
+    } finally {
+      await deleteConversation(page, convId);
+      await deleteProject(page, projectId);
+    }
+  });
+
+  // ── P1.2 — Clickable "instructions active" opens modal ───────────────────
+
+  test("clicking 'instructions active' opens project instructions modal", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const r = await page.context().request.post(`${ADMIN_BASE}/projects`, {
+      data: {
+        name: `Instructions Modal ${Date.now()}`,
+        icon: "📁",
+        color: "#2563eb",
+        tenant_id: tenantId,
+        instructions: "These are the test instructions. Follow them carefully.",
+      },
+    });
+    expect(r.ok()).toBeTruthy();
+    const projectId = ((await r.json()) as ProjectRow).id;
+    const convId = await createConversation(page, gatewayId, projectId);
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // "instructions active" button must be visible in banner
+      const btn = page.getByRole("button", { name: /instructions active/i });
+      await expect(btn).toBeVisible({ timeout: 8000 });
+
+      // Click to open modal
+      await btn.click();
+
+      // Modal must appear with title and content
+      await expect(page.getByText("Project Instructions")).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText("These are the test instructions. Follow them carefully.")).toBeVisible();
+    } finally {
+      await deleteConversation(page, convId);
+      await deleteProject(page, projectId);
+    }
+  });
+
+  // ── P1.3 — "New project chat" label in sidebar ───────────────────────────
+
+  test("sidebar new-chat button shows 'New project chat' in project context", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, `Sidebar Label ${Date.now()}`);
+    const convId = await createConversation(page, gatewayId, projectId);
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // The new chat button must say "New project chat" in project context
+      await expect(page.getByRole("button", { name: /new project chat/i })).toBeVisible({ timeout: 8000 });
+    } finally {
+      await deleteConversation(page, convId);
+      await deleteProject(page, projectId);
+    }
+  });
+
+  test("sidebar new-chat button shows 'New Chat' outside project context", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const convId = await createConversation(page, gatewayId);
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}`);
+      await page.waitForLoadState("networkidle");
+
+      await expect(page.getByRole("button", { name: /^new chat$/i })).toBeVisible({ timeout: 8000 });
+      await expect(page.getByRole("button", { name: /new project chat/i })).not.toBeVisible();
+    } finally {
+      await deleteConversation(page, convId);
+    }
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// Project welcome screen (empty state with project context)
+// ---------------------------------------------------------------------------
+
+test.describe("Chat — project welcome screen", () => {
+
+  test("project welcome card shown when opening project with no conversation selected", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const r = await page.context().request.post(`${ADMIN_BASE}/projects`, {
+      data: {
+        name: `Welcome Screen ${Date.now()}`,
+        icon: "🚀",
+        color: "#7c3aed",
+        tenant_id: tenantId,
+        description: "A project for testing the welcome screen",
+      },
+    });
+    expect(r.ok()).toBeTruthy();
+    const project = (await r.json()) as ProjectRow & { name: string };
+    const projectId = project.id;
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      // Navigate to project context without a conversation
+      await page.goto(`/chat?project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // Welcome card must show project name and description
+      await expect(page.getByText("Welcome Screen", { exact: false }).first()).toBeVisible({ timeout: 8000 });
+      await expect(page.getByText("A project for testing the welcome screen")).toBeVisible({ timeout: 5000 });
+    } finally {
+      await deleteProject(page, projectId);
+    }
+  });
+
+  test("welcome card shows instructions toggle when project has instructions", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const r = await page.context().request.post(`${ADMIN_BASE}/projects`, {
+      data: {
+        name: `Welcome Instructions ${Date.now()}`,
+        icon: "📝",
+        color: "#0ea5e9",
+        tenant_id: tenantId,
+        instructions: "Follow these project-level guidelines when coding.",
+      },
+    });
+    expect(r.ok()).toBeTruthy();
+    const projectId = ((await r.json()) as ProjectRow).id;
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // Instructions toggle must be visible and collapsed by default
+      const toggle = page.getByRole("button", { name: /instructions/i }).first();
+      await expect(toggle).toBeVisible({ timeout: 8000 });
+
+      // Instructions body not visible until expanded
+      await expect(page.getByText("Follow these project-level guidelines when coding.")).not.toBeVisible();
+
+      // Expand
+      await toggle.click();
+      await expect(page.getByText("Follow these project-level guidelines when coding.")).toBeVisible({ timeout: 3000 });
+    } finally {
+      await deleteProject(page, projectId);
+    }
+  });
+
+  test("welcome card shows file chips for project knowledge files", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, `Welcome Files ${Date.now()}`);
+    const convId = await createConversation(page, gatewayId, projectId);
+    const knResp = await page.context().request.post(`${ADMIN_BASE}/projects/${projectId}/knowledge`, {
+      data: { filename: "welcome-test.txt", content_type: "text/plain", size_bytes: 12, extracted_text: "hello world" },
+    });
+    expect(knResp.ok()).toBeTruthy();
+    const knId = ((await knResp.json()) as { id: string }).id;
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      // New conversation with no messages
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // Welcome card's file chip
+      await expect(page.getByText("welcome-test.txt").first()).toBeVisible({ timeout: 8000 });
+    } finally {
+      await deleteConversation(page, convId);
+      await page.context().request.delete(`${ADMIN_BASE}/projects/${projectId}/knowledge/${knId}`).catch(() => {});
+      await deleteProject(page, projectId);
+    }
+  });
+
+  test("welcome card is NOT shown when conversation has messages", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, `No Welcome ${Date.now()}`);
+    const convId = await createConversation(page, gatewayId, projectId);
+    try {
+      // Add a message so the thread is non-empty
+      await appendAssistantMessage(page, convId, "Hello from the assistant.");
+
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // Message must be visible (thread not empty state)
+      await expect(page.getByText("Hello from the assistant.")).toBeVisible({ timeout: 8000 });
+
+      // Generic empty-state text and welcome hint must NOT appear
+      await expect(page.getByText("Start a new chat below")).not.toBeVisible();
+    } finally {
+      await deleteConversation(page, convId);
+      await deleteProject(page, projectId);
+    }
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// P2.5 — Files panel accessible from chat banner
+// ---------------------------------------------------------------------------
+
+test.describe("Chat — files panel from banner", () => {
+
+  test("Files button in banner opens files panel with file list", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, `Files Panel ${Date.now()}`);
+    const convId = await createConversation(page, gatewayId, projectId);
+    const knResp = await page.context().request.post(`${ADMIN_BASE}/projects/${projectId}/knowledge`, {
+      data: { filename: "panel-file.md", content_type: "text/markdown", size_bytes: 20, extracted_text: "# Panel test content" },
+    });
+    expect(knResp.ok()).toBeTruthy();
+    const knId = ((await knResp.json()) as { id: string }).id;
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // Files button must be visible in banner
+      const filesBtn = page.getByRole("button", { name: /files/i }).first();
+      await expect(filesBtn).toBeVisible({ timeout: 8000 });
+
+      // Panel not visible yet
+      await expect(page.locator("[data-cy=chat-files-panel]")).not.toBeVisible();
+
+      // Click to open
+      await filesBtn.click();
+      await expect(page.locator("[data-cy=chat-files-panel]")).toBeVisible({ timeout: 3000 });
+
+      // File must be listed
+      await expect(page.getByText("panel-file.md").first()).toBeVisible();
+
+      // Click to close
+      await filesBtn.click();
+      await expect(page.locator("[data-cy=chat-files-panel]")).not.toBeVisible();
+    } finally {
+      await deleteConversation(page, convId);
+      await page.context().request.delete(`${ADMIN_BASE}/projects/${projectId}/knowledge/${knId}`).catch(() => {});
+      await deleteProject(page, projectId);
+    }
+  });
+
+  test("clicking a file in the files panel opens the preview modal", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, `File Preview Panel ${Date.now()}`);
+    const convId = await createConversation(page, gatewayId, projectId);
+    const knResp = await page.context().request.post(`${ADMIN_BASE}/projects/${projectId}/knowledge`, {
+      data: { filename: "preview-from-panel.txt", content_type: "text/plain", size_bytes: 14, extracted_text: "preview content" },
+    });
+    expect(knResp.ok()).toBeTruthy();
+    const knId = ((await knResp.json()) as { id: string }).id;
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // Open files panel
+      const filesBtn = page.getByRole("button", { name: /files/i }).first();
+      await expect(filesBtn).toBeVisible({ timeout: 8000 });
+      await filesBtn.click();
+      await expect(page.locator("[data-cy=chat-files-panel]")).toBeVisible({ timeout: 3000 });
+
+      // Click a file item
+      const fileItem = page.locator("[data-cy=chat-file-item]").first();
+      await expect(fileItem).toBeVisible();
+      await fileItem.click();
+
+      // Preview modal must appear with the filename as title
+      await expect(page.getByText("preview-from-panel.txt").first()).toBeVisible({ timeout: 5000 });
+    } finally {
+      await deleteConversation(page, convId);
+      await page.context().request.delete(`${ADMIN_BASE}/projects/${projectId}/knowledge/${knId}`).catch(() => {});
+      await deleteProject(page, projectId);
+    }
+  });
+
+  test("Files button absent in banner when project has no knowledge files", async ({ page }) => {
+    const { tenantId, gatewayId } = await getFirstTenantAndGateway(page);
+    const projectId = await createProject(page, tenantId, `No Files ${Date.now()}`);
+    const convId = await createConversation(page, gatewayId, projectId);
+    try {
+      await setChatPreferences(page, gatewayId, tenantId);
+      await page.goto(`/chat?conv=${convId}&project_id=${projectId}`);
+      await page.waitForLoadState("networkidle");
+
+      // Banner must be visible (project context) but no Files button
+      await expect(page.getByRole("link", { name: /open project/i })).toBeVisible({ timeout: 8000 });
+      await expect(page.getByRole("button", { name: /files \(/i })).not.toBeVisible();
+    } finally {
+      await deleteConversation(page, convId);
+      await deleteProject(page, projectId);
+    }
+  });
+
 });

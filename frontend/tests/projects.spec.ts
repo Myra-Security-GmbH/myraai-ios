@@ -13,7 +13,8 @@
  *   9. Search/Filter/Sort toolbar — search bar, role filter buttons, sort select
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, Page, Browser } from "@playwright/test";
+import { execSync } from "child_process";
 
 const ADMIN_BASE = (process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173") + "/admin/v1";
 
@@ -65,6 +66,81 @@ async function apiCreateProject(page: Page, name: string, extra?: Record<string,
 
 async function apiDeleteProject(page: Page, id: string) {
   await page.context().request.delete(`${ADMIN_BASE}/projects/${id}`).catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// Helpers for multi-role permission tests
+// ---------------------------------------------------------------------------
+
+const DB_HOST = "172.17.0.1";
+const DB_USER = "gateway";
+const DB_PASS = "gateway";
+const DB_NAME = "ai_gateway";
+const PERM_OTP_CODE = "887766";
+const AUTH_BASE_PERM = (process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173") + "/admin/auth";
+
+function sql(query: string) {
+  execSync(
+    `mysql -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} ${DB_NAME} -e ${JSON.stringify(query)}`,
+    { stdio: "pipe" }
+  );
+}
+
+/** Create a throwaway user via the admin API with a specific role; returns their id. */
+async function createTempUserWithRole(
+  page: Page,
+  tenantId: string,
+  email: string,
+  role: "member" | "viewer",
+): Promise<string> {
+  const r = await page.context().request.post(`${ADMIN_BASE}/tenants/${tenantId}/users`, {
+    data: { email, role },
+  });
+  expect(r.ok(), `create temp ${role} user ${email}: ${await r.text()}`).toBeTruthy();
+  return ((await r.json()) as { id: string }).id;
+}
+
+/** Delete a user via the admin API; silently ignores errors. */
+async function deleteTempUserById(page: Page, userId: string) {
+  await page.context().request.delete(`${ADMIN_BASE}/users/${userId}`).catch(() => {});
+}
+
+/**
+ * Authenticate as `email` via the OTP API (no browser UI interaction).
+ * Inserts the OTP into MySQL, calls /admin/auth/otp/verify, and returns a new
+ * browser context whose cookies contain the resulting session token.
+ * Caller must close the context when done.
+ */
+async function loginAsViaOtp(browser: Browser, email: string) {
+  const hash   = execSync(`echo -n '${PERM_OTP_CODE}' | sha256sum | awk '{print $1}'`).toString().trim();
+  const expiry = Math.floor(Date.now() / 1000) + 900;
+  const otpId  = execSync("cat /proc/sys/kernel/random/uuid").toString().trim();
+
+  sql(`DELETE FROM email_otp WHERE email='${email}' AND used_at IS NULL`);
+  sql(`INSERT INTO email_otp (id, email, code_hash, expires_at, ip_addr) VALUES ('${otpId}', '${email}', '${hash}', ${expiry}, '127.0.0.1')`);
+
+  // Exchange OTP for a session cookie via the API — no browser login flow needed
+  const authBase = (process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173") + "/admin/auth";
+  const tempCtx  = await browser.newContext({ ignoreHTTPSErrors: true });
+  try {
+    const resp = await tempCtx.request.post(`${authBase}/otp/verify`, {
+      data: { email, code: PERM_OTP_CODE },
+    });
+    expect(resp.ok(), `OTP verify for ${email}: ${await resp.text()}`).toBeTruthy();
+  } finally {
+    // Save the cookies from the temp context into a new context that we return
+  }
+
+  // The session cookie is now in tempCtx — carry it into a proper page context
+  const cookies   = await tempCtx.cookies();
+  await tempCtx.close();
+
+  const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173";
+  const ctx  = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
+  await ctx.addCookies(cookies);
+  const page = await ctx.newPage();
+
+  return { page, ctx };
 }
 
 /** Navigate to /projects and wait for the page heading to appear. */
@@ -416,7 +492,7 @@ test.describe("Projects — Chat Integration", () => {
     const pid = await apiCreateProject(page, "E2E Chat Banner");
     try {
       await page.goto(`/chat?project_id=${pid}`);
-      await expect(page.getByText("E2E Chat Banner")).toBeVisible({ timeout: 8000 });
+      await expect(page.getByText("E2E Chat Banner").first()).toBeVisible({ timeout: 8000 });
     } finally {
       await apiDeleteProject(page, pid);
     }
@@ -499,7 +575,7 @@ test.describe("Projects — Chat Integration", () => {
 
     try {
       await page.goto(`/chat?project_id=${pid}`);
-      await expect(page.getByText("E2E Conv Send Project")).toBeVisible({ timeout: 8000 });
+      await expect(page.getByText("E2E Conv Send Project").first()).toBeVisible({ timeout: 8000 });
 
       // Intercept the POST /conversations to verify project_id is included
       const convRequestPromise = page.waitForRequest(
@@ -561,6 +637,77 @@ test.describe("Projects — Permissions (API-level)", () => {
       data: { icon: "📁" },
     });
     expect(resp.status()).toBe(400);
+  });
+
+  test("member user can create a project via API (returns 201)", async ({ page, browser }) => {
+    // Regression guard: previously only admin/tenant_admin could create projects.
+    const tenantId = await getFirstTenantId(page);
+    const email    = `perm-member-create-${Date.now()}@local.test`;
+    const userId   = await createTempUserWithRole(page, tenantId, email, "member");
+    let   pid: string | undefined;
+
+    const { page: memberPage, ctx } = await loginAsViaOtp(browser, email);
+    try {
+      const resp = await memberPage.context().request.post(
+        `${AUTH_BASE_PERM.replace("/admin/auth", "/admin/v1")}/projects`,
+        { data: { name: `E2E Member Create ${Date.now()}`, tenant_id: tenantId } },
+      );
+      expect(resp.status(), `member POST /projects: ${await resp.text()}`).toBe(201);
+      pid = ((await resp.json()) as { id: string }).id;
+    } finally {
+      await ctx.close();
+      if (pid) await apiDeleteProject(page, pid);
+      await deleteTempUserById(page, userId);
+    }
+  });
+
+  test("member user sees + New Project button in UI", async ({ page, browser }) => {
+    const tenantId = await getFirstTenantId(page);
+    const email    = `perm-member-ui-${Date.now()}@local.test`;
+    const userId   = await createTempUserWithRole(page, tenantId, email, "member");
+
+    const { page: memberPage, ctx } = await loginAsViaOtp(browser, email);
+    try {
+      await memberPage.goto("/projects");
+      await expect(memberPage.locator("[data-cy=create-project-btn]")).toBeVisible({ timeout: 8000 });
+    } finally {
+      await ctx.close();
+      await deleteTempUserById(page, userId);
+    }
+  });
+
+  test("viewer user cannot create a project via API (returns 403)", async ({ page, browser }) => {
+    const tenantId = await getFirstTenantId(page);
+    const email    = `perm-viewer-create-${Date.now()}@local.test`;
+    const userId   = await createTempUserWithRole(page, tenantId, email, "viewer");
+
+    const { page: viewerPage, ctx } = await loginAsViaOtp(browser, email);
+    try {
+      const resp = await viewerPage.context().request.post(
+        `${AUTH_BASE_PERM.replace("/admin/auth", "/admin/v1")}/projects`,
+        { data: { name: `E2E Viewer Forbidden ${Date.now()}`, tenant_id: tenantId } },
+      );
+      expect(resp.status(), "viewer must receive 403").toBe(403);
+    } finally {
+      await ctx.close();
+      await deleteTempUserById(page, userId);
+    }
+  });
+
+  test("viewer user does not see + New Project button in UI", async ({ page, browser }) => {
+    const tenantId = await getFirstTenantId(page);
+    const email    = `perm-viewer-ui-${Date.now()}@local.test`;
+    const userId   = await createTempUserWithRole(page, tenantId, email, "viewer");
+
+    const { page: viewerPage, ctx } = await loginAsViaOtp(browser, email);
+    try {
+      await viewerPage.goto("/projects");
+      await expect(viewerPage.getByRole("heading", { name: /projects/i })).toBeVisible({ timeout: 8000 });
+      await expect(viewerPage.locator("[data-cy=create-project-btn]")).not.toBeVisible();
+    } finally {
+      await ctx.close();
+      await deleteTempUserById(page, userId);
+    }
   });
 
 });
@@ -839,6 +986,79 @@ test.describe("Projects — Tab URL routing", () => {
       await expect(page).not.toHaveURL(/\?tab=/, { timeout: 5000 });
       await expect(page.getByRole("button", { name: /overview/i })).toHaveClass(/tab--active/);
     } finally {
+      await apiDeleteProject(page, pid);
+    }
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// Clickable stat cards
+// ---------------------------------------------------------------------------
+
+test.describe("Projects — Clickable stat cards", () => {
+
+  test("clicking Members card navigates to members tab", async ({ page }) => {
+    const pid = await apiCreateProject(page, "E2E Card Members");
+    try {
+      await page.goto(`/projects/${pid}`);
+      await expect(page.getByRole("heading", { name: "E2E Card Members" })).toBeVisible({ timeout: 8000 });
+      // Must be on overview (no ?tab=)
+      await expect(page).not.toHaveURL(/\?tab=/);
+      await page.locator("[data-cy=stat-card-members]").click();
+      await expect(page).toHaveURL(/\?tab=members/, { timeout: 5000 });
+      await expect(page.getByRole("button", { name: /members/i })).toHaveClass(/tab--active/);
+    } finally {
+      await apiDeleteProject(page, pid);
+    }
+  });
+
+  test("clicking Files card navigates to files tab", async ({ page }) => {
+    const pid = await apiCreateProject(page, "E2E Card Files");
+    try {
+      await page.goto(`/projects/${pid}`);
+      await expect(page.getByRole("heading", { name: "E2E Card Files" })).toBeVisible({ timeout: 8000 });
+      await page.locator("[data-cy=stat-card-files]").click();
+      await expect(page).toHaveURL(/\?tab=files/, { timeout: 5000 });
+      await expect(page.getByRole("button", { name: /^files$/i })).toHaveClass(/tab--active/);
+    } finally {
+      await apiDeleteProject(page, pid);
+    }
+  });
+
+  test("clicking Conversations card navigates to conversations tab", async ({ page }) => {
+    const pid = await apiCreateProject(page, "E2E Card Convs");
+    try {
+      await page.goto(`/projects/${pid}`);
+      await expect(page.getByRole("heading", { name: "E2E Card Convs" })).toBeVisible({ timeout: 8000 });
+      await page.locator("[data-cy=stat-card-conversations]").click();
+      await expect(page).toHaveURL(/\?tab=conversations/, { timeout: 5000 });
+      await expect(page.getByRole("button", { name: /conversations/i })).toHaveClass(/tab--active/);
+    } finally {
+      await apiDeleteProject(page, pid);
+    }
+  });
+
+  test("Conversations card shows correct count", async ({ page }) => {
+    const pid = await apiCreateProject(page, "E2E Card Conv Count");
+    const gw = await getFirstGateway(page);
+    const convIds: string[] = [];
+    try {
+      // Create 2 conversations linked to this project
+      for (let i = 0; i < 2; i++) {
+        const r = await page.context().request.post(`${ADMIN_BASE}/conversations`, {
+          data: { gateway_id: gw.id, project_id: pid, title: `E2E Conv ${i}` },
+        });
+        expect(r.ok()).toBeTruthy();
+        convIds.push(((await r.json()) as { id: string }).id);
+      }
+
+      await page.goto(`/projects/${pid}`);
+      await expect(page.getByRole("heading", { name: "E2E Card Conv Count" })).toBeVisible({ timeout: 8000 });
+      // The Conversations stat card value should be 2
+      await expect(page.locator("[data-cy=stat-card-conversations-value]")).toHaveText("2", { timeout: 5000 });
+    } finally {
+      for (const cid of convIds) await apiDelete(page, `/conversations/${cid}`);
       await apiDeleteProject(page, pid);
     }
   });
