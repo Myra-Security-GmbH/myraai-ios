@@ -33,19 +33,34 @@ function M.build_headers(ctx, api_key)
             headers["anthropic-beta"] = skill_betas
         end
     end
-    -- Anthropic native web search
-    if req_headers["x-aig-web-search"] == "1" then
-        local ws_beta = "web-search-2025-03-05"
+    -- Anthropic native web search — always enabled; the tool is always injected in
+    -- build_request() so the beta header must also always be present.
+    local ws_beta = "web-search-2025-03-05"
+    if headers["anthropic-beta"] then
+        headers["anthropic-beta"] = headers["anthropic-beta"] .. "," .. ws_beta
+    else
+        headers["anthropic-beta"] = ws_beta
+    end
+    -- Extended thinking: interleaved-thinking beta required when budget > 0
+    if req_headers["x-aig-thinking-budget"] then
+        local tb_beta = "interleaved-thinking-2025-05-14"
         if headers["anthropic-beta"] then
-            headers["anthropic-beta"] = headers["anthropic-beta"] .. "," .. ws_beta
+            headers["anthropic-beta"] = headers["anthropic-beta"] .. "," .. tb_beta
         else
-            headers["anthropic-beta"] = ws_beta
+            headers["anthropic-beta"] = tb_beta
         end
     end
-    -- Forward any x-aig-provider-* overrides as raw provider headers
+    -- Forward any x-aig-provider-* overrides as raw provider headers.
+    -- Blocked: credentials and headers already controlled by the gateway.
+    local BLOCKED = {
+        ["x-api-key"]         = true,
+        ["anthropic-version"] = true,
+        ["content-type"]      = true,
+        ["x-request-id"]      = true,
+    }
     for k, v in pairs(req_headers) do
         local fwd = k:match("^x%-aig%-provider%-(.+)$")
-        if fwd then headers[fwd] = v end
+        if fwd and not BLOCKED[fwd:lower()] then headers[fwd] = v end
     end
     return headers
 end
@@ -59,7 +74,20 @@ end
 --
 -- For the OpenAI-compat endpoint (ctx.is_compat == true) the body arrives in
 -- OpenAI chat/completions format and needs converting.
+-- Inject extended thinking into a decoded body table (both compat and native paths).
+-- Removes temperature (required by Anthropic when thinking is enabled).
+local function inject_thinking(body, req_headers)
+    local budget_str = req_headers["x-aig-thinking-budget"]
+    if not budget_str then return end
+    local budget = tonumber(budget_str)
+    if not budget or budget <= 0 then return end
+    body.thinking = { type = "enabled", budget_tokens = math.floor(budget) }
+    -- Anthropic rejects requests with temperature when thinking is active
+    body.temperature = nil
+end
+
 function M.build_request(ctx)
+    local req_headers = ngx.req.get_headers()
     if not ctx.is_compat then
         -- Native Anthropic path: forward raw body, stripping lone surrogates that
         -- cjson allows but Anthropic's strict UTF-8 parser rejects.
@@ -74,6 +102,7 @@ function M.build_request(ctx)
             if not already then
                 body.tools[#body.tools + 1] = { type = "web_search_20250305", name = "web_search" }
             end
+            inject_thinking(body, req_headers)
             return json.sanitize_surrogates(json.encode(body))
         end
         return json.sanitize_surrogates(raw)
@@ -154,15 +183,19 @@ function M.build_request(ctx)
         end
     end
 
-    -- Agent Skills (docx, xlsx, pptx, pdf) — add container + code_execution tool
+    -- Agent Skills (docx, xlsx, pptx, pdf) — add container + code_execution tool.
+    -- Prepend to existing tools (user-supplied tools already in body.tools) rather
+    -- than replacing them, so web_search and any caller tools are preserved.
     local skill = ngx.req.get_headers()["x-aig-skill"]
     if skill == "docx" or skill == "xlsx" or skill == "pptx" or skill == "pdf" then
         body.container = { skills = {{ type = "anthropic", skill_id = skill, version = "latest" }} }
-        body.tools = {{ type = "code_execution_20250825", name = "code_execution" }}
+        if not body.tools then body.tools = {} end
+        table.insert(body.tools, 1, { type = "code_execution_20250825", name = "code_execution" })
     end
 
-    -- Anthropic native web search — always injected; Anthropic executes searches
-    -- server-side with no external API key required.
+    -- Anthropic native web search — always injected together with its beta header.
+    -- The web_search_20250305 tool type requires the matching beta header; both must
+    -- be present or absent together.  The beta header is added in build_headers().
     if not body.tools then body.tools = {} end
     local already = false
     for _, t in ipairs(body.tools) do
@@ -171,6 +204,9 @@ function M.build_request(ctx)
     if not already then
         body.tools[#body.tools + 1] = { type = "web_search_20250305", name = "web_search" }
     end
+
+    -- Extended thinking — inject after all other body fields are set
+    inject_thinking(body, req_headers)
 
     return json.sanitize_surrogates(json.encode(body))
 end
@@ -187,6 +223,7 @@ function M.parse_response(body_str)
         if block.type == "text" then
             content = content .. (block.text or "")
         end
+        -- thinking, tool_use, tool_result, web_search_result blocks intentionally excluded
     end
 
     local usage = body.usage or {}
@@ -201,7 +238,14 @@ function M.parse_response(body_str)
 end
 
 -- Anthropic SSE events: content_block_delta, message_delta (with usage)
-function M.parse_sse_chunk(line)
+--
+-- st (stream_state) is an optional table that persists across calls for a
+-- single stream (allocated once per stream by upstream.lua).  It tracks:
+--   st.thinking_opened — true after <think> is emitted; cleared on </think>.
+-- This prevents </think> from leaking when a tool_use block (e.g. web_search)
+-- precedes a text block without any preceding thinking block.
+function M.parse_sse_chunk(line, st)
+    st = st or {}
     local data = line:match("^data:%s*(.+)$")
     if not data then return nil end
 
@@ -210,7 +254,33 @@ function M.parse_sse_chunk(line)
 
     local delta = ""
     if chunk.type == "content_block_delta" and chunk.delta then
-        delta = chunk.delta.text or ""
+        if chunk.delta.type == "thinking_delta" then
+            -- Extended-thinking deltas: streamed as <think>…</think> so the
+            -- frontend's existing ThinkingBlock parser picks them up.
+            delta = chunk.delta.thinking or ""
+        else
+            delta = chunk.delta.text or ""
+        end
+    end
+
+    -- Emit <think> when a thinking content block starts
+    if chunk.type == "content_block_start"
+       and chunk.content_block
+       and chunk.content_block.type == "thinking" then
+        delta = "<think>"
+        st.thinking_opened = true
+    end
+
+    -- Emit </think> only when a thinking block was actually opened this stream.
+    -- Guard: st.thinking_opened prevents false positives when a tool_use block
+    -- (e.g. web_search) precedes the text block — in that case index > 0 but
+    -- no <think> was ever emitted.
+    if chunk.type == "content_block_start"
+       and chunk.content_block
+       and chunk.content_block.type == "text"
+       and st.thinking_opened then
+        delta = "</think>"
+        st.thinking_opened = false
     end
 
     -- Surface the tool name when a tool-use block starts so the client can

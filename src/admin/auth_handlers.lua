@@ -161,11 +161,29 @@ route("POST", "^/admin/auth/otp/verify$", function()
         return send(400, { error = "email and code required" })
     end
 
+    -- Rate-limit OTP verification: max 5 failed attempts per email per OTP window.
+    local auth        = cfg_auth()
+    local window      = auth.otp_expiry_secs or 900
+    local rl_key      = "otp_fail:" .. addr
+    local rl          = ngx.shared.aig_ratelimit
+    local attempts    = rl:get(rl_key) or 0
+    if attempts >= 5 then
+        ngx.log(ngx.WARN, "otp brute-force blocked for ", addr)
+        return send(429, { error = "too many attempts, request a new code" })
+    end
+
     local code_hash = crypto.sha256_hex(tostring(code):match("^%s*(.-)%s*$"))
     local err       = storage.consume_email_otp(addr, code_hash)
     if err then
+        -- Increment failure counter; TTL aligned to the OTP window so the
+        -- lockout expires when the OTP itself expires.
+        local new_count = attempts + 1
+        rl:set(rl_key, new_count, window)
         return send(401, { error = "invalid or expired code" })
     end
+
+    -- Success — clear the failure counter.
+    rl:delete(rl_key)
 
     local user = storage.find_admin_user_by_email(addr)
     if not user then

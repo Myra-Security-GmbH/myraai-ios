@@ -35,11 +35,19 @@ function M.build_headers(ctx, api_key)
         headers["Authorization"]  = nil
         headers["api-key"]        = api_key
     end
-    -- Forward any x-aig-provider-* headers as provider-specific overrides
+    -- Forward any x-aig-provider-* headers as provider-specific overrides.
+    -- Blocked: credentials and headers already controlled by the gateway.
+    local BLOCKED = {
+        ["authorization"]  = true,
+        ["api-key"]        = true,
+        ["x-api-key"]      = true,
+        ["content-type"]   = true,
+        ["x-request-id"]   = true,
+    }
     local req_headers = ngx.req.get_headers()
     for k, v in pairs(req_headers) do
         local fwd = k:match("^x%-aig%-provider%-(.+)$")
-        if fwd then headers[fwd] = v end
+        if fwd and not BLOCKED[fwd:lower()] then headers[fwd] = v end
     end
     return headers
 end
