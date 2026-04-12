@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { useCurrency } from "src/common/hooks/useCurrency";
 import { CurrencySelector } from "src/common/components/CurrencySelector";
@@ -294,7 +295,11 @@ function computeByProvider(topModels: TopModelRow[]): ProviderAgg[] {
 export default function TenantAnalytics() {
   useDocumentTitle("Cost Analytics");
 
-  const [period, setPeriod]               = useState<Period>("7d");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawPeriod = searchParams.get("timeframe") ?? "";
+  const period: Period = (["today","7d","30d"] as const).includes(rawPeriod as Period)
+    ? rawPeriod as Period
+    : "7d";
   const [tab, setTab]                     = useState<Tab>("tenant");
   const [analytics, setAnalytics]         = useState<AnalyticsDepth | null>(null);
   const [tenants, setTenants]             = useState<Tenant[] | null>(null);
@@ -404,7 +409,7 @@ export default function TenantAnalytics() {
           <div className={s["timeframe-tabs"]}>
             {(["today", "7d", "30d"] as Period[]).map(p => (
               <button key={p} className={`${s["timeframe-tab"]} ${period === p ? s["timeframe-tab--active"] : ""}`}
-                onClick={() => setPeriod(p)}>
+                onClick={() => setSearchParams({ timeframe: p }, { replace: true })}>
                 {periodLabel(p)}
               </button>
             ))}

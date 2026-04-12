@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { api } from "src/api/client";
 import { UsageStats, PeriodStats, TimeseriesPoint, AnalyticsDepth } from "src/api/types";
@@ -146,7 +147,11 @@ export default function Dashboard() {
   const [series, setSeries] = useState<SeriesData | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsDepth | null>(null);
   const [loading, setLoading] = useState(true);
-  const [timeframe, setTimeframe] = useState<Timeframe>("today");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTf = searchParams.get("timeframe") ?? "";
+  const timeframe: Timeframe = (["today","yesterday","last_7d","hour","last_min"] as const).includes(rawTf as Timeframe)
+    ? rawTf as Timeframe
+    : "today";
 
   useEffect(() => {
     const hoursToday = Math.max(2, new Date().getUTCHours() + 1);
@@ -213,7 +218,7 @@ export default function Dashboard() {
               <button
                 key={key}
                 className={`${s["timeframe-tab"]} ${timeframe === key ? s["timeframe-tab--active"] : ""}`}
-                onClick={() => setTimeframe(key)}
+                onClick={() => setSearchParams({ timeframe: key }, { replace: true })}
               >
                 {label}
               </button>

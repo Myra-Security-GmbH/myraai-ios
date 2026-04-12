@@ -70,7 +70,7 @@ export default function Projects() {
     navigate("/projects");
   }
 
-  const canCreate = me?.role === "admin" || me?.role === "tenant_admin";
+  const canCreate = me?.role !== "viewer";
 
   const displayProjects = projects
     .filter((p) => {

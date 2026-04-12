@@ -23,10 +23,12 @@ import Users from "src/modules/users/pages/Users";
 import TenantAnalytics from "src/modules/analytics/pages/TenantAnalytics";
 import Profile from "src/modules/profile/pages/Profile";
 import Commands from "src/modules/commands/pages/Commands";
+import MCPConnectors from "src/modules/mcp/pages/MCPConnectors";
 import Chat from "src/modules/chat/pages/Chat";
 import Projects from "src/modules/projects/pages/Projects";
 import LoginPage from "src/pages/LoginPage";
 import SharedConversation from "src/pages/SharedConversation";
+import DebugPage from "src/pages/DebugPage";
 
 function AppShell() {
   return (
@@ -53,6 +55,7 @@ function AppShell() {
           <Route path="/model-prices" element={<ModelPrices />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/commands" element={<Commands />} />
+          <Route path="/mcp" element={<MCPConnectors />} />
         </Routes>
       </div>
     </div>
@@ -66,6 +69,7 @@ export default function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/debug" element={<DebugPage />} />
             <Route path="/shared/:token" element={<SharedConversation />} />
             <Route path="/*" element={
               <AuthGuard>

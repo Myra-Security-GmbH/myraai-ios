@@ -15,6 +15,8 @@ export interface DrawerSettings {
   temperature: number;
   maxTokens: number;
   webSearch: boolean;
+  /** null = off; number = thinking budget in tokens (1000–32000) */
+  thinkingBudget: number | null;
 }
 
 interface Props {
@@ -26,6 +28,8 @@ interface Props {
   onApplyPreset: (preset: ChatPreset) => void;
   onSavePreset: (name: string) => void;
   onDeletePreset: (id: string) => void;
+  /** Whether the currently selected model supports extended thinking */
+  supportsThinking: boolean;
 }
 
 export default function SettingsDrawer({
@@ -37,6 +41,7 @@ export default function SettingsDrawer({
   onApplyPreset,
   onSavePreset,
   onDeletePreset,
+  supportsThinking,
 }: Props) {
   function upd(partial: Partial<DrawerSettings>) {
     onChange({ ...settings, ...partial });
@@ -105,6 +110,44 @@ export default function SettingsDrawer({
               Web search (Anthropic models only)
             </label>
           </div>
+
+          {supportsThinking && (
+            <div className={s["settings-field"]}>
+              <label className={s["settings-label"]} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={settings.thinkingBudget !== null}
+                  onChange={(e) => upd({ thinkingBudget: e.target.checked ? 10000 : null })}
+                  data-cy="thinking-toggle"
+                />
+                Extended thinking
+              </label>
+              {settings.thinkingBudget !== null && (
+                <>
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                    Thinking tokens: {settings.thinkingBudget.toLocaleString()}
+                    {" — "}
+                    <span style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>
+                      Temperature is disabled while thinking is on
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1000"
+                    max="32000"
+                    step="1000"
+                    value={settings.thinkingBudget}
+                    onChange={(e) => upd({ thinkingBudget: parseInt(e.target.value, 10) })}
+                    style={{ width: "100%", marginTop: 6 }}
+                    data-cy="thinking-budget-slider"
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-secondary)" }}>
+                    <span>1k</span><span>32k</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Presets section */}
           <div className={s["settings-field"]}>

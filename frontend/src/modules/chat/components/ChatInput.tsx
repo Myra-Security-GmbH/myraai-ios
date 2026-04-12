@@ -39,6 +39,12 @@ export interface PendingAttachment {
   data: string; // base64
 }
 
+interface ProjectContext {
+  icon: string;
+  name: string;
+  color: string;
+}
+
 interface Props {
   value: string;
   onChange: (v: string) => void;
@@ -51,6 +57,7 @@ interface Props {
   onRemoveAttachment?: (idx: number) => void;
   commands?: SlashCommand[];
   onCommandSelect?: (cmd: SlashCommand) => void;
+  projectContext?: ProjectContext;
 }
 
 const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
@@ -65,6 +72,7 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onRemoveAttachment,
   commands,
   onCommandSelect,
+  projectContext,
 }, ref) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +127,16 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   return (
     <div className={s["input-area"]}>
       <div className={s["input-inner"]} style={{ position: "relative" }}>
+        {projectContext && (
+          <div style={{ marginBottom: 4 }}>
+            <span
+              className={s["project-pill"]}
+              style={{ borderColor: projectContext.color ? `color-mix(in srgb, ${projectContext.color} 40%, transparent)` : undefined }}
+            >
+              {projectContext.icon} {projectContext.name}
+            </span>
+          </div>
+        )}
         {showPicker && onCommandSelect && (
           <CommandPicker
             query={commandQuery}

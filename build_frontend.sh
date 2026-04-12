@@ -12,6 +12,7 @@ VITE_ADMIN_URL="https://ai-api-admin.myra.eu/admin/v1" \
 VITE_AUTH_URL="https://ai-api-admin.myra.eu/admin/auth" \
 VITE_GATEWAY_URL="https://ai-api.myra.eu" \
 VITE_DOCS_URL="https://ai-docs.myra.eu" \
+VITE_BUILD_DATE="$(date -u +"%Y-%m-%d %H:%M UTC")" \
 npm run build
 
 echo "==> Deploying to container '$CONTAINER'..."

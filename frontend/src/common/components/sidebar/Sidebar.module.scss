@@ -96,8 +96,8 @@
   overflow: hidden;
   flex-shrink: 0;
 
-  // On mobile: slide in from the left as a fixed overlay
-  @media (max-width: 768px) {
+  // On touch devices: slide in from the left as a fixed overlay
+  @media (pointer: coarse) {
     position: fixed;
     top: 0;
     left: 0;
@@ -114,7 +114,7 @@
 }
 
 .sidebar--mobile-open {
-  @media (max-width: 768px) {
+  @media (pointer: coarse) {
     transform: translateX(0);
   }
 }
@@ -231,6 +231,18 @@
   flex: 1;
 }
 
+.build-date {
+  padding: tools.pixelToRem(4) tools.pixelToRem(12) tools.pixelToRem(6);
+  font-size: tools.pixelToRem(10);
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.6;
+  text-align: center;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .bottom-bar {
   display: flex;
   flex-direction: row;
@@ -255,7 +267,7 @@
 .mobile-trigger {
   display: none;
 
-  @media (max-width: 768px) {
+  @media (pointer: coarse) {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -278,7 +290,7 @@
 .mobile-overlay {
   display: none;
 
-  @media (max-width: 768px) {
+  @media (pointer: coarse) {
     display: block;
     position: fixed;
     inset: 0;
@@ -291,7 +303,7 @@
 .mobile-close {
   display: none;
 
-  @media (max-width: 768px) {
+  @media (pointer: coarse) {
     display: flex;
     align-items: center;
     justify-content: center;

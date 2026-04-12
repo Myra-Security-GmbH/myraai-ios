@@ -85,6 +85,9 @@ function TokenIcon() {
 function CommandsIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>;
 }
+function McpIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>;
+}
 function LogoutIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
 }
@@ -211,7 +214,14 @@ export default function Sidebar() {
           <SectionLabel label="ACCOUNT" collapsed={effectiveCollapsed} />
           <NavItem to="/profile" label="My Tokens" icon={<TokenIcon />} {...navProps} />
           <NavItem to="/commands" label="My Commands" icon={<CommandsIcon />} {...navProps} />
+          <NavItem to="/mcp" label="MCP Connectors" icon={<McpIcon />} {...navProps} />
         </div>
+
+        {!effectiveCollapsed && import.meta.env.VITE_BUILD_DATE && (
+          <div className={styles["build-date"]}>
+            Built {import.meta.env.VITE_BUILD_DATE}
+          </div>
+        )}
 
         <div className={`${styles["bottom-bar"]} ${effectiveCollapsed ? styles["bottom-bar--collapsed"] : ""}`}>
           <a className={styles["bottom-btn"]} href={docsUrl("/")} target="_blank" rel="noopener noreferrer" title="Documentation">

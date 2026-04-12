@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Force mobile viewport when browser is in "Request Desktop Site" mode.
+         In that mode the browser ignores width=device-width and sets innerWidth to
+         ~980 px while outerWidth stays at the real CSS pixel width (~427 px on a phone).
+         Detecting innerWidth >> outerWidth lets us reset the meta tag before React renders,
+         giving us the correct layout viewport without any layout shift. -->
+    <script>
+    (function(){
+      var ow = window.outerWidth;
+      var iw = window.innerWidth;
+      if (ow > 0 && iw > ow * 1.5 && ow < 600) {
+        document.querySelector('meta[name="viewport"]')
+          .setAttribute('content', 'width=' + ow + ',initial-scale=1.0');
+      }
+    })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>AI Gateway Admin</title>
   </head>

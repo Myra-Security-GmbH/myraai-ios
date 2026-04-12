@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
-import type { ChatMessage } from "src/api/types";
+import { useEffect, useRef, useState } from "react";
+import type { ChatMessage, ChatProject, ProjectKnowledgeText } from "src/api/types";
+import type { Artifact } from "./ArtifactPanel";
 import MessageBubble from "./MessageBubble";
 import s from "../pages/Chat.module.scss";
 
@@ -12,9 +13,14 @@ interface Props {
   /** If set, code blocks with a filename comment get a "Save to Project" card */
   projectId?: string | null;
   onFileSaved?: ((filename: string, content: string, lang: string) => void) | null;
+  /** Called when the user clicks an artifact card to open the side panel */
+  onOpenArtifact?: ((artifact: Artifact) => void) | null;
   onCopy: (text: string) => void;
   onEdit?: (id: string, content: string) => void;
   onRegenerate?: () => void;
+  /** When set and messages are empty, show a project welcome card instead of generic empty state */
+  activeProject?: ChatProject | null;
+  projectKnowledge?: ProjectKnowledgeText[];
 }
 
 function BotIcon() {
@@ -34,10 +40,14 @@ export default function MessageThread({
   streamingThinkingDurationMs,
   projectId,
   onFileSaved,
+  onOpenArtifact,
   onCopy,
   onEdit,
   onRegenerate,
+  activeProject,
+  projectKnowledge = [],
 }: Props) {
+  const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const isUserScrolled = useRef(false);
@@ -98,6 +108,54 @@ export default function MessageThread({
   }, [isStreaming]);
 
   if (messages.length === 0 && !isStreaming && !processingStatus) {
+    if (activeProject) {
+      const MAX_CHIPS = 5;
+      const extraFiles = projectKnowledge.length > MAX_CHIPS ? projectKnowledge.length - MAX_CHIPS : 0;
+      const visibleFiles = projectKnowledge.slice(0, MAX_CHIPS);
+      return (
+        <div className={s.thread}>
+          <div className={s["project-welcome"]}>
+            <div className={s["project-welcome-icon"]} style={{ background: activeProject.color || "var(--accent)" }}>
+              {activeProject.icon}
+            </div>
+            <h2 className={s["project-welcome-name"]}>{activeProject.name}</h2>
+            {activeProject.description && (
+              <p className={s["project-welcome-desc"]}>{activeProject.description}</p>
+            )}
+            {activeProject.instructions && (
+              <div className={s["project-welcome-instructions"]}>
+                <button
+                  className={s["project-welcome-instructions-toggle"]}
+                  onClick={() => setInstructionsExpanded((v) => !v)}
+                  type="button"
+                >
+                  <span>{instructionsExpanded ? "▾" : "▸"}</span>
+                  <span>Instructions</span>
+                </button>
+                {instructionsExpanded && (
+                  <pre className={s["project-welcome-instructions-body"]}>
+                    {activeProject.instructions}
+                  </pre>
+                )}
+              </div>
+            )}
+            {projectKnowledge.length > 0 && (
+              <div className={s["project-welcome-files"]}>
+                {visibleFiles.map((f) => (
+                  <span key={f.id} className={s["project-welcome-file-chip"]} title={f.filename}>
+                    📎 {f.filename}
+                  </span>
+                ))}
+                {extraFiles > 0 && (
+                  <span className={s["project-welcome-file-chip"]}>+{extraFiles} more</span>
+                )}
+              </div>
+            )}
+            <p className={s["project-welcome-hint"]}>Start a new chat below</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className={s.thread}>
         <div className={s["thread-empty"]}>
@@ -140,6 +198,7 @@ export default function MessageThread({
             thinkingDurationMs={isThisBubbleStreaming ? streamingThinkingDurationMs : null}
             projectId={projectId}
             onFileSaved={onFileSaved}
+            onOpenArtifact={onOpenArtifact}
             onCopy={onCopy}
             onEdit={onEdit}
             onRegenerate={idx === allMessages.length - 1 && msg.role === "assistant" ? onRegenerate : undefined}

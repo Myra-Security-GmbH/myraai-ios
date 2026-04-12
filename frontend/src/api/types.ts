@@ -424,6 +424,8 @@ export interface ModelPrice {
   cache_write_per_1k: number | null;
   cache_read_per_1k: number | null;
   updated_at: string;
+  /** True for Anthropic claude-3-7-sonnet and all claude-4-series models */
+  supports_thinking: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -504,14 +506,40 @@ export interface ChatConversation {
   starred?: number;          // 0 | 1
   archived_at?: number | null; // unix seconds
   memory_disabled?: number;  // 0 | 1
+  shared_in_project?: number; // 0 | 1
+  shared_at?: string | null;
+  shared_by?: string | null;
   created_at: string;
   updated_at: string;
   messages?: ChatMessage[];
 }
 
+export interface ProjectFeedEntry {
+  id: string;
+  title: string;
+  model: string;
+  user_id: string;
+  project_id: string;
+  shared_at: string;
+  shared_by: string;
+  shared_by_email: string | null;
+  created_at: string;
+}
+
 export interface ConversationShare {
   token: string;
   url:   string;
+}
+
+export interface ConversationSummary {
+  id: string;
+  conversation_id: string;
+  summary_text: string;
+  first_message_id: string;
+  last_message_id: string;
+  message_count: number;
+  model_used: string;
+  created_at: string;
 }
 
 export interface ChatMessage {
@@ -570,6 +598,35 @@ export interface ChatFeedback {
   comment: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// MCP connector types
+// ---------------------------------------------------------------------------
+
+export type McpAuthType = "none" | "bearer" | "header";
+
+export interface McpConnector {
+  id: string;
+  tenant_id: string;
+  gateway_id: string | null;
+  name: string;
+  server_url: string;
+  auth_type: McpAuthType;
+  /** Only present when fetched via GET /mcp/:id */
+  auth_value?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface McpTool {
+  name: string;
+  description?: string;
+  inputSchema: {
+    type: "object";
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
 }
 
 export type ProjectRole = "owner" | "editor" | "viewer";

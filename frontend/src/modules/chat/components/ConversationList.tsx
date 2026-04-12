@@ -80,6 +80,7 @@ interface Props {
   onToggleArchived: () => void;
   creating: boolean;
   streamingConvId?: string | null;
+  newChatLabel?: string;
 }
 
 export default function ConversationList({
@@ -96,6 +97,7 @@ export default function ConversationList({
   onToggleArchived,
   creating,
   streamingConvId,
+  newChatLabel = "New Chat",
 }: Props) {
   const [search, setSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -214,7 +216,7 @@ export default function ConversationList({
       <div className={s["conv-sidebar-header"]}>
         <button className={s["conv-new-btn"]} onClick={onCreate} disabled={creating}>
           <PlusIcon />
-          New Chat
+          {newChatLabel}
         </button>
       </div>
 

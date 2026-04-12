@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "src/api/client";
-import type { ChatProject, ChatConversation, Gateway, Tenant } from "src/api/types";
+import type { ChatProject, ChatConversation, Gateway, ProjectFeedEntry, Tenant } from "src/api/types";
 import { useAuth } from "src/common/contexts/AuthContext";
 import { Modal } from "src/common/components/Modal";
 import s from "src/common/components/layout/Layout.module.scss";
@@ -27,7 +27,13 @@ function FilesIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>;
 }
 
-type Tab = "overview" | "files" | "members" | "conversations";
+const ICON_OPTIONS = ["📁", "💼", "🔬", "🎨", "💡", "🚀", "📊", "🛠️", "📝", "🌐"];
+const COLOR_OPTIONS = [
+  "#2563eb", "#7c3aed", "#059669", "#dc2626", "#d97706",
+  "#0891b2", "#db2777", "#65a30d", "#4f46e5", "#374151",
+];
+
+type Tab = "overview" | "files" | "members" | "conversations" | "feed";
 
 const ROLE_BADGE: Record<string, string> = {
   owner:  s["badge--success"],
@@ -51,9 +57,11 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
   const navigate = useNavigate();
   const [project, setProject] = useState<ChatProject | null>(initialProject);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [feedEntries, setFeedEntries] = useState<ProjectFeedEntry[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
   const [loading, setLoading] = useState(!initialProject);
   const [searchParams, setSearchParams] = useSearchParams();
-  const VALID_TABS: Tab[] = ["overview", "files", "members", "conversations"];
+  const VALID_TABS: Tab[] = ["overview", "files", "members", "conversations", "feed"];
   const tabParam = searchParams.get("tab") as Tab | null;
   const tab: Tab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : "overview";
   const [editing, setEditing] = useState(false);
@@ -61,6 +69,8 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
   const [editDesc, setEditDesc] = useState("");
   const [editInst, setEditInst] = useState("");
   const [editGateway, setEditGateway] = useState("");
+  const [editIcon, setEditIcon] = useState("📁");
+  const [editColor, setEditColor] = useState("#2563eb");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -86,12 +96,24 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
       .then(setConversations).catch(() => {});
   }, [projectId]);
 
+  // Load feed when tab becomes active
+  useEffect(() => {
+    if (tab !== "feed") return;
+    setFeedLoading(true);
+    api.get<ProjectFeedEntry[]>(`/projects/${projectId}/feed`)
+      .then(setFeedEntries)
+      .catch(() => {})
+      .finally(() => setFeedLoading(false));
+  }, [tab, projectId]);
+
   function startEdit() {
     if (!project) return;
     setEditName(project.name);
     setEditDesc(project.description ?? "");
     setEditInst(project.instructions ?? "");
     setEditGateway(project.default_gateway_id ?? "");
+    setEditIcon(project.icon ?? "📁");
+    setEditColor(project.color ?? "#2563eb");
     setEditing(true);
     setEditError(null);
   }
@@ -105,6 +127,8 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
         description: editDesc.trim() || null,
         instructions: editInst.trim() || null,
         default_gateway_id: editGateway || null,
+        icon: editIcon,
+        color: editColor,
       });
       setProject(updated);
       onUpdated(updated);
@@ -165,7 +189,7 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
 
       {/* Tabs */}
       <div className={s.tabs}>
-        {(["overview", "files", "members", "conversations"] as Tab[]).map((t) => (
+        {(["overview", "files", "members", "conversations", "feed"] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -187,12 +211,37 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
       <div className={s["detail-panel-body"]}>
 
         {tab === "overview" && (
-          <div style={{ maxWidth: 640 }}>
+          <div style={{ maxWidth: 900 }}>
             {editing ? (
               <>
                 <div className={s["form-group"]}>
                   <label className={s["form-label"]}>Name</label>
                   <input className={s["form-input"]} value={editName} onChange={(e) => setEditName(e.target.value)} />
+                </div>
+                <div className={s["picker-row"]}>
+                  <div className={s["picker-group"]}>
+                    <span className={s["form-label"]}>Icon</span>
+                    <div className={s["picker-options"]}>
+                      {ICON_OPTIONS.map((ic) => (
+                        <button key={ic} type="button"
+                          className={`${s["picker-btn"]} ${editIcon === ic ? s["picker-btn--selected"] : ""}`}
+                          onClick={() => setEditIcon(ic)}
+                        >{ic}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className={s["picker-group"]}>
+                    <span className={s["form-label"]}>Color</span>
+                    <div className={s["picker-options"]}>
+                      {COLOR_OPTIONS.map((c) => (
+                        <button key={c} type="button"
+                          className={`${s["color-swatch"]} ${editColor === c ? s["color-swatch--selected"] : ""}`}
+                          style={{ background: c }}
+                          onClick={() => setEditColor(c)}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className={s["form-group"]}>
                   <label className={s["form-label"]}>Description</label>
@@ -231,13 +280,32 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
                       {gateways.find((g) => g.id === project.default_gateway_id)?.slug ?? "—"}
                     </div>
                   </div>
-                  <div className={s["stat-card"]}>
+                  <div
+                    className={s["stat-card"]}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setSearchParams((p) => { p.set("tab", "members"); return p; })}
+                    data-cy="stat-card-members"
+                  >
                     <div className={s["stat-label"]}>Members</div>
                     <div className={s["stat-value"]}>{project.members?.length ?? project.member_count ?? 0}</div>
                   </div>
-                  <div className={s["stat-card"]}>
+                  <div
+                    className={s["stat-card"]}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setSearchParams((p) => { p.set("tab", "files"); return p; })}
+                    data-cy="stat-card-files"
+                  >
                     <div className={s["stat-label"]}>Files</div>
                     <div className={s["stat-value"]}>{project.knowledge?.length ?? project.knowledge_count ?? 0}</div>
+                  </div>
+                  <div
+                    className={s["stat-card"]}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setSearchParams((p) => { p.set("tab", "conversations"); return p; })}
+                    data-cy="stat-card-conversations"
+                  >
+                    <div className={s["stat-label"]}>Conversations</div>
+                    <div className={s["stat-value"]} data-cy="stat-card-conversations-value">{conversations.length}</div>
                   </div>
                 </div>
                 {project.instructions && (
@@ -336,6 +404,52 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
                         <td>{c.title || "Untitled"}</td>
                         <td style={{ color: "var(--text-secondary)" }}>{c.model}</td>
                         <td style={{ color: "var(--text-secondary)" }}>{new Date(c.updated_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "feed" && (
+          <div style={{ maxWidth: 720 }}>
+            <div className={s["section-header"]}>
+              <h3 className={s["section-title"]}>Project Feed</h3>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                Conversations shared by project members
+              </span>
+            </div>
+            {feedLoading ? (
+              <div className={s.empty}>Loading…</div>
+            ) : feedEntries.length === 0 ? (
+              <div className={s.empty}>
+                No conversations shared yet. Open a conversation in this project and click the team icon to share it here.
+              </div>
+            ) : (
+              <div className={s["table-wrapper"]}>
+                <table className={s.table}>
+                  <thead>
+                    <tr>
+                      <th>Title</th>
+                      <th>Model</th>
+                      <th>Shared by</th>
+                      <th>Shared at</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feedEntries.map((entry) => (
+                      <tr
+                        key={entry.id}
+                        style={{ cursor: "pointer" }}
+                        data-cy="feed-entry-row"
+                        onClick={() => navigate(`/chat?project_id=${projectId}&conv=${entry.id}`)}
+                      >
+                        <td>{entry.title || "Untitled"}</td>
+                        <td style={{ color: "var(--text-secondary)" }}>{entry.model}</td>
+                        <td style={{ color: "var(--text-secondary)" }}>{entry.shared_by_email ?? entry.shared_by}</td>
+                        <td style={{ color: "var(--text-secondary)" }}>{new Date(entry.shared_at).toLocaleDateString()}</td>
                       </tr>
                     ))}
                   </tbody>

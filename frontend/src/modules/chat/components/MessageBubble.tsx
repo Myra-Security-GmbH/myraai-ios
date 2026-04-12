@@ -12,7 +12,9 @@ import type { Components } from "react-markdown";
 import type { ChatMessage } from "src/api/types";
 import AttachmentChip from "./AttachmentChip";
 import ThinkingBlock from "./ThinkingBlock";
-import { SaveToProjectCard, SaveAllCard, type FileEntry } from "./SaveToProjectCard";
+import { SaveAllCard, type FileEntry } from "./SaveToProjectCard";
+import { ArtifactCard } from "./ArtifactCard";
+import type { Artifact } from "./ArtifactPanel";
 import s from "../pages/Chat.module.scss";
 
 function fmtCost(usd: number | null) {
@@ -81,8 +83,12 @@ interface ProjectCtx {
   hideSaveCard: boolean;
   /** Fingerprint → filename for heading-before-block detection (Qwen3 / non-compliant models) */
   codeToFilename: Map<string, string>;
+  /** Called when the user clicks an artifact card to open the side panel */
+  onOpenArtifact: ((a: Artifact) => void) | null;
+  /** True while this message bubble is actively streaming */
+  isStreaming: boolean;
 }
-const ProjectIdContext = createContext<ProjectCtx>({ projectId: null, onFileSaved: null, hideSaveCard: false, codeToFilename: new Map() });
+const ProjectIdContext = createContext<ProjectCtx>({ projectId: null, onFileSaved: null, hideSaveCard: false, codeToFilename: new Map(), onOpenArtifact: null, isStreaming: false });
 
 /**
  * Scan markdown text for fenced code blocks that carry a filename, via two patterns:
@@ -126,7 +132,7 @@ function scanFilenameBlocks(text: string): { entries: FileEntry[]; codeToFilenam
 }
 
 function CodeBlock({ className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
-  const { projectId, onFileSaved, hideSaveCard, codeToFilename } = useContext(ProjectIdContext);
+  const { codeToFilename, onOpenArtifact, isStreaming } = useContext(ProjectIdContext);
   const lang = /language-(\w+)/.exec(className ?? "")?.[1] ?? "";
   const rawCode = extractText(children).replace(/\n$/, "");
   const [codeCopied, setCodeCopied] = useState(false);
@@ -155,6 +161,21 @@ function CodeBlock({ className, children }: { inline?: boolean; className?: stri
   if (isInline) {
     return <code className={className}>{children}</code>;
   }
+
+  // Named file → compact artifact card (replaces inline block + individual save card)
+  if (detectedFilename) {
+    return (
+      <ArtifactCard
+        filename={detectedFilename}
+        lang={lang}
+        code={code}
+        isStreaming={isStreaming}
+        onOpen={() => onOpenArtifact?.({ lang, code, filename: detectedFilename, complete: !isStreaming })}
+      />
+    );
+  }
+
+  // Anonymous code block — render inline as before
   return (
     <>
       <div style={{ borderRadius: 8, overflow: "hidden", margin: "0.75em 0", border: "1px solid var(--card-border)" }}>
@@ -163,7 +184,7 @@ function CodeBlock({ className, children }: { inline?: boolean; className?: stri
           padding: "4px 12px", background: "var(--table-row-hover)", fontSize: 11,
           color: "var(--text-secondary)", borderBottom: "1px solid var(--card-border)",
         }}>
-          <span>{detectedFilename ?? lang ?? "code"}</span>
+          <span>{lang || "code"}</span>
           <button
             onClick={handleCopy}
             style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", padding: "2px 6px" }}
@@ -172,17 +193,9 @@ function CodeBlock({ className, children }: { inline?: boolean; className?: stri
           </button>
         </div>
         <pre style={{ margin: 0, padding: "12px 16px", overflowX: "auto" }}>
-          <code className={className}>{detectedFilename ? code : children}</code>
+          <code className={className}>{children}</code>
         </pre>
       </div>
-      {detectedFilename && projectId && !hideSaveCard && (
-        <SaveToProjectCard
-          filename={detectedFilename}
-          content={code}
-          projectId={projectId}
-          onSaved={onFileSaved ? () => onFileSaved(detectedFilename, code, lang) : undefined}
-        />
-      )}
     </>
   );
 }
@@ -240,6 +253,8 @@ interface Props {
   projectId?: string | null;
   /** Called after a file is saved so Chat.tsx can inject a context-refresh message */
   onFileSaved?: ((filename: string, content: string, lang: string) => void) | null;
+  /** Called when the user clicks an artifact card to open the side panel */
+  onOpenArtifact?: ((artifact: Artifact) => void) | null;
   onCopy: (text: string) => void;
   onEdit?: (id: string, content: string) => void;
   onRegenerate?: () => void;
@@ -252,6 +267,7 @@ const MessageBubble = memo(function MessageBubble({
   thinkingDurationMs,
   projectId,
   onFileSaved,
+  onOpenArtifact,
   onCopy,
   onEdit,
   onRegenerate,
@@ -406,10 +422,11 @@ const MessageBubble = memo(function MessageBubble({
                     />
                   )}
                   {(() => {
-                    const { entries: fileBlocks, codeToFilename } = (projectId && !isStreaming && !isUser)
+                    const { entries: fileBlocks, codeToFilename } = !isUser
                       ? scanFilenameBlocks(textContent)
                       : { entries: [], codeToFilename: new Map<string, string>() };
-                    const useConsolidated = fileBlocks.length > 1 && !useIndividual;
+                    // SaveAllCard: only when projectId set, multiple files, not streaming
+                    const useConsolidated = !!projectId && fileBlocks.length > 1 && !useIndividual && !isStreaming;
                     return (
                       <>
                         <ProjectIdContext.Provider value={{
@@ -417,6 +434,8 @@ const MessageBubble = memo(function MessageBubble({
                           onFileSaved: onFileSaved ?? null,
                           hideSaveCard: useConsolidated,
                           codeToFilename,
+                          onOpenArtifact: onOpenArtifact ?? null,
+                          isStreaming: isStreaming ?? false,
                         }}>
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkEmoji]}

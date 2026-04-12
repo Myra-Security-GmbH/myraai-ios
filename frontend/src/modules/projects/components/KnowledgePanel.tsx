@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "src/api/client";
 import type { ProjectKnowledge } from "src/api/types";
+import { Modal } from "src/common/components/Modal";
 import s from "src/common/components/layout/Layout.module.scss";
+import { ProjectFilePreview } from "./ProjectFilePreview";
 
 function UploadIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>;
@@ -29,6 +31,7 @@ interface KnowledgeItem extends ProjectKnowledge {
   extracted_text?: string;
 }
 
+
 interface Props {
   projectId: string;
   canEdit: boolean;
@@ -55,6 +58,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<ProjectKnowledge | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -217,7 +221,12 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
             </thead>
             <tbody>
               {files.map((f) => (
-                <tr key={f.id} data-cy={`knowledge-row-${f.id}`}>
+                <tr
+                  key={f.id}
+                  data-cy={`knowledge-row-${f.id}`}
+                  onClick={() => setPreviewFile(f)}
+                  style={{ cursor: "pointer" }}
+                >
                   <td>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                       <FileIcon />
@@ -231,7 +240,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
                     <button
                       type="button"
                       className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
-                      onClick={() => handleDownload(f)}
+                      onClick={(e) => { e.stopPropagation(); handleDownload(f); }}
                       title="Download file"
                       data-cy={`download-knowledge-${f.id}`}
                     >
@@ -240,7 +249,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
                     <button
                       type="button"
                       className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`}
-                      onClick={() => handleCopyUrl(f)}
+                      onClick={(e) => { e.stopPropagation(); handleCopyUrl(f); }}
                       title="Copy reference URL"
                       data-cy={`copy-url-knowledge-${f.id}`}
                       style={{ marginLeft: 4 }}
@@ -251,7 +260,7 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
                       <button
                         type="button"
                         className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`}
-                        onClick={() => handleDelete(f.id, f.filename)}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(f.id, f.filename); }}
                         title="Remove file"
                         data-cy={`delete-knowledge-${f.id}`}
                         style={{ marginLeft: 4 }}
@@ -265,6 +274,14 @@ export default function KnowledgePanel({ projectId, canEdit }: Props) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {previewFile && (
+        <ProjectFilePreview
+          file={previewFile}
+          projectId={projectId}
+          onClose={() => setPreviewFile(null)}
+        />
       )}
     </div>
   );

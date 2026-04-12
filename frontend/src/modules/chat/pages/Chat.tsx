@@ -8,7 +8,10 @@ import type {
   ChatMessage,
   ChatPreset,
   ChatProject,
+  ConversationSummary,
   Gateway,
+  McpConnector,
+  McpTool,
   ModelPrice,
   PlaygroundToken,
   ProjectKnowledgeText,
@@ -30,6 +33,7 @@ import ArtifactPanel, { type Artifact } from "../components/ArtifactPanel";
 import { Modal } from "src/common/components/Modal";
 import { VariableFillModal } from "../components/VariableFillModal";
 import MemoriesPanel from "../components/MemoriesPanel";
+import { ProjectFilePreview } from "src/modules/projects/components/ProjectFilePreview";
 import chatS from "./Chat.module.scss";
 
 // ── Gear icon ──────────────────────────────────────────────────────────────
@@ -94,6 +98,15 @@ function ShareIcon() {
   );
 }
 
+function ClipboardIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 function MemoryIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -121,36 +134,30 @@ function aiLabel(model: string): string {
   return model ? `${name} (${model})` : name;
 }
 
-/** Extract the last HTML or SVG artifact from a message/streaming string.
- *  Returns null if none found or the code block is shorter than 8 lines. */
-function extractArtifact(text: string): Artifact | null {
-  if (!text) return null;
-  // 1. Try complete fenced block: ```html … ```
-  const completeRe = /```(html|svg)\n([\s\S]+?)```/gi;
-  let last: Artifact | null = null;
-  let m: RegExpExecArray | null;
-  while ((m = completeRe.exec(text)) !== null) {
-    const code = m[2];
-    if (code.split("\n").length >= 8) {
-      last = { lang: m[1].toLowerCase() as "html" | "svg", code, complete: true };
-    }
-  }
-  if (last) return last;
-  // 2. Try incomplete (streaming) block: ```html … (no closing ```)
-  const incompleteRe = /```(html|svg)\n([\s\S]+)$/i;
-  const im = incompleteRe.exec(text);
-  if (im && im[2].split("\n").length >= 4) {
-    return { lang: im[1].toLowerCase() as "html" | "svg", code: im[2], complete: false };
-  }
-  return null;
-}
-
 /** Models that support native vision (image_url blocks) via vLLM.
  *  Text-only models not listed here have images routed through MinerU instead.
  *  Extend this set as vision-capable models are deployed. */
 const VLLM_VISION_MODELS = new Set<string>([
   // e.g. "qwen2.5-vl-7b-instruct",
 ]);
+
+/**
+ * Approximate context window size for a model.
+ * Used to determine when to trigger context summarization.
+ * Returns tokens; summarization fires at 75% of limit.
+ */
+function contextWindowTokens(model: string): number {
+  const m = model.toLowerCase();
+  if (m.startsWith("claude")) return 200_000;
+  if (m.startsWith("gpt-4o") || m.startsWith("gpt-4-turbo")) return 128_000;
+  if (m.startsWith("gpt-4")) return 128_000;
+  if (m.startsWith("gpt-3.5")) return 16_000;
+  if (m.startsWith("o1") || m.startsWith("o3")) return 128_000;
+  if (m.startsWith("gemini-1.5") || m.startsWith("gemini-2")) return 1_000_000;
+  if (m.startsWith("gemini")) return 128_000;
+  // Local / vLLM models — conservative default
+  return 32_000;
+}
 
 function isVisionCapable(model: string): boolean {
   const bare = model.startsWith("vllm/") ? model.slice(5) : model;
@@ -215,6 +222,15 @@ export default function Chat() {
   useEffect(() => { localStorage.setItem("aig-chat-model",   model);     }, [model]);
   useEffect(() => { localStorage.setItem("aig-chat-preset",  selectedPresetId); }, [selectedPresetId]);
 
+  // Reset thinking budget when model changes to one that doesn't support it
+  useEffect(() => {
+    const modelEntry = models.find((m) => m.model === model);
+    if (modelEntry && !modelEntry.supports_thinking) {
+      setDrawerSettings((prev) => ({ ...prev, thinkingBudget: null }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model, models]);
+
   // ── Active conversation ────────────────────────────────────────────────────
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const activeConvIdRef = useRef<string | null>(null);
@@ -257,6 +273,7 @@ export default function Chat() {
     temperature: 0.7,
     maxTokens: 8192,
     webSearch: false,
+    thinkingBudget: null,
   });
 
   // ── Chat input ─────────────────────────────────────────────────────────────
@@ -288,8 +305,9 @@ export default function Chat() {
   const thinkBlockDurationRef = useRef<number | null>(null);
   const [streamingThinkingDurationMs, setStreamingThinkingDurationMs] = useState<number | null>(null);
 
-  // ── Artifact panel ─────────────────────────────────────────────────────────
-  const [artifactDismissed, setArtifactDismissed] = useState(false);
+  // ── Context summaries (Infinite Chats) ────────────────────────────────────
+  const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([]);
+  const [summarizing, setSummarizing] = useState(false);
 
   // ── Play token ─────────────────────────────────────────────────────────────
   const [playToken, setPlayToken] = useState<PlaygroundToken | null>(null);
@@ -328,14 +346,29 @@ export default function Chat() {
   const [shareLoading, setShareLoading]       = useState(false);
   const [shareCopied, setShareCopied]         = useState(false);
 
+  // ── Share to project feed ──────────────────────────────────────────────────
+  const [sharedInProject, setSharedInProject] = useState(false);
+  const [shareProjectLoading, setShareProjectLoading] = useState(false);
+
   // ── Memories ───────────────────────────────────────────────────────────────
   const [memories, setMemories] = useState<ChatMemory[]>([]);
   const [showMemories, setShowMemories] = useState(false);
   const [memToast, setMemToast] = useState<string | null>(null);
+  const [showInstructionsModal, setShowInstructionsModal] = useState(false);
+  const [showFilesPanel, setShowFilesPanel] = useState(false);
+  const [previewFileFromChat, setPreviewFileFromChat] = useState<ProjectKnowledgeText | null>(null);
+
+  // ── Artifact panel ─────────────────────────────────────────────────────────
+  const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
 
   // ── Slash commands ─────────────────────────────────────────────────────────
   const [userCommands, setUserCommands] = useState<SlashCommand[]>([]);
   const [pendingCommand, setPendingCommand] = useState<SlashCommand | null>(null);
+
+  // ── MCP connectors ──────────────────────────────────────────────────────────
+  // mcpTools: flat list of { connectorId, tool } ready to inject into requests
+  const [mcpConnectors, setMcpConnectors] = useState<McpConnector[]>([]);
+  const [mcpTools, setMcpTools] = useState<Array<{ connectorId: string; tool: McpTool }>>([]);
 
   // ── Initial data load ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -346,6 +379,23 @@ export default function Chat() {
     api.get<ChatPreset[]>("/chat-presets").then(setPresets).catch(() => {});
     api.get<SlashCommand[]>("/chat-commands").then(setUserCommands).catch(() => {});
     api.get<ChatMemory[]>("/memories").then(setMemories).catch(() => {});
+    // Load MCP connectors and fetch their tool lists
+    api.get<McpConnector[]>("/mcp").then(async (connectors) => {
+      setMcpConnectors(connectors);
+      const toolEntries: Array<{ connectorId: string; tool: McpTool }> = [];
+      await Promise.allSettled(connectors.map(async (c) => {
+        try {
+          const res = await api.post<{ result?: { tools?: McpTool[] } }>(
+            `/mcp/${c.id}/call`,
+            { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }
+          );
+          for (const t of res.result?.tools ?? []) {
+            toolEntries.push({ connectorId: c.id, tool: t });
+          }
+        } catch { /* connector unreachable — skip */ }
+      }));
+      setMcpTools(toolEntries);
+    }).catch(() => {});
   }, []);
 
   // ── Project context: load project + knowledge when ?project_id= changes ───
@@ -428,6 +478,10 @@ export default function Chat() {
   const freeProviders = new Set(providerMeta.filter((p) => !p.requires_key).map((p) => p.name));
   const runnableProviders = new Set<string>([...freeProviders, ...configuredProviders]);
 
+  // Thinking capability: look up the current model in the price/capability list.
+  // Falls back to false if the model isn't in the list yet.
+  const supportsThinking = models.find((m) => m.model === model)?.supports_thinking ?? false;
+
   // ── Tenant presets (member/viewer restriction) ────────────────────────────
   const selectedTenant = tenants.find((t) => t.id === tenantId);
   const tenantPresets: TenantPreset[] = selectedTenant?.chat_presets ?? [];
@@ -448,10 +502,17 @@ export default function Chat() {
   // ── Load conversation messages ─────────────────────────────────────────────
   async function loadConversation(id: string) {
     loadingConvRef.current = id;
+    setActiveArtifact(null);
+    setConversationSummaries([]);
     try {
       const conv = await api.get<ChatConversation>(`/conversations/${id}`);
-      setMessages(conv.messages ?? []);
       setActiveConvId(id);
+      setMessages(conv.messages ?? []);
+      setSharedInProject(conv.shared_in_project === 1);
+      // Load any context summaries for this conversation
+      api.get<ConversationSummary[]>(`/conversations/${id}/summaries`)
+        .then(setConversationSummaries)
+        .catch(() => setConversationSummaries([]));
       // Sync settings from conversation — but never override gateway/model in preset mode
       // (the active preset owns those; loadConversation must not stomp the user's selection)
       if (!usePresetMode) {
@@ -465,6 +526,7 @@ export default function Chat() {
         temperature: conv.temperature ?? 0.7,
         maxTokens: conv.max_tokens ?? 2048,
         webSearch: false,
+        thinkingBudget: null,
       });
       // Load existing feedback (silently — 404 means none yet)
       api.get<ChatFeedback>(`/conversations/${id}/feedback`)
@@ -671,6 +733,19 @@ export default function Chat() {
     }
   }
 
+  const [markdownCopied, setMarkdownCopied] = useState(false);
+
+  function copyMarkdown() {
+    const result = buildExportMarkdown();
+    if (!result) return;
+    navigator.clipboard.writeText(result.markdown).then(() => {
+      setMarkdownCopied(true);
+      setTimeout(() => setMarkdownCopied(false), 2000);
+    }).catch(() => {
+      setError("Failed to copy to clipboard");
+    });
+  }
+
   async function saveFeedback() {
     if (!activeConvId || feedbackRating === null) return;
     setFeedbackSaving(true);
@@ -770,6 +845,27 @@ export default function Chat() {
     await api.delete(`/conversations/${activeConvId}/share`).catch(() => {});
     setShareUrl(null);
     setShareToken(null);
+  }
+
+  async function toggleShareToProject() {
+    if (!activeConvId || !projectIdParam) return;
+    setShareProjectLoading(true);
+    try {
+      if (sharedInProject) {
+        await api.delete(`/conversations/${activeConvId}/share-project`);
+        setSharedInProject(false);
+        setMemToast("Removed from project feed");
+      } else {
+        await api.post(`/conversations/${activeConvId}/share-project`, {});
+        setSharedInProject(true);
+        setMemToast("Shared to project feed");
+      }
+      setTimeout(() => setMemToast(null), 3000);
+    } catch (e) {
+      setError("Failed to update project sharing: " + String(e));
+    } finally {
+      setShareProjectLoading(false);
+    }
   }
   async function sendMessage() {
     const text = inputValue.trim();
@@ -942,22 +1038,43 @@ export default function Chat() {
           att.mime_type === "application/vnd.oasis.opendocument.spreadsheet" ||
           att.mime_type === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         ) {
-          let fileId: string;
-          try {
-            setProcessingStatus(`Uploading "${att.filename}"…`);
-            const res = await api.post<{ file_id: string }>("/chat/files", {
-              gateway_id: effectiveGatewayId,
-              filename: att.filename,
-              mime_type: att.mime_type,
-              data: att.data,
-            });
-            fileId = res.file_id;
-          } catch (e) {
-            setError("Failed to upload file: " + String(e));
-            return;
+          if (effectiveModel.startsWith("claude-")) {
+            // Anthropic path: upload to Files API, reference via file_id document block
+            let fileId: string;
+            try {
+              setProcessingStatus(`Uploading "${att.filename}"…`);
+              const res = await api.post<{ file_id: string }>("/chat/files", {
+                gateway_id: effectiveGatewayId,
+                filename: att.filename,
+                mime_type: att.mime_type,
+                data: att.data,
+              });
+              fileId = res.file_id;
+            } catch (e) {
+              setError("Failed to upload file: " + String(e));
+              return;
+            }
+            blocks.push({ type: "document", source: { type: "file", file_id: fileId } });
+            hasSkill = "xlsx";
+          } else {
+            // Non-Anthropic path: extract text server-side and embed inline
+            let extractedText: string;
+            try {
+              setProcessingStatus(`Extracting text from "${att.filename}"…`);
+              const res = await api.post<{ text: string }>("/chat/files", {
+                gateway_id: effectiveGatewayId,
+                filename: att.filename,
+                mime_type: att.mime_type,
+                data: att.data,
+                extract_text: true,
+              });
+              extractedText = res.text;
+            } catch (e) {
+              setError("Failed to extract text from file: " + String(e));
+              return;
+            }
+            blocks.push({ type: "text", text: `[File: ${att.filename}]\n\n${extractedText}` });
           }
-          blocks.push({ type: "document", source: { type: "file", file_id: fileId } });
-          hasSkill = "xlsx";
         } else {
           unsupported.push(att.filename);
         }
@@ -1045,11 +1162,37 @@ export default function Chat() {
       : "";
     const systemContent = (drawerSettings.systemPrompt || "") + memBlock + memInstruction;
 
+    // Build the ID set of messages already covered by summaries so we can skip them
+    const summarizedUpToIds = new Set(conversationSummaries.map((s) => s.last_message_id));
+    const latestSummary = conversationSummaries.length > 0
+      ? conversationSummaries[conversationSummaries.length - 1]
+      : null;
+    // Find messages NOT yet summarized
+    let historyToSend = history;
+    if (latestSummary) {
+      const cutIdx = history.findIndex((m) => m.id === latestSummary.last_message_id);
+      if (cutIdx >= 0) {
+        historyToSend = history.slice(cutIdx + 1);
+      }
+    }
+
+    // Build summary preamble if summaries exist
+    const summaryPreamble = conversationSummaries.length > 0
+      ? conversationSummaries.map((s) => s.summary_text).join("\n\n---\n\n")
+      : null;
+
     const apiMessages = [
       ...(systemContent
         ? [{ role: "system", content: systemContent }]
         : []),
-      ...history.map((m) => {
+      // Inject summaries of older context as a synthetic message pair
+      ...(summaryPreamble
+        ? [
+            { role: "user" as const, content: `[Context summary of earlier conversation]\n\n${summaryPreamble}` },
+            { role: "assistant" as const, content: "Understood. I have the context from our earlier conversation." },
+          ]
+        : []),
+      ...historyToSend.map((m) => {
         let content: unknown = m.content;
         try {
           const parsed = JSON.parse(m.content);
@@ -1091,7 +1234,6 @@ export default function Chat() {
     thinkBlockStartRef.current = null;
     thinkBlockDurationRef.current = null;
     setStreamingThinkingDurationMs(null);
-    setArtifactDismissed(false);
 
     const start = performance.now();
     let accumulated = "";
@@ -1106,6 +1248,9 @@ export default function Chat() {
         ...(ghostMode ? { "x-aig-collect-log": "false" } : {}),
         ...(needsSkill ? { "x-aig-skill": needsSkill } : {}),
         ...(drawerSettings.webSearch ? { "x-aig-web-search": "1" } : {}),
+        ...(drawerSettings.thinkingBudget !== null
+          ? { "x-aig-thinking-budget": String(drawerSettings.thinkingBudget) }
+          : {}),
       }).filter(([, v]) => v !== undefined)
     ) as Record<string, string>;
 
@@ -1114,15 +1259,26 @@ export default function Chat() {
     let fileReadCount = 0;
     const MAX_FILE_READS = 5;
     let pendingFileInjection: string | null = null;
+    // MCP tool call loop: extra messages to append (assistant + tool_result pairs)
+    const mcpExtraMessages: Array<{ role: string; content: unknown }> = [];
+    let mcpToolCallCount = 0;
+    const MAX_MCP_TOOL_CALLS = 10;
 
     streaming: while (true) {
       const reqMessages = (() => {
-        if (continueCount === 0 && pendingFileInjection === null) return apiMessages;
-        const msgs = [...apiMessages, { role: "assistant", content: accumulated }];
-        msgs.push({ role: "user", content: pendingFileInjection ?? "Continue" });
+        if (continueCount === 0 && pendingFileInjection === null && mcpExtraMessages.length === 0) return apiMessages;
+        const msgs = [...apiMessages, ...mcpExtraMessages];
+        if (pendingFileInjection !== null || (continueCount > 0 && mcpExtraMessages.length === 0)) {
+          msgs.push({ role: "assistant", content: accumulated });
+          msgs.push({ role: "user", content: pendingFileInjection ?? "Continue" });
+        }
         return msgs;
       })();
       pendingFileInjection = null; // consumed
+
+      // Accumulate tool_calls deltas across SSE chunks
+      // Shape: { [index]: { id, name, argumentsAccum } }
+      const pendingToolCalls: Record<number, { id: string; name: string; argumentsAccum: string }> = {};
 
       let finishReason: string | null = null;
 
@@ -1134,9 +1290,21 @@ export default function Chat() {
           body: JSON.stringify({
             model: effectiveModel,
             messages: reqMessages,
-            temperature: drawerSettings.temperature,
+            // Anthropic rejects requests with both temperature and thinking enabled
+            ...(drawerSettings.thinkingBudget === null ? { temperature: drawerSettings.temperature } : {}),
             max_tokens: drawerSettings.maxTokens,
             stream: true,
+            // Inject MCP tools if any are loaded
+            ...(mcpTools.length > 0 ? {
+              tools: mcpTools.map(({ tool }) => ({
+                type: "function",
+                function: {
+                  name: tool.name,
+                  description: tool.description ?? "",
+                  parameters: tool.inputSchema,
+                },
+              })),
+            } : {}),
           }),
         });
 
@@ -1198,6 +1366,22 @@ export default function Chat() {
                 ) {
                   thinkBlockDurationRef.current = Math.round(performance.now() - thinkBlockStartRef.current);
                   setStreamingThinkingDurationMs(thinkBlockDurationRef.current);
+                }
+              }
+              // Accumulate OpenAI-compat tool_calls deltas
+              const toolCallDeltas = chunk?.choices?.[0]?.delta?.tool_calls;
+              if (Array.isArray(toolCallDeltas)) {
+                for (const tc of toolCallDeltas) {
+                  const idx: number = tc.index ?? 0;
+                  if (!pendingToolCalls[idx]) {
+                    pendingToolCalls[idx] = { id: tc.id ?? "", name: tc.function?.name ?? "", argumentsAccum: "" };
+                  } else {
+                    if (tc.id) pendingToolCalls[idx].id = tc.id;
+                    if (tc.function?.name) pendingToolCalls[idx].name = tc.function.name;
+                  }
+                  if (tc.function?.arguments) {
+                    pendingToolCalls[idx].argumentsAccum += tc.function.arguments;
+                  }
                 }
               }
               const reason = chunk?.choices?.[0]?.finish_reason;
@@ -1267,6 +1451,65 @@ export default function Chat() {
       if ((finishReason === "max_tokens" || finishReason === "length") && !abort.signal.aborted && continueCount < MAX_CONTINUATIONS) {
         continueCount++;
         continue streaming;
+      }
+
+      // MCP tool call loop: model requested tool(s) — call MCP servers and send results back
+      if (
+        !abort.signal.aborted &&
+        (finishReason === "tool_calls" || finishReason === "tool_use") &&
+        mcpToolCallCount < MAX_MCP_TOOL_CALLS
+      ) {
+        const calls = Object.values(pendingToolCalls);
+        if (calls.length > 0) {
+          // Status: show which tools are being called
+          setProcessingStatus(`⚙️ Calling ${calls.map((c) => c.name).join(", ")}…`);
+          // Build assistant message with tool_calls
+          mcpExtraMessages.push({
+            role: "assistant",
+            content: accumulated || null,
+            // OpenAI-compat format
+            // @ts-expect-error extra field
+            tool_calls: calls.map((c) => ({
+              id: c.id || `call_${c.name}_${mcpToolCallCount}`,
+              type: "function",
+              function: { name: c.name, arguments: c.argumentsAccum },
+            })),
+          });
+          // Execute each tool call
+          const toolResults = await Promise.allSettled(calls.map(async (c) => {
+            // Find which connector exposes this tool
+            const entry = mcpTools.find((t) => t.tool.name === c.name);
+            if (!entry) {
+              return { call: c, result: { error: `Tool "${c.name}" not found in any connector` } };
+            }
+            let args: unknown = {};
+            try { args = JSON.parse(c.argumentsAccum); } catch { /* leave empty */ }
+            try {
+              const res = await api.post<{ result?: unknown; error?: unknown }>(
+                `/mcp/${entry.connectorId}/call`,
+                { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: c.name, arguments: args } }
+              );
+              return { call: c, result: res.result ?? res };
+            } catch (e) {
+              return { call: c, result: { error: String(e) } };
+            }
+          }));
+          // Append tool_result messages (one per call in OpenAI format)
+          for (const r of toolResults) {
+            const { call: c, result } = r.status === "fulfilled" ? r.value : { call: calls[0], result: { error: "tool execution failed" } };
+            mcpExtraMessages.push({
+              role: "tool",
+              // @ts-expect-error extra field
+              tool_call_id: c.id || `call_${c.name}_${mcpToolCallCount}`,
+              content: typeof result === "string" ? result : JSON.stringify(result),
+            });
+          }
+          mcpToolCallCount++;
+          // Reset streaming content for next leg
+          accumulated = "";
+          setStreamingContent("");
+          continue streaming;
+        }
       }
 
       // Detect <read_file> tags emitted by the model — only in project context
@@ -1401,6 +1644,42 @@ export default function Chat() {
         setError("Failed to save assistant message: " + String(e));
       }
     }
+
+    // Auto-summarize if input token count approaches the context window limit.
+    // This runs after each response and is non-blocking / non-disruptive.
+    if (!ghostMode && convId && inputTokens !== null) {
+      const limit = contextWindowTokens(model);
+      const threshold = Math.floor(limit * 0.75);
+      if (inputTokens > threshold) {
+        // Find messages not yet summarized to decide which to compress
+        const allMsgs = await api.get<ChatMessage[]>(`/conversations/${convId}/messages`).catch(() => [] as ChatMessage[]);
+        const latestSummary = conversationSummaries[conversationSummaries.length - 1] ?? null;
+        const cutIdx = latestSummary
+          ? allMsgs.findIndex((m) => m.id === latestSummary.last_message_id)
+          : -1;
+        const unsummarized = cutIdx >= 0 ? allMsgs.slice(cutIdx + 1) : allMsgs;
+        // Only summarize if there are at least 6 messages to compress (leave at least 4 recent)
+        const KEEP_RECENT = 4;
+        const toCompress = unsummarized.slice(0, Math.max(0, unsummarized.length - KEEP_RECENT));
+        if (toCompress.length >= 4) {
+          setSummarizing(true);
+          try {
+            const summary = await api.post<ConversationSummary>(`/conversations/${convId}/summarize`, {
+              gateway_id: gatewayId,
+              model: model,
+              messages: toCompress.map((m) => ({ role: m.role, content: m.content })),
+              first_message_id: toCompress[0].id,
+              last_message_id: toCompress[toCompress.length - 1].id,
+            });
+            setConversationSummaries((prev) => [...prev, summary]);
+          } catch {
+            // Silent — summarization failure must never block the user
+          } finally {
+            setSummarizing(false);
+          }
+        }
+      }
+    }
   }
 
   function stopStreaming() {
@@ -1513,6 +1792,7 @@ export default function Chat() {
       temperature: preset.temperature ?? 0.7,
       maxTokens: preset.max_tokens ?? 2048,
       webSearch: false,
+      thinkingBudget: null,
     });
   }
 
@@ -1553,15 +1833,10 @@ export default function Chat() {
     }
   }
 
-  // ── Artifact panel — derived from streaming or last assistant message ───────
-  const artifactSource = isStreaming
-    ? (streamingContent ?? "")
-    : (messages.filter((m) => m.role === "assistant").at(-1)?.content ?? "");
-  const activeArtifact: Artifact | null = artifactDismissed ? null : extractArtifact(artifactSource);
-
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className={chatS["chat-page"]}>
+      <div className={chatS["top-bar"]}>
       {/* Config bar */}
       <div className={chatS["config-bar"]}>
         <span className={chatS["config-label"]}>Tenant</span>
@@ -1654,7 +1929,7 @@ export default function Chat() {
         </button>
 
         <button
-          className={chatS["icon-btn"]}
+          className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
           title="Download PDF"
           onClick={exportPdf}
           disabled={!activeConvId || messages.length === 0}
@@ -1663,7 +1938,18 @@ export default function Chat() {
         </button>
 
         <button
-          className={chatS["icon-btn"]}
+          className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
+          title={markdownCopied ? "Copied!" : "Copy conversation as Markdown"}
+          onClick={copyMarkdown}
+          disabled={!activeConvId || messages.length === 0}
+          data-cy="copy-markdown-btn"
+          style={markdownCopied ? { color: "var(--accent, #0052cc)" } : {}}
+        >
+          <ClipboardIcon />
+        </button>
+
+        <button
+          className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
           title="Download Markdown"
           onClick={exportMarkdown}
           disabled={!activeConvId || messages.length === 0}
@@ -1673,7 +1959,7 @@ export default function Chat() {
 
         {!ghostMode && (
           <button
-            className={chatS["icon-btn"]}
+            className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
             title="Share conversation"
             onClick={openShareModal}
             disabled={!activeConvId}
@@ -1683,8 +1969,27 @@ export default function Chat() {
           </button>
         )}
 
+        {!ghostMode && projectIdParam && (
+          <button
+            className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
+            title={sharedInProject ? "Remove from project feed" : "Share to project feed"}
+            onClick={toggleShareToProject}
+            disabled={!activeConvId || shareProjectLoading}
+            data-cy="share-project-btn"
+            style={sharedInProject ? { color: "var(--accent, #0052cc)" } : {}}
+          >
+            {/* People/team icon */}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          </button>
+        )}
+
         <button
-          className={chatS["icon-btn"]}
+          className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
           title={`Memories${memories.length > 0 ? ` (${memories.length})` : ""}`}
           onClick={() => setShowMemories(true)}
           data-cy="memories-btn"
@@ -1700,7 +2005,7 @@ export default function Chat() {
 
         {!ghostMode && (
           <button
-            className={chatS["icon-btn"]}
+            className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
             title="Session feedback"
             onClick={() => { setShowFeedback(true); setFeedbackSaved(false); setFeedbackError(null); }}
             disabled={!activeConvId}
@@ -1779,6 +2084,7 @@ export default function Chat() {
           👻 Ghost mode — this conversation is not saved and will not be logged
         </div>
       )}
+      </div>{/* /top-bar */}
 
       <div className={chatS["chat-body"]}>
         {/* Conversation sidebar — mobile backdrop */}
@@ -1815,6 +2121,7 @@ export default function Chat() {
             onToggleArchived={toggleArchivedView}
             creating={creating}
             streamingConvId={streamingConvId}
+            newChatLabel={activeProject ? "New project chat" : undefined}
           />
         </div>
 
@@ -1827,6 +2134,77 @@ export default function Chat() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* Project context banner */}
+          {activeProject && (
+            <div
+              className={chatS["project-banner"]}
+              style={{ borderLeft: `3px solid ${activeProject.color || "var(--accent)"}` }}
+            >
+              <a
+                href={`/projects/${activeProject.id}`}
+                className={chatS["project-banner-name"]}
+              >
+                <span>{activeProject.icon}</span>
+                <span>{activeProject.name}</span>
+              </a>
+              {projectKnowledge.length > 0 && (
+                <span className={chatS["project-banner-meta"]}>
+                  · {projectKnowledge.length} file{projectKnowledge.length !== 1 ? "s" : ""}
+                </span>
+              )}
+              {activeProject.instructions && (
+                <button
+                  className={chatS["project-banner-meta"]}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}
+                  onClick={() => setShowInstructionsModal(true)}
+                  title="Click to view project instructions"
+                >
+                  · instructions active
+                </button>
+              )}
+              <div className={chatS["project-banner-actions"]}>
+                {projectKnowledge.length > 0 && (
+                  <button
+                    className={chatS["project-banner-link"]}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit" }}
+                    onClick={() => setShowFilesPanel((v) => !v)}
+                    title="View project files"
+                  >
+                    📎 Files ({projectKnowledge.length})
+                  </button>
+                )}
+                <a href={`/projects/${activeProject.id}`} className={chatS["project-banner-link"]}>Open project</a>
+                <a href="/chat" className={chatS["project-banner-exit"]}>Exit project ×</a>
+              </div>
+            </div>
+          )}
+          {showFilesPanel && activeProject && projectKnowledge.length > 0 && (
+            <div className={chatS["files-panel"]} data-cy="chat-files-panel">
+              <div className={chatS["files-panel-header"]}>
+                <span>Project Files</span>
+                <button
+                  className={chatS["files-panel-close"]}
+                  onClick={() => setShowFilesPanel(false)}
+                  type="button"
+                  aria-label="Close files panel"
+                >×</button>
+              </div>
+              <div className={chatS["files-panel-list"]}>
+                {projectKnowledge.map((f) => (
+                  <button
+                    key={f.id}
+                    className={chatS["files-panel-item"]}
+                    onClick={() => setPreviewFileFromChat(f)}
+                    type="button"
+                    data-cy="chat-file-item"
+                  >
+                    <span className={chatS["files-panel-item-name"]}>📎 {f.filename}</span>
+                    <span className={chatS["files-panel-item-meta"]}>{f.token_count.toLocaleString()} tokens</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {isDragOver && (
             <div className={chatS["drop-overlay"]}>
               <div className={chatS["drop-zone"]}>
@@ -1847,15 +2225,20 @@ export default function Chat() {
               streamingThinkingDurationMs={activeConvId === streamingConvId ? streamingThinkingDurationMs : null}
               projectId={projectIdParam}
               onFileSaved={projectIdParam ? handleFileSaved : null}
+              onOpenArtifact={setActiveArtifact}
               onCopy={copyToClipboard}
               onEdit={editMessage}
               onRegenerate={regenerate}
+              activeProject={activeProject}
+              projectKnowledge={projectKnowledge}
             />
             {activeArtifact && (
               <ArtifactPanel
                 artifact={activeArtifact}
-                isStreaming={isStreaming}
-                onClose={() => setArtifactDismissed(true)}
+                isStreaming={isStreaming && activeConvId === streamingConvId}
+                onClose={() => setActiveArtifact(null)}
+                projectId={projectIdParam ?? undefined}
+                onSave={projectIdParam ? handleFileSaved : undefined}
               />
             )}
           </div>
@@ -1868,6 +2251,7 @@ export default function Chat() {
             onStop={stopStreaming}
             isStreaming={isStreaming}
             disabled={!gatewayId || !model || creating}
+            projectContext={activeProject ? { icon: activeProject.icon, name: activeProject.name, color: activeProject.color } : undefined}
             pendingAttachments={pendingAttachments}
             onAttach={(att) => setPendingAttachments((prev) => [...prev, att])}
             onRemoveAttachment={(idx) =>
@@ -1890,6 +2274,7 @@ export default function Chat() {
           onApplyPreset={applyPreset}
           onSavePreset={savePreset}
           onDeletePreset={deletePreset}
+          supportsThinking={supportsThinking}
         />
       )}
 
@@ -2017,6 +2402,22 @@ export default function Chat() {
         </Modal>
       )}
 
+      {previewFileFromChat && activeProject && (
+        <ProjectFilePreview
+          file={previewFileFromChat}
+          projectId={activeProject.id}
+          onClose={() => setPreviewFileFromChat(null)}
+        />
+      )}
+
+      {showInstructionsModal && activeProject?.instructions && (
+        <Modal title="Project Instructions" onClose={() => setShowInstructionsModal(false)}>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "inherit", fontSize: 14, lineHeight: 1.6, margin: 0, color: "var(--text-primary)" }}>
+            {activeProject.instructions}
+          </pre>
+        </Modal>
+      )}
+
       {showMemories && (
         <MemoriesPanel
           memories={memories}
@@ -2037,6 +2438,30 @@ export default function Chat() {
           boxShadow: "0 2px 12px rgba(0,0,0,0.25)", pointerEvents: "none",
         }}>
           {memToast}
+        </div>
+      )}
+
+      {summarizing && (
+        <div data-cy="summarizing-toast" style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "var(--surface-2, #222)", color: "var(--text-secondary, #aaa)",
+          padding: "6px 14px", borderRadius: 8, fontSize: 12, zIndex: 9998,
+          boxShadow: "0 2px 12px rgba(0,0,0,0.25)", pointerEvents: "none",
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "1.5px solid var(--text-secondary)", borderTopColor: "var(--accent, #0052cc)", animation: "spin 0.7s linear infinite" }} />
+          Summarizing earlier context…
+        </div>
+      )}
+
+      {conversationSummaries.length > 0 && (
+        <div data-cy="summary-indicator" style={{
+          position: "fixed", bottom: 44, left: "50%", transform: "translateX(-50%)",
+          background: "var(--card-bg)", color: "var(--text-secondary)",
+          padding: "3px 10px", borderRadius: 6, fontSize: 11, zIndex: 9997,
+          border: "1px solid var(--card-border)", pointerEvents: "none",
+        }}>
+          ∞ {conversationSummaries.length} earlier turn{conversationSummaries.length > 1 ? "s" : ""} summarized
         </div>
       )}
     </div>
