@@ -15,9 +15,10 @@ done
 
 LOG=/tmp/run_docker_production.log
 : > "$LOG"
-stage() { echo ""; echo "▶ $*"; }
-done_stage() { echo "✓ $*"; }
-log_cmd() { "$@" >> "$LOG" 2>&1; }
+stage()     { echo "▶ $*"; }
+done_next() { echo "✓ $1 — ▶ $2"; }
+done_stage(){ echo "✓ $*"; }
+log_cmd()   { "$@" >> "$LOG" 2>&1; }
 
 exec 200>/tmp/ai-gateway-run-docker.lock
 flock -n 200 || { echo "run_docker_production.sh is already running"; exit 1; }
@@ -37,32 +38,29 @@ set -a
 # shellcheck source=.env.production
 source "$ENV_FILE"
 set +a
-done_stage "[1/5] Secrets loaded"
 
 # ── Build documentation ───────────────────────────────────────────────────────
-stage "[2/5] Building documentation"
+done_next "Secrets loaded" "[2/5] Building documentation"
 log_cmd bash -c "cd '$(dirname "$0")/docs' && bash gen_docs.sh"
-done_stage "[2/5] Documentation built"
 
 # ── Generate PDF ─────────────────────────────────────────────────────────────
 if [[ "$BUILD_PDF" == 1 ]]; then
-  stage "[3/5] Generating PDF"
+  done_next "Documentation built" "[3/5] Generating PDF"
   log_cmd bash -c "cd '$(dirname "$0")/docs' && python3 gen_pdf.py"
-  done_stage "[3/5] PDF generated"
+  done_next "PDF generated" "[4/5] Building frontend"
 else
-  stage "[3/5] Skipping PDF (pass --pdf to generate)"
+  echo "✓ Documentation built — [3/5] PDF skipped — ▶ [4/5] Building frontend"
 fi
 
 # ── Build frontend (uses private @myraui packages — must run on host) ─────────
-stage "[4/5] Building frontend"
 log_cmd bash -c "cd '$(dirname "$0")/frontend' && \
   VITE_ADMIN_URL='https://ai-api-admin.myra.eu/admin/v1' \
   VITE_AUTH_URL='https://ai-api-admin.myra.eu/admin/auth' \
   VITE_GATEWAY_URL='https://ai-api.myra.eu' \
   VITE_DOCS_URL='https://ai-docs.myra.eu' \
+  VITE_BUILD_DATE=\"$(date -u +"%Y-%m-%d %H:%M UTC")\" \
   npm run build"
-done_stage "[4/5] Frontend built"
 
 # ── Run ───────────────────────────────────────────────────────────────────────
-stage "[5/5] Building Docker image and starting container"
+done_next "Frontend built" "[5/5] Building Docker image and starting container"
 exec docker compose up -d --build "${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"}"
