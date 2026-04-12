@@ -11,7 +11,7 @@ AI Gateway by Myra Security is a managed service running on the Global Myra Secu
 
 ## Requesting an instance
 
-► Proceed as follows to request access to AI Gateway by Myra Security:
+Proceed as follows to request access to AI Gateway by Myra Security:
 
 1. Visit the [Myra Security contact page](https://www.myrasecurity.com/en/contact/) and submit an enquiry for AI Gateway.
    - Myra Security reviews your request and provisions a dedicated instance.
@@ -39,7 +39,7 @@ Before the gateway processes inference requests, three objects must exist: a gat
 
 ### Creating a gateway
 
-► Proceed as follows to create your first gateway:
+Proceed as follows to create your first gateway:
 
 1. Click on **Tenants** in the left sidebar.
    - The **Tenants** view opens.
@@ -61,7 +61,7 @@ Before the gateway processes inference requests, three objects must exist: a gat
 
 ### Adding a provider key
 
-► Proceed as follows to store a provider API key in the gateway:
+Proceed as follows to store a provider API key in the gateway:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** view opens.
@@ -80,7 +80,7 @@ Before the gateway processes inference requests, three objects must exist: a gat
 
 ### Creating an auth token
 
-► Proceed as follows to create an authentication token for API access:
+Proceed as follows to create an authentication token for API access:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** view opens.

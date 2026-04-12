@@ -23,7 +23,7 @@ Before you begin, ensure the following conditions are met:
 ![View: New Gateway dialog](../assets/screenshots/gateways-list-hl.png)
 *The **New Gateway** button in the **Gateways** list.*
 
-► Proceed as follows to create a gateway:
+Proceed as follows to create a gateway:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** list opens.
@@ -44,10 +44,10 @@ Before you begin, ensure the following conditions are met:
 
 - ☑ You are logged in as a user with the `admin` role.
 
-![View: Gateway Config tab](../assets/screenshots/gateway-edit-modal.png)
-*The gateway **Config** tab.*
+![The gateway edit modal with the Save button highlighted](../assets/screenshots/gateway-edit-modal-hl.png)
+*The gateway edit modal.*
 
-► Proceed as follows to edit a gateway:
+Proceed as follows to edit a gateway:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** list opens.
@@ -79,7 +79,7 @@ Before you begin, ensure the following conditions are met:
 
 > ⚠️ **Caution:** Deleting a gateway is irreversible. All associated logs, tokens, and configuration are permanently removed.
 
-► Proceed as follows to delete a gateway:
+Proceed as follows to delete a gateway:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** list opens.

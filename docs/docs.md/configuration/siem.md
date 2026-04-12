@@ -257,7 +257,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Gateway edit dialog with SIEM Integration section](../assets/screenshots/gateway-siem.png)
 *The **SIEM Integration** section in the gateway edit dialog.*
 
-► Proceed as follows to configure gateway-level SIEM integration:
+Proceed as follows to configure gateway-level SIEM integration:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** list opens.
@@ -282,7 +282,7 @@ Before you begin, ensure the following conditions are met:
 
 The tenant-level SIEM configuration applies to all gateways under the tenant that do not have a gateway-level override. The admin UI tenant editor does not expose a SIEM section — use the API.
 
-► Proceed as follows to configure tenant-level SIEM integration:
+Proceed as follows to configure tenant-level SIEM integration:
 
 1. Send a `PATCH` request to `/admin/v1/tenants/{id}` with the `siem` object in the request body:
 

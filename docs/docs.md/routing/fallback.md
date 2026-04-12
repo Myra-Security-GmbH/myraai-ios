@@ -88,7 +88,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Routing rule editor with fallbacks section visible](../assets/screenshots/routing-rule-fallbacks.png)
 *The fallbacks section of the routing rule editor.*
 
-► Proceed as follows to add fallback providers to a routing rule:
+Proceed as follows to add fallback providers to a routing rule:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.

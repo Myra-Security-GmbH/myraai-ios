@@ -27,10 +27,17 @@ The view lists all tokens belonging to the currently logged-in user. Each row sh
 
 ## Creating a token
 
-► Proceed as follows to create an inference token:
+![The + New Token button highlighted in the My tokens view](../assets/screenshots/my-tokens-hl.png)
+*The **+ New Token** button in the **My tokens** view.*
+
+Proceed as follows to create an inference token:
 
 1. Click the **+ New Token** button.
-   - A creation form appears.
+   - The **New Token** dialog opens.
+
+![The New Token dialog with the Create Token button highlighted](../assets/screenshots/token-new-hl.png)
+*The **New Token** dialog.*
+
 2. Select the gateway you want the token to access from the **Gateway** drop-down list. Gateways are listed as `tenant/gateway-slug`.
 3. If required, enter a descriptive name in the **Label** text field.
 4. If required, set an expiry date in the **Expiry date** field.
@@ -66,7 +73,7 @@ See [Endpoint URL formats](../routing/compat-endpoint.md) for provider-specific 
 
 ## Revoking a token
 
-► Proceed as follows to revoke a token:
+Proceed as follows to revoke a token:
 
 1. Locate the token you want to revoke in the token table.
 2. Click the **Revoke** button on that row.

@@ -181,7 +181,7 @@ Running a regex guardrail first (Tier 1) reduces the volume of content reaching 
 ![Screenshot: NLP PII detector card in the Guardrail Builder](../../assets/screenshots/guardrail-presidio-builder.png)
 *NLP PII detector card — expanded view*
 
-► Proceed as follows to configure the NLP PII detector in the Guardrail Builder:
+Proceed as follows to configure the NLP PII detector in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Presidio (NLP)** button.

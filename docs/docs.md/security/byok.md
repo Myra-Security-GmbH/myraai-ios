@@ -56,7 +56,7 @@ ACCESS_KEY_ID:SECRET_ACCESS_KEY:SESSION_TOKEN
 ![Screenshot: Add Key form on the Keys tab](../assets/screenshots/byok-add-key.png)
 *Add Key form*
 
-► Proceed as follows to add a BYOK key:
+Proceed as follows to add a BYOK key:
 
 1. Click on **Gateways** in the left sidebar.
    - The gateway list opens.
@@ -76,7 +76,7 @@ ACCESS_KEY_ID:SECRET_ACCESS_KEY:SESSION_TOKEN
 
 ## Deleting a BYOK key
 
-► Proceed as follows to delete a BYOK key:
+Proceed as follows to delete a BYOK key:
 
 1. Click on **Gateways** in the left sidebar.
    - The gateway list opens.

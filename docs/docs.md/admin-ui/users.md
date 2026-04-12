@@ -48,10 +48,17 @@ Before you begin, ensure the following conditions are met:
 
 - ☑ You have the `admin` or `tenant_admin` role.
 
-► Proceed as follows to create a user:
+![The + New User button highlighted in the Users view](../assets/screenshots/users-list-hl.png)
+*The **+ New User** button in the **Users** view.*
+
+Proceed as follows to create a user:
 
 1. Click the **+ New User** button.
-   - A creation form appears.
+   - The **New User** dialog opens.
+
+![The New User dialog with the Create User button highlighted](../assets/screenshots/user-new-hl.png)
+*The **New User** dialog.*
+
 2. Enter the email address of the user in the **Email** text field.
 3. If required, enter a display name in the **Name** text field.
 4. Select a role from the **Role** drop-down list.
@@ -67,7 +74,7 @@ Before you begin, ensure the following conditions are met:
 
 - ☑ You have the `admin` or `tenant_admin` role.
 
-► Proceed as follows to edit a user:
+Proceed as follows to edit a user:
 
 1. Click the row for the user you want to edit.
    - The user detail panel opens.
@@ -89,7 +96,7 @@ Before you begin, ensure the following conditions are met:
 
 > ⚠️ **Caution:** Deleting a user revokes all inference tokens associated with that user immediately.
 
-► Proceed as follows to delete a user:
+Proceed as follows to delete a user:
 
 1. Click the row for the user you want to delete.
    - The user detail panel opens.

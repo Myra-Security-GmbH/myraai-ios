@@ -70,7 +70,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Gateway configuration page with circuit breaker section](../assets/screenshots/gateway-circuit-breaker.png)
 *The circuit breaker configuration on the gateway detail page.*
 
-► Proceed as follows to configure the circuit breaker for a gateway:
+Proceed as follows to configure the circuit breaker for a gateway:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.

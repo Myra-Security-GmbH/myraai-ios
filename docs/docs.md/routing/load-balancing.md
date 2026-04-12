@@ -85,7 +85,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Routing rule editor with load balance action type selected](../assets/screenshots/routing-rule-load-balance.png)
 *The load balancing configuration in the routing rule editor.*
 
-► Proceed as follows to configure load balancing on a routing rule:
+Proceed as follows to configure load balancing on a routing rule:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.

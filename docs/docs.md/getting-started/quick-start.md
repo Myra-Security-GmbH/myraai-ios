@@ -18,7 +18,7 @@ Before you begin, ensure the following conditions are met:
 
 ![Gateway list after creating a gateway](../assets/screenshots/gateway-list.png)
 
-► Proceed as follows to create a tenant and gateway:
+Proceed as follows to create a tenant and gateway:
 
 1. Click on **Tenants** in the left sidebar.
    - The **Tenants** view opens.
@@ -46,7 +46,7 @@ Before you begin, ensure the following conditions are met:
 
 ![Gateway detail view showing the Keys tab](../assets/screenshots/gateway-detail.png)
 
-► Proceed as follows to store a provider API key in the gateway:
+Proceed as follows to store a provider API key in the gateway:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** view opens.
@@ -113,7 +113,7 @@ A successful response looks like:
 
 ## Checking the request log
 
-► Proceed as follows to verify the request was recorded:
+Proceed as follows to verify the request was recorded:
 
 1. Click on **Logs** in the left sidebar.
    - The **Logs** view opens. Your request appears at the top of the list with provider, model, token count, cost, and latency.

@@ -113,7 +113,7 @@ Tighter thresholds to catch more marginal responses — useful for structured-ou
 ![Screenshot: Gibberish detector card in the Guardrail Builder](../../assets/screenshots/guardrail-gibberish-builder.png)
 *Gibberish detector card — expanded view*
 
-► Proceed as follows to configure the gibberish detector in the Guardrail Builder:
+Proceed as follows to configure the gibberish detector in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Gibberish** button.

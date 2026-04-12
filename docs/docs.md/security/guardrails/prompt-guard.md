@@ -222,7 +222,7 @@ Running keyword guardrails first (Tier 1) catches simple jailbreak strings befor
 ![Screenshot: Prompt Guard card in the Guardrail Builder](../../assets/screenshots/guardrail-prompt_guard-builder.png)
 *Prompt Guard card — expanded view*
 
-► Proceed as follows to configure Prompt Guard in the Guardrail Builder:
+Proceed as follows to configure Prompt Guard in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Prompt Guard** button.

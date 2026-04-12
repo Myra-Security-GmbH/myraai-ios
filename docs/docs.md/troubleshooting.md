@@ -12,7 +12,7 @@ The gateway returns HTTP 429 with code `rate_limited` when the number of request
 
 **Resolution**
 
-► Proceed as follows to resolve the error:
+Proceed as follows to resolve the error:
 
 1. Read the `Retry-After` header in the HTTP 429 response.
    - The header contains the window duration in seconds. Waiting at least this long before retrying is sufficient.
@@ -39,7 +39,7 @@ The gateway returns HTTP 429 with code `quota_exceeded` when the cumulative spen
 
 **Resolution**
 
-► Proceed as follows to resolve the error:
+Proceed as follows to resolve the error:
 
 1. Read the `message` field in the HTTP 429 response body to identify the affected scope (token, tenant, or gateway) and the API endpoint.
    - The message states the budget, the current spend, and two corrective actions.
@@ -61,7 +61,7 @@ The gateway returns HTTP 502 with code `all_providers_failed` when every provide
 
 **Resolution**
 
-► Proceed as follows to resolve the error:
+Proceed as follows to resolve the error:
 
 1. Check the request log in the admin UI (**Request Log** view) for the failed request to identify which providers were attempted and what status codes they returned.
    - The log entry shows the primary provider, fallback providers, and the HTTP status code received from each.
@@ -86,7 +86,7 @@ The gateway returns HTTP 400 with code `guardrail_blocked` when a guardrail in t
 
 **Resolution**
 
-► Proceed as follows to resolve the error:
+Proceed as follows to resolve the error:
 
 1. Read the `message` field in the response body to identify which guardrail blocked the request and which pattern or category matched.
    - For streaming responses, inspect the content of the first SSE data chunk.
@@ -110,7 +110,7 @@ The gateway returns HTTP 401 with code `unauthorized` when a request does not in
 
 **Resolution**
 
-► Proceed as follows to resolve the error:
+Proceed as follows to resolve the error:
 
 1. Verify that the request includes the `x-aig-token` header with a valid token value.
    - Check that no whitespace or truncation has been introduced when copying the token.
@@ -134,7 +134,7 @@ The gateway returns HTTP 403 with code `forbidden` when the source IP address of
 
 **Resolution**
 
-► Proceed as follows to resolve the error:
+Proceed as follows to resolve the error:
 
 1. Confirm the source IP address of the request by checking the calling system or reading the IP from the gateway request log.
    - The log entry includes the client IP address.
@@ -158,7 +158,7 @@ When the circuit breaker is enabled on a gateway and a provider accumulates fail
 
 **Resolution**
 
-► Proceed as follows to resolve the error:
+Proceed as follows to resolve the error:
 
 1. Check the circuit breaker status for the affected gateway by calling `GET /admin/v1/gateways/{id}/circuit-breaker` or by opening the gateway detail page in the admin UI.
    - The response lists each provider with its current state (`open`, `half-open`, or `closed`), the failure count, and the time the breaker opened.
@@ -183,7 +183,7 @@ Tier 2 guardrails (NLP PII Detector, Prompt Guard, PII Protector) make an HTTP c
 
 **Resolution**
 
-► Proceed as follows to resolve the error:
+Proceed as follows to resolve the error:
 
 1. Check the request log in the admin UI for affected requests and look for guardrail verdict fields (`blocked`, `blocked_by`, `detectors_fired` — the legacy log-field name for the guardrails that fired) to confirm which sidecar was unreachable.
    - Requests that passed through with `fail_open: true` will not have a block verdict; the absence of a Tier 2 verdict in the log indicates the sidecar was skipped.

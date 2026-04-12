@@ -106,7 +106,7 @@ A message such as "explain how a for loop works in Python" matches structural he
 ![Screenshot: Code detection guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-contains-code-builder.png)
 *Code detection guardrail card — expanded view*
 
-► Proceed as follows to configure the code detection guardrail in the Guardrail Builder:
+Proceed as follows to configure the code detection guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Contains Code** button.

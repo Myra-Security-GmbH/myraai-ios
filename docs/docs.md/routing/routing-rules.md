@@ -54,7 +54,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Routing rules tab with Add Rule button](../assets/screenshots/routing-rules-list.png)
 *The routing rules list on the gateway detail page.*
 
-► Proceed as follows to create a routing rule:
+Proceed as follows to create a routing rule:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.
@@ -90,7 +90,7 @@ Before you begin, ensure the following conditions are met:
 
 ## Editing a routing rule
 
-► Proceed as follows to edit a routing rule:
+Proceed as follows to edit a routing rule:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.
@@ -108,7 +108,7 @@ Before you begin, ensure the following conditions are met:
 
 ## Deleting a routing rule
 
-► Proceed as follows to delete a routing rule:
+Proceed as follows to delete a routing rule:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.

@@ -61,7 +61,7 @@ Run `ollama list` to see locally available models.
 ![Screenshot: Gateway configuration page with provider base URLs section](../assets/screenshots/gateway-config-base-urls.png)
 *The provider base URL configuration on the gateway detail page.*
 
-► Proceed as follows to configure Ollama on a gateway:
+Proceed as follows to configure Ollama on a gateway:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.

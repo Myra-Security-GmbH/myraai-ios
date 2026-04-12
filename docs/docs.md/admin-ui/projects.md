@@ -18,12 +18,12 @@ The **Projects** view is accessible from the **Projects** entry in the left side
 
 Before you begin, ensure the following conditions are met:
 
-- ☑ You have the `admin` or `tenant_admin` role.
+- ☑ You are logged in with the `admin`, `tenant_admin`, or `member` role. (`viewer` accounts cannot create projects.)
 
 ![View: New Project dialog](../assets/screenshots/projects-create.png)
 *The **New Project** dialog.*
 
-► Proceed as follows to create a project:
+Proceed as follows to create a project:
 
 1. Click on **Projects** in the left sidebar.
    - The **Projects** list opens.
@@ -47,7 +47,7 @@ Before you begin, ensure the following conditions are met:
 
 - ☑ You have the `admin` role, or you are a member of the project with the `owner` or `editor` role.
 
-► Proceed as follows to edit a project:
+Proceed as follows to edit a project:
 
 1. Click on **Projects** in the left sidebar.
    - The **Projects** list opens.
@@ -70,7 +70,7 @@ Before you begin, ensure the following conditions are met:
 
 > ⚠️ **Caution:** Deleting a project removes all members and knowledge files permanently. Conversations that were linked to the project are detached but not deleted — they remain accessible in the **Chat** view.
 
-► Proceed as follows to delete a project:
+Proceed as follows to delete a project:
 
 1. Click on **Projects** in the left sidebar.
    - The **Projects** list opens.
@@ -96,7 +96,7 @@ Before you begin, ensure the following conditions are met:
 
 ### Uploading a knowledge file
 
-► Proceed as follows to upload a knowledge file:
+Proceed as follows to upload a knowledge file:
 
 1. Open the project detail view.
 2. Click on the **Knowledge** tab.
@@ -110,7 +110,7 @@ Before you begin, ensure the following conditions are met:
 
 ### Deleting a knowledge file
 
-► Proceed as follows to delete a knowledge file:
+Proceed as follows to delete a knowledge file:
 
 1. Open the project detail view.
 2. Click on the **Knowledge** tab.
@@ -142,7 +142,7 @@ Before you begin, ensure the following conditions are met:
 - ☑ You have the `admin` role, or you are a member of the project with the `owner` role.
 - ☑ The user you want to invite already has an account. See [Users](users.md) to create an account.
 
-► Proceed as follows to invite a member:
+Proceed as follows to invite a member:
 
 1. Open the project detail view.
 2. Click on the **Members** tab.
@@ -162,7 +162,7 @@ Before you begin, ensure the following conditions are met:
 - ☑ You have the `admin` role, or you are a member of the project with the `owner` role.
 - ☑ The member you want to remove is not the last `owner` of the project.
 
-► Proceed as follows to remove a member:
+Proceed as follows to remove a member:
 
 1. Open the project detail view.
 2. Click on the **Members** tab.
@@ -177,12 +177,49 @@ Before you begin, ensure the following conditions are met:
 
 ## Opening a project in Chat
 
-► Proceed as follows to start a conversation within a project:
+Proceed as follows to start a conversation within a project:
 
 1. Open the project detail view.
 2. Click on the **Open Chat** button in the project header.
 
 → The **Chat** view opens with the project pre-selected. All new conversations started from this view are linked to the project and use the project instructions and default gateway.
+
+---
+
+## Project feed
+
+The **Feed** tab in the project detail view shows conversations that members have shared with the project. Sharing a conversation makes it visible to all project members in the feed.
+
+### Sharing a conversation to the feed
+
+Before you begin, ensure the following conditions are met:
+
+- ☑ The conversation was started in the context of this project (via **Open Chat** from the project detail view).
+
+Proceed as follows to share a conversation to the project feed:
+
+1. Open the conversation in Chat.
+2. Click the **Share to project** button in the configuration bar.
+
+→ The conversation appears in the project **Feed** tab and is visible to all project members.
+
+### Removing a conversation from the feed
+
+Proceed as follows to remove a conversation from the project feed:
+
+1. Open the conversation in Chat.
+2. Click the **Share to project** button again to toggle it off.
+
+→ The conversation is removed from the feed. The conversation itself is not deleted.
+
+### Viewing the feed
+
+Proceed as follows to view the project feed:
+
+1. Open the project detail view.
+2. Click the **Feed** tab.
+
+→ All conversations shared to the project are listed, ordered by the time they were shared.
 
 ---
 

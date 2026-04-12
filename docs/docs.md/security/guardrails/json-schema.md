@@ -112,7 +112,7 @@ Violations are recorded in `detectors_fired` and `block_reason` on the log entry
 ![Screenshot: JSON Schema guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-json-schema-builder.png)
 *JSON Schema guardrail card — expanded view*
 
-► Proceed as follows to configure the JSON Schema guardrail in the Guardrail Builder:
+Proceed as follows to configure the JSON Schema guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ JSON Schema** button.

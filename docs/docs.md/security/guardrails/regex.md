@@ -174,7 +174,7 @@ Uses `custom_patterns` to match formats not covered by the named pattern library
 ![Screenshot: Regex guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-regex-builder.png)
 *Regex guardrail card — expanded view*
 
-► Proceed as follows to configure the regex guardrail in the Guardrail Builder:
+Proceed as follows to configure the regex guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Regex / Pattern** button.

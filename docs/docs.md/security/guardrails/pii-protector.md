@@ -176,7 +176,7 @@ Use `allow_list` to prevent known non-PII values from being replaced with tokens
 ![Screenshot: PII Protector card in the Guardrail Builder](../../assets/screenshots/guardrail-pii_protector-builder.png)
 *PII Protector card — expanded view*
 
-► Proceed as follows to configure PII Protector in the Guardrail Builder:
+Proceed as follows to configure PII Protector in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ PII Protector** button.

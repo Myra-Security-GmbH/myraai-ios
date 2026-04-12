@@ -110,7 +110,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Gateway Config tab showing Budget (USD) field](../assets/screenshots/gateway-budget.png)
 *The **Budget (USD)** field in the gateway **Config** tab.*
 
-► Proceed as follows to configure a gateway budget:
+Proceed as follows to configure a gateway budget:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** list opens.
@@ -135,7 +135,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: New Token or Edit Token dialog with Budget (USD) field](../assets/screenshots/token-budget.png)
 *The **Budget (USD)** field in the token dialog.*
 
-► Proceed as follows to configure a per-token budget:
+Proceed as follows to configure a per-token budget:
 
 1. Click on **Users** in the left sidebar.
    - The **Users** list opens.
@@ -162,7 +162,7 @@ Use the reset action to clear accumulated spend so that requests can resume. Res
 ![Screenshot: Gateway Config tab with Reset budget button](../assets/screenshots/gateway-budget-reset.png)
 *The **Reset budget** button in the gateway **Config** tab.*
 
-► Proceed as follows to reset a gateway budget:
+Proceed as follows to reset a gateway budget:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** list opens.
@@ -180,7 +180,7 @@ Use the reset action to clear accumulated spend so that requests can resume. Res
 ![Screenshot: Users view with Reset budget action](../assets/screenshots/user-budget-reset.png)
 *The **Reset budget** action in the **Users** module.*
 
-► Proceed as follows to reset a user token budget:
+Proceed as follows to reset a user token budget:
 
 1. Click on **Users** in the left sidebar.
    - The **Users** list opens.

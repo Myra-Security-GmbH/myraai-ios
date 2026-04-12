@@ -101,7 +101,7 @@ Guardrails are configured using the visual **Guardrail Builder**, which is avail
 ![Screenshot: Guardrail Builder showing guardrail type buttons](../assets/screenshots/guardrails-builder-add.png)
 *Guardrail Builder — type buttons*
 
-► Proceed as follows to create a guardrail:
+Proceed as follows to create a guardrail:
 
 1. Open the gateway detail page or the **New Gateway** modal.
    - The Guardrail Builder appears at the bottom of the page or modal.
@@ -127,7 +127,7 @@ Guardrails are configured using the visual **Guardrail Builder**, which is avail
 
 ## Editing a guardrail
 
-► Proceed as follows to edit a guardrail:
+Proceed as follows to edit a guardrail:
 
 1. Open the gateway detail page.
    - The Guardrail Builder shows the configured guardrail list.
@@ -142,7 +142,7 @@ Guardrails are configured using the visual **Guardrail Builder**, which is avail
 
 ## Deleting a guardrail
 
-► Proceed as follows to delete a guardrail:
+Proceed as follows to delete a guardrail:
 
 1. Open the gateway detail page.
    - The Guardrail Builder shows the configured guardrail list.

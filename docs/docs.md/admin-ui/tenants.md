@@ -22,7 +22,7 @@ Before you begin, ensure the following conditions are met:
 
 - ☑ You are logged in as a user with the `admin` role.
 
-► Proceed as follows to create a tenant:
+Proceed as follows to create a tenant:
 
 1. Click on **Tenants** in the left sidebar.
    - The **Tenants** list opens.
@@ -42,7 +42,7 @@ Before you begin, ensure the following conditions are met:
 
 - ☑ You are logged in as a user with the `admin` role.
 
-► Proceed as follows to edit a tenant:
+Proceed as follows to edit a tenant:
 
 1. Click on **Tenants** in the left sidebar.
    - The **Tenants** list opens.
@@ -65,7 +65,7 @@ Before you begin, ensure the following conditions are met:
 
 > ⚠️ **Caution:** Deleting a tenant is irreversible. All users, gateways, tokens, and usage data belonging to the tenant are permanently removed.
 
-► Proceed as follows to delete a tenant:
+Proceed as follows to delete a tenant:
 
 1. Click on **Tenants** in the left sidebar.
    - The **Tenants** list opens.
@@ -83,7 +83,7 @@ Before you begin, ensure the following conditions are met:
 
 Users are assigned to a tenant when they are created or when an existing user is edited. The `admin` role is required to change a user's tenant assignment.
 
-► Proceed as follows to assign a user to a tenant:
+Proceed as follows to assign a user to a tenant:
 
 1. Click on **Users** in the left sidebar.
    - The **Users** list opens.

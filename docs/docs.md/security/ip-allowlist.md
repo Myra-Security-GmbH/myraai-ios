@@ -55,7 +55,7 @@ The `blocked_by` field identifies the IP allowlist as the reason, which distingu
 ![Screenshot: IP Allowlist field on the Config tab](../assets/screenshots/ip-allowlist-config.png)
 *IP Allowlist field on the gateway Config tab*
 
-► Proceed as follows to add an IP allowlist entry:
+Proceed as follows to add an IP allowlist entry:
 
 1. Click on **Gateways** in the left sidebar.
    - The gateway list opens.
@@ -72,7 +72,7 @@ The `blocked_by` field identifies the IP allowlist as the reason, which distingu
 
 ## Removing an IP allowlist entry
 
-► Proceed as follows to remove an IP allowlist entry:
+Proceed as follows to remove an IP allowlist entry:
 
 1. Click on **Gateways** in the left sidebar.
    - The gateway list opens.

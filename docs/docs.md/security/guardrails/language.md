@@ -118,7 +118,7 @@ With `min_ratio: 0.05`, even a small fraction of Cyrillic characters triggers de
 ![Screenshot: Language guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-language-builder.png)
 *Language guardrail card — expanded view*
 
-► Proceed as follows to configure the language guardrail in the Guardrail Builder:
+Proceed as follows to configure the language guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Language** button.

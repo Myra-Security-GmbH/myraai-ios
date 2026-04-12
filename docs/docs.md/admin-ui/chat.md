@@ -60,6 +60,8 @@ A settings drawer is accessible by clicking the **gear** (⚙) icon. Settings ap
 | **System prompt** text field | An initial instruction sent to the model before any user messages. A default prompt is pre-filled. |
 | **Temperature** slider | Controls response randomness. Range: 0–2. Default: 0.7. |
 | **Max tokens** field | The maximum number of tokens the model generates per response. Default: 8 192. |
+| **Extended thinking** toggle | Enables the model's internal reasoning process before it generates a response. Appears only when the selected model supports extended thinking (for example, Claude 3.7 Sonnet and Claude 3.7 Opus). |
+| **Thinking budget** slider | Controls the maximum number of tokens the model may use for internal reasoning. Available only when extended thinking is enabled. |
 
 The message input field sits at the bottom of the message area. Text typed here is sent when you press **Enter** or click the **Send** button. A **Stop** button appears while a response is streaming — clicking it aborts the current response.
 
@@ -69,7 +71,7 @@ All messages in the active conversation are sent to the model on every turn, giv
 
 ## Starting a conversation
 
-► Proceed as follows to start a new conversation:
+Proceed as follows to start a new conversation:
 
 1. Click the **+ New Chat** button at the top of the conversation list.
    - A new, empty conversation appears in the list and becomes active.
@@ -89,7 +91,7 @@ All messages in the active conversation are sent to the model on every turn, giv
 ![View: Chat — file attachment](../assets/screenshots/chat-file-attach.png)
 *View: Chat — file attachment*
 
-► Proceed as follows to attach a file to a message:
+Proceed as follows to attach a file to a message:
 
 1. Click the **paperclip** icon in the message input area, or drag a file from your desktop and drop it anywhere on the message area.
    - A blue drop target appears when you drag a file over the message area.
@@ -117,12 +119,14 @@ Attaching an unsupported file type shows an error message listing the supported 
 
 ## Exporting a conversation
 
-► Proceed as follows to export a conversation:
+Proceed as follows to export a conversation:
 
 1. Open the conversation you want to export by clicking it in the conversation list.
-2. To export as Markdown: click the **Download Markdown** button in the configuration bar.
+2. To copy to the clipboard: click the **Copy as Markdown** button (clipboard icon) in the configuration bar.
+   - The full conversation is copied to your clipboard as a Markdown-formatted text. The button briefly shows **Copied!** to confirm the action.
+3. To download as Markdown: click the **Download Markdown** button in the configuration bar.
    - The conversation downloads as a `.md` file. Attached images and documents appear as labelled references.
-3. To export as PDF: click the **Download PDF** button in the configuration bar.
+4. To export as PDF: click the **Download PDF** button in the configuration bar.
 
 → The conversation downloads as a formatted `.pdf` file.
 
@@ -130,7 +134,7 @@ Attaching an unsupported file type shows an error message listing the supported 
 
 ## Rating a conversation
 
-► Proceed as follows to rate a conversation:
+Proceed as follows to rate a conversation:
 
 1. Hover over the conversation row in the conversation list.
    - A flag icon (🚩) appears on the right side of the row.
@@ -144,8 +148,27 @@ Attaching an unsupported file type shows an error message listing the supported 
 
 ---
 
+## Using commands in Chat
+
+Commands are personal prompt shortcuts that insert a saved prompt text into the message input. You create and manage commands in the [My commands](my-commands.md) view.
+
+Proceed as follows to use a command:
+
+1. Type `/` in the message input field.
+   - A list of your saved commands appears.
+2. Click on the command you want to use, or continue typing the command name to filter the list and then press **Enter**.
+   - The prompt text of the command is inserted into the message input field.
+3. If required, edit the inserted text before sending.
+4. Press **Enter** or click the **Send** button to submit the message.
+
+→ The message is sent with the command's prompt text as the content.
+
+---
+
 ## See also
 
+- [My commands](my-commands.md) — creating and managing personal prompt shortcuts
+- [Projects](projects.md) — workspaces with shared instructions and a default gateway
 - [Prompt examples (English)](prompts.md) — ready-to-use prompts for legal, marketing, sales, and finance documents
 - [Prompt-Beispiele (Deutsch)](prompts-de.md) — einsatzbereite Prompts auf Deutsch
 - [Playground](../observability/playground.md) — side-by-side multi-model comparison without conversation history

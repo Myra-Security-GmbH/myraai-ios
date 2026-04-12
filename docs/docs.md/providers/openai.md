@@ -40,7 +40,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: BYOK key management page with Add Key form](../assets/screenshots/byok-add-key.png)
 *The key management page for a gateway.*
 
-► Proceed as follows to add an OpenAI provider key:
+Proceed as follows to add an OpenAI provider key:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.

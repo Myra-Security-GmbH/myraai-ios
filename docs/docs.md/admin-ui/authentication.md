@@ -44,7 +44,7 @@ Before you begin, ensure the following conditions are met:
 
 - ☑ Your email address already exists as a user in the system. Contact your administrator if you do not have access.
 
-► Proceed as follows to log in with Google SSO:
+Proceed as follows to log in with Google SSO:
 
 1. Navigate to `/login`.
 2. Click the **Continue with Google** button.
@@ -61,7 +61,7 @@ Before you begin, ensure the following conditions are met:
 
 - ☑ Your email address already exists as a user in the system.
 
-► Proceed as follows to log in with an email one-time code:
+Proceed as follows to log in with an email one-time code:
 
 1. Navigate to `/login`.
 2. Click the **Continue with Email code** button.

@@ -94,7 +94,7 @@ Select `inference` for standard API access.
 ![Screenshot: New User form in the admin UI](../assets/screenshots/user-new.png)
 *New User form*
 
-► Proceed as follows to create a user:
+Proceed as follows to create a user:
 
 1. Click on **Users** in the left sidebar.
    - The user list opens.
@@ -120,7 +120,7 @@ Select `inference` for standard API access.
 ![Screenshot: New Token form for a user](../assets/screenshots/token-new.png)
 *New Token form*
 
-► Proceed as follows to create a token:
+Proceed as follows to create a token:
 
 1. Click on **Users** in the left sidebar.
    - The user list opens.
@@ -142,7 +142,7 @@ Select `inference` for standard API access.
 
 ## Revoking a token
 
-► Proceed as follows to revoke a token:
+Proceed as follows to revoke a token:
 
 1. Click on **Users** in the left sidebar.
    - The user list opens.
@@ -161,7 +161,7 @@ Select `inference` for standard API access.
 ![Screenshot: Config tab with Auth Required toggle](../assets/screenshots/gateway-config-auth.png)
 *Gateway Config tab — Auth Required toggle*
 
-► Proceed as follows to disable authentication on a gateway:
+Proceed as follows to disable authentication on a gateway:
 
 1. Click on **Gateways** in the left sidebar.
    - The gateway list opens.

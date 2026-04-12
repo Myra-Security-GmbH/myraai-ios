@@ -38,7 +38,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Model Prices page with New Price button](../assets/screenshots/model-prices-list.png)
 *The **Model Prices** page.*
 
-► Proceed as follows to add a model price:
+Proceed as follows to add a model price:
 
 1. Click on **Model Prices** in the left sidebar.
    - The **Model Prices** page opens.
@@ -66,7 +66,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Model Prices page with a row selected for editing](../assets/screenshots/model-prices-edit.png)
 *A model price row open for editing.*
 
-► Proceed as follows to edit a model price:
+Proceed as follows to edit a model price:
 
 1. Click on **Model Prices** in the left sidebar.
    - The **Model Prices** page opens.
@@ -90,7 +90,7 @@ Before you begin, ensure the following conditions are met:
 
 - ☑ You are logged in as a user with the `admin` role.
 
-► Proceed as follows to delete a model price:
+Proceed as follows to delete a model price:
 
 1. Click on **Model Prices** in the left sidebar.
    - The **Model Prices** page opens.

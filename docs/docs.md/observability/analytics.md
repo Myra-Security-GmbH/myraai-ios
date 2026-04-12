@@ -150,7 +150,7 @@ Clicking any row in the **By Tenant** tab opens a slide-in panel on the right si
 | Top Models | Table of models used by this tenant: Model, Provider, Requests, Cost, Avg Latency |
 | Monthly Spend | Table of per-month spend going back up to 12 months |
 
-► Proceed as follows to close the tenant detail panel:
+Proceed as follows to close the tenant detail panel:
 
 1. Click outside the panel or click the **×** button.
    - The panel closes.

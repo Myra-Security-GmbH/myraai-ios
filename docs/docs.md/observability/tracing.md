@@ -13,7 +13,7 @@ Tracing is opt-in and has no effect on request latency. All writes are fire-and-
 
 ## Enabling tracing
 
-► Proceed as follows to enable tracing on a gateway:
+Proceed as follows to enable tracing on a gateway:
 
 1. Open the gateway in the admin UI.
    - The gateway detail page appears.
@@ -188,7 +188,7 @@ These steps appear when web search is enabled on the gateway.
 
 When gateway tracing is enabled, each log entry contains a `trace_id` field. Use it to retrieve the full execution trace.
 
-► Proceed as follows to retrieve the trace for a log entry:
+Proceed as follows to retrieve the trace for a log entry:
 
 1. Fetch the log entry to obtain the `trace_id`.
 

@@ -135,7 +135,7 @@ The Guardrail Builder includes a **Jailbreak (flag)** preset button that populat
 ![Screenshot: Keyword guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-keyword-builder.png)
 *Keyword guardrail card — expanded view*
 
-► Proceed as follows to configure the keyword guardrail in the Guardrail Builder:
+Proceed as follows to configure the keyword guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Keyword** button.

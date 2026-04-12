@@ -67,7 +67,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Gateway Config tab showing rate limit fields](../assets/screenshots/gateway-rate-limit.png)
 *The rate limit fields in the gateway **Config** tab.*
 
-► Proceed as follows to configure a gateway-level rate limit:
+Proceed as follows to configure a gateway-level rate limit:
 
 1. Click on **Gateways** in the left sidebar.
    - The **Gateways** list opens.
@@ -97,7 +97,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: New Token dialog with rate limit fields](../assets/screenshots/token-rate-limit.png)
 *The rate limit fields in the **New Token** dialog.*
 
-► Proceed as follows to configure a per-token rate limit:
+Proceed as follows to configure a per-token rate limit:
 
 1. Click on **Users** in the left sidebar.
    - The **Users** list opens.

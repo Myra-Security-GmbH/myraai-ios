@@ -4,7 +4,7 @@ Browse all documentation topics by category.
 
 <div class="grid cards" markdown>
 
--   **Getting started**
+-   **Introduction**
 
     ---
 
@@ -15,35 +15,66 @@ Browse all documentation topics by category.
     - [Interface overview](../admin-ui/views-overview.md)
     - [Signing in](../admin-ui/authentication.md)
 
--   **Using the product**
+-   **Chat**
 
     ---
 
-    - [Dashboard](../observability/dashboard.md)
-    - [Chat](../admin-ui/chat.md)
-    - [Projects](../admin-ui/projects.md)
-    - [Playground](../observability/playground.md)
+    - [Overview](../admin-ui/chat.md)
+    - [My commands](../admin-ui/my-commands.md)
+    - [Prompt examples (English)](../admin-ui/prompts.md)
+    - [Prompt-Beispiele (Deutsch)](../admin-ui/prompts-de.md)
 
--   **My account**
+-   **Projects**
+
+    ---
+
+    - [Projects](../admin-ui/projects.md)
+
+-   **Account**
 
     ---
 
     - [My tokens](../admin-ui/my-tokens.md)
     - [My commands](../admin-ui/my-commands.md)
 
+-   **Playground**
+
+    ---
+
+    - [Playground](../observability/playground.md)
+
 -   **Observability**
 
     ---
 
+    - [Dashboard](../observability/dashboard.md)
     - [Cost analytics](../observability/analytics.md)
     - [Live monitor](../observability/monitor.md)
     - [Request logs](../observability/logging.md)
+
+-   **Data protection and compliance**
+
+    ---
+
+    - [Overview](../security/data-protection.md)
+    - [PII Protector](../security/guardrails/pii-protector.md)
+    - [NLP PII detector](../security/guardrails/presidio.md)
+    - [Regex guardrail](../security/guardrails/regex.md)
+    - [Keyword guardrail](../security/guardrails/keyword.md)
+    - [Jailbreak detector](../security/guardrails/jailbreak.md)
+    - [Prompt Guard](../security/guardrails/prompt-guard.md)
+    - [JSON schema](../security/guardrails/json-schema.md)
+    - [Language restriction](../security/guardrails/language.md)
+    - [Gibberish detection](../security/guardrails/gibberish.md)
+    - [Contains-code detection](../security/guardrails/contains-code.md)
+    - [Building a guardrail pipeline](../security/guardrails.md)
 
 -   **Administration**
 
     ---
 
     - [Users](../admin-ui/users.md)
+    - [MCP Connectors](../admin-ui/mcp-connectors.md)
     - [Overview](../configuration/gateway-config.md)
     - [Providers overview](../providers/overview.md)
     - [OpenAI](../providers/openai.md)
@@ -58,17 +89,6 @@ Browse all documentation topics by category.
     - [Fallback and retry](../routing/fallback.md)
     - [Load balancing](../routing/load-balancing.md)
     - [Circuit breaker](../routing/circuit-breaker.md)
-    - [Guardrails](../security/guardrails.md)
-    - [Regex guardrail](../security/guardrails/regex.md)
-    - [Keyword guardrail](../security/guardrails/keyword.md)
-    - [Jailbreak guardrail](../security/guardrails/jailbreak.md)
-    - [NLP PII detector](../security/guardrails/presidio.md)
-    - [Prompt Guard](../security/guardrails/prompt-guard.md)
-    - [PII Protector](../security/guardrails/pii-protector.md)
-    - [JSON Schema guardrail](../security/guardrails/json-schema.md)
-    - [Code detection guardrail](../security/guardrails/contains-code.md)
-    - [Gibberish detector](../security/guardrails/gibberish.md)
-    - [Language guardrail](../security/guardrails/language.md)
     - [Rate limiting](../configuration/rate-limiting.md)
     - [Budgets](../configuration/budgets.md)
     - [Provider keys (BYOK)](../security/byok.md)

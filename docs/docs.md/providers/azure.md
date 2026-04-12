@@ -33,7 +33,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Gateway configuration page with Azure fields visible](../assets/screenshots/gateway-config-azure.png)
 *Azure OpenAI configuration fields on the gateway detail page.*
 
-► Proceed as follows to configure Azure OpenAI on a gateway:
+Proceed as follows to configure Azure OpenAI on a gateway:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.
@@ -71,7 +71,7 @@ curl -X PATCH "https://gateway.example.com/admin/v1/gateways/{id}" \
 Before you begin, ensure the following conditions are met:
 - ☑ The Azure OpenAI gateway configuration (endpoint, deployment, API version) is already saved.
 
-► Proceed as follows to add an Azure API key:
+Proceed as follows to add an Azure API key:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.

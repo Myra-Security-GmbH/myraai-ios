@@ -58,7 +58,7 @@ Before you begin, ensure the following conditions are met:
 - ☑ You have admin access to the gateway.
 - ☑ You have the gateway ID available.
 
-► Proceed as follows to create a token:
+Proceed as follows to create a token:
 
 1. Send a `POST` request to `/admin/v1/gateways/{gateway_id}/tokens` with the token configuration in the request body.
    - The API creates the token and returns the plaintext value once.
@@ -91,7 +91,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
 
 ### Using the token
 
-► Proceed as follows to authenticate an inference request:
+Proceed as follows to authenticate an inference request:
 
 1. Include one of the supported authentication headers in the request.
    - The gateway validates the token against the stored hash.

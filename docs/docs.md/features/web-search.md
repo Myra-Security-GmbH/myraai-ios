@@ -113,7 +113,7 @@ The `count` field indicates the number of URLs being fetched.
 
 ## Enabling web search on a gateway
 
-► Proceed as follows to enable web search on a gateway:
+Proceed as follows to enable web search on a gateway:
 
 1. Send a `PATCH` request to `/admin/v1/gateways/{id}` with the `web_search` configuration block.
 
@@ -139,7 +139,7 @@ The `count` field indicates the number of URLs being fetched.
 
 ### Making a search-augmented request in opt-in mode
 
-► Proceed as follows to send a search-augmented request when `mode` is `"opt-in"`:
+Proceed as follows to send a search-augmented request when `mode` is `"opt-in"`:
 
 1. Include the `X-Web-Search: 1` header in the client request.
 

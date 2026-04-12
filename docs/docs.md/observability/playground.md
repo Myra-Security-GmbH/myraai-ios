@@ -16,7 +16,7 @@ The **Playground** view lets you send prompts to one or more models simultaneous
 
 The playground supports up to four model panels side by side. All panels receive the same prompt at the same time when you click the **Send** button.
 
-► Proceed as follows to add a model panel:
+Proceed as follows to add a model panel:
 
 1. Click the **+ Add Model** button.
    - A new panel opens (up to four panels total).

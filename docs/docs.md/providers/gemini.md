@@ -49,7 +49,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: BYOK key management page with Add Key form](../assets/screenshots/byok-add-key.png)
 *The key management page for a gateway.*
 
-► Proceed as follows to add a Google AI Studio API key:
+Proceed as follows to add a Google AI Studio API key:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.
@@ -113,7 +113,7 @@ Before you begin, ensure the following conditions are met:
 ![Screenshot: Gateway configuration page with Vertex AI fields](../assets/screenshots/gateway-config-vertex.png)
 *Vertex AI configuration fields on the gateway detail page.*
 
-► Proceed as follows to configure the Vertex AI variant:
+Proceed as follows to configure the Vertex AI variant:
 
 1. Open **Gateways** in the left sidebar.
    - The gateway list opens.

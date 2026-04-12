@@ -108,7 +108,7 @@ The jailbreak guardrail catches literal, unmodified phrases only. Creative rephr
 ![Screenshot: Jailbreak guardrail card in the Guardrail Builder](../../assets/screenshots/guardrail-jailbreak-builder.png)
 *Jailbreak guardrail card — expanded view*
 
-► Proceed as follows to configure the jailbreak guardrail in the Guardrail Builder:
+Proceed as follows to configure the jailbreak guardrail in the Guardrail Builder:
 
 1. Open the gateway detail page and scroll down to the **Guardrails** card.
 2. Click on the **+ Jailbreak** button.

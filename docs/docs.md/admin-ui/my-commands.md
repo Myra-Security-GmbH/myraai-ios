@@ -18,7 +18,7 @@ The **My commands** view is accessible from the **My Commands** entry in the lef
 
 ## Creating a command
 
-► Proceed as follows to create a command:
+Proceed as follows to create a command:
 
 1. Click on **My Commands** in the left sidebar.
    - The **My commands** view opens.
@@ -34,7 +34,7 @@ The **My commands** view is accessible from the **My Commands** entry in the lef
 
 ## Editing a command
 
-► Proceed as follows to edit a command:
+Proceed as follows to edit a command:
 
 1. Click on **My Commands** in the left sidebar.
    - The **My commands** view opens.
@@ -49,7 +49,7 @@ The **My commands** view is accessible from the **My Commands** entry in the lef
 
 ## Deleting a command
 
-► Proceed as follows to delete a command:
+Proceed as follows to delete a command:
 
 1. Click on **My Commands** in the left sidebar.
    - The **My commands** view opens.
@@ -63,7 +63,7 @@ The **My commands** view is accessible from the **My Commands** entry in the lef
 
 ## Using a command in Chat
 
-► Proceed as follows to use a command in the **Chat** view:
+Proceed as follows to use a command in the **Chat** view:
 
 1. Open the **Chat** view.
 2. Type `/` in the message input field.
