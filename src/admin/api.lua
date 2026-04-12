@@ -488,11 +488,30 @@ end)
 -- Model catalog — read-only, supports ?provider= filter
 -- GET /admin/v1/models
 -- GET /admin/v1/models?provider=openrouter
+-- Returns model_price rows, augmented with computed capability flags:
+--   supports_thinking: true for Anthropic claude-3-7-sonnet and all claude-4 / claude-*-4-* models
 route("GET", "^/admin/v1/models$", function()
     local args     = ngx.req.get_uri_args()
     local provider = args.provider
     if provider == "" then provider = nil end
-    send(200, storage.list_models(provider))
+    local rows = storage.list_models(provider)
+    for _, row in ipairs(rows) do
+        local m = (row.model or ""):lower()
+        -- claude-3-7-sonnet: first model with extended thinking
+        -- claude-4 series: claude-4-*, claude-opus-4-*, claude-sonnet-4-*, claude-haiku-4-*
+        -- azure_ai/ prefixed variants are excluded (not guaranteed to have thinking)
+        local is_claude = m:match("^claude%-") or m:match("^azure_ai/claude%-")
+        local is_thinking = is_claude and (
+            m:match("^claude%-3%-7%-sonnet") or
+            m:match("^claude%-4")            or
+            m:match("^claude%-[a-z]+-4[-.]")  or
+            m:match("^claude%-[a-z]+-4%d")    or
+            m:match("^azure_ai/claude%-[a-z]+-4[-.]") or
+            m:match("^azure_ai/claude%-4")
+        )
+        row.supports_thinking = is_thinking and true or false
+    end
+    send(200, rows)
 end)
 
 -- GET /admin/v1/providers
@@ -925,6 +944,11 @@ require("admin.chat").register(route)
 -- Project routes (projects, members, knowledge)
 -- ---------------------------------------------------------------------------
 require("admin.projects").register(route)
+
+-- ---------------------------------------------------------------------------
+-- MCP connector routes
+-- ---------------------------------------------------------------------------
+require("admin.mcp").register(route)
 
 -- ---------------------------------------------------------------------------
 -- Dispatcher

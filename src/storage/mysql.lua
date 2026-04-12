@@ -2702,5 +2702,190 @@ function M.list_project_conversations(project_id, limit)
     return setmetatable(rows, cjson.array_mt)
 end
 
+-- ---------------------------------------------------------------------------
+-- Project feed (shared conversations)
+-- ---------------------------------------------------------------------------
+
+-- Mark/unmark a conversation as shared to its project's feed.
+function M.set_conversation_shared(conv_id, shared_by, shared)
+    local db, err = get_conn()
+    if not db then return false, err end
+    local now = shared and math.floor(ngx.now()) or nil
+    local e
+    if shared then
+        e = exec_one(db, [[
+            UPDATE chat_conversation
+            SET    shared_in_project = 1,
+                   shared_at         = ?,
+                   shared_by         = ?
+            WHERE  id = ?
+        ]], now, shared_by, conv_id)
+    else
+        e = exec_one(db, [[
+            UPDATE chat_conversation
+            SET    shared_in_project = 0,
+                   shared_at         = NULL,
+                   shared_by         = NULL
+            WHERE  id = ?
+        ]], conv_id)
+    end
+    release(db)
+    if e then return false, e end
+    return true
+end
+
+-- List conversations shared to a project feed, newest first.
+function M.list_project_feed(project_id, limit, offset)
+    limit  = math.min(limit or 20, 100)
+    offset = offset or 0
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows = query_all(db, string.format([[
+        SELECT c.id, c.title, c.model, c.user_id, c.project_id,
+               DATE_FORMAT(FROM_UNIXTIME(c.shared_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS shared_at,
+               c.shared_by,
+               u.email AS shared_by_email,
+               DATE_FORMAT(FROM_UNIXTIME(c.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at
+        FROM   chat_conversation c
+        LEFT JOIN user u ON u.id = c.shared_by
+        WHERE  c.project_id = ?
+          AND  c.shared_in_project = 1
+          AND  c.deleted_at IS NULL
+        ORDER  BY c.shared_at DESC
+        LIMIT  %d OFFSET %d
+    ]], limit, offset), project_id) or {}
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+-- ---------------------------------------------------------------------------
+-- Conversation summaries (Infinite Chats)
+-- ---------------------------------------------------------------------------
+
+-- Insert a new summary record.
+function M.create_conversation_summary(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id = uuid()
+    local e = exec_one(db, [[
+        INSERT INTO conversation_summary
+               (id, conversation_id, summary_text, first_message_id, last_message_id, message_count, model_used, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ]], id, data.conversation_id, data.summary_text,
+        data.first_message_id, data.last_message_id,
+        data.message_count or 0, data.model_used or "",
+        math.floor(ngx.now()))
+    release(db)
+    if e then return nil, e end
+    data.id = id
+    return data
+end
+
+-- List all summaries for a conversation, ordered oldest first.
+function M.list_conversation_summaries(conversation_id)
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows = query_all(db, [[
+        SELECT id, conversation_id, summary_text, first_message_id, last_message_id,
+               message_count, model_used,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+        FROM   conversation_summary
+        WHERE  conversation_id = ?
+        ORDER  BY created_at ASC
+    ]], conversation_id) or {}
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+-- ---------------------------------------------------------------------------
+-- MCP connectors
+-- ---------------------------------------------------------------------------
+
+function M.list_mcp_connectors(tenant_id, gateway_id)
+    local db, err = get_conn()
+    if not db then return setmetatable({}, cjson.array_mt) end
+    local rows
+    if gateway_id then
+        rows = query_all(db, [[
+            SELECT id, tenant_id, gateway_id, name, server_url, auth_type,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                   DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+            FROM   mcp_connector
+            WHERE  tenant_id = ? AND gateway_id = ?
+            ORDER  BY name ASC
+        ]], tenant_id, gateway_id) or {}
+    else
+        rows = query_all(db, [[
+            SELECT id, tenant_id, gateway_id, name, server_url, auth_type,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                   DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+            FROM   mcp_connector
+            WHERE  tenant_id = ?
+            ORDER  BY name ASC
+        ]], tenant_id) or {}
+    end
+    release(db)
+    return setmetatable(rows, cjson.array_mt)
+end
+
+function M.get_mcp_connector(id)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local row = query_one(db, [[
+        SELECT id, tenant_id, gateway_id, name, server_url, auth_type, auth_value,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+        FROM   mcp_connector
+        WHERE  id = ?
+    ]], id)
+    release(db)
+    return row
+end
+
+function M.create_mcp_connector(data)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id  = uuid()
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO mcp_connector (id, tenant_id, gateway_id, name, server_url, auth_type, auth_value, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ]], id, data.tenant_id, data.gateway_id, data.name, data.server_url,
+        data.auth_type or "none", data.auth_value, now, now)
+    release(db)
+    if e then return nil, e end
+    data.id         = id
+    data.created_at = os.date("!%Y-%m-%dT%H:%M:%SZ", now)
+    data.updated_at = data.created_at
+    return data
+end
+
+function M.update_mcp_connector(id, data)
+    local db, err = get_conn()
+    if not db then return false, err end
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        UPDATE mcp_connector
+        SET    name       = COALESCE(?, name),
+               server_url = COALESCE(?, server_url),
+               auth_type  = COALESCE(?, auth_type),
+               auth_value = COALESCE(?, auth_value),
+               updated_at = ?
+        WHERE  id = ?
+    ]], data.name, data.server_url, data.auth_type, data.auth_value, now, id)
+    release(db)
+    if e then return false, e end
+    return true
+end
+
+function M.delete_mcp_connector(id)
+    local db, err = get_conn()
+    if not db then return false, err end
+    local e = exec_one(db, "DELETE FROM mcp_connector WHERE id = ?", id)
+    release(db)
+    if e then return false, e end
+    return true
+end
+
 return M
 

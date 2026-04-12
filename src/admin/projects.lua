@@ -20,6 +20,7 @@
 --   DELETE /admin/v1/projects/:id/knowledge/:kid
 -- Project conversations:
 --   GET    /admin/v1/projects/:id/conversations
+--   GET    /admin/v1/projects/:id/feed
 
 local json    = require("utils.json")
 local storage = require("storage")
@@ -127,8 +128,8 @@ function M.register(route)
             tenant_id = u.tenant_id
         end
 
-        -- Only tenant_admin+ may create projects (members/viewers cannot)
-        if u.role ~= "admin" and u.role ~= "tenant_admin" then
+        -- Viewers may not create projects
+        if u.role == "viewer" then
             send(403, { error = "forbidden" }); return
         end
 
@@ -776,6 +777,19 @@ except Exception as e:
         if not proj then return end
         local args  = ngx.req.get_uri_args()
         local rows  = storage.list_project_conversations(project_id, tonumber(args.limit))
+        send(200, rows)
+    end)
+
+    -- GET /admin/v1/projects/:id/feed?limit=20&offset=0
+    -- Returns conversations shared to the project feed (shared_in_project = 1),
+    -- ordered by shared_at DESC. Visible to all project members.
+    route("GET", "^/admin/v1/projects/([^/]+)/feed$", function(project_id)
+        local proj = require_project_access(project_id, "viewer")
+        if not proj then return end
+        local args   = ngx.req.get_uri_args()
+        local limit  = tonumber(args.limit) or 20
+        local offset = tonumber(args.offset) or 0
+        local rows   = storage.list_project_feed(project_id, limit, offset)
         send(200, rows)
     end)
 

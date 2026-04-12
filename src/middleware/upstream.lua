@@ -181,7 +181,9 @@ end
 -- #2: parse_sse_chunk is called inside pcall so a malformed chunk cannot
 -- panic the worker and leave the client connection in an unknown state.
 -- Returns the updated buf (incomplete last fragment, kept for next call).
-local function drain_sse_buf(buf, chunk, provider_mod, on_parsed)
+-- parse_state is a per-stream table threaded through to stateful providers
+-- (e.g. Anthropic thinking-block tracking) for cross-chunk state.
+local function drain_sse_buf(buf, chunk, provider_mod, on_parsed, parse_state)
     buf = buf .. chunk
     local pos = 1
     while true do
@@ -189,7 +191,7 @@ local function drain_sse_buf(buf, chunk, provider_mod, on_parsed)
         if not nl then return buf:sub(pos) end
         local line = buf:sub(pos, nl - 1):gsub("\r$", "")
         pos = nl + 1
-        local ok, result = pcall(provider_mod.parse_sse_chunk, line)
+        local ok, result = pcall(provider_mod.parse_sse_chunk, line, parse_state)
         if ok and result then
             on_parsed(result)
         elseif not ok then
@@ -224,7 +226,8 @@ local function handle_compat_streaming(ctx, res)
     local first_chunk_seen = false
     local done_sent        = false
     local stream_errored   = false  -- #8: track mid-stream read failures
-    local in_think         = false  -- stateful <think> block tracker
+    local in_think         = false  -- stateful <think> block tracker (output-side strip)
+    local parse_state      = {}     -- per-stream state for parse_sse_chunk (e.g. thinking_opened)
     local stop_reason_seen = nil    -- accumulated from message_delta before message_stop fires
     -- #1: table accumulator avoids O(n²) string copies for large responses
     local acc_parts        = {}
@@ -339,7 +342,7 @@ local function handle_compat_streaming(ctx, res)
         end
 
         -- #5: shared line parser with #2 pcall protection inside
-        buf = drain_sse_buf(buf, chunk, provider_mod, on_compat_chunk)
+        buf = drain_sse_buf(buf, chunk, provider_mod, on_compat_chunk, parse_state)
     end
 
     local accumulated_content = table.concat(acc_parts)  -- #1
@@ -465,6 +468,7 @@ local function handle_streaming(ctx, res)
     local reader       = res.body
     local provider_mod = res.provider_mod
     local buf          = ""
+    local parse_state  = {}     -- per-stream state for parse_sse_chunk
     local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = 0, 0, 0, 0
     local first_chunk_seen = false
     -- #1: table accumulator; only allocated when pii_protector is active
@@ -495,7 +499,7 @@ local function handle_streaming(ctx, res)
             ngx.log(ngx.ERR,
                 "[stream_truncated] passthrough read error after ", elapsed_ms, "ms"
                 .. " | provider=", res.provider_name
-                .. " model=", model
+                .. " model=", tostring(ctx.model)
                 .. " gateway=", tostring(ctx.gateway_id)
                 .. " request_id=", tostring(ctx.request_id)
                 .. " bytes_read=", bytes_read
@@ -521,7 +525,7 @@ local function handle_streaming(ctx, res)
         ngx.flush(true)
 
         -- #5: shared line parser with #2 pcall protection inside
-        buf = drain_sse_buf(buf, chunk, provider_mod, on_stream_chunk)
+        buf = drain_sse_buf(buf, chunk, provider_mod, on_stream_chunk, parse_state)
     end
 
     local elapsed_total_ms = math.floor(ngx.now() * 1000 - stream_start_ms)
@@ -530,16 +534,16 @@ local function handle_streaming(ctx, res)
         ngx.log(ngx.WARN,
             "[stream_truncated] passthrough stream ended with read error"
             .. " | provider=", res.provider_name
-            .. " model=", model
+            .. " model=", tostring(ctx.model)
             .. " gateway=", tostring(ctx.gateway_id)
             .. " elapsed_ms=", elapsed_total_ms
             .. " bytes_forwarded=", bytes_read
             .. " output_tokens=", output_tokens)
     else
-        ngx.log(ngx.ERR,
+        ngx.log(ngx.INFO,
             "[stream_ok] passthrough stream completed"
             .. " | provider=", res.provider_name
-            .. " model=", model
+            .. " model=", tostring(ctx.model)
             .. " gateway=", tostring(ctx.gateway_id)
             .. " elapsed_ms=", elapsed_total_ms
             .. " bytes_forwarded=", bytes_read

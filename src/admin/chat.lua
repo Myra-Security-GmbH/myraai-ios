@@ -220,6 +220,39 @@ function M.register(route)
         send(200, { token = row.token, url = base .. "/shared/" .. row.token })
     end)
 
+    -- POST /admin/v1/conversations/:id/share-project — share to project feed
+    -- Requires the conversation to belong to a project and the caller to be a member.
+    route("POST", "^/admin/v1/conversations/([^/]+)/share%-project$", function(id)
+        local u    = ngx.ctx.admin_user
+        local conv = storage.get_conversation(id, u.id)
+        if not conv then return send(404, { error = "not_found" }) end
+        if not conv.project_id then return send(400, { error = "conversation is not in a project" }) end
+        -- Verify membership
+        local member = storage.get_project_member(conv.project_id, u.id)
+        if not member then return send(403, { error = "not a project member" }) end
+        local ok, err = storage.set_conversation_shared(id, u.id, true)
+        if not ok then return send(500, { error = err or "db error" }) end
+        send(200, { ok = true })
+    end)
+
+    -- DELETE /admin/v1/conversations/:id/share-project — remove from project feed
+    route("DELETE", "^/admin/v1/conversations/([^/]+)/share%-project$", function(id)
+        local u    = ngx.ctx.admin_user
+        local conv = storage.get_conversation(id, u.id)
+        if not conv then return send(404, { error = "not_found" }) end
+        -- Only owner or project admin can unshare
+        if conv.user_id ~= u.id then
+            if not conv.project_id then return send(403, { error = "forbidden" }) end
+            local member = storage.get_project_member(conv.project_id, u.id)
+            if not member or member.role ~= "admin" then
+                return send(403, { error = "only the conversation owner or project admin can unshare" })
+            end
+        end
+        local ok, err = storage.set_conversation_shared(id, u.id, false)
+        if not ok then return send(500, { error = err or "db error" }) end
+        send(200, { ok = true })
+    end)
+
     route("GET", "^/admin/v1/conversations/([^/]+)/feedback$", function(conv_id)
         local u  = ngx.ctx.admin_user
         local fb = storage.get_feedback(conv_id, u.id)
@@ -242,6 +275,152 @@ function M.register(route)
         })
         if err then return send(500, { error = err }) end
         send(200, { ok = true })
+    end)
+
+    -- GET /admin/v1/conversations/:id/summaries — return all summaries for a conversation
+    route("GET", "^/admin/v1/conversations/([^/]+)/summaries$", function(conv_id)
+        local u    = ngx.ctx.admin_user
+        local conv = storage.get_conversation(conv_id, u.id)
+        if not conv then return send(404, { error = "not_found" }) end
+        local rows = storage.list_conversation_summaries(conv_id)
+        send(200, rows)
+    end)
+
+    -- POST /admin/v1/conversations/:id/summaries — insert a pre-written summary directly
+    -- Body: { summary_text, first_message_id, last_message_id, message_count, model_used }
+    route("POST", "^/admin/v1/conversations/([^/]+)/summaries$", function(conv_id)
+        local u    = ngx.ctx.admin_user
+        local conv = storage.get_conversation(conv_id, u.id)
+        if not conv then return send(404, { error = "not_found" }) end
+
+        local body = read_body()
+        if not body.summary_text or body.summary_text == "" then
+            return send(400, { error = "summary_text required" })
+        end
+        if not body.first_message_id or not body.last_message_id then
+            return send(400, { error = "first_message_id and last_message_id required" })
+        end
+
+        local rec, db_err = storage.create_conversation_summary({
+            conversation_id  = conv_id,
+            summary_text     = body.summary_text,
+            first_message_id = body.first_message_id,
+            last_message_id  = body.last_message_id,
+            message_count    = body.message_count or 0,
+            model_used       = body.model_used or "",
+        })
+        if not rec then return send(500, { error = db_err or "db error" }) end
+        send(201, rec)
+    end)
+
+    -- POST /admin/v1/conversations/:id/summarize
+    -- Summarizes the oldest N messages and stores the result.
+    -- Body: { first_message_id, last_message_id, messages: [{role,content}...], gateway_id, model }
+    -- The caller (frontend) selects which messages to compress and which gateway/model to use.
+    route("POST", "^/admin/v1/conversations/([^/]+)/summarize$", function(conv_id)
+        local u    = ngx.ctx.admin_user
+        local conv = storage.get_conversation(conv_id, u.id)
+        if not conv then return send(404, { error = "not_found" }) end
+
+        local body = read_body()
+        if not body.messages or #body.messages == 0 then
+            return send(400, { error = "messages required" })
+        end
+        if not body.gateway_id or not body.model then
+            return send(400, { error = "gateway_id and model required" })
+        end
+        if not body.first_message_id or not body.last_message_id then
+            return send(400, { error = "first_message_id and last_message_id required" })
+        end
+
+        -- Look up the gateway and get its API key
+        local gw = storage.get_gateway_by_id(body.gateway_id)
+        if not gw then return send(404, { error = "gateway not found" }) end
+
+        local provider_name = gw.provider or "anthropic"
+        local provider_mod  = require("providers." .. provider_name)
+        local api_key, key_err = byok.get_key(body.gateway_id, provider_name, "default")
+        if not api_key then
+            return send(422, { error = "provider API key unavailable for summarization: " .. tostring(key_err) })
+        end
+
+        -- Build summarization prompt
+        local conv_text = {}
+        for _, msg in ipairs(body.messages) do
+            local role = msg.role == "user" and "User" or "Assistant"
+            local content = type(msg.content) == "string" and msg.content
+                         or (type(msg.content) == "table" and json.encode(msg.content))
+                         or ""
+            -- Truncate very long messages for the summary request
+            if #content > 4000 then content = content:sub(1, 4000) .. "…" end
+            conv_text[#conv_text+1] = role .. ": " .. content
+        end
+
+        local prompt = "Summarize the following conversation segment concisely (200-400 words), " ..
+            "preserving all key facts, decisions, code snippets, file names, and important details. " ..
+            "Output only the summary text, no preamble.\n\n" ..
+            table.concat(conv_text, "\n\n")
+
+        -- Minimal inference request to the provider
+        local req_body = {
+            model      = body.model,
+            max_tokens = 1024,
+            messages   = {{ role = "user", content = prompt }},
+            stream     = false,
+        }
+
+        local inf_ctx = {
+            is_compat        = false,
+            raw_request_body = json.encode(req_body),
+            request_body     = req_body,
+            model            = body.model,
+            request_id       = ngx.var.request_id or "",
+        }
+
+        -- Build provider-specific request
+        local encoded_body = provider_mod.build_request(inf_ctx)
+        local prov_url     = provider_mod.base_url and provider_mod.base_url(inf_ctx) or ""
+        local prov_headers = provider_mod.build_headers(inf_ctx, api_key)
+
+        if not prov_url or prov_url == "" then
+            return send(422, { error = "provider does not support direct calls" })
+        end
+
+        local status, _, resp_body, req_err = http_util.request({
+            method  = "POST",
+            url     = prov_url,
+            headers = prov_headers,
+            body    = encoded_body,
+            timeout = 90000,
+        })
+
+        if req_err or not resp_body then
+            return send(502, { error = "summarization request failed: " .. tostring(req_err or "no response") })
+        end
+        if status ~= 200 then
+            return send(502, { error = "provider returned " .. tostring(status) .. " for summarization" })
+        end
+
+        local parsed, parse_err = provider_mod.parse_response(resp_body)
+        if not parsed then
+            return send(502, { error = "summarization response parse error: " .. (parse_err or "unknown") })
+        end
+
+        local summary_text = (parsed.content or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if summary_text == "" then
+            return send(502, { error = "empty summary returned by model" })
+        end
+
+        local rec, db_err = storage.create_conversation_summary({
+            conversation_id  = conv_id,
+            summary_text     = summary_text,
+            first_message_id = body.first_message_id,
+            last_message_id  = body.last_message_id,
+            message_count    = #body.messages,
+            model_used       = body.model,
+        })
+        if not rec then return send(500, { error = db_err or "db error" }) end
+        send(201, rec)
     end)
 
     -- ── Messages ────────────────────────────────────────────────────────────
@@ -899,6 +1078,13 @@ except Exception as e:
                 return send(422, { error = "MinerU could not extract text from PDF" })
             end
             return send(200, { text = text })
+        end
+
+        -- Non-Anthropic path: return extracted text instead of uploading to Files API.
+        -- xlsx/csv/pptx are all converted to text/plain above; if the caller sets
+        -- extract_text=true, return the text so the frontend can embed it inline.
+        if body.extract_text and mime == "text/plain" then
+            return send(200, { text = bin })
         end
 
         -- PDF / plain text / spreadsheets (converted above): upload to Anthropic Files API
