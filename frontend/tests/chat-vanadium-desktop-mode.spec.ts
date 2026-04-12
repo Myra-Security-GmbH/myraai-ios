@@ -97,6 +97,22 @@ test.describe("viewport-fix script — desktop-mode simulation (innerWidth=980, 
     expect(errors, `unexpected JS errors: ${errors.join("; ")}`).toHaveLength(0);
     await expect(page.locator("select").first()).toBeAttached();
   });
+
+  test("CSS zoom is applied to <html> to compensate for desktop-mode scale", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "outerWidth", { get: () => 427, configurable: true });
+    });
+    await openChat(page);
+
+    // The fix script sets html.style.zoom = innerWidth/outerWidth = 980/427 ≈ 2.295.
+    // Per CSS Zoom spec (Chrome 128+) this divides the ICB by the zoom value so the
+    // page lays out in a ~427 px coordinate space, counteracting the browser's scale.
+    const zoom = await page.evaluate(() =>
+      parseFloat(document.documentElement.style.zoom || "1")
+    );
+    expect(zoom).toBeGreaterThan(2.1);   // 980/427 ≈ 2.295
+    expect(zoom).toBeLessThan(2.5);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -179,6 +195,14 @@ test.describe("viewport-fix script — no false positive on desktop (innerWidth=
     const content = await getViewportMeta(page);
     expect(content).toBe("width=device-width, initial-scale=1.0");
   });
+
+  test("CSS zoom is not applied on real desktop", async ({ page }) => {
+    await openChat(page);
+    const zoom = await page.evaluate(() =>
+      parseFloat(document.documentElement.style.zoom || "1")
+    );
+    expect(zoom).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -199,5 +223,13 @@ test.describe("viewport-fix script — no false positive on narrow desktop (inne
 
     const content = await getViewportMeta(page);
     expect(content).toBe("width=device-width, initial-scale=1.0");
+  });
+
+  test("CSS zoom is not applied on narrow desktop", async ({ page }) => {
+    await openChat(page);
+    const zoom = await page.evaluate(() =>
+      parseFloat(document.documentElement.style.zoom || "1")
+    );
+    expect(zoom).toBe(1);
   });
 });

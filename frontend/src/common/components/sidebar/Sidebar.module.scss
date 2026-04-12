@@ -86,8 +86,7 @@
   flex-direction: column;
   width: tools.pixelToRem(240);
   min-width: tools.pixelToRem(240);
-  height: 100vh;
-  height: 100dvh;
+  height: var(--real-height, 100dvh);
   position: sticky;
   top: 0;
   background-color: var(--sidebar-bg);
@@ -101,10 +100,8 @@
     position: fixed;
     top: 0;
     left: 0;
-    height: 100dvh;
+    height: var(--real-height, 100dvh);
     z-index: 200;
-    height: 100vh;
-    height: 100dvh;
     transform: translateX(-100%);
     // Always show full width on mobile regardless of collapsed state
     width: tools.pixelToRem(240) !important;

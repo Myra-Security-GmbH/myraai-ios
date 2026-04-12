@@ -3,18 +3,36 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Force mobile viewport when browser is in "Request Desktop Site" mode.
-         In that mode the browser ignores width=device-width and sets innerWidth to
-         ~980 px while outerWidth stays at the real CSS pixel width (~427 px on a phone).
-         Detecting innerWidth >> outerWidth lets us reset the meta tag before React renders,
-         giving us the correct layout viewport without any layout shift. -->
+    <!-- Fix for Chrome/Vanadium "Request Desktop Site" mode.
+         In that mode the browser forces innerWidth to ~980 px while outerWidth stays at
+         the real device CSS pixel width (~427 px).  The browser then scales the 980 px
+         layout down to ~43.5 % to fit the screen, making text and controls tiny.
+         Two complementary fixes applied when this condition is detected:
+         1. Meta viewport reset — respected by some browsers; Chrome ignores it.
+         2. CSS zoom on <html> — Chrome 128+ implements the CSS Zoom spec:
+            "If the root element has a zoom value other than 1, the ICB is divided by
+            the zoom value."  Setting zoom = iw/ow makes the page lay out in an ow-px
+            coordinate space so element sizes, dvh units, and media queries all evaluate
+            against the real device width.  The browser scale-down then restores
+            everything to correct physical size. -->
     <script>
     (function(){
       var ow = window.outerWidth;
       var iw = window.innerWidth;
       if (ow > 0 && iw > ow * 1.5 && ow < 600) {
+        // Fix 1: meta viewport (works in non-Chromium browsers)
         document.querySelector('meta[name="viewport"]')
           .setAttribute('content', 'width=' + ow + ',initial-scale=1.0');
+        // Fix 2: CSS zoom compensation (Chrome 128+ / Vanadium 128+)
+        // zoom = iw/ow makes the layout viewport equal to outerWidth
+        var zoom = iw / ow;
+        document.documentElement.style.zoom = String(zoom);
+        // Fix 3: dvh/vh units are NOT divided by zoom in current Chrome builds.
+        // Without correction, height:100dvh inside the zoomed root = iw/ow × 100dvh,
+        // making the page much taller than the screen and clipping the input bar.
+        // Set --real-height to the correct value so CSS can use var(--real-height,100dvh).
+        var realH = Math.round(window.innerHeight / zoom);
+        document.documentElement.style.setProperty('--real-height', realH + 'px');
       }
     })();
     </script>
