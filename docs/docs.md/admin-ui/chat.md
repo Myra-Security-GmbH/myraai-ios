@@ -60,7 +60,8 @@ A settings drawer is accessible by clicking the **gear** (⚙) icon. Settings ap
 | **System prompt** text field | An initial instruction sent to the model before any user messages. A default prompt is pre-filled. |
 | **Temperature** slider | Controls response randomness. Range: 0–2. Default: 0.7. |
 | **Max tokens** field | The maximum number of tokens the model generates per response. Default: 8 192. |
-| **Extended thinking** toggle | Enables the model's internal reasoning process before it generates a response. Appears only when the selected model supports extended thinking (for example, Claude 3.7 Sonnet and Claude 3.7 Opus). |
+| **Web search** toggle | Enables live web search augmentation for the current conversation. The globe icon in the message toolbar also toggles this setting. See [Web search](../features/web-search.md). |
+| **Extended thinking** toggle | Enables the model's internal reasoning process before it generates a response. Appears only when the selected model supports extended thinking. |
 | **Thinking budget** slider | Controls the maximum number of tokens the model may use for internal reasoning. Available only when extended thinking is enabled. |
 
 The message input field sits at the bottom of the message area. Text typed here is sent when you press **Enter** or click the **Send** button. A **Stop** button appears while a response is streaming — clicking it aborts the current response.
@@ -110,8 +111,9 @@ The following file types are supported:
 | Plain text | `.txt` |
 | Word document | `.docx` |
 | Spreadsheet | `.csv`, `.tsv`, `.xlsx`, `.xlsm`, `.ods` |
+| Presentation | `.pptx` |
 
-> 💡 **Note:** Word and spreadsheet files require an **Anthropic** provider key on the selected gateway. Claude reads and analyses the document content and can answer questions about it.
+> 💡 **Note:** Word, spreadsheet, and presentation files require an **Anthropic** provider key on the selected gateway. Claude reads and analyses the document content and can answer questions about it.
 
 Attaching an unsupported file type shows an error message listing the supported formats.
 
@@ -162,6 +164,117 @@ Proceed as follows to use a command:
 4. Press **Enter** or click the **Send** button to submit the message.
 
 → The message is sent with the command's prompt text as the content.
+
+---
+
+## Starring and archiving conversations
+
+Conversations can be starred or archived to help organise the conversation list.
+
+| Action | Control |
+|---|---|
+| Star a conversation | Click the **star** icon on a conversation row. Starred conversations appear at the top of the list. |
+| Archive a conversation | Click the **archive** icon on a conversation row. Archived conversations are hidden from the main list. |
+| Show archived conversations | Click the **Show archived** toggle at the top of the conversation list. |
+| Unarchive a conversation | Open the archived list, then click the **unarchive** icon on the conversation row. |
+
+Starring and archiving do not affect the conversation content or accessibility via direct URL.
+
+---
+
+## Sharing a conversation
+
+You can generate a public share link for any conversation. Anyone with the link can view the conversation in a read-only page — no authentication is required.
+
+Proceed as follows to share a conversation:
+
+1. Open the conversation you want to share.
+2. Click the **Share** button (link icon) in the configuration bar.
+   - The **Share conversation** dialog opens.
+3. Click **Generate link**.
+   - A unique URL is generated and displayed.
+4. Copy the link and send it to the intended recipients.
+
+→ Recipients can view the conversation at the shared URL without logging in.
+
+To revoke a share link, open the dialog again and click **Remove link**. Previously shared URLs stop working immediately.
+
+---
+
+## Conversation URL sync
+
+The active conversation is reflected in the browser URL as a `?conv=` query parameter. You can copy the URL from the browser address bar to link directly to a specific conversation. When you open the link, the Chat view loads and selects that conversation automatically.
+
+---
+
+## Ghost mode
+
+Ghost mode disables all database writes and request logging for the duration of the session. Use it for exploratory or sensitive conversations that should not be stored.
+
+Proceed as follows to enable ghost mode:
+
+1. Click the **ghost** icon in the conversation list header.
+   - The icon turns active and a visual indicator shows that ghost mode is on.
+
+→ All messages sent while ghost mode is active are kept in memory only. They are not saved to the database, do not appear in request logs, and are lost when you leave the page.
+
+To disable ghost mode, click the ghost icon again. Subsequent conversations are saved normally.
+
+> 💡 **Note:** Conversations created in ghost mode cannot be starred, archived, shared, or exported.
+
+---
+
+## Memory
+
+The memory system allows the model to remember facts about you across conversations. Memories are injected into the system prompt automatically.
+
+There are three types of memory:
+
+| Type | Description |
+|---|---|
+| **Fact** | A piece of information about you (for example, "I work in the legal department"). |
+| **Preference** | A preference for how the model should behave (for example, "Always respond in German"). |
+| **Instruction** | A standing instruction (for example, "Cite sources in APA format"). |
+
+### Creating a memory manually
+
+1. Click the **Memories** button in the message toolbar.
+   - The memories panel opens.
+2. Click **+ Add memory**.
+3. Select a type and enter the memory content.
+4. Click **Save**.
+
+→ The memory is saved and will be included in all future conversations.
+
+### Auto-learned memories
+
+The model can also learn memories automatically during a conversation by emitting `<memory>` tags. Auto-learned memories appear in the memories panel and can be edited or deleted like any other memory.
+
+### Disabling memory for a conversation
+
+To prevent memory injection in a specific conversation, open the memories panel and toggle **Memory for this conversation** off. The conversation proceeds without any memory context.
+
+---
+
+## Chat presets
+
+When a tenant administrator has configured **chat presets** on the tenant, the configuration bar displays a row of preset buttons instead of the gateway and model drop-down lists. Clicking a preset button selects the associated gateway and model automatically.
+
+Users with the `member` or `viewer` role see only the preset buttons and cannot override the gateway or model selection. Users with the `admin` or `tenant_admin` role can still switch to any gateway or model.
+
+For instructions on configuring presets, see [Tenants — Chat presets](tenants.md#chat-presets).
+
+---
+
+## Extended thinking display
+
+When extended thinking is enabled, the model's internal reasoning appears in a collapsible **Thinking** block above the response. The block shows the duration of the thinking phase. Click the block header to expand or collapse it.
+
+---
+
+## Automatic context management
+
+When a conversation exceeds approximately 75 % of the selected model's context window, earlier messages are automatically summarised. The summary replaces the original messages in the context sent to the model, preserving the key information while freeing space for new messages. This process is invisible — you can continue the conversation without interruption.
 
 ---
 

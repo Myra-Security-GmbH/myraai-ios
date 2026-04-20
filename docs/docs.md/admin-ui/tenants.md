@@ -99,9 +99,50 @@ Proceed as follows to assign a user to a tenant:
 
 ---
 
+## Chat presets
+
+Chat presets let a tenant administrator define a fixed set of gateway and model combinations that appear as quick-select buttons in the **Chat** view. When presets are configured, users with the `member` or `viewer` role see only the preset buttons and cannot select a different gateway or model. Users with the `admin` or `tenant_admin` role retain full access to all gateways and models.
+
+Each preset has the following fields:
+
+| Field | Description |
+|---|---|
+| **Name** | A short label displayed on the preset button (for example, "Claude Sonnet" or "GPT-4o"). |
+| **Gateway** | The gateway that handles requests when this preset is selected. |
+| **Provider** | The provider to use (for example, `anthropic`, `openai`). |
+| **Model** | The model to use (for example, `claude-sonnet-4-6`, `gpt-4o`). |
+
+### Configuring presets
+
+Before you begin, ensure the following conditions are met:
+
+- ☑ You are logged in as a user with the `admin` or `tenant_admin` role.
+- ☑ At least one gateway with a configured provider key exists on the tenant.
+
+Proceed as follows to configure chat presets:
+
+1. Click on **Tenants** in the left sidebar.
+   - The **Tenants** list opens.
+2. Click on the tenant you want to configure.
+   - The tenant detail view opens.
+3. Scroll to the **Chat Presets** section.
+4. Click on **+ Add Preset**.
+   - A preset form opens.
+5. Enter a name, select a gateway, provider, and model.
+6. Click **Save**.
+
+→ The preset is added and becomes visible to all users of the tenant in the Chat view immediately.
+
+Repeat the process to add additional presets. You can edit or delete presets at any time.
+
+> 💡 **Note:** If you remove all presets from a tenant, the Chat view reverts to showing the standard gateway and model drop-down lists for all users.
+
+---
+
 ## See also
 
 - [Users](users.md)
 - [Gateways](../configuration/gateway-config.md)
 - [Multi-tenancy](../concepts/multi-tenancy.md)
+- [Chat — Chat presets](chat.md#chat-presets) — how presets appear in the Chat view
 - [Tenants & Gateways API](../api-reference/tenants-gateways.md)

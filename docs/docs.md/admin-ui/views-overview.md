@@ -65,6 +65,7 @@ The sidebar groups views into the following sections:
 |---|---|
 | **My tokens** | Self-service management of personal inference tokens for the currently logged-in user. |
 | **My commands** | Personal prompt shortcuts accessible directly in the **Chat** view. |
+| **MCP Connectors** | Registration and management of external tool servers that models can call during conversations. Visible to `admin` and `tenant_admin` roles only. |
 
 ---
 
@@ -87,6 +88,7 @@ Not all views are visible to all users. The sidebar shows only the views the cur
 | Request logs | Yes | Yes | No | No |
 | My tokens | Yes | Yes | Yes | No |
 | My commands | Yes | Yes | Yes | Yes |
+| MCP Connectors | Yes | Yes | No | No |
 
 > 💡 **Note:** The sidebar displays only the views that are accessible to the currently logged-in user's role. Views not listed in the table above are not accessible.
 

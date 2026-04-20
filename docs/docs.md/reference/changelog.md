@@ -4,6 +4,46 @@ Recent additions and fixes to AI Gateway, organised by feature area.
 
 ---
 
+## Chat — April 2026
+
+**New: Ghost mode** — Toggle ghost mode using the ghost icon in the conversation list header. While active, no messages are saved to the database, no request logs are created, and conversations exist only in memory. Use it for exploratory or sensitive conversations.
+
+**New: Conversation sharing** — Generate a public share link for any conversation. Recipients can view the conversation without logging in. Share links can be revoked at any time. See [Chat — Sharing a conversation](../admin-ui/chat.md#sharing-a-conversation).
+
+**New: Starring and archiving** — Star conversations to pin them at the top of the list. Archive conversations to remove them from the main view. A toggle reveals archived conversations when needed.
+
+**New: Memory system** — The model can remember facts, preferences, and instructions across conversations. Memories are injected into the system prompt automatically. Create memories manually or let the model learn them from conversation context. Memory can be disabled per conversation. See [Chat — Memory](../admin-ui/chat.md#memory).
+
+**New: Chat presets** — Tenant administrators can define preset buttons that appear in the Chat configuration bar. Members see only presets and cannot override gateway or model selection. See [Tenants — Chat presets](../admin-ui/tenants.md#chat-presets).
+
+**New: Web search in Chat** — A globe icon in the chat toolbar toggles web search on or off for the current conversation. Previously web search was available only via API header or in the Playground.
+
+**New: PowerPoint (.pptx) attachment** — `.pptx` files can be attached to chat messages alongside existing Word, Excel, and PDF support.
+
+**New: Extended thinking display** — When extended thinking is enabled, the model's reasoning appears in a collapsible block above the response with a duration indicator.
+
+**New: Automatic context management** — Long conversations are automatically summarised when they approach the model's context limit, allowing uninterrupted multi-turn sessions.
+
+**New: Conversation URL sync** — The active conversation ID is reflected in the browser URL as a `?conv=` parameter, enabling direct links to specific conversations.
+
+**New: Copy to Markdown** — A clipboard button in the configuration bar copies the full conversation as Markdown text.
+
+**New: MCP connectors** — Register external Model Context Protocol servers to provide tools that models can call during chat. See [MCP Connectors](../admin-ui/mcp-connectors.md).
+
+---
+
+## Projects — April 2026
+
+**New: Binary knowledge files** — Upload PDFs, Word documents, spreadsheets, presentations, and images to project knowledge bases. Server-side text extraction makes the content available in conversations.
+
+**New: Search, filter, and sort** — The projects list includes a search bar, a role filter (all, your, team, shared), and a sort control (recent activity, last edited, date created).
+
+**New: Batch save-to-project** — Save multiple conversations to a project at once from the Chat view.
+
+**Renamed: "Knowledge" tab is now "Files"** — The project detail tab that manages knowledge files has been renamed from **Knowledge** to **Files**.
+
+---
+
 ## Chat
 
 **New: Session feedback** — Rate any conversation on a 1–5 star scale and add an optional comment using the flag (🚩) icon on each conversation row. Ratings are saved per conversation. See [Chat — Rating a conversation](../admin-ui/chat.md#rating-a-conversation).

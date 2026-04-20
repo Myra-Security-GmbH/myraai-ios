@@ -12,6 +12,16 @@ A project is a workspace that groups conversations under a common context. Each 
 
 The **Projects** view is accessible from the **Projects** entry in the left sidebar and is available to all users.
 
+### Search, filter, and sort
+
+The projects list includes a toolbar with the following controls:
+
+| Control | Description |
+|---|---|
+| **Search** field | Filters projects by name or description. |
+| **Role filter** | Shows all projects, only your projects, team projects, or projects shared with you. |
+| **Sort** drop-down list | Orders projects by recent activity, last edited, or date created. |
+
 ---
 
 ## Creating a project
@@ -86,9 +96,19 @@ Proceed as follows to delete a project:
 
 ## Managing knowledge files
 
-Knowledge files are text documents injected into the system prompt of every conversation in the project. Use them to provide background information, reference data, or instructions that all conversations should have access to.
+Knowledge files are documents injected into the system prompt of every conversation in the project. Use them to provide background information, reference data, or instructions that all conversations should have access to.
 
-Supported file types: `.txt`, `.md`, `.csv`, `.json`, `.yaml`, `.yml`, `.xml`, `.html`, `.rst`, `.log`. Maximum file size: 5 MB per file.
+Both text files and binary documents are supported. Binary files are processed server-side and their extracted text is injected into the conversation context.
+
+| Category | Supported formats |
+|---|---|
+| Text | `.txt`, `.md`, `.csv`, `.json`, `.yaml`, `.yml`, `.xml`, `.html`, `.rst`, `.log` |
+| Documents | `.pdf`, `.docx` |
+| Spreadsheets | `.xlsx`, `.ods` |
+| Presentations | `.pptx` |
+| Images | `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp` |
+
+Maximum file size: 5 MB per file.
 
 Before you begin, ensure the following conditions are met:
 
@@ -99,8 +119,8 @@ Before you begin, ensure the following conditions are met:
 Proceed as follows to upload a knowledge file:
 
 1. Open the project detail view.
-2. Click on the **Knowledge** tab.
-   - The **Knowledge Files** panel opens.
+2. Click on the **Files** tab.
+   - The **Files** panel opens.
 3. Click on the **Upload File** button, or drag a file onto the drop zone.
    - If you click on the button, a file browser opens. Select the file you want to upload.
    - If you drag a file, drop it onto the drop zone area.
@@ -113,8 +133,8 @@ Proceed as follows to upload a knowledge file:
 Proceed as follows to delete a knowledge file:
 
 1. Open the project detail view.
-2. Click on the **Knowledge** tab.
-   - The **Knowledge Files** panel opens.
+2. Click on the **Files** tab.
+   - The **Files** panel opens.
 3. Click on the trash button in the row of the file you want to remove.
    - A confirmation dialog opens.
 4. Confirm the deletion.
@@ -211,6 +231,10 @@ Proceed as follows to remove a conversation from the project feed:
 2. Click the **Share to project** button again to toggle it off.
 
 → The conversation is removed from the feed. The conversation itself is not deleted.
+
+### Saving multiple conversations at once
+
+You can save several conversations to a project in one step using the batch save feature in the Chat view. Select the conversations you want to save, then choose the target project from the batch action menu. All selected conversations are linked to the project and appear in its feed.
 
 ### Viewing the feed
 
