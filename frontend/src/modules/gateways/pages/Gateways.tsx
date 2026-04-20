@@ -951,6 +951,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
   const [guardrailEvents, setGuardrailEvents] = useState<GuardrailEvent[]>([]);
   const [showGuardrailEvents, setShowGuardrailEvents] = useState(false);
   const [cbStatus, setCbStatus] = useState<CircuitBreakerStatus | null>(null);
+  const [providerNames, setProviderNames] = useState<string[]>([]);
 
   function loadTokens() {
     setLoadingTokens(true);
@@ -975,7 +976,12 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
     }
   }
 
-  useEffect(() => { loadTokens(); loadKeys(); loadRules(); loadGuardrailStats(); loadCbStatus(); }, [gw.id]);
+  useEffect(() => {
+    loadTokens(); loadKeys(); loadRules(); loadGuardrailStats(); loadCbStatus();
+    api.get<ProviderMeta[]>("/providers")
+      .then((list) => setProviderNames(["compat", ...list.map((p) => p.name)]))
+      .catch(() => {});
+  }, [gw.id]);
 
   async function deleteToken(tokenId: string) {
     if (!confirm("Delete this token? Requests using it will fail.")) return;
@@ -1144,7 +1150,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
               value={endpointProvider}
               onChange={(e) => setEndpointProvider(e.target.value)}
             >
-              {["compat", "openai", "anthropic", "gemini", "bedrock", "mistral", "groq", "cohere", "deepseek", "xai"].map((p) => (
+              {(providerNames.length > 0 ? providerNames : ["compat"]).map((p) => (
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>

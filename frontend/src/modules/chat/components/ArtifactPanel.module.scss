@@ -8,7 +8,11 @@
   overflow: hidden;
 
   @media (max-width: 900px) {
-    display: none; // hide on narrow screens
+    // Full-screen overlay on mobile instead of hidden
+    position: fixed;
+    inset: 0;
+    z-index: 250;
+    border-left: none;
   }
 }
 
@@ -23,13 +27,36 @@
   min-height: 40px;
 }
 
+.mobileBack {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+
+  &:hover { background: var(--table-row-hover); }
+
+  @media (max-width: 900px) {
+    display: flex;
+  }
+}
+
+.desktopOnly {
+  @media (max-width: 900px) { display: none; }
+}
+
 .tag {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--accent, #0052cc);
-  /* Safari < 16.4 fallback, then color-mix for modern browsers */
   background: rgba(0, 82, 204, 0.10);
   background: color-mix(in srgb, var(--accent, #0052cc) 10%, transparent);
   border: 1px solid rgba(0, 82, 204, 0.25);
@@ -43,6 +70,19 @@
   font-weight: 500;
   color: var(--text-primary);
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dirtyDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #0052cc);
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .generating {
@@ -79,6 +119,8 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .frame {
@@ -86,6 +128,7 @@
   height: 100%;
   border: none;
   display: block;
+  flex: 1;
 }
 
 .generatingPlaceholder {
@@ -112,7 +155,7 @@
   to { transform: rotate(360deg); }
 }
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
+// ── Tabs (segmented control) ─────────────────────────────────────────────
 .tabs {
   display: flex;
   flex-shrink: 0;
@@ -140,7 +183,7 @@
   border-bottom-color: var(--accent, #0052cc);
 }
 
-// ── Code tab body ─────────────────────────────────────────────────────────────
+// ── Editable code area ───────────────────────────────────────────────────
 .codeBody {
   flex: 1;
   overflow: hidden;
@@ -172,28 +215,175 @@
   }
 }
 
-.codePre {
+.editArea {
   flex: 1;
-  overflow: auto;
-  margin: 0;
+  width: 100%;
+  resize: none;
+  border: none;
+  outline: none;
   padding: 12px 16px;
+  padding-right: 80px; // leave room for Copy button
   font-size: 12px;
   font-family: var(--font-mono, monospace);
   line-height: 1.55;
   color: var(--text-primary);
   background: var(--section-bg, var(--content-bg));
-  white-space: pre;
   tab-size: 2;
+  white-space: pre;
+  overflow: auto;
 
-  code {
-    font-family: inherit;
-    font-size: inherit;
-    background: none;
-    padding: 0;
+  &[readonly] {
+    cursor: default;
+  }
+
+  @media (max-width: 900px) {
+    font-size: 14px; // larger for mobile readability
   }
 }
 
-// ── Save button variant ───────────────────────────────────────────────────────
+// ── Split view (code + preview) ──────────────────────────────────────────
+.splitBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.splitCode {
+  flex: 3;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.splitPreview {
+  flex: 2;
+  border-top: 2px solid var(--card-border);
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+}
+
+// On mobile, split → full code only (no room for both)
+@media (max-width: 900px) {
+  .splitBody { flex-direction: column; }
+  .splitPreview { display: none; }
+  .splitCode { flex: 1; }
+}
+
+// ── Footer bar (actions when dirty) ──────────────────────────────────────
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--card-border);
+  background: var(--card-bg);
+  flex-shrink: 0;
+  animation: slideUp 0.15s ease;
+}
+
+.footerRight {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.revertBtn {
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+
+  &:hover { color: var(--text-primary); background: var(--table-row-hover); }
+}
+
+.reviseBtn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--accent, #0052cc);
+  border-radius: 5px;
+  background: none;
+  color: var(--accent, #0052cc);
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--accent, #0052cc) 8%, transparent);
+  }
+}
+
+.updateBtn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  border-radius: 5px;
+  background: var(--accent, #0052cc);
+  color: #fff;
+  cursor: pointer;
+
+  &:hover { opacity: 0.9; }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+.discardBtn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  border-radius: 5px;
+  background: var(--badge-error-bg);
+  color: var(--badge-error-text);
+  cursor: pointer;
+
+  &:hover { opacity: 0.9; }
+}
+
+.reviseInput {
+  flex: 1;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  outline: none;
+  background: var(--input-bg, var(--content-bg));
+  color: var(--text-primary);
+
+  &:focus { border-color: var(--accent, #0052cc); }
+}
+
+// ── Discard confirmation overlay ─────────────────────────────────────────
+.discardOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+
+.discardPopover {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  min-width: 220px;
+}
+
+// ── Save button variant ──────────────────────────────────────────────────
 .saveBtn {
   &:not(:disabled) {
     color: var(--accent, #0052cc);

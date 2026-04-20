@@ -55,7 +55,6 @@ function DownloadIcon() {
     </svg>
   );
 }
-
 function GlobeIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -316,6 +315,7 @@ export default function Chat() {
   // ── UI ─────────────────────────────────────────────────────────────────────
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [guardrailWarning, setGuardrailWarning] = useState<string | null>(null);
 
   // ── Ghost mode — no DB writes, no request log ──────────────────────────────
   const [ghostMode, setGhostMode] = useState<boolean>(() =>
@@ -445,12 +445,17 @@ export default function Chat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
-  // Validate stored tenant — fall back to first if missing or no longer accessible
+  // Validate stored tenant — fall back to user's own tenant, then first in list
   useEffect(() => {
     if (tenants.length === 0) return;
     if (tenantId && tenants.find((t) => t.id === tenantId)) return;
-    setTenantId(tenants[0].id);
-  }, [tenants, tenantId]);
+    // Prefer the user's own tenant_id so admins land on their home tenant,
+    // not on the most-recently-created tenant (which may be a temporary test fixture).
+    const preferred = (me?.tenant_id && tenants.find((t) => t.id === me.tenant_id))
+      ? me.tenant_id
+      : tenants[0].id;
+    setTenantId(preferred);
+  }, [tenants, tenantId, me?.tenant_id]);
 
   // ── Fetch play token when gateway changes ──────────────────────────────────
   const refreshToken = useCallback(async (gId: string): Promise<PlaygroundToken | null> => {
@@ -882,7 +887,13 @@ export default function Chat() {
 
     if (!effectiveGatewayId) { setError("Select a gateway first"); return; }
     if (!effectiveModel) { setError("Select a model first"); return; }
-    if (!playToken) { setError("No gateway token — select a gateway"); return; }
+
+    // Fetch token on-demand if the background effect hasn't completed yet
+    // (can happen when the user sends before the async refresh finishes on first load)
+    if (!playToken) {
+      const tok = await refreshToken(effectiveGatewayId);
+      if (!tok) { setError("No gateway token — select a gateway"); return; }
+    }
 
     // Refresh token if expiring soon OR if it belongs to a different gateway
     // (the latter can happen when the user switches presets before the async refresh completes)
@@ -891,7 +902,7 @@ export default function Chat() {
       : null;
     let currentTok: PlaygroundToken | null = playToken;
     const currentGateway = gateways.find((g) => g.id === effectiveGatewayId);
-    const tokenMismatch = currentGateway && playToken.gateway_slug !== currentGateway.slug;
+    const tokenMismatch = currentGateway && playToken && playToken.gateway_slug !== currentGateway.slug;
     const tokenExpiring = tokenAge !== null && tokenAge < 60_000;
     if (tokenMismatch || tokenExpiring) {
       currentTok = await refreshToken(effectiveGatewayId);
@@ -1315,6 +1326,12 @@ export default function Chat() {
           throw new Error(msg);
         }
 
+        // Surface guardrail degradation (fail_open path on the gateway) as a
+        // non-blocking banner. The gateway exposes this header via CORS, so it
+        // arrives here for both same-origin and cross-origin requests.
+        const grWarn = res.headers.get("x-aig-guardrail-warning");
+        if (grWarn) setGuardrailWarning(grWarn);
+
         const reader = res.body!.getReader();
         const decoder = new TextDecoder();
         let buf = "";
@@ -1338,6 +1355,16 @@ export default function Chat() {
                   model,
                 },
               );
+              // If no content arrived at all, the silent-failure symptom:
+              // raise an explicit error so the user is not left staring at
+              // an empty chat window.
+              if (accumulated.length === 0 && continueCount === 0) {
+                throw new Error(
+                  grWarn
+                    ? `Guardrail degraded and no response was received: ${grWarn}`
+                    : "Connection to the AI gateway was interrupted before a response arrived.",
+                );
+              }
             }
             break;
           }
@@ -1397,10 +1424,16 @@ export default function Chat() {
                 const n = chunk.count;
                 setProcessingStatus(`🔎 Fetching ${n ?? ""} URL${n !== 1 ? "s" : ""}…`.trim());
               }
+              // Gateway url-fetch status event (emitted by url_fetch.lua before fetching)
+              if (chunk?.aig_status === "fetching_url") {
+                const n = chunk.count;
+                setProcessingStatus(`🔗 Fetching ${n ?? ""} URL${n !== 1 ? "s" : ""}…`.trim());
+              }
               // Native Anthropic tool-use event (forwarded by on_compat_chunk in upstream.lua)
               if (chunk?.aig_tool_call) {
                 const toolLabels: Record<string, string> = {
                   web_search:     "🔎 Searching the web…",
+                  fetch_url:      "🔗 Fetching URL…",
                   computer_use:   "🖥️ Using computer…",
                   code_execution: "⚙️ Running code…",
                 };
@@ -1838,60 +1871,46 @@ export default function Chat() {
     <div className={chatS["chat-page"]}>
       <div className={chatS["top-bar"]}>
       {/* Config bar */}
-      <div className={chatS["config-bar"]}>
-        <span className={chatS["config-label"]}>Tenant</span>
-        <div className={chatS["config-select"]}>
-          <select
-            className={s["form-select"]}
-            value={tenantId}
-            onChange={(e) => setTenantId(e.target.value)}
-            style={{ margin: 0 }}
-          >
-            <option value="">— select —</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>{t.slug}</option>
-            ))}
-          </select>
-        </div>
+      <div className={chatS["config-bar"]} data-testid="config-bar">
+        {tenants.length > 1 && (
+          <div className={chatS["config-select"]}>
+            <span className={chatS["config-label"]}>Tenant</span>
+            <select
+              className={s["form-select"]}
+              data-testid="config-tenant-select"
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              style={{ margin: 0 }}
+            >
+              <option value="">— select —</option>
+              {tenants.map((t) => (
+                <option key={t.id} value={t.id}>{t.slug}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {usePresetMode ? (
-          <>
-            <span className={chatS["config-label"]}>Mode</span>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
-              {tenantPresets.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  data-testid="config-preset-btn"
-                  onClick={() => {
-                    setSelectedPresetId(p.id);
-                    setGatewayId(p.gateway_id);
-                    setModel(p.model);
-                  }}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: "6px",
-                    border: selectedPresetId === p.id
-                      ? "2px solid var(--accent, #0052cc)"
-                      : "1px solid var(--border, #ccc)",
-                    background: selectedPresetId === p.id
-                      ? "var(--accent-light, #e8f0fe)"
-                      : "transparent",
-                    fontWeight: selectedPresetId === p.id ? 600 : 400,
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          </>
+          <div className={chatS["preset-options"]} data-testid="config-preset-options">
+            {tenantPresets.map((p) => (
+              <button
+                key={p.id}
+                data-testid="config-preset-btn"
+                className={`${chatS["preset-btn"]}${selectedPresetId === p.id ? ` ${chatS["preset-btn--selected"]}` : ""}`}
+                onClick={() => {
+                  setSelectedPresetId(p.id);
+                  setGatewayId(p.gateway_id);
+                  setModel(p.model);
+                }}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
         ) : (
           <>
-            <span className={chatS["config-label"]}>Gateway</span>
             <div className={chatS["config-select"]}>
+              <span className={chatS["config-label"]}>Gateway</span>
               <select
                 className={s["form-select"]}
                 value={gatewayId}
@@ -1905,8 +1924,8 @@ export default function Chat() {
               </select>
             </div>
 
-            <span className={chatS["config-label"]}>Model</span>
             <div className={chatS["config-model"]}>
+              <span className={chatS["config-label"]}>Model</span>
               <ModelPicker
                 models={models}
                 value={model}
@@ -1917,7 +1936,7 @@ export default function Chat() {
           </>
         )}
 
-        <div className={chatS["config-spacer"]} />
+        <div className={chatS["config-divider"]} />
 
         <button
           className={chatS["icon-btn"]}
@@ -2062,6 +2081,28 @@ export default function Chat() {
           <button
             onClick={() => { setError(null); focusInput(); }}
             style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#c62828" }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {guardrailWarning && (
+        <div
+          data-cy="guardrail-warning"
+          style={{
+            padding: "6px 16px",
+            background: "#fef9c3",
+            color: "#854d0e",
+            fontSize: 13,
+            borderBottom: "1px solid #ca8a04",
+            flexShrink: 0,
+          }}
+        >
+          ⚠ {guardrailWarning}
+          <button
+            onClick={() => { setGuardrailWarning(null); focusInput(); }}
+            style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#854d0e" }}
           >
             ✕
           </button>
@@ -2239,6 +2280,13 @@ export default function Chat() {
                 onClose={() => setActiveArtifact(null)}
                 projectId={projectIdParam ?? undefined}
                 onSave={projectIdParam ? handleFileSaved : undefined}
+                onUpdateArtifact={setActiveArtifact}
+                onSendRevision={(filename, code, instruction) => {
+                  const lang = activeArtifact.lang;
+                  const msg = `Re: \`${filename}\`\n\n\`\`\`${lang}\n${code}\n\`\`\`\n\n${instruction}`;
+                  setInputValue(msg);
+                  chatInputRef.current?.focus();
+                }}
               />
             )}
           </div>
@@ -2294,55 +2342,46 @@ export default function Chat() {
           onClose={() => { setShowFeedback(false); focusInput(); }}
           error={feedbackError}
         >
-          <div className={s["modal-body"]}>
-            <p style={{ marginBottom: 12, fontSize: 14, color: "var(--text-secondary)" }}>
+          <div className={s["form-group"]}>
+            <label className={s["form-label"]}>
               How would you rate this session? <em>(1 = best, 5 = worst)</em>
-            </p>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            </label>
+            <div className={s["picker-options"]}>
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
                   type="button"
+                  className={`${s["picker-btn"]} ${feedbackRating === n ? s["picker-btn--selected"] : ""}`}
                   onClick={() => setFeedbackRating(n)}
-                  style={{
-                    width: 36, height: 36, borderRadius: 6,
-                    border: feedbackRating === n
-                      ? "2px solid var(--accent, #0052cc)"
-                      : "1px solid var(--card-border, #ccc)",
-                    background: feedbackRating === n
-                      ? "var(--accent-light, #e8f0fe)"
-                      : "transparent",
-                    fontWeight: feedbackRating === n ? 700 : 400,
-                    fontSize: 16, cursor: "pointer",
-                  }}
                 >{n}</button>
               ))}
             </div>
+          </div>
+          <div className={s["form-group"]}>
+            <label className={s["form-label"]}>Comments</label>
             <textarea
-              rows={10}
+              className={s["form-input"]}
+              rows={6}
               placeholder="What could be better? (optional)"
               value={feedbackComment}
               onChange={(e) => setFeedbackComment(e.target.value)}
-              style={{
-                width: "100%", resize: "vertical", padding: "8px 10px",
-                borderRadius: 6, border: "1px solid var(--card-border, #ccc)",
-                fontSize: 14, fontFamily: "inherit",
-                background: "var(--card-bg, #fff)", color: "var(--text-primary, #111)",
-                boxSizing: "border-box",
-              }}
+              style={{ resize: "vertical" }}
             />
           </div>
-          <div className={s["modal-footer"]}>
+          <div className={s["form-actions"]}>
             {feedbackSaved && (
-              <span style={{ color: "var(--success, #2e7d32)", fontSize: 13, marginRight: 8 }}>
+              <span className={s["form-hint"]} style={{ color: "var(--badge-success-text)", marginRight: "auto" }}>
                 Saved ✓
               </span>
             )}
-            <button className={s["btn-secondary"]} onClick={() => { setShowFeedback(false); focusInput(); }}>
+            <button
+              className={`${s.btn} ${s["btn--secondary"]}`}
+              onClick={() => { setShowFeedback(false); focusInput(); }}
+            >
               Cancel
             </button>
             <button
-              className={s["btn-primary"]}
+              className={`${s.btn} ${s["btn--primary"]}`}
               onClick={saveFeedback}
               disabled={feedbackRating === null || feedbackSaving}
             >

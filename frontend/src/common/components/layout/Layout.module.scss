@@ -369,8 +369,8 @@ table.table tbody tr.blocked td {
   &:hover:not(:disabled) { opacity: 0.85; }
 
   &--primary {
-    background: #002b4a;
-    color: #ffffff;
+    background: var(--primary, #002b4a);
+    color: var(--btn-primary-text, #ffffff);
   }
 
   &--secondary {
@@ -422,7 +422,7 @@ table.table tbody tr.blocked td {
   outline: none;
   transition: border-color 0.15s;
 
-  &:focus { border-color: #002b4a; }
+  &:focus { border-color: var(--accent, #002b4a); }
 
   // 16px font prevents iOS Safari from auto-zooming on focus;
   // min-height ensures 44px touch target
@@ -645,8 +645,8 @@ table.table tbody tr.blocked td {
 
   &--active {
     font-weight: 600;
-    color: #002b4a;
-    border-bottom-color: #002b4a;
+    color: var(--text-primary);
+    border-bottom-color: var(--accent);
   }
 }
 
@@ -685,8 +685,8 @@ table.table tbody tr.blocked td {
   margin-bottom: tools.pixelToRem(16);
 
   &:hover, &--active {
-    border-color: #002b4a;
-    background: rgba(0, 43, 74, 0.04);
+    border-color: var(--accent, #002b4a);
+    background: color-mix(in srgb, var(--accent, #002b4a) 6%, transparent);
   }
 }
 
@@ -739,8 +739,8 @@ table.table tbody tr.blocked td {
   transition: border-color 0.1s;
 
   &--selected {
-    border: 2px solid #002b4a;
-    background: rgba(0, 43, 74, 0.08);
+    border: 2px solid var(--accent, #002b4a);
+    background: color-mix(in srgb, var(--accent, #002b4a) 10%, transparent);
   }
 }
 

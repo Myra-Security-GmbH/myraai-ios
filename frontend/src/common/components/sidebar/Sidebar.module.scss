@@ -77,8 +77,10 @@
   --table-row-hover: #0d1b2a;
   --blocked-row-bg: rgba(220, 38, 38, 0.15);
   /* Dark-mode accent aliases */
-  --accent:  #29d9ff;
-  --primary: #29d9ff;
+  --accent:             #29d9ff;
+  --primary:            #29d9ff;
+  /* Primary button: use dark text on the light cyan background */
+  --btn-primary-text:   #071929;
 }
 
 .sidebar {
@@ -274,12 +276,12 @@
     z-index: 300;
     width: tools.pixelToRem(40);
     height: tools.pixelToRem(40);
-    border-radius: tools.pixelToRem(8);
-    border: 1px solid var(--sidebar-border-color);
-    background: var(--card-bg);
-    color: var(--text-primary);
+    border-radius: 9999px;
+    border: none;
+    background: var(--sidebar-header-bg);
+    color: #ffffff;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
 }
 

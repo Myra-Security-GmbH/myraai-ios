@@ -438,7 +438,7 @@ const MessageBubble = memo(function MessageBubble({
                           isStreaming: isStreaming ?? false,
                         }}>
                           <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkEmoji]}
+                            remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkBreaks, remarkEmoji]}
                             rehypePlugins={[rehypeKatex, rehypeHighlight]}
                             components={MD_COMPONENTS_DEFAULT}
                           >

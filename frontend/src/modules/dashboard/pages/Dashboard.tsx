@@ -40,6 +40,13 @@ function timeframeSince(tf: Timeframe): number {
   }
 }
 
+// Returns an exclusive upper bound for closed-window timeframes (null = open-ended / "until now").
+// Only "yesterday" has a hard upper bound: midnight today.
+function timeframeUntil(tf: Timeframe): number | null {
+  if (tf === "yesterday") return Math.floor(Date.now() / 86400000) * 86400000;
+  return null;
+}
+
 interface SeriesData {
   hourly:    TimeseriesPoint[];  // 1h × today's hours
   yesterday: TimeseriesPoint[];  // 1h × 24, ending at midnight today
@@ -177,7 +184,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     setAnalytics(null);
-    api.get<AnalyticsDepth>(`/stats/analytics?since=${timeframeSince(timeframe)}`)
+    const since = timeframeSince(timeframe);
+    const until = timeframeUntil(timeframe);
+    const url = until
+      ? `/stats/analytics?since=${since}&until=${until}`
+      : `/stats/analytics?since=${since}`;
+    api.get<AnalyticsDepth>(url)
       .then(setAnalytics)
       .catch(() => {});
   }, [timeframe]);

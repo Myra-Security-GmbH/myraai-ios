@@ -69,13 +69,19 @@ export default function MessageThread({
         scrollRafRef.current = null;
         if (!isUserScrolled.current) {
           isProgrammaticScroll.current = true;
-          bottomRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+          // Use direct scrollTop on the container instead of scrollIntoView.
+          // scrollIntoView with html.style.zoom > 1 (Vanadium desktop mode) can
+          // escape the .thread scroll ancestor and scroll the document/visual
+          // viewport, lifting the entire layout off screen.
+          const el = threadRef.current;
+          if (el) el.scrollTop = el.scrollHeight;
         }
       });
     } else {
-      // Message just committed — one smooth scroll is safe here
+      // Message just committed — scroll to bottom within the thread container.
       isProgrammaticScroll.current = true;
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      const el = threadRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
     }
   }, [messages, streamingContent, processingStatus, isStreaming]);
 

@@ -7,32 +7,67 @@
          In that mode the browser forces innerWidth to ~980 px while outerWidth stays at
          the real device CSS pixel width (~427 px).  The browser then scales the 980 px
          layout down to ~43.5 % to fit the screen, making text and controls tiny.
-         Two complementary fixes applied when this condition is detected:
+         Three complementary fixes applied when this condition is detected:
          1. Meta viewport reset — respected by some browsers; Chrome ignores it.
          2. CSS zoom on <html> — Chrome 128+ implements the CSS Zoom spec:
             "If the root element has a zoom value other than 1, the ICB is divided by
             the zoom value."  Setting zoom = iw/ow makes the page lay out in an ow-px
             coordinate space so element sizes, dvh units, and media queries all evaluate
             against the real device width.  The browser scale-down then restores
-            everything to correct physical size. -->
+            everything to correct physical size.
+         3. --real-height CSS variable — Chrome does NOT divide dvh units by the root
+            zoom value.  height:100dvh inside the zoomed root equals iw/ow × 100dvh,
+            making the page taller than the screen.  We compute the correct screen height
+            and expose it as --real-height so CSS can use var(--real-height,100dvh).
+
+         Timing: on some Vanadium reloads outerWidth is not yet settled at inline-script
+         time (returns 0 or the desktop-mode width).  We therefore retry via
+         requestAnimationFrame — rAF fires before paint so no visible flash occurs.
+         We also update --real-height whenever visualViewport resizes (handles the virtual
+         keyboard and browser chrome appearing or disappearing). -->
     <script>
     (function(){
-      var ow = window.outerWidth;
-      var iw = window.innerWidth;
-      if (ow > 0 && iw > ow * 1.5 && ow < 600) {
-        // Fix 1: meta viewport (works in non-Chromium browsers)
-        document.querySelector('meta[name="viewport"]')
-          .setAttribute('content', 'width=' + ow + ',initial-scale=1.0');
-        // Fix 2: CSS zoom compensation (Chrome 128+ / Vanadium 128+)
-        // zoom = iw/ow makes the layout viewport equal to outerWidth
-        var zoom = iw / ow;
-        document.documentElement.style.zoom = String(zoom);
-        // Fix 3: dvh/vh units are NOT divided by zoom in current Chrome builds.
-        // Without correction, height:100dvh inside the zoomed root = iw/ow × 100dvh,
-        // making the page much taller than the screen and clipping the input bar.
-        // Set --real-height to the correct value so CSS can use var(--real-height,100dvh).
-        var realH = Math.round(window.innerHeight / zoom);
-        document.documentElement.style.setProperty('--real-height', realH + 'px');
+      function applyDesktopModeFix() {
+        var ow = window.outerWidth;
+        var iw = window.innerWidth;
+        if (ow > 0 && iw > ow * 1.5 && ow < 600) {
+          // Fix 1: meta viewport (works in non-Chromium browsers)
+          document.querySelector('meta[name="viewport"]')
+            .setAttribute('content', 'width=' + ow + ',initial-scale=1.0');
+          // Fix 2: CSS zoom compensation (Chrome 128+ / Vanadium 128+)
+          var zoom = iw / ow;
+          document.documentElement.style.zoom = String(zoom);
+          // Fix 3: --real-height (dvh is not scaled by root zoom in Chrome)
+          document.documentElement.style.setProperty('--real-height',
+            Math.round(window.innerHeight / zoom) + 'px');
+          return true;
+        }
+        return false;
+      }
+
+      // Attempt 1: inline, before any rendering.
+      if (!applyDesktopModeFix()) {
+        // Attempt 2: retry each frame for up to ~160 ms in case outerWidth is late.
+        // rAF callbacks fire before paint so the fix still lands before the first frame.
+        var retries = 0;
+        (function retry() {
+          if (!applyDesktopModeFix() && ++retries < 10) requestAnimationFrame(retry);
+        })();
+      }
+
+      // Keep --real-height current as the viewport changes (virtual keyboard, browser chrome).
+      var vv = window.visualViewport;
+      if (vv) {
+        vv.addEventListener('resize', function() {
+          var z = parseFloat(document.documentElement.style.zoom || '1');
+          if (z > 1.1) {
+            // Use vv.height, not window.innerHeight: when the virtual keyboard
+            // opens, Vanadium shrinks the visual viewport but leaves
+            // window.innerHeight unchanged (resizes-visual-viewport default).
+            document.documentElement.style.setProperty('--real-height',
+              Math.round(vv.height / z) + 'px');
+          }
+        });
       }
     })();
     </script>

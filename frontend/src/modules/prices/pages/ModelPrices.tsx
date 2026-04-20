@@ -92,6 +92,8 @@ export default function ModelPrices() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<ModelPrice | null>(null);
   const [filterProvider, setFilterProvider] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -107,6 +109,21 @@ export default function ModelPrices() {
     if (!confirm(`Delete pricing for ${p.provider}/${p.model}?`)) return;
     await api.delete(`/model-prices/${p.provider}/${p.model}`);
     load();
+  }
+
+  async function syncModels() {
+    setSyncing(true); setSyncResult(null);
+    try {
+      const res = await api.post<{ results: Array<{ provider: string; added: number; updated: number; skipped: number; errors: string[] }> }>("/model-prices/sync", {});
+      const total = res.results.reduce((acc, r) => acc + r.added, 0);
+      const summary = res.results
+        .filter((r) => r.added > 0 || r.errors.length > 0)
+        .map((r) => `${r.provider}: +${r.added}${r.errors.length ? ` (${r.errors.length} errors)` : ""}`)
+        .join(", ");
+      setSyncResult(total > 0 ? `Synced: ${summary}` : "All models up to date");
+      if (total > 0) load();
+    } catch (e: unknown) { setSyncResult(`Sync failed: ${e instanceof Error ? e.message : String(e)}`); }
+    finally { setSyncing(false); }
   }
 
   const displayed = filterProvider ? prices.filter((p) => p.provider === filterProvider) : prices;
@@ -126,11 +143,17 @@ export default function ModelPrices() {
           <h1 className={s["page-title"]}>Model Prices</h1>
           <p className={s["page-subtitle"]}>{prices.length} entries — used for cost attribution</p>
         </div>
-        <button className={`${s.btn} ${s["btn--primary"]}`} onClick={() => setShowAdd(true)}>
-          + New Price
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className={`${s.btn} ${s["btn--secondary"]}`} onClick={syncModels} disabled={syncing}>
+            {syncing ? "Syncing…" : "Sync from Providers"}
+          </button>
+          <button className={`${s.btn} ${s["btn--primary"]}`} onClick={() => setShowAdd(true)}>
+            + New Price
+          </button>
+        </div>
       </div>
 
+      {syncResult && <div className={`${s.alert} ${syncResult.startsWith("Sync failed") ? s["alert--error"] : s["alert--success"]}`}>{syncResult}</div>}
       {error && <div className={`${s.alert} ${s["alert--error"]}`}>{error}</div>}
 
       <div className={s.card} style={{ padding: "12px 16px" }}>

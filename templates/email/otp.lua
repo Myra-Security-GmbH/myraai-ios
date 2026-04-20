@@ -3,7 +3,7 @@
 
 local M = {}
 
-M.subject = "AI Gateway — your login code"
+M.subject = "AI Gateway - your login code"
 
 function M.body(v)
     return table.concat({

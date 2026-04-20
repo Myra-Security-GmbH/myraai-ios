@@ -140,6 +140,7 @@ export default function ConversationList({
       <div
         key={conv.id}
         role="option"
+        data-id={conv.id}
         aria-selected={conv.id === activeId}
         className={[s["conv-item"], conv.id === activeId ? s.active : ""].filter(Boolean).join(" ")}
         onClick={() => renamingId !== conv.id && onSelect(conv.id)}

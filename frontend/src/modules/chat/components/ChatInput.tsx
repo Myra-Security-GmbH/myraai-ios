@@ -39,6 +39,23 @@ export interface PendingAttachment {
   data: string; // base64
 }
 
+// Single source of truth for supported attachment types.
+// Adding a new format here automatically updates both the file picker filter
+// and the tooltip — no other changes needed.
+const SUPPORTED_ATTACHMENT_TYPES = [
+  { label: "Images",      accept: "image/*" },
+  { label: "PDF",         accept: ".pdf,application/pdf" },
+  { label: "Word",        accept: ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+  { label: "Excel",       accept: ".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroenabled.12" },
+  { label: "PowerPoint",  accept: ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" },
+  { label: "ODS",         accept: ".ods,application/vnd.oasis.opendocument.spreadsheet" },
+  { label: "CSV/TSV",     accept: ".csv,.tsv,text/csv,text/tab-separated-values" },
+  { label: "Text/Markdown", accept: "text/plain,.txt,.md,text/markdown" },
+] as const;
+
+const ATTACH_ACCEPT = SUPPORTED_ATTACHMENT_TYPES.map(t => t.accept).join(",");
+const ATTACH_TITLE  = "Attach file — " + SUPPORTED_ATTACHMENT_TYPES.map(t => t.label).join(", ");
+
 interface ProjectContext {
   icon: string;
   name: string;
@@ -85,10 +102,19 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const showPicker = value.startsWith("/") && !value.includes("\n") && !value.includes(" ") && (commands?.length ?? 0) > 0;
   const commandQuery = showPicker ? value.slice(1) : "";
 
-  // Auto-resize textarea
+  // Auto-resize textarea.
+  // When value is empty (e.g. immediately after submission), we clear the inline
+  // height and let CSS min-height:44px take over — no intermediate height:"auto"
+  // that could trigger the browser's focus-scroll on the focused element.  The
+  // focus-scroll with html.style.zoom applied (Vanadium desktop mode) scrolls the
+  // visual viewport rather than the .thread container, lifting the layout.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+    if (!value) {
+      el.style.height = "";   // CSS min-height:44px handles the empty state
+      return;
+    }
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [value]);
@@ -122,6 +148,44 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     reader.readAsDataURL(file);
     // Reset so the same file can be re-selected
     e.target.value = "";
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    if (!onAttach) return;
+    // Try clipboardData.items first (Chrome, Edge, modern Safari)
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (!file) continue;
+        readAndAttach(file);
+        return;
+      }
+    }
+    // Fallback: clipboardData.files (Firefox, older browsers)
+    const files = e.clipboardData.files;
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].type.startsWith("image/")) {
+        e.preventDefault();
+        readAndAttach(files[i]);
+        return;
+      }
+    }
+  }
+
+  function readAndAttach(file: File) {
+    if (!onAttach) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      const ext = file.type === "image/jpeg" ? "jpg" : file.type.replace("image/", "") || "png";
+      const name = file.name && file.name !== "image.png"
+        ? file.name
+        : `screenshot-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.${ext}`;
+      onAttach({ filename: name, mime_type: file.type, data: base64 });
+    };
+    reader.readAsDataURL(file);
   }
 
   return (
@@ -162,7 +226,7 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             <>
               <button
                 className={s["icon-btn"]}
-                title="Attach image or PDF"
+                title={ATTACH_TITLE}
                 onClick={() => fileInputRef.current?.click()}
                 disabled={disabled || isStreaming}
                 type="button"
@@ -172,7 +236,7 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,.pdf,text/plain,.txt,.md,text/markdown,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.csv,text/csv,.tsv,text/tab-separated-values,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsm,application/vnd.ms-excel.sheet.macroenabled.12,.ods,application/vnd.oasis.opendocument.spreadsheet,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                accept={ATTACH_ACCEPT}
                 style={{ display: "none" }}
                 onChange={handleFileChange}
               />
@@ -185,6 +249,7 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder="Message… (Enter to send)"
             disabled={disabled && !isStreaming}
             rows={1}

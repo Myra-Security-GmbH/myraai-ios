@@ -24,7 +24,7 @@ export default function MembersDrawer({ projectId, onClose, onMemberAdded }: Pro
     setSuccess(null);
     try {
       const users = await api.get<Array<{ id: string; email: string; name: string | null }>>(
-        `/tenants/me/users?email=${encodeURIComponent(email.trim())}`
+        `/users/search?email=${encodeURIComponent(email.trim())}`
       ).catch(() => []);
       const found = Array.isArray(users)
         ? users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())

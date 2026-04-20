@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { getCyDataId } from "@myraui/utils";
 import { useTheme } from "src/common/contexts/ThemeContext";
 import { useAuth } from "src/common/contexts/AuthContext";
@@ -101,12 +101,21 @@ function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean 
 }
 
 function NavItem({ to, label, icon, collapsed, onMobileClose }: { to: string; label: string; icon: React.ReactNode; collapsed: boolean; onMobileClose?: () => void }) {
+  const location = useLocation();
+  // Custom active logic: /tenants/:id/gateways/... should highlight Gateways, not Tenants.
+  // Match when the pathname equals `to` OR starts with `to/` — but for /tenants,
+  // exclude paths that continue into /gateways (those belong to the Gateways nav item).
+  const path = location.pathname;
+  let active = path === to || path.startsWith(to + "/");
+  if (to === "/tenants" && path.match(/^\/tenants\/[^/]+\/gateways/)) active = false;
+  if (to === "/gateways" && path.match(/^\/tenants\/[^/]+\/gateways/)) active = true;
+
   return (
     <NavLink
       to={to}
       onClick={onMobileClose}
-      className={({ isActive }) =>
-        [styles["nav-item"], isActive ? styles["active"] : ""].filter(Boolean).join(" ")
+      className={() =>
+        [styles["nav-item"], active ? styles["active"] : ""].filter(Boolean).join(" ")
       }
       title={collapsed ? label : undefined}
       data-cy={cyId(`nav-${label.toLowerCase().replace(/\s+/g, "-")}`)}
@@ -203,10 +212,12 @@ export default function Sidebar() {
             <NavItem to="/users" label="Users" icon={<UsersIcon />} {...navProps} />
           </>)}
 
+          {(user?.role === "admin" || user?.role === "tenant_admin") && (<>
           <SectionLabel label="OBSERVABILITY" collapsed={effectiveCollapsed} />
           <NavItem to="/analytics" label="Cost Analytics" icon={<AnalyticsIcon />} {...navProps} />
           <NavItem to="/monitor" label="Live Monitor" icon={<MonitorIcon />} {...navProps} />
           <NavItem to="/logs" label="Request Logs" icon={<LogsIcon />} {...navProps} />
+          </>)}
 
           <SectionLabel label="CONFIG" collapsed={effectiveCollapsed} />
           <NavItem to="/model-prices" label="Model Prices" icon={<PricesIcon />} {...navProps} />
