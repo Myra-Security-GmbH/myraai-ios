@@ -89,13 +89,17 @@ function M.run(ctx)
 
     if not ctx.response_body then return end
 
-    -- pii_protector forced the upstream to buffer a streaming request so it
-    -- could restore tokens.  Re-emit as SSE so the client gets what it asked for.
-    if ctx.pii_force_buffered then
+    -- A middleware upstream of us buffered a response for a client that asked
+    -- for streaming (stream=true in the compat /compat/ endpoint).  Reasons:
+    --   - pii_protector: needs to restore tokens post-response
+    --   - url_fetch / web_search direct-answer: Leg 1 is always non-streaming
+    -- In all cases we must re-emit the buffered JSON as SSE so the client
+    -- gets what it asked for.
+    if ctx.buffered_needs_sse_reemit or ctx.pii_force_buffered then
         trace.step(ctx, "response_delivered", {
             streaming       = true,
             compat          = true,
-            buffered_pii    = true,
+            buffered_pii    = ctx.pii_force_buffered or false,
             body_size       = ctx.response_body and #ctx.response_body or 0,
             provider_status = ctx.provider_status,
         })

@@ -280,6 +280,12 @@ function M.run(ctx)
                 ngx.header["X-AIG-Cache"]    = "MISS"
                 ngx.header["X-AIG-Provider"] = provider
                 ngx.header["X-AIG-Model"]    = ctx.model
+                -- Client asked for SSE but we had to buffer Leg 1 to check for
+                -- a web_search tool call. Signal send_response.lua to re-emit
+                -- the buffered JSON as SSE so the client gets streaming.
+                if orig_stream and ctx.is_compat then
+                    ctx.buffered_needs_sse_reemit = true
+                end
             end
         end
         ctx.web_search_done = true
