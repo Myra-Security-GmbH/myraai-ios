@@ -678,8 +678,8 @@ function M.call_one(ctx)
 end
 
 function M.run(ctx)
-    -- web_search middleware sets this when it already handled the full response
-    if ctx.web_search_done then return end
+    -- web_search / url_fetch middleware sets this when it already handled the full response
+    if ctx.web_search_done or ctx.url_fetch_done then return end
 
     -- pii_protector forces buffered mode for compat streaming requests so that
     -- the response phase can restore tokens before the client sees them.

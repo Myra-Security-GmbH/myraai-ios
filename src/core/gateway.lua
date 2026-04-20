@@ -23,6 +23,7 @@ local CONTENT_PIPELINE = {
     "middleware.routing",
     "middleware.byok",
     "middleware.web_search",
+    "middleware.url_fetch",
     "middleware.upstream",
     "middleware.guardrails_response", -- guardrail pipeline (response phase)
     "middleware.send_response",
