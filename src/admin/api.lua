@@ -186,6 +186,7 @@ end
 -- Stats & logs
 -- ---------------------------------------------------------------------------
 route("GET", "^/admin/v1/stats$", function()
+    if not require_tenant_admin() then return end
     local args = ngx.req.get_uri_args()
     local u = ngx.ctx.admin_user
     local tenant_filter = (u.role ~= "admin") and u.tenant_id or args.tenant_id
@@ -197,6 +198,7 @@ end)
 -- n: number of buckets to return (default 24, max 168)
 local BUCKET_SIZES = { ["5m"]=300, ["15m"]=900, ["30m"]=1800, ["1h"]=3600, ["6h"]=21600, ["1d"]=86400 }
 route("GET", "^/admin/v1/stats/timeseries$", function()
+    if not require_tenant_admin() then return end
     local args       = ngx.req.get_uri_args()
     local bucket_sec = BUCKET_SIZES[args.bucket or "1h"] or 3600
     local n          = math.min(math.max(tonumber(args.n) or 24, 1), 168)
@@ -208,6 +210,7 @@ route("GET", "^/admin/v1/stats/timeseries$", function()
 end)
 
 route("GET", "^/admin/v1/logs$", function()
+    if not require_tenant_admin() then return end
     local args = ngx.req.get_uri_args()
     local u = ngx.ctx.admin_user
     local tenant_filter = (u.role ~= "admin") and u.tenant_id or args.tenant_id
@@ -225,18 +228,21 @@ route("GET", "^/admin/v1/logs$", function()
     }))
 end)
 
--- GET /admin/v1/stats/analytics?since=<unix_ms>
+-- GET /admin/v1/stats/analytics?since=<unix_ms>[&until=<unix_ms>]
 -- Returns latency percentiles (p50/p95/p99) and top models by request volume.
+-- Optional `until` caps the upper bound (used for closed windows such as "yesterday").
 route("GET", "^/admin/v1/stats/analytics$", function()
     local u = ngx.ctx.admin_user
     if u.role ~= "admin" and u.role ~= "tenant_admin" then return send(403, { error = "forbidden" }) end
     local args         = ngx.req.get_uri_args()
     local since        = tonumber(args.since)
+    local until_ms     = tonumber(args["until"])
     local tenant_filter = (u.role ~= "admin") and u.tenant_id or args.tenant_id
-    send(200, storage.get_analytics_depth(since, tenant_filter))
+    send(200, storage.get_analytics_depth(since, tenant_filter, until_ms))
 end)
 
 route("GET", "^/admin/v1/logs/([^/]+)$", function(id)
+    if not require_tenant_admin() then return end
     local entry = storage.get_log(id)
     if not entry then return send(404, { error = "not found" }) end
     local u = ngx.ctx.admin_user
@@ -464,6 +470,15 @@ route("GET", "^/admin/v1/model%-prices$", function()
     send(200, storage.list_model_prices())
 end)
 
+route("POST", "^/admin/v1/model%-prices/sync$", function()
+    local u = ngx.ctx.admin_user
+    if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
+    local args = ngx.req.get_uri_args()
+    local model_sync = require("admin.model_sync")
+    local results = model_sync.sync_all(args.provider)
+    send(200, results)
+end)
+
 route("PUT", "^/admin/v1/model%-prices$", function()
     local u = ngx.ctx.admin_user
     if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
@@ -608,8 +623,8 @@ route("GET", "^/admin/v1/traces/([^/]+)$", function(trace_id)
     local t = storage.get_playground_trace(trace_id)
     if not t then return send(404, { error = "trace not found" }) end
     local u = ngx.ctx.admin_user
-    if u.role ~= "admin" and t.gateway_id then
-        if not require_gateway_access(t.gateway_id) then return end
+    if u.role ~= "admin" then
+        if not t.gateway_id or not require_gateway_access(t.gateway_id) then return end
     end
     local steps = storage.get_playground_trace_steps(trace_id)
     for _, s in ipairs(steps) do s.data = json.decode(s.data) or s.data end
@@ -623,8 +638,8 @@ route("GET", "^/admin/v1/playground/trace/([^/]+)$", function(trace_id)
         return send(404, { error = "trace not found" })
     end
     local u = ngx.ctx.admin_user
-    if u.role ~= "admin" and t.gateway_id then
-        if not require_gateway_access(t.gateway_id) then return end
+    if u.role ~= "admin" then
+        if not t.gateway_id or not require_gateway_access(t.gateway_id) then return end
     end
     local steps = storage.get_playground_trace_steps(trace_id)
     -- Decode JSON data fields
@@ -726,6 +741,20 @@ route("POST", "^/admin/v1/users/([^/]+)/resend%-invite$", function(user_id)
         end
     end)
     send(200, { ok = true })
+end)
+
+-- User search (for project member invitations — any authenticated user)
+route("GET", "^/admin/v1/users/search$", function()
+    local args = ngx.req.get_uri_args()
+    local email_arg = args.email
+    if not email_arg or email_arg == "" then
+        return send(400, { error = "email parameter required" })
+    end
+    local u = ngx.ctx.admin_user
+    if not u.tenant_id then
+        return send(400, { error = "user has no tenant" })
+    end
+    send(200, storage.search_users_by_email(u.tenant_id, email_arg))
 end)
 
 route("GET", "^/admin/v1/users/([^/]+)$", function(user_id)

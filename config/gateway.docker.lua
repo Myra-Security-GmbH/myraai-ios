@@ -38,7 +38,7 @@ return {
         database     = env("AIG_MYSQL_DB",   "ai_gateway"),
         user         = env("AIG_MYSQL_USER",  "gateway"),
         password     = env("AIG_MYSQL_PASS",  ""),
-        pool_size    = 200,
+        pool_size    = 20,
         pool_timeout = 10000,
     },
 
@@ -60,7 +60,7 @@ return {
         port         = tonumber(env("REDIS_PORT", "6379")),
         auth         = env("REDIS_AUTH"),
         timeout      = 2000,
-        pool_size    = 100,
+        pool_size    = 10,
         pool_timeout = 10000,
     },
 
