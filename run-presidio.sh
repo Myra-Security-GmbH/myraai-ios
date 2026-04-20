@@ -23,6 +23,15 @@ ANONYMIZER_PORT="5001"
 
 DOCKERFILE="config/Dockerfile.presidio"
 
+# Gateway containers live on this docker network. We attach presidio here
+# under the alias "presidio" so gateway configs can reference it by hostname
+# (http://presidio:3000) instead of depending on host-port bindings, which
+# are bound to 127.0.0.1 and therefore unreachable from containers on another
+# docker network.
+GATEWAY_NETWORK="ai-gateway_default"
+GATEWAY_ALIAS_ANALYZER="presidio"
+GATEWAY_ALIAS_ANONYMIZER="presidio-anonymizer"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -58,6 +67,7 @@ build_analyzer() {
 start_analyzer() {
     if container_running "$ANALYZER_CONTAINER"; then
         log "Analyzer already running on :$ANALYZER_PORT"
+        attach_to_gateway_network "$ANALYZER_CONTAINER" "$GATEWAY_ALIAS_ANALYZER"
         return
     fi
     stop_container "$ANALYZER_CONTAINER"
@@ -81,6 +91,7 @@ start_analyzer() {
         -v "$(pwd)/config/presidio_entrypoint.py:/entrypoint.py:ro" \
         "$ANALYZER_IMAGE"
     log "Analyzer started."
+    attach_to_gateway_network "$ANALYZER_CONTAINER" "$GATEWAY_ALIAS_ANALYZER"
     wait_ready "$ANALYZER_CONTAINER" "$ANALYZER_PORT"
     # HTTP-path warmup: keep calling until we see two consecutive fast responses
     # (< 1s each), absorbing any one-shot JIT/CUDA/GC overhead.
@@ -102,6 +113,7 @@ start_analyzer() {
 start_anonymizer() {
     if container_running "$ANONYMIZER_CONTAINER"; then
         log "Anonymizer already running on :$ANONYMIZER_PORT"
+        attach_to_gateway_network "$ANONYMIZER_CONTAINER" "$GATEWAY_ALIAS_ANONYMIZER"
         return
     fi
     stop_container "$ANONYMIZER_CONTAINER"
@@ -113,7 +125,26 @@ start_anonymizer() {
         -p "127.0.0.1:${ANONYMIZER_PORT}:3000" \
         "$ANONYMIZER_IMAGE"
     log "Anonymizer started."
+    attach_to_gateway_network "$ANONYMIZER_CONTAINER" "$GATEWAY_ALIAS_ANONYMIZER"
     wait_ready "$ANONYMIZER_CONTAINER" "$ANONYMIZER_PORT"
+}
+
+# Attach a running container to the gateway docker network so it becomes
+# reachable by `alias` from the gateway. Idempotent: skips if already
+# attached or if the target network doesn't exist yet.
+attach_to_gateway_network() {
+    local name="$1"
+    local alias="$2"
+    if ! docker network inspect "$GATEWAY_NETWORK" &>/dev/null; then
+        log "Gateway network $GATEWAY_NETWORK does not yet exist — skipping attach (gateway not started?)"
+        return
+    fi
+    if docker inspect "$name" --format '{{range $n,$_ := .NetworkSettings.Networks}}{{$n}} {{end}}' | grep -qw "$GATEWAY_NETWORK"; then
+        log "$name already on $GATEWAY_NETWORK"
+        return
+    fi
+    log "Attaching $name to $GATEWAY_NETWORK as '$alias'..."
+    docker network connect --alias "$alias" "$GATEWAY_NETWORK" "$name"
 }
 
 wait_ready() {
