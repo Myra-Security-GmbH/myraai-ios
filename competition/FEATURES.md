@@ -18,6 +18,7 @@
 7. [Budget & Quota Enforcement](#7-budget--quota-enforcement)
 8. [Guardrail Pipeline](#8-guardrail-pipeline)
 9. [Web Search](#9-web-search)
+9a. [URL Fetch](#9a-url-fetch)
 10. [Reasoning Model Support](#10-reasoning-model-support)
 11. [Provider Key Management (BYOK)](#11-provider-key-management-byok)
 12. [IP Allowlist](#12-ip-allowlist)
@@ -28,6 +29,7 @@
 17. [Multi-Tenancy](#17-multi-tenancy)
 18. [Admin REST API](#18-admin-rest-api)
 19. [Dashboard UI](#19-dashboard-ui)
+19a. [Other Admin UI Pages](#19a-other-admin-ui-pages)
 20. [Playground UI](#20-playground-ui)
 21. [Chat Console UI](#21-chat-console-ui)
 22. [Gateway Configuration Reference](#22-gateway-configuration-reference)
@@ -54,11 +56,12 @@ Requests flow through a fixed middleware chain in phase order:
 4. `routing` — Rules engine (provider, model, fallback chain)
 5. `byok` — Decrypt and inject provider API key
 6. `web_search` — Optional: two-leg agentic search loop (Brave API)
-7. `upstream` — Call provider with retry + fallback
-8. `guardrails_response` — Guardrail pipeline scan on response
-9. `send_response` — Write buffered response body to client
-10. `cost` — Token counting and budget increment
-11. `cache_store` — Persist non-streaming 200 responses
+7. `url_fetch` — Optional: two-leg `fetch_url` tool-use loop for fetching page content (SSRF-guarded); skipped if `web_search` already handled the request
+8. `upstream` — Call provider with retry + fallback
+9. `guardrails_response` — Guardrail pipeline scan on response
+10. `send_response` — Write buffered response body to client (re-emits as SSE when `ctx.buffered_needs_sse_reemit` is set — see §9)
+11. `cost` — Token counting and budget increment
+12. `cache_store` — Persist non-streaming 200 responses
 
 **Log phase** (best-effort, after response sent):
 1. Structured JSON request log
@@ -123,7 +126,7 @@ The following HuggingFace-hosted org prefixes are recognized:
 
 The `transform` middleware strips LiteLLM-style namespace prefixes from model names before forwarding to the provider. This allows clients that use LiteLLM naming conventions (e.g. `gemini/gemma-3-27b-it`, `groq/llama3-8b-8192`, `fireworks_ai/accounts/fireworks/models/llama-v3p1-8b-instruct`) to route through the gateway unchanged.
 
-Recognised prefixes (17 providers): `gemini/`, `vertex_ai/`, `azure_ai/`, `azure/`, `groq/`, `text-completion-codestral/`, `mistral/`, `together_ai/`, `fireworks_ai/`, `nvidia_nim/`, `sambanova/`, `deepseek/`, `xai/`, `perplexity/`, `cerebras/`, `cohere/`, `bedrock/`, `openrouter/`, `ollama/`.
+Recognised prefixes (17 providers, 19 distinct prefix strings): `gemini/`, `vertex_ai/`, `azure_ai/`, `azure/`, `groq/`, `text-completion-codestral/`, `mistral/`, `together_ai/`, `fireworks_ai/`, `nvidia_nim/`, `sambanova/`, `deepseek/`, `xai/`, `perplexity/`, `cerebras/`, `cohere/`, `bedrock/`, `openrouter/`, `ollama/`. (Azure and Mistral each accept two prefixes.)
 
 ### Request Translation
 
@@ -495,6 +498,41 @@ Calls external HTTP services. Each detector has a configurable `url`, `timeout_m
 | `target` | `request`, `response`, or `both` |
 | `fail_open` | If `true` (default), sidecar errors allow the request to pass |
 
+### Sidecar Outage Handling
+
+When a Tier 2 sidecar is unreachable (DNS failure, connection refused, timeout, non-2xx HTTP), the orchestrator classifies the error and handles it uniformly across detectors:
+
+| Classification | Trigger pattern in error message |
+|---|---|
+| `dns` | "could not be resolved" / "no such host" / "name resolution" |
+| `connect_refused` | "connection refused" |
+| `timeout` | "timeout" / "timed out" |
+| `connection_closed` | "broken pipe" / "closed" |
+| `http_<code>` | Non-2xx response |
+| `parse` | Malformed JSON body |
+| `transport` | Anything else |
+
+A single structured line is written at **`ngx.ERR`** level per outage:
+
+```
+[guardrail_unavailable] name=pii-protect type=pii_protector stage=analyzer
+error_class=dns url=http://presidio:3000 tenant=<id> gateway=<id>
+fail_open=true message=analyzer request: connect: presidio could not be resolved
+```
+
+The same information is persisted on the request log:
+
+- `log_fields.guardrail_error` = `{name, type, stage, url, error_class, message}` → surfaces in `request_log.meta.guardrail_error`
+- `log_fields.guardrail_degraded = true` → set on the fail_open pass-through path so admins can count degraded requests without tailing nginx
+- `log_fields.guardrail_verdict = "error"`
+
+**Client-visible behaviour:**
+
+- `fail_open = true` (default) — response carries header `X-Aig-Guardrail-Warning: <name> unavailable (<error_class>); request processed without this guardrail`. The request is processed upstream as usual.
+- `fail_open = false` — the synthetic 200 response body says *"The safety guardrail '<name>' is temporarily unavailable and the request has been rejected because this gateway is configured to fail closed. Please retry in a few moments."* — distinct from a content-policy block so users don't misdiagnose an outage as a policy denial.
+
+CORS note: the `X-Aig-Guardrail-Warning` header is listed in `Access-Control-Expose-Headers` on the `/v1/` location so browsers can read it cross-origin.
+
 ### Prompt Guard Categories
 
 Llama Guard 3 classifies against 14 safety categories. False-positive rates benchmarked on OR-Bench-hard:
@@ -566,6 +604,53 @@ Gemini / Vertex: native `googleSearch` grounding (single leg, no tool loop).
 
 The `X-Web-Search-Query` response header carries the query string that was searched; logged as `web_search_query`.
 
+### Streaming Clients (Direct-Answer SSE Re-Emit)
+
+Leg 1 is always a buffered (non-streaming) upstream call — it has to complete before the gateway can decide whether to run Leg 2. If the model answers directly (no `web_search` tool call) and the client had sent `stream: true` on a `/compat/` endpoint, the response is still repackaged as SSE so the client sees what it asked for:
+
+- `web_search.lua` sets `ctx.buffered_needs_sse_reemit = true` alongside `ctx.web_search_done = true` when `orig_stream && ctx.is_compat`.
+- `send_response.lua` then calls `reemit_as_sse(ctx.response_body)` which parses the buffered OpenAI `chat.completion` JSON and emits it as four `chat.completion.chunk` events (role delta → content delta → usage → stop) followed by `data: [DONE]`.
+- The `Content-Type` is overridden from `application/json` back to `text/event-stream`.
+
+Same flow is applied by `url_fetch.lua` and `pii_protector.lua` (which also buffers streaming compat requests so it can restore PII tokens in the response before the client sees them). The `buffered_needs_sse_reemit` flag is the single generic signal that triggers the SSE repackaging; `pii_force_buffered` remains as the "force upstream to non-stream" signal read by `upstream.lua`.
+
+Without this, a streaming client that hits a gateway where any buffering middleware runs would receive a valid 200 response with `Content-Type: application/json` — the SSE parser would skip every line and the stream would close with zero content. Observed as `[stream_truncated] SSE stream body closed without [DONE] token {accumulatedChars: 0, elapsedMs: 0}` in the browser.
+
+---
+
+## 9a. URL Fetch
+
+A two-leg tool-use loop that lets the model ask the gateway to fetch a user-supplied URL. Runs in addition to (and skips if) `web_search`.
+
+### Architecture
+
+Mirrors §9: Leg 1 is a non-streaming buffered call with the `fetch_url` tool injected; if the model emits a `fetch_url` tool call, the gateway performs the HTTP GET server-side via `utils/fetch_url` (with an SSRF guard — private/link-local/loopback ranges blocked), then the enriched context goes to Leg 2 which streams back to the client.
+
+### Configuration
+
+Enabled unconditionally for Anthropic and every OpenAI-format provider in its allow-list (openai, groq, mistral, deepseek, cerebras, together, fireworks, openrouter, xai, ollama, huggingface, sambanova, nvidia, azure, cloudflare, cohere). Gemini and Vertex are skipped (no standard tool-use loop; Gemini uses native grounding instead).
+
+### Tool definitions
+
+- **Anthropic tool name:** `fetch_url`; input schema requires `url` (string) and optional `purpose` (string)
+- **OpenAI-format tool:** same shape, emitted as a `function` tool
+
+### Status events
+
+During the fetch phase a custom SSE event is emitted for client UIs to show a status badge: `data: {"aig_status":"fetching_url","count":N}`. The Chat UI maps this to `🔗 Fetching N URL(s)…`.
+
+### Streaming clients
+
+Same `buffered_needs_sse_reemit` pathway as web_search (§9). Leg 1 is always buffered; if the model answers directly (no tool call) the buffered JSON is re-emitted as SSE `chat.completion.chunk` events so a streaming client still gets a valid SSE response.
+
+### Skip condition
+
+`ctx.web_search_done` or `ctx.web_search_leg2` being set makes this middleware a no-op — web search already did a two-leg loop for this request.
+
+### SSRF guard
+
+`utils/fetch_url` refuses to fetch URLs that resolve to loopback (127.0.0.0/8, ::1), link-local (169.254.0.0/16, fe80::/10), private ranges (10/8, 172.16/12, 192.168/16, fc00::/7), or the metadata service (169.254.169.254). Non-`http`/`https` schemes rejected. Response size capped.
+
 ---
 
 ## 10. Reasoning Model Support
@@ -604,6 +689,7 @@ Models that embed chain-of-thought inside `<think>...</think>` tags in the respo
 - **Key derivation:** SHA-256 of `AIG_MASTER_KEY` environment variable
 - **IV:** 16-byte random per encryption operation
 - **Storage format:** `base64(iv):base64(ciphertext)` stored as a single field
+- **Production note:** CBC is unauthenticated. `src/utils/crypto.lua` flags that production deployments should migrate to AES-256-GCM via `luaossl` or to a KMS-backed key service; the CBC implementation is acceptable for dev/test and single-tenant deployments where the MySQL instance is not shared with other applications.
 
 ### Key Lookup
 
@@ -706,6 +792,16 @@ The `aig_tool_call` value is the tool name from the Anthropic `content_block_sta
 - `PUT /admin/v1/model-prices` — upsert a single model price
 - `DELETE /admin/v1/model-prices/{provider}/{model}` — remove a price entry
 
+### Automated Model Sync
+
+`src/admin/model_sync.lua` runs a daily `ngx.timer` (started from worker 0 at init) that fetches the official model list from each provider's `/v1/models` endpoint and upserts into `model_price` with pricing inferred from a pattern table.
+
+- **Providers polled:** anthropic, openai, mistral, groq, deepseek, xai, together, fireworks, perplexity, openrouter
+- **Auth:** each provider uses its own auth scheme (`Authorization: Bearer <key>` for most; Anthropic uses `x-api-key` + `anthropic-version` header). Keys are sourced from the `provider_config` table or env-var fallbacks.
+- **Pricing inference:** ~30 ordered pattern tiers per provider — first match wins. Examples: `^claude%-opus%-4%-[56]` → `$0.005/$0.025 per 1k`; `^claude%-sonnet%-4` → `$0.003/$0.015`; `^gpt%-5%-mini` → `$0.00025/$0.002`. Models that don't match any pattern get a conservative default tier.
+- **Manual trigger:** `POST /admin/v1/model-prices/sync` runs the sync once on demand (admin only).
+- **Outcome:** operators don't have to hand-curate pricing for new models — they appear in the catalog within 24 h of provider release at the correct tier.
+
 ### Bulk Import Scripts
 
 | Script | Source | Description |
@@ -743,8 +839,9 @@ Written after each request completes. Fields:
 | Cost | `cost_usd` |
 | Timing | `latency_ms`, `upstream_latency_ms`, `time_to_first_token_ms` |
 | Request | `request_size_bytes`, `prompt` (user messages), `response` (null for streaming) |
-| Guardrails | `detectors_fired` (array of names), `scrub_applied` (bool) |
-| Custom | `meta` (all `x-aig-meta-*` headers) |
+| Guardrails | `detectors_fired` (array of names), `scrub_applied` (bool), `guardrail_verdict` (`safe` / `unsafe` / `error`), `guardrail_latency_ms` |
+| Guardrail outage | `meta.guardrail_error` (`{name, type, stage, url, error_class, message}` — sidecar unreachable), `meta.guardrail_degraded` (fail_open kept the request alive despite outage) |
+| Custom | `meta` (all `x-aig-meta-*` headers, plus guardrail outage fields above) |
 
 ### Payload Logging Control
 
@@ -956,6 +1053,7 @@ All endpoints are under `/admin/v1/`.
 | GET | `/model-prices` | List all model prices |
 | PUT | `/model-prices` | Upsert a model price |
 | DELETE | `/model-prices/{provider}/{model}` | Delete a model price |
+| POST | `/model-prices/sync` | Trigger a manual model sync from provider `/v1/models` endpoints (see §14) |
 
 ### Analytics
 
@@ -974,6 +1072,28 @@ All endpoints are under `/admin/v1/`.
 |---|---|---|
 | POST | `/playground/token` | Issue a short-lived (10-min) gateway token for the playground UI |
 | GET | `/playground/search?q=` | Web search proxy (Brave Search API) |
+
+### Monitor
+
+Live operational view used by the Monitor page in the admin UI. Exposed at `/monitor` via nginx, backed by `src/admin/monitor.lua`.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/monitor` | Auto-refreshing HTML dashboard — live counters, recent requests and blocks (embedded JS polls the JSON endpoint) |
+| GET | `/monitor/stats` | JSON snapshot: live shared-dict counters + historical stats (last_min / hour / today / by_tenant / recent requests / recent blocks) |
+
+### MCP Connectors
+
+Model Context Protocol connectors let an admin configure external MCP servers and proxy JSON-RPC 2.0 calls through the gateway. Backed by `src/admin/mcp.lua`.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/mcp` | List MCP connectors scoped to the caller's tenant |
+| POST | `/mcp` | Create connector (`name`, `url`, `auth_type`: `none`/`bearer`/`header`, `auth_value`, `enabled`) |
+| GET | `/mcp/{id}` | Get a single connector (including `auth_value`) |
+| PATCH | `/mcp/{id}` | Update connector fields |
+| DELETE | `/mcp/{id}` | Delete connector |
+| POST | `/mcp/{id}/call` | Proxy a JSON-RPC 2.0 request (`tools/list`, `tools/call`, etc.) to the connector URL; auth header is applied server-side so the browser never sees the secret |
 
 ### Chat Console
 
@@ -1100,6 +1220,30 @@ On mount, period stats and timeseries data are loaded in a single `Promise.allSe
 
 ---
 
+## 19a. Other Admin UI Pages
+
+The React admin SPA (`frontend/src/modules/`) exposes one page per area of the Admin REST API. Each page is CRUD-shaped: list view, detail drawer or modal, and optional bulk actions. Every page inherits the shared `Layout.module.scss` primitives (`.page`, `.btn`, `.form-input`, `.table`, `.alert`, `<Modal>`) so colour, spacing and accessibility are consistent.
+
+| Module | Page(s) | What it manages |
+|---|---|---|
+| `gateways` | Gateways list, Gateway detail | Gateway CRUD; provider key management; routing rules editor; circuit breaker config; rate-limit and budget fields; token issuance; spend dashboard; live guardrail stats |
+| `tenants` | Tenants list, Tenant detail | Tenant CRUD; budget + period; SIEM config; chat_presets; slash_commands; tenant admin assignment |
+| `users` | Users list, User detail | User CRUD; role assignment (`admin` / `editor` / `viewer`); per-user budget; last-login timestamp |
+| `analytics` | Analytics dashboard, Tenant drilldown | Spend timeseries, latency percentiles, top models, usage by tenant |
+| `logs` | Request log table, Log detail drawer | Filterable request log (tenant, gateway, provider, date), full prompt/response payload view, `meta` JSON inspector |
+| `prices` | Model prices list, Edit modal | Model catalog CRUD; `POST /model-prices/sync` trigger; manual per-model pricing override |
+| `guardrails` | Guardrail builder | Per-gateway guardrail array editor; Tier-1/Tier-2 detector selector; per-detector config forms (regex patterns, keyword lists, Presidio entities, Prompt Guard categories); `fail_open` toggle |
+| `mcp` | MCP connectors list, connector detail | CRUD on MCP connectors (name, URL, auth type, auth value, enabled); test-connection button |
+| `commands` | Slash commands list | Tenant-wide slash command CRUD (`name`, `description`, `template` with `{{placeholder}}`) |
+| `monitor` | Live monitor | Live counters (requests/sec, active streams, recent blocks); recent request list; auto-refresh via `/admin/v1/monitor/stats` |
+| `projects` | Projects list, Project detail | Project CRUD; instructions editor; knowledge file manager (drag-and-drop upload); member roles drawer |
+| `settings` | Settings | Per-user preferences (theme, default tenant, default gateway) and admin-scoped secrets (OAuth, Brave API, SMTP, Slack) |
+| `profile` | Profile | User profile: email, avatar, account deletion |
+
+Navigation uses a collapsible sidebar (`common/components/sidebar/Sidebar.tsx`); the active page is highlighted and links honour the user's role (viewers don't see destructive actions).
+
+---
+
 ## 20. Playground UI
 
 A React single-page app (`frontend/`) for interactive model testing and comparison.
@@ -1198,7 +1342,9 @@ A full-featured conversational AI interface built into the admin React SPA (`/ch
 - System prompt (textarea, multi-line; default includes: date, formatting rules, decision table emoji conventions, enumerated list emoji guidance)
 - Temperature slider
 - Max tokens input
+- **Extended thinking** — toggle for Anthropic models that support it; enabling it injects `x-aig-provider-anthropic-beta: interleaved-thinking-2025-05-14` on the inference request and raises a `thinking_budget` the model can spend on reasoning. Reasoning tokens render as a collapsible *Thought process* panel above the response (see Message Rendering).
 - Preset save / load / delete (user-level, shared across conversations)
+- **MCP connectors** — the settings drawer surfaces the tenant's MCP connectors (from `GET /admin/v1/mcp`). Each connector can be toggled on per-conversation; when on, the gateway fetches the connector's `tools/list` via `POST /admin/v1/mcp/{id}/call` and makes those tools available to the model in the next turn.
 
 ### Message Rendering
 
@@ -1224,6 +1370,13 @@ A full-featured conversational AI interface built into the admin React SPA (`/ch
   - Copy: copies full message text to clipboard
   - Edit (user messages): inline textarea with Save/Cancel
   - Regenerate (last assistant message): deletes last assistant response, re-runs inference
+
+### Guardrail & Stream-Health Banners
+
+Two dismissible banners above the chat thread surface backend problems without breaking the conversation:
+
+- **Guardrail warning (yellow, `data-cy=guardrail-warning`)** — rendered when the inference response carries `X-Aig-Guardrail-Warning`. Shows the detector name and error class (e.g. *"outage-probe unavailable (dns); request processed without this guardrail"*). Non-blocking: the assistant reply still arrives. Dismissible.
+- **Hard error (red)** — shown on fetch failure, non-2xx status, or when the SSE stream closes with `accumulatedChars === 0 && continueCount === 0` (empty-stream detection). The empty-stream path raises an explicit error — *"Connection to the AI gateway was interrupted before a response arrived"* — instead of leaving the user staring at an empty thread. When `X-Aig-Guardrail-Warning` is present the message is upgraded to *"Guardrail degraded and no response was received: \<warning\>"*.
 
 ### File Attachments
 
@@ -1371,11 +1524,19 @@ While a model is executing a tool call (web search, computer use, code execution
 | Tool name (from `aig_tool_call`) | Status label |
 |---|---|
 | `web_search` | 🔎 Searching the web… |
+| `fetch_url` | 🔗 Fetching URL… |
 | `computer_use` | 🖥️ Using computer… |
 | `code_execution` | ⚙️ Running code… |
 | *(unknown)* | ⚙️ `<tool_name>`… |
 
-Gateway-level web search (`aig_status: "fetching"`) shows `🔎 Fetching N URL(s)…` during the URL fetch phase. Both status types are automatically cleared when the first real text token arrives.
+Gateway-level status events are also surfaced:
+
+| Gateway event (`aig_status`) | Status label | Emitted by |
+|---|---|---|
+| `fetching` | 🔎 Fetching N URL(s)… | web_search.lua before the Brave search-result fetch |
+| `fetching_url` | 🔗 Fetching N URL(s)… | url_fetch.lua before the `fetch_url` tool fetch |
+
+All status types are automatically cleared when the first real text token arrives.
 
 ### Export
 
