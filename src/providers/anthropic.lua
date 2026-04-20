@@ -86,6 +86,25 @@ local function inject_thinking(body, req_headers)
     body.temperature = nil
 end
 
+-- Some Anthropic models (e.g. claude-opus-4-7) deprecate temperature entirely.
+-- Strip it to avoid "temperature is deprecated for this model" 400 errors.
+local TEMPERATURE_DEPRECATED = {
+    ["claude%-opus%-4%-7"]  = true,
+    ["claude%-opus%-4%-8"]  = true,
+    ["claude%-opus%-4%-9"]  = true,
+    ["claude%-opus%-5"]     = true,
+}
+
+local function strip_deprecated_temperature(body, model)
+    if not body.temperature or not model then return end
+    for pat in pairs(TEMPERATURE_DEPRECATED) do
+        if model:find(pat) then
+            body.temperature = nil
+            return
+        end
+    end
+end
+
 function M.build_request(ctx)
     local req_headers = ngx.req.get_headers()
     if not ctx.is_compat then
@@ -103,6 +122,7 @@ function M.build_request(ctx)
                 body.tools[#body.tools + 1] = { type = "web_search_20250305", name = "web_search" }
             end
             inject_thinking(body, req_headers)
+            strip_deprecated_temperature(body, ctx.model)
             return json.sanitize_surrogates(json.encode(body))
         end
         return json.sanitize_surrogates(raw)
@@ -207,6 +227,7 @@ function M.build_request(ctx)
 
     -- Extended thinking — inject after all other body fields are set
     inject_thinking(body, req_headers)
+    strip_deprecated_temperature(body, ctx.model)
 
     return json.sanitize_surrogates(json.encode(body))
 end

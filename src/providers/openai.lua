@@ -52,15 +52,52 @@ function M.build_headers(ctx, api_key)
     return headers
 end
 
+-- OpenAI reasoning models reject temperature, top_p, presence_penalty,
+-- frequency_penalty, and require max_completion_tokens instead of max_tokens.
+local REASONING_MODEL_PATTERNS = {
+    "^o1",                  -- o1, o1-mini, o1-pro, o1-2024-*
+    "^o3",                  -- o3, o3-mini, o3-pro
+    "^o4",                  -- o4-mini
+    "^deepseek%-reasoner",  -- DeepSeek R1 (uses openai.build_request)
+}
+
+local function is_reasoning_model(model)
+    if not model then return false end
+    for _, pat in ipairs(REASONING_MODEL_PATTERNS) do
+        if model:find(pat) then return true end
+    end
+    return false
+end
+
+local function sanitize_reasoning_params(body)
+    body.temperature       = nil
+    body.top_p             = nil
+    body.presence_penalty  = nil
+    body.frequency_penalty = nil
+    -- Reasoning models use max_completion_tokens, not max_tokens
+    if body.max_tokens and not body.max_completion_tokens then
+        body.max_completion_tokens = body.max_tokens
+        body.max_tokens = nil
+    end
+end
+
 -- Pass the request body through unchanged (OpenAI is our canonical format).
 -- Inject stream_options.include_usage=true for streaming so that the final
 -- chunk carries prompt/completion token counts (needed by the UI stats bar).
+-- Strip unsupported parameters for reasoning models (o1/o3/o4).
 function M.build_request(ctx)
     local body = ctx.request_body
-    if body and body.stream then
+    local needs_patch = (body and body.stream) or is_reasoning_model(ctx.model)
+
+    if needs_patch then
         local patched = {}
         for k, v in pairs(body) do patched[k] = v end
-        patched.stream_options = { include_usage = true }
+        if body.stream then
+            patched.stream_options = { include_usage = true }
+        end
+        if is_reasoning_model(ctx.model) then
+            sanitize_reasoning_params(patched)
+        end
         return json.sanitize_surrogates(json.encode(patched))
     end
     return json.sanitize_surrogates(json.encode(body))
