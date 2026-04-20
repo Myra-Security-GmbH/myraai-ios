@@ -945,6 +945,18 @@ function M.list_provider_configs(gateway_id)
     return rows
 end
 
+function M.get_first_provider_key(provider)
+    local db, err = get_conn()
+    if not db then return nil, nil, nil, err end
+    local row, e = query_one(db, [[
+        SELECT gateway_id, encrypted_key, nonce
+        FROM provider_config WHERE provider = ? LIMIT 1
+    ]], provider)
+    release(db)
+    if not row then return nil, nil, nil, e end
+    return row.gateway_id, row.encrypted_key, row.nonce
+end
+
 function M.list_routing_rules(gateway_id)
     local db, err = get_conn()
     if not db then return {} end
@@ -1027,6 +1039,19 @@ function M.list_users(tenant_id, opts)
     end
     release(db)
     return rows
+end
+
+function M.search_users_by_email(tenant_id, email)
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows = query_all(db, [[
+        SELECT id, email, name
+        FROM `user`
+        WHERE tenant_id = ? AND email = ? AND deleted_at IS NULL
+        LIMIT 5
+    ]], tenant_id, email)
+    release(db)
+    return rows or {}
 end
 
 function M.touch_last_login(user_id)
@@ -1365,12 +1390,20 @@ end
 -- Analytics depth: latency percentiles + top models (requires MySQL 8.0+)
 -- ---------------------------------------------------------------------------
 
-function M.get_analytics_depth(since_ms, tenant_id)
+-- until_ms is optional; when set, queries use ts >= from AND ts < until_ms
+-- (closed window — used for "yesterday" so today's data is excluded).
+function M.get_analytics_depth(since_ms, tenant_id, until_ms)
     local db, err = get_conn()
     if not db then return {} end
 
     local now_ms = math.floor(ngx.now() * 1000)
     local from   = since_ms or (now_ms - 86400 * 1000)
+
+    -- Upper-bound clause: only set for closed windows (e.g. yesterday).
+    local uc = ""
+    if until_ms then
+        uc = string.format(" AND r.ts < %d", math.floor(until_ms))
+    end
 
     local tc = ""
     if tenant_id and tenant_id ~= "" and tenant_id:match("^[0-9a-fA-F%-]+$") then
@@ -1388,9 +1421,9 @@ function M.get_analytics_depth(since_ms, tenant_id)
                    ROW_NUMBER() OVER (ORDER BY latency_ms) AS rn,
                    COUNT(*)     OVER ()                    AS cnt
             FROM request_log r
-            WHERE r.ts >= ? AND r.latency_ms IS NOT NULL AND r.blocked = 0%s
+            WHERE r.ts >= ? AND r.latency_ms IS NOT NULL AND r.blocked = 0%s%s
         ) sub
-    ]], tc), from) or {}
+    ]], tc, uc), from) or {}
 
     local top_models = query_all(db, string.format([[
         SELECT r.model, r.provider,
@@ -1398,11 +1431,11 @@ function M.get_analytics_depth(since_ms, tenant_id)
                ROUND(COALESCE(SUM(r.cost_usd),0),4) AS cost_usd,
                ROUND(COALESCE(AVG(r.latency_ms),0))  AS avg_latency_ms
         FROM request_log r
-        WHERE r.ts >= ?%s
+        WHERE r.ts >= ?%s%s
         GROUP BY r.provider, r.model
         ORDER BY requests DESC
         LIMIT 10
-    ]], tc), from) or {}
+    ]], tc, uc), from) or {}
 
     local by_tenant = query_all(db, string.format([[
         SELECT r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
@@ -1417,9 +1450,9 @@ function M.get_analytics_depth(since_ms, tenant_id)
                SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
         FROM request_log r
         LEFT JOIN tenant t ON t.id = r.tenant_id
-        WHERE r.ts >= ?%s
+        WHERE r.ts >= ?%s%s
         GROUP BY r.tenant_id ORDER BY cost_usd DESC
-    ]], tc), from) or {}
+    ]], tc, uc), from) or {}
 
     local by_gateway = query_all(db, string.format([[
         SELECT r.gateway_id, COALESCE(g.slug, r.gateway_id) AS gateway,
@@ -1436,9 +1469,9 @@ function M.get_analytics_depth(since_ms, tenant_id)
         FROM request_log r
         LEFT JOIN gateway g ON g.id = r.gateway_id
         LEFT JOIN tenant  t ON t.id = r.tenant_id
-        WHERE r.ts >= ?%s
+        WHERE r.ts >= ?%s%s
         GROUP BY r.gateway_id ORDER BY cost_usd DESC
-    ]], tc), from) or {}
+    ]], tc, uc), from) or {}
 
     local by_user = query_all(db, string.format([[
         SELECT r.user_id, r.tenant_id,
@@ -1454,10 +1487,10 @@ function M.get_analytics_depth(since_ms, tenant_id)
                SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
         FROM request_log r
         LEFT JOIN `user` u ON u.id = r.user_id
-        WHERE r.ts >= ? AND r.user_id IS NOT NULL%s
+        WHERE r.ts >= ? AND r.user_id IS NOT NULL%s%s
         GROUP BY r.user_id, r.tenant_id ORDER BY cost_usd DESC
         LIMIT 50
-    ]], tc), from) or {}
+    ]], tc, uc), from) or {}
 
     release(db)
     return {
@@ -2215,7 +2248,7 @@ function M.get_feedback(conv_id, user_id)
     local db, err = get_conn()
     if not db then return nil, err end
     local row = query_one(db, [[
-        SELECT id, conversation_id, user_id, rating, comment,
+        SELECT id, conversation_id, user_id, rating, comment, processed,
                DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
                DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
         FROM chat_feedback
@@ -2224,6 +2257,48 @@ function M.get_feedback(conv_id, user_id)
     ]], conv_id, user_id)
     release(db)
     return row
+end
+
+function M.list_feedback(opts)
+    local db, err = get_conn()
+    if not db then return {} end
+    opts = opts or {}
+    local limit = math.min(opts.limit or 100, 500)
+
+    local where = "1=1"
+    local params = {}
+    if opts.processed == true then
+        where = where .. " AND f.processed = 1"
+    elseif opts.processed == false then
+        where = where .. " AND f.processed = 0"
+    end
+
+    local sql = string.format([[
+        SELECT f.id, f.conversation_id, f.user_id, u.email,
+               f.rating, f.comment, f.processed,
+               DATE_FORMAT(FROM_UNIXTIME(f.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(f.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
+        FROM chat_feedback f
+        LEFT JOIN `user` u ON u.id = f.user_id
+        WHERE %s
+        ORDER BY f.created_at DESC
+        LIMIT %d
+    ]], where, limit)
+
+    local rows = query_all(db, sql) or {}
+    release(db)
+    return rows
+end
+
+function M.mark_feedback_processed(id)
+    local db, err = get_conn()
+    if not db then return err end
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        UPDATE chat_feedback SET processed = 1, updated_at = ? WHERE id = ?
+    ]], now, id)
+    release(db)
+    return e
 end
 
 -- ---------------------------------------------------------------------------

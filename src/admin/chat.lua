@@ -277,6 +277,26 @@ function M.register(route)
         send(200, { ok = true })
     end)
 
+    -- GET /admin/v1/feedback?processed=true|false  — admin-only list
+    route("GET", "^/admin/v1/feedback$", function()
+        local u = ngx.ctx.admin_user
+        if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
+        local args = ngx.req.get_uri_args()
+        local processed = nil
+        if args.processed == "true"  then processed = true  end
+        if args.processed == "false" then processed = false end
+        send(200, storage.list_feedback({ processed = processed, limit = tonumber(args.limit) or 100 }))
+    end)
+
+    -- PATCH /admin/v1/feedback/:id  — admin-only, mark as processed
+    route("PATCH", "^/admin/v1/feedback/([^/]+)$", function(id)
+        local u = ngx.ctx.admin_user
+        if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
+        local err = storage.mark_feedback_processed(id)
+        if err then return send(500, { error = err }) end
+        send(200, { ok = true })
+    end)
+
     -- GET /admin/v1/conversations/:id/summaries — return all summaries for a conversation
     route("GET", "^/admin/v1/conversations/([^/]+)/summaries$", function(conv_id)
         local u    = ngx.ctx.admin_user
@@ -1161,19 +1181,129 @@ except Exception as e:
 
         -- Write embedded CSS for clean chat-transcript formatting
         local css = [[
-body { font-family: "Liberation Serif", "Noto Color Emoji", Georgia, serif; font-size: 11pt; line-height: 1.65; color: #1a1a1a; max-width: 48em; margin: 0 auto; padding: 2em 1em; }
-h1 { font-size: 18pt; border-bottom: 2px solid #333; padding-bottom: 6pt; margin-bottom: 4pt; }
-em { color: #555; }
-hr { border: none; border-top: 1px solid #ccc; margin: 14pt 0; }
-p strong:only-child { font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.05em; color: #444; }
-pre { background: #f5f5f5; border-left: 3px solid #ccc; padding: 10pt 12pt; font-size: 9.5pt; white-space: pre-wrap; word-break: break-word; }
-code { font-family: "Liberation Mono", "Noto Color Emoji", "Courier New", monospace; font-size: 9.5pt; background: #f5f5f5; padding: 1pt 3pt; }
-pre code { background: none; padding: 0; }
-table { border-collapse: collapse; width: 100%; font-size: 10pt; }
-th, td { border: 1px solid #ccc; padding: 4pt 8pt; text-align: left; }
-th { background: #f0f0f0; font-weight: bold; }
-blockquote { border-left: 3px solid #aaa; margin: 0 0 0 1em; padding-left: 1em; color: #555; }
-a { color: #1a6fb5; }
+@page {
+  size: A4;
+  margin: 2cm 2.5cm;
+}
+
+body {
+  font-family: "Liberation Sans", Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.65;
+  color: #1a1a1a;
+  max-width: 52em;
+  margin: 0 auto;
+  padding: 1em 1.5em;
+  letter-spacing: 0;
+  font-variant-numeric: normal;
+}
+
+h1 {
+  font-size: 18pt;
+  font-weight: 700;
+  border-bottom: 2px solid #333;
+  padding-bottom: 6pt;
+  margin-top: 0;
+  margin-bottom: 12pt;
+}
+
+h2 {
+  font-size: 14pt;
+  font-weight: 700;
+  margin-top: 20pt;
+  margin-bottom: 6pt;
+}
+
+h3 {
+  font-size: 12pt;
+  font-weight: 700;
+  margin-top: 16pt;
+  margin-bottom: 5pt;
+}
+
+p {
+  margin-top: 0;
+  margin-bottom: 10pt;
+}
+
+ul, ol {
+  margin: 6pt 0 10pt 0;
+  padding-left: 1.5em;
+}
+
+li {
+  margin-bottom: 4pt;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #ccc;
+  margin: 14pt 0;
+}
+
+p strong:only-child {
+  font-size: 10.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #444;
+}
+
+pre {
+  background: #f5f5f5;
+  border-left: 3px solid #ccc;
+  padding: 10pt 12pt;
+  font-size: 9.5pt;
+  white-space: pre-wrap;
+  word-break: break-word;
+  page-break-inside: avoid;
+}
+
+code {
+  font-family: "Liberation Mono", "Courier New", monospace;
+  font-size: 9.5pt;
+  background: #f0f0f0;
+  padding: 2pt 5pt;
+  border-radius: 2pt;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 10pt;
+  page-break-inside: avoid;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 5pt 8pt;
+  text-align: left;
+}
+
+th {
+  background: #f0f0f0;
+  font-weight: bold;
+}
+
+blockquote {
+  border-left: 3px solid #aaa;
+  margin: 14pt 0 14pt 0.5em;
+  padding: 2pt 0 2pt 1em;
+  color: #555;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: #1a6fb5;
+}
 ]]
         local cf = io.open(tmpcss, "w")
         if not cf then

@@ -461,6 +461,7 @@ CREATE TABLE IF NOT EXISTS chat_feedback (
     comment         TEXT,
     created_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
     updated_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+    processed       TINYINT(1)   NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     UNIQUE KEY uq_feedback_conv (conversation_id),
     KEY idx_chat_feedback_user (user_id, created_at),
