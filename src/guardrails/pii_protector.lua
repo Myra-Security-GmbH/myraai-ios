@@ -425,9 +425,6 @@ end
 -- Signature: M.run(ctx, detector, phase) → { verdict, [pattern] }
 -- ---------------------------------------------------------------------------
 function M.run(ctx, detector, phase)
-    local fail_open = detector.fail_open
-    if fail_open == nil then fail_open = true end
-
     -- -----------------------------------------------------------------------
     -- RESPONSE PHASE: restore tokens back to original values.
     -- -----------------------------------------------------------------------
@@ -473,10 +470,17 @@ function M.run(ctx, detector, phase)
     -- caused by mapping Presidio's Unicode codepoint offsets onto raw JSON
     -- bytes (where \uXXXX escapes, \" sequences, etc. shift all positions).
     -- -----------------------------------------------------------------------
-    local body = ctx.request_body
-    if not body then
-        return { verdict = "pass" }
+    if not ctx.request_body then
+        -- Body may not have been parsed yet (happens when cache_ttl=0 so
+        -- cache_check skipped parsing). Parse it now — skipping silently on a
+        -- missing body turns this guardrail into a no-op.
+        local req_util = require("utils.request")
+        if not ctx.raw_request_body then
+            ctx.raw_request_body = req_util.read_body() or ""
+        end
+        ctx.request_body = json.decode(ctx.raw_request_body) or {}
     end
+    local body = ctx.request_body
 
     -- Collect decoded user text.
     -- skip_system_messages=false → include all roles (system + assistant + user).
@@ -490,12 +494,8 @@ function M.run(ctx, detector, phase)
     -- are straightforward — no JSON escapes to miscount).
     local entities, err = call_analyzer(joined, detector)
     if not entities then
-        ngx.log(ngx.WARN, "pii_protector: analyzer error: ", err,
-                " name=", detector.name or "?")
-        if fail_open then
-            return { verdict = "pass" }
-        end
-        return { verdict = "block", pattern = "pii_protector_error" }
+        return { verdict = "error", stage = "analyzer", message = err,
+                 url = detector.analyzer_url or DEFAULT_ANALYZER_URL }
     end
 
     if #entities == 0 then
@@ -584,7 +584,8 @@ function M.run(ctx, detector, phase)
     -- upstream call to be buffered so the response phase can restore tokens and
     -- capture response_raw.  send_response.lua re-emits the result as SSE.
     if ctx.is_compat and body.stream == true then
-        ctx.pii_force_buffered = true
+        ctx.pii_force_buffered      = true
+        ctx.buffered_needs_sse_reemit = true
     end
 
     local entity_types = collect_entity_types(entities)

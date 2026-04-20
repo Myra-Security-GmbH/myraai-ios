@@ -104,6 +104,18 @@ local function send_synthetic(ctx, text)
     ngx.exit(200)
 end
 
+-- Set X-Aig-Guardrail-Warning when a guardrail was unreachable but fail_open
+-- let the request proceed. Must be called before headers are sent upstream;
+-- safe in access/rewrite phase because upstream hasn't run yet.
+local function set_degraded_header(ctx)
+    local info = ctx.log_fields and ctx.log_fields.guardrail_error
+    if not info then return end
+    ngx.header["X-Aig-Guardrail-Warning"] =
+        (info.name or "guardrail") .. " unavailable (" ..
+        (info.error_class or "unknown") ..
+        "); request processed without this guardrail"
+end
+
 function M.run(ctx)
     local result = require("guardrails.orchestrator").run_phase(ctx, "request")
 
@@ -120,9 +132,28 @@ function M.run(ctx)
     end
 
     if result == "block" then
-        local reason = expand_categories(ctx.log_fields.block_reason)
-        send_synthetic(ctx, "Request blocked by content policy (" ..
-            (ctx.log_fields.blocked_by or "guardrail") .. "): " .. reason)
+        local br = ctx.log_fields.block_reason or ""
+        local text
+        if type(br) == "string" and br:sub(1, 22) == "guardrail_unavailable:" then
+            -- Service-down block: be explicit that this is an outage, not policy.
+            text = "The safety guardrail \"" ..
+                   (ctx.log_fields.blocked_by or "guardrail") ..
+                   "\" is temporarily unavailable and the request has been rejected " ..
+                   "because this gateway is configured to fail closed. " ..
+                   "Please retry in a few moments."
+        else
+            text = "Request blocked by content policy (" ..
+                (ctx.log_fields.blocked_by or "guardrail") .. "): " ..
+                expand_categories(br)
+        end
+        send_synthetic(ctx, text)
+        return
+    end
+
+    -- Non-block path: if a guardrail was degraded (fail_open kept the request
+    -- alive), surface an advisory header so clients can warn the user.
+    if ctx.log_fields and ctx.log_fields.guardrail_degraded then
+        set_degraded_header(ctx)
     end
 end
 

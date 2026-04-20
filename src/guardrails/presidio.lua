@@ -1,7 +1,7 @@
 -- guardrails/presidio.lua — Tier 2 local Presidio sidecar guardrail
 -- Analyzer: POST /analyze  to presidio-analyzer (default :5002)
 -- Anonymizer: POST /anonymize to presidio-anonymizer (default :5001) for scrub action.
--- fail_open defaults to true: on sidecar error, pass the request through.
+-- On sidecar error, returns verdict="error"; the orchestrator applies the fail_open policy.
 
 local json      = require("utils.json")
 local http_util = require("utils.http")
@@ -192,18 +192,12 @@ function M.run(ctx, detector, phase)
     end
 
     local action    = detector.action or "flag"
-    local fail_open = detector.fail_open
-    if fail_open == nil then fail_open = true end
 
     -- Step 1: analyze
     local entities, err = call_analyzer(text, detector)
     if not entities then
-        ngx.log(ngx.WARN, "presidio: analyzer error: ", err)
-        if fail_open then
-            return { verdict = "pass" }
-        else
-            return { verdict = "block", pattern = "presidio_error" }
-        end
+        return { verdict = "error", stage = "analyzer", message = err,
+                 url = detector.url or DEFAULT_ANALYZER_URL }
     end
 
     -- Apply per-entity score floors (entity_score_thresholds config).
@@ -221,13 +215,8 @@ function M.run(ctx, detector, phase)
         -- Step 2: anonymize
         local anonymized, anon_err = call_anonymizer(text, entities, detector)
         if not anonymized then
-            ngx.log(ngx.WARN, "presidio: anonymizer error: ", anon_err)
-            if fail_open then
-                return { verdict = "pass" }
-            else
-                ngx.log(ngx.WARN, "presidio: blocking — ", summary)
-                return { verdict = "block", pattern = entity_types, entities = entity_detail }
-            end
+            return { verdict = "error", stage = "anonymizer", message = anon_err,
+                     url = detector.anonymizer_url or DEFAULT_ANONYMIZER_URL }
         end
         set_body(ctx, phase, anonymized)
         return { verdict = "scrubbed", pattern = entity_types, entities = entity_detail }

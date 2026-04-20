@@ -4,6 +4,61 @@
 
 local M = {}
 
+-- Classify a guardrail error message into a short, structured error_class
+-- so operators can group outages (dns vs connect vs timeout vs http_5xx)
+-- and the same string can be stored in request_log.meta for querying.
+local function classify_error(msg)
+    if not msg then return "unknown" end
+    local s = tostring(msg):lower()
+    if s:find("could not be resolved", 1, true)
+       or s:find("no such host", 1, true)
+       or s:find("name resolution", 1, true) then
+        return "dns"
+    end
+    if s:find("connection refused", 1, true) then return "connect_refused" end
+    if s:find("timeout", 1, true) or s:find("timed out", 1, true) then return "timeout" end
+    if s:find("broken pipe", 1, true) or s:find("closed", 1, true) then return "connection_closed" end
+    local code = s:match("http%s+(%d%d%d)")
+    if code then return "http_" .. code end
+    if s:find("parse", 1, true) then return "parse" end
+    return "transport"
+end
+
+-- Record a guardrail outage on ctx so it flows to log lines, request_log.meta,
+-- and the X-Aig-Guardrail-Warning response header.
+local function record_guardrail_error(ctx, det, result)
+    local err_class = classify_error(result.message)
+    local name      = det.name or det.type
+    local info = {
+        name        = name,
+        type        = det.type,
+        stage       = result.stage,
+        url         = result.url,
+        error_class = err_class,
+        message     = tostring(result.message or ""),
+    }
+
+    ctx.log_fields.guardrail_error   = info
+    ctx.log_fields.guardrail_verdict = "error"
+    ctx.meta = ctx.meta or {}
+    ctx.meta.guardrail_error = info
+
+    -- Structured single-line ERR log so operators see outages immediately.
+    ngx.log(ngx.ERR,
+        "[guardrail_unavailable]",
+        " name=", name,
+        " type=", tostring(det.type),
+        " stage=", tostring(result.stage or "?"),
+        " error_class=", err_class,
+        " url=", tostring(result.url or "?"),
+        " tenant=", tostring(ctx.tenant_id or "?"),
+        " gateway=", tostring(ctx.gateway_id or "?"),
+        " fail_open=", tostring(det.fail_open ~= false),
+        " message=", tostring(result.message or ""))
+
+    return err_class
+end
+
 -- Tier assignment: lower number runs first.
 local TIER = {
     regex         = 1,
@@ -73,7 +128,7 @@ function M.run_phase(ctx, phase)
         local mod_name = MODULES[det.type]
 
         if not mod_name then
-            ngx.log(ngx.WARN, "guardrails: unknown guardrail type '", tostring(det.type),
+            ngx.log(ngx.ERR, "guardrails: unknown guardrail type '", tostring(det.type),
                     "' name=", tostring(det.name))
             -- Unknown type: respect fail_open
             if det.fail_open == false then
@@ -87,50 +142,58 @@ function M.run_phase(ctx, phase)
             end)
 
             if not ok then
-                -- result holds the error message on pcall failure
-                ngx.log(ngx.WARN, "guardrails: error running guardrail '",
-                        tostring(det.name or det.type), "': ", tostring(result))
+                -- pcall failure: synthesise an error verdict so the outage
+                -- travels the same code path as explicit errors.
+                result = { verdict = "error", stage = "pcall",
+                           message = tostring(result) }
+            end
+
+            local verdict = result and result.verdict or "pass"
+
+            if verdict == "error" then
+                record_guardrail_error(ctx, det, result)
                 if det.fail_open == false then
                     ctx.log_fields.blocked_by   = det.name or det.type
-                    ctx.log_fields.block_reason = "detector_error"
+                    ctx.log_fields.block_reason = "guardrail_unavailable:" ..
+                                                   (det.name or det.type)
                     return "block"
                 end
-                -- fail_open (default): continue to next detector
-            else
-                local verdict = result and result.verdict or "pass"
+                -- fail_open (default): mark degraded and continue
+                ctx.log_fields.guardrail_degraded = true
+                ctx.meta = ctx.meta or {}
+                ctx.meta.guardrail_degraded = true
 
-                if verdict == "block" then
-                    ctx.log_fields.blocked_by      = det.name or det.type
-                    ctx.log_fields.block_reason    = result.pattern
-                    if result.entities then
-                        ctx.log_fields.block_entities = result.entities
-                    end
-                    local fired = ctx.log_fields.detectors_fired
-                    fired[#fired + 1] = det.name or det.type
-                    return "block"
-
-                elseif verdict == "scrubbed" then
-                    ctx.log_fields.scrub_applied = true
-                    if result.entities then
-                        ctx.log_fields.scrub_entities = result.entities
-                    end
-                    local fired = ctx.log_fields.detectors_fired
-                    fired[#fired + 1] = det.name or det.type
-                    ctx.log_fields.block_reason = result and result.pattern
-                    -- For request phase, propagate the scrubbed body to nginx
-                    if phase == "request" then
-                        ngx.req.set_body_data(ctx.raw_request_body)
-                    end
-                    -- Continue to remaining detectors
-
-                elseif verdict == "flagged" then
-                    local fired = ctx.log_fields.detectors_fired
-                    fired[#fired + 1] = det.name or det.type
-                    ctx.log_fields.block_reason = result and result.pattern
-                    -- Continue to remaining detectors
-
-                -- else "pass": continue silently
+            elseif verdict == "block" then
+                ctx.log_fields.blocked_by      = det.name or det.type
+                ctx.log_fields.block_reason    = result.pattern
+                if result.entities then
+                    ctx.log_fields.block_entities = result.entities
                 end
+                local fired = ctx.log_fields.detectors_fired
+                fired[#fired + 1] = det.name or det.type
+                return "block"
+
+            elseif verdict == "scrubbed" then
+                ctx.log_fields.scrub_applied = true
+                if result.entities then
+                    ctx.log_fields.scrub_entities = result.entities
+                end
+                local fired = ctx.log_fields.detectors_fired
+                fired[#fired + 1] = det.name or det.type
+                ctx.log_fields.block_reason = result and result.pattern
+                -- For request phase, propagate the scrubbed body to nginx
+                if phase == "request" then
+                    ngx.req.set_body_data(ctx.raw_request_body)
+                end
+                -- Continue to remaining detectors
+
+            elseif verdict == "flagged" then
+                local fired = ctx.log_fields.detectors_fired
+                fired[#fired + 1] = det.name or det.type
+                ctx.log_fields.block_reason = result and result.pattern
+                -- Continue to remaining detectors
+
+            -- else "pass": continue silently
             end
         end
     end

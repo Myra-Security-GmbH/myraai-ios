@@ -174,9 +174,6 @@ local function filter_categories(raw_cats, allowed_set)
 end
 
 function M.run(ctx, detector, phase)
-    local fail_open = detector.fail_open
-    if fail_open == nil then fail_open = true end
-
     local action         = detector.action or "block"
     local context_prompt = detector.context_prompt or nil
 
@@ -209,15 +206,9 @@ function M.run(ctx, detector, phase)
     ctx.log_fields.guardrail_latency_ms = latency_ms
 
     if not result then
-        ngx.log(ngx.WARN, "prompt_guard:sidecar unavailable: ", classify_err,
-                " detector=", detector.name or "?",
-                " tenant=", ctx.tenant_id)
         ctx.log_fields.guardrail_verdict = "error"
-        if fail_open then
-            return { verdict = "pass" }
-        else
-            return { verdict = "block", pattern = classify_err }
-        end
+        return { verdict = "error", stage = "classify", message = classify_err,
+                 url = detector.url }
     end
 
     if result.verdict ~= "unsafe" then
