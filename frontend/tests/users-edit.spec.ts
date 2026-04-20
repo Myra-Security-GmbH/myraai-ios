@@ -71,7 +71,7 @@ async function openUserDetail(page: Page, email: string) {
 /** Click Edit, change fields, Save, then click ← Users. */
 async function editUserAndGoBack(
   page: Page,
-  changes: { name?: string; role?: string; tenantSlug?: string },
+  changes: { name?: string; role?: string; tenantSlug?: string; tenantId?: string },
 ) {
   await page.getByRole("button", { name: "Edit" }).click();
   const modal = page.locator("[class*='modal'], [role='dialog']").first();
@@ -85,9 +85,12 @@ async function editUserAndGoBack(
     const roleSelect = modal.locator("select").last();
     await roleSelect.selectOption({ value: changes.role });
   }
-  if (changes.tenantSlug !== undefined) {
+  if (changes.tenantId !== undefined) {
     const tenantSelect = modal.locator("select").first();
-    await tenantSelect.selectOption({ label: new RegExp(changes.tenantSlug, "i") });
+    await tenantSelect.selectOption({ value: changes.tenantId });
+  } else if (changes.tenantSlug !== undefined) {
+    const tenantSelect = modal.locator("select").first();
+    await tenantSelect.selectOption({ label: changes.tenantSlug });
   }
 
   await modal.getByRole("button", { name: /save changes/i }).click();
@@ -167,7 +170,7 @@ test.describe("Users — list invalidation after edit", () => {
       await openUserDetail(page, u.email);
 
       // Change tenant to tenantB
-      await editUserAndGoBack(page, { tenantSlug: tenantB.slug });
+      await editUserAndGoBack(page, { tenantId: tenantB.id });
 
       // After going back (with the filter cleared / all tenants):
       // reset filter to show all users

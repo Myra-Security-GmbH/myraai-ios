@@ -16,14 +16,14 @@ const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra
 async function getFirstGatewayId(page: Page): Promise<string | null> {
   const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
   if (!tenantsResp.ok()) return null;
-  const tenants = (await tenantsResp.json()) as Array<{ id: string }>;
-  for (const tenant of tenants) {
-    const gwResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants/${tenant.id}/gateways`);
-    if (!gwResp.ok()) continue;
-    const gws = (await gwResp.json()) as Array<{ id: string }>;
-    if (gws.length) return gws[0].id;
-  }
-  return null;
+  const tenants = (await tenantsResp.json()) as Array<{ id: string; slug: string }>;
+  if (!tenants.length) return null;
+  // Prefer myratest — test fixture tenants are newest and appear first in the list
+  const preferred = tenants.find((t) => t.slug === "myratest") ?? tenants[0];
+  const gwResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants/${preferred.id}/gateways`);
+  if (!gwResp.ok()) return null;
+  const gws = (await gwResp.json()) as Array<{ id: string }>;
+  return gws.length ? gws[0].id : null;
 }
 
 async function createConversation(page: Page, gatewayId: string, title: string): Promise<string | null> {
@@ -44,13 +44,15 @@ async function deleteConversation(page: Page, convId: string) {
   await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${convId}`).catch(() => {});
 }
 
-async function openConversation(page: Page) {
+/** Navigate to /chat and open the specific conversation by its data-id attribute. */
+async function openConversation(page: Page, convId: string) {
   await page.goto("/chat");
-  await page.waitForTimeout(800);
-  const firstItem = page.locator("[role='option']").first();
-  await firstItem.waitFor({ state: "visible", timeout: 8000 });
-  await firstItem.click();
-  await page.waitForTimeout(600);
+  // Wait for sidebar to populate then click the specific conversation
+  const convItem = page.locator(`[role='option'][data-id='${convId}']`);
+  await convItem.waitFor({ state: "visible", timeout: 8000 });
+  await convItem.click();
+  // Wait until the conversation is active (aria-selected becomes true)
+  await expect(convItem).toHaveAttribute("aria-selected", "true", { timeout: 5000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -91,7 +93,7 @@ test.describe("Chat — session feedback", () => {
     await addMessage(page, convId, "assistant", "Hi there!");
 
     try {
-      await openConversation(page);
+      await openConversation(page, convId);
 
       const feedbackBtn = page.locator("button[title='Session feedback']");
       await expect(feedbackBtn).toBeEnabled({ timeout: 5000 });
@@ -132,10 +134,9 @@ test.describe("Chat — session feedback", () => {
       await feedbackBtn.click();
       await page.waitForSelector("text=Session Feedback", { timeout: 5000 });
 
-      // Rating 2 should be highlighted (bold / border)
+      // Rating 2 should be highlighted (selected class)
       const rating2Btn = page.getByRole("button", { name: "2" }).first();
-      const fw = await rating2Btn.evaluate((el) => (el as HTMLElement).style.fontWeight);
-      expect(fw).toBe("700");
+      await expect(rating2Btn).toHaveClass(/picker-btn--selected/);
 
       // Comment should be pre-filled
       const ta = page.locator("textarea[placeholder*='could be better']");
@@ -165,7 +166,7 @@ test.describe("Chat — session feedback", () => {
     await addMessage(page, convId, "assistant", "Quick answer.");
 
     try {
-      await openConversation(page);
+      await openConversation(page, convId);
 
       const feedbackBtn = page.locator("button[title='Session feedback']");
       await expect(feedbackBtn).toBeEnabled({ timeout: 5000 });

@@ -290,6 +290,12 @@ test.describe("Chat — project read commands: real inference", () => {
 
     await page.goto(`/chat?project_id=${projectId}`);
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 10000 });
+    // Wait for projectKnowledge to be loaded: the "📎 Files (N)" button appears
+    // once the /projects/:id/knowledge-text API response arrives. Without this
+    // wait the model may respond before projectKnowledge is populated in React state,
+    // causing the <read_file> detection check to be skipped (projectKnowledge.length === 0).
+    await expect(page.locator("button").filter({ hasText: /Files \(\d+\)/ }))
+      .toBeVisible({ timeout: 10000 });
   });
 
   test.afterEach(async ({ page }) => {

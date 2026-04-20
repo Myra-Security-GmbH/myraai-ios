@@ -35,7 +35,12 @@ import { test, expect, type Page } from "@playwright/test";
  *  so by the time any JS renders the fix has already fired (or not). */
 async function openChat(page: Page) {
   await page.goto("/chat");
-  await page.locator("select").first().waitFor({ state: "attached", timeout: 10_000 });
+  await page.locator('[data-testid="config-bar"]').waitFor({ state: "attached", timeout: 10_000 });
+  // If preset buttons are shown (preset mode), click the first one to enable the chat input.
+  const firstPreset = page.locator('[data-testid="config-preset-btn"]').first();
+  if (await firstPreset.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await firstPreset.click();
+  }
 }
 
 /** Read the current `content` attribute of <meta name="viewport">. */
@@ -231,5 +236,334 @@ test.describe("viewport-fix script — no false positive on narrow desktop (inne
       parseFloat(document.documentElement.style.zoom || "1")
     );
     expect(zoom).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 6 — Virtual keyboard regression (Vanadium desktop mode)
+//
+//   Symptom: when the user taps the chat input, the browser opens the virtual
+//   keyboard.  Vanadium uses the default "resizes-visual-viewport" mode:
+//   window.innerHeight does NOT shrink, but visualViewport.height DOES.
+//
+//   Bug: the visualViewport.resize listener computes --real-height as
+//   Math.round(window.innerHeight / z).  Because window.innerHeight is
+//   unchanged, --real-height stays at the full-screen value.  .chat-page
+//   remains taller than the visible area, the browser scroll-to-focused-input
+//   kicks in, and the entire layout shoots upward — input visible in the
+//   centre, everything else clipped.
+//
+//   Fix: the listener must use vv.height (which reflects keyboard state)
+//   instead of window.innerHeight.
+//
+//   Test strategy:
+//     1. Simulate desktop mode: innerWidth=980, outerWidth=427 → zoom ≈ 2.295
+//        and --real-height is set on page load.
+//     2. After load, override visualViewport.height to a keyboard-shrunken
+//        value and dispatch "resize" on visualViewport.
+//     3. Assert --real-height updated to Math.round(vv.height / zoom).
+//        With the bug present --real-height stays at the pre-keyboard value.
+// ---------------------------------------------------------------------------
+
+test.describe("viewport-fix script — virtual keyboard shrinks --real-height (Vanadium desktop mode)", () => {
+  test.use({ viewport: { width: 980, height: 2100 }, hasTouch: true });
+
+  test("--real-height tracks visualViewport.height when keyboard opens", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "outerWidth", { get: () => 427, configurable: true });
+    });
+    await openChat(page);
+
+    // Confirm desktop-mode fix fired: zoom should be ~2.295
+    const zoom = await page.evaluate(() =>
+      parseFloat(document.documentElement.style.zoom || "1")
+    );
+    expect(zoom, "zoom must be applied before keyboard test runs").toBeGreaterThan(2.1);
+
+    // Confirm initial --real-height was set correctly (≈ innerHeight / zoom)
+    const initialRealHeight = await page.evaluate(() => {
+      const v = getComputedStyle(document.documentElement)
+        .getPropertyValue("--real-height").trim();
+      return parseInt(v, 10);
+    });
+    const expectedInitial = Math.round(2100 / zoom);
+    expect(initialRealHeight,
+      `initial --real-height (${initialRealHeight}) should equal Math.round(innerHeight/zoom) (${expectedInitial})`
+    ).toBeCloseTo(expectedInitial, -1); // within ±10 px
+
+    // Simulate keyboard opening: override visualViewport.height to simulate
+    // 600 layout-px being taken by the keyboard (window.innerHeight unchanged).
+    const fakeVvHeight = 2100 - 600;
+    await page.evaluate((h) => {
+      // Override height on the prototype so our listener reads the fake value.
+      Object.defineProperty(VisualViewport.prototype, "height", {
+        get() { return h; },
+        configurable: true,
+      });
+      // Fire the resize event that the index.html listener is attached to.
+      window.visualViewport!.dispatchEvent(new Event("resize"));
+    }, fakeVvHeight);
+
+    // --real-height must now reflect the keyboard-shrunken visual viewport.
+    const updatedRealHeight = await page.evaluate(() => {
+      const v = getComputedStyle(document.documentElement)
+        .getPropertyValue("--real-height").trim();
+      return parseInt(v, 10);
+    });
+    const expectedUpdated = Math.round(fakeVvHeight / zoom);
+    expect(updatedRealHeight,
+      `after keyboard open, --real-height (${updatedRealHeight}) should be ` +
+      `Math.round(vv.height/zoom) = ${expectedUpdated}, not the pre-keyboard ` +
+      `${initialRealHeight} (which would mean window.innerHeight was used instead)`
+    ).toBeCloseTo(expectedUpdated, -1);
+
+    // Sanity: the updated value must be meaningfully smaller than the initial.
+    expect(updatedRealHeight,
+      "--real-height must shrink when keyboard opens"
+    ).toBeLessThan(initialRealHeight - 100);
+  });
+
+  test("chat page height matches --real-height after keyboard simulation", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "outerWidth", { get: () => 427, configurable: true });
+    });
+    await openChat(page);
+
+    const zoom = await page.evaluate(() =>
+      parseFloat(document.documentElement.style.zoom || "1")
+    );
+    expect(zoom).toBeGreaterThan(2.1);
+
+    const fakeVvHeight = 2100 - 600;
+    await page.evaluate((h) => {
+      Object.defineProperty(VisualViewport.prototype, "height", {
+        get() { return h; },
+        configurable: true,
+      });
+      window.visualViewport!.dispatchEvent(new Event("resize"));
+    }, fakeVvHeight);
+
+    // The .chat-page element must be no taller than --real-height.
+    // If it overflows, the browser scrolls the input into view (the bug).
+    //
+    // Coordinate note: getBoundingClientRect() returns layout-viewport CSS px
+    // (pre-ICB-division), while --real-height is in ICB px (post-division).
+    // We normalise by dividing chatPageHeight by zoom before comparing.
+    const { chatPageHeightPx, realHeight, appliedZoom } = await page.evaluate(() => {
+      const chatPage = document.querySelector<HTMLElement>(".chat-page, [class*='chat-page']");
+      const rh = getComputedStyle(document.documentElement)
+        .getPropertyValue("--real-height").trim();
+      const z = parseFloat(document.documentElement.style.zoom || "1");
+      return {
+        chatPageHeightPx: chatPage ? chatPage.getBoundingClientRect().height : -1,
+        realHeight: parseInt(rh, 10),
+        appliedZoom: z,
+      };
+    });
+
+    expect(chatPageHeightPx,
+      "chat page must have a measurable height"
+    ).toBeGreaterThan(0);
+
+    // chatPageHeightPx is in layout-viewport px; divide by zoom → ICB px
+    const chatPageHeightIcb = chatPageHeightPx / appliedZoom;
+    expect(chatPageHeightIcb,
+      `chat page height in ICB px (${chatPageHeightPx} / ${appliedZoom} = ${chatPageHeightIcb.toFixed(1)}) ` +
+      `must not exceed --real-height (${realHeight}px) ` +
+      `— overflow causes the browser to scroll the input into view`
+    ).toBeLessThanOrEqual(realHeight + 2); // 2 px rounding tolerance
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 7 — Message submission does not scroll the page (Vanadium desktop mode)
+//
+//   Symptom: the first tap into the input is now fixed (Suite 6), but
+//   pressing Enter/Send causes the same jump again.  Root causes:
+//
+//   A. ChatInput auto-resize: el.style.height = "auto" → brief layout
+//      collapse while the textarea is focused.  The browser interprets the
+//      focused element as no longer fully visible and issues a document-
+//      level scroll to bring it back into view.
+//
+//   B. MessageThread.scrollIntoView({ behavior: "smooth" }) fires on every
+//      new message.  With html.style.zoom > 1, Chrome's scrollIntoView
+//      escapes the nearest scrollable ancestor (.thread) and scrolls the
+//      document instead, lifting the entire page.
+//
+//   Both effects produce the same visible result: the layout jumps upward,
+//   the input appears in the centre of the screen, and nothing else is
+//   visible.
+//
+//   These tests verify that after a message is submitted:
+//     1. document.documentElement.scrollTop remains 0
+//     2. --real-height is not changed (keyboard-adjusted value is preserved)
+//     3. The chat-page top edge stays at y=0 (layout not lifted)
+// ---------------------------------------------------------------------------
+
+test.describe("viewport-fix — message submission must not scroll the page (Vanadium desktop mode)", () => {
+  test.use({ viewport: { width: 980, height: 2100 }, hasTouch: true });
+
+  /** Simulate the desktop-mode + keyboard-open state and return the applied zoom.
+   *
+   *  To make scrollIntoView and focus-scroll actually trigger (so failures are
+   *  detectable), we both:
+   *    a) override visualViewport.height so our listener sets --real-height, AND
+   *    b) actually resize the Playwright viewport to match — so the browser truly
+   *       believes the available height is only vv.height layout-px tall.
+   *
+   *  Without (b) the browser viewport stays at 2100px, elements are always in
+   *  view, and scrollIntoView is a no-op even when --real-height is wrong.
+   */
+  async function setupDesktopModeWithKeyboard(page: Page): Promise<{ zoom: number; keyboardRealHeight: number }> {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "outerWidth", { get: () => 427, configurable: true });
+    });
+    await openChat(page);
+
+    const zoom = await page.evaluate(() =>
+      parseFloat(document.documentElement.style.zoom || "1")
+    );
+    expect(zoom, "desktop-mode zoom must be applied").toBeGreaterThan(2.1);
+
+    // Keyboard takes 600 layout-viewport CSS px
+    const KEYBOARD_PX = 600;
+    const fakeVvHeight = 2100 - KEYBOARD_PX;
+
+    // (a) override vv.height so our resize listener updates --real-height
+    await page.evaluate((h) => {
+      Object.defineProperty(VisualViewport.prototype, "height", {
+        get() { return h; },
+        configurable: true,
+      });
+      window.visualViewport!.dispatchEvent(new Event("resize"));
+    }, fakeVvHeight);
+
+    // (b) actually shrink the Playwright viewport to match — browser now truly
+    //     sees only fakeVvHeight px of height, making scroll effects realistic
+    await page.setViewportSize({ width: 980, height: fakeVvHeight });
+
+    const keyboardRealHeight = await page.evaluate(() =>
+      parseInt(getComputedStyle(document.documentElement).getPropertyValue("--real-height"), 10)
+    );
+    expect(keyboardRealHeight, "--real-height must shrink after keyboard open")
+      .toBeLessThan(Math.round(2100 / zoom) - 100);
+
+    return { zoom, keyboardRealHeight };
+  }
+
+  test("document does not scroll when a message is submitted", async ({ page }) => {
+    const { keyboardRealHeight } = await setupDesktopModeWithKeyboard(page);
+
+    // Wait for the input to be enabled (preset + model loaded)
+    const textarea = page.locator("textarea").first();
+    await expect(textarea).not.toBeDisabled({ timeout: 10_000 });
+
+    // Type and submit
+    const marker = `test-submit-${Date.now()}`;
+    await textarea.fill(marker);
+    await textarea.press("Enter");
+
+    // Wait for the optimistic user message bubble to appear in the thread
+    // (added synchronously in onSend before any API call)
+    await expect(page.getByText(marker)).toBeVisible({ timeout: 5000 });
+
+    // Assertion A: document root must not have scrolled
+    const scrollTop = await page.evaluate(() => document.documentElement.scrollTop);
+    expect(scrollTop,
+      `document.documentElement.scrollTop must be 0 after submission — ` +
+      `non-zero means scrollIntoView or focus-scroll lifted the layout`
+    ).toBe(0);
+
+    // Assertion B: --real-height must be unchanged (keyboard still open)
+    const realHeightAfter = await page.evaluate(() =>
+      parseInt(getComputedStyle(document.documentElement).getPropertyValue("--real-height"), 10)
+    );
+    expect(realHeightAfter,
+      `--real-height (${realHeightAfter}) must equal pre-submission value (${keyboardRealHeight}) ` +
+      `— a change means the layout expanded and contracted, causing the jump`
+    ).toBeCloseTo(keyboardRealHeight, -1);
+
+    // Assertion C: .chat-page top edge must still be at y=0
+    const chatPageTop = await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>("[class*='chat-page']");
+      return el ? el.getBoundingClientRect().top : -1;
+    });
+    expect(chatPageTop,
+      `chat-page top (${chatPageTop}px) must be 0 — non-zero means the page was lifted by scroll`
+    ).toBeCloseTo(0, 0);
+
+    // Assertion D: visual viewport must not have scrolled within layout viewport.
+    // In Vanadium the symptom is visualViewport.offsetTop > 0 (not document.scrollTop > 0).
+    const vvOffsetTop = await page.evaluate(() => window.visualViewport?.offsetTop ?? 0);
+    expect(vvOffsetTop,
+      `visualViewport.offsetTop must be 0 — non-zero means the browser scrolled the ` +
+      `visual viewport to keep the focused element in view, lifting the layout`
+    ).toBe(0);
+  });
+
+  test("send button submission does not scroll the page", async ({ page }) => {
+    const { keyboardRealHeight } = await setupDesktopModeWithKeyboard(page);
+
+    const textarea = page.locator("textarea").first();
+    await expect(textarea).not.toBeDisabled({ timeout: 10_000 });
+
+    const marker = `test-sendbtn-${Date.now()}`;
+    await textarea.fill(marker);
+
+    // Click the send button instead of pressing Enter
+    const sendBtn = page.locator("[data-cy='send-btn'], [class*='send-btn']").last();
+    await sendBtn.click();
+
+    await expect(page.getByText(marker)).toBeVisible({ timeout: 5000 });
+
+    const scrollTop = await page.evaluate(() => document.documentElement.scrollTop);
+    expect(scrollTop,
+      "document must not scroll after clicking Send button"
+    ).toBe(0);
+
+    const realHeightAfter = await page.evaluate(() =>
+      parseInt(getComputedStyle(document.documentElement).getPropertyValue("--real-height"), 10)
+    );
+    expect(realHeightAfter).toBeCloseTo(keyboardRealHeight, -1);
+
+    const vvOffsetTop = await page.evaluate(() => window.visualViewport?.offsetTop ?? 0);
+    expect(vvOffsetTop,
+      "visualViewport.offsetTop must be 0 after Send button click"
+    ).toBe(0);
+  });
+
+  test("auto-resize height:auto does not trigger scroll when textarea is focused", async ({ page }) => {
+    // This specifically targets the ChatInput auto-resize side effect:
+    // el.style.height = "auto" fires while the textarea is focused.
+    // In desktop-mode with zoom, this can trigger the browser's focus-scroll.
+    const { keyboardRealHeight } = await setupDesktopModeWithKeyboard(page);
+
+    const textarea = page.locator("textarea").first();
+    await textarea.focus();
+
+    // Directly trigger the auto-resize by setting and clearing value via evaluate,
+    // which mimics what happens when setInputValue("") runs after submission.
+    await page.evaluate(() => {
+      const ta = document.querySelector("textarea")!;
+      // Simulate the auto-resize sequence: height=auto then height=44px
+      ta.style.height = "auto";
+      ta.style.height = "44px";
+      // Force a layout reflow while focused
+      void ta.offsetHeight;
+    });
+
+    // Give the browser a frame to react
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
+
+    const scrollTop = await page.evaluate(() => document.documentElement.scrollTop);
+    expect(scrollTop,
+      "setting textarea height:auto while focused must not scroll the document"
+    ).toBe(0);
+
+    const realHeightAfter = await page.evaluate(() =>
+      parseInt(getComputedStyle(document.documentElement).getPropertyValue("--real-height"), 10)
+    );
+    expect(realHeightAfter).toBeCloseTo(keyboardRealHeight, -1);
   });
 });

@@ -8,7 +8,7 @@ const TENANT_ADMIN_SESSION = path.resolve(__dirname, "tests/.auth/tenant-admin-s
 export default defineConfig({
   testDir: "./tests",
   timeout: 15000,
-  retries: 1,
+  retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: [["./reporters/progress.ts"], ["html", { open: "never" }]],
 

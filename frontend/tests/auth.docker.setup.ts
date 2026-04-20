@@ -47,6 +47,6 @@ setup("authenticate against Docker (MySQL)", async ({ page }) => {
   await page.getByLabel("6-digit code").fill(CODE);
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await expect(page).toHaveURL(/\/(dashboard|$)/, { timeout: 10000 });
+  await expect(page).toHaveURL(/\/(dashboard|$)/, { timeout: 5000 });
   await page.context().storageState({ path: SESSION });
 });

@@ -29,12 +29,11 @@ import { test, expect, type Page } from "@playwright/test";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Navigate to /chat and wait until at least one <select> in the config bar
- *  is attached (the page is rendered enough for layout tests). */
+/** Navigate to /chat and wait until the config bar is visible. */
 async function openChat(page: Page) {
   await page.goto("/chat");
-  // Wait for the Tenant <select> to be present — it is always rendered.
-  await page.locator("select").first().waitFor({ state: "attached", timeout: 10_000 });
+  // Wait for the config bar to be rendered (data-testid set in Chat.tsx).
+  await page.locator('[data-testid="config-bar"]').waitFor({ state: "visible", timeout: 10_000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -66,13 +65,11 @@ test.describe("Chat — mobile layout (360 × 780 viewport)", () => {
   test("config bar height is compact (≤ 100 px) on 360 px viewport", async ({ page }) => {
     await openChat(page);
 
-    // Walk up from the first <select> to the config-bar container.
-    // CSS-module class names contain "config-bar" as a substring so closest()
-    // with a substring attribute selector works reliably.
-    const barHeight = await page.locator("select").first().evaluate((el) => {
-      const bar = el.closest("[class*='config-bar']");
-      if (!bar) throw new Error("config-bar container not found");
-      return bar.getBoundingClientRect().height;
+    // Measure the config bar directly via its data-testid.
+    // (Walking up from a <select> via closest() is unreliable: React may replace
+    // the gateway select with the preset select mid-render, leaving a detached node.)
+    const barHeight = await page.locator('[data-testid="config-bar"]').evaluate((el) => {
+      return el.getBoundingClientRect().height;
     });
 
     // Before the fix: ≈ 240 px (5 rows).  After all fixes: ≤ 115 px (2 rows:
@@ -91,8 +88,9 @@ test.describe("Chat — mobile layout (360 × 780 viewport)", () => {
     const hambBox = await hamburger.boundingBox();
     expect(hambBox, "hamburger bounding box must exist").not.toBeNull();
 
-    // The Tenant <select> is the first interactive config-bar element.
-    const tenantSelect = page.locator("select").first();
+    // The Tenant <select> is the first interactive config-bar element when the
+    // admin user has ≥2 tenants. Use data-testid to avoid the detachment race.
+    const tenantSelect = page.locator('[data-testid="config-tenant-select"]');
     await expect(tenantSelect).toBeVisible({ timeout: 3_000 });
     const selectBox = await tenantSelect.boundingBox();
     expect(selectBox, "tenant select bounding box must exist").not.toBeNull();
@@ -295,13 +293,23 @@ test.describe("Chat — 960 × 2142 viewport (GrapheneOS Vanadium, DPR=1)", () =
 
     // At 360 px the labels are hidden to save space; at 960 px they must be
     // visible so the user understands what each dropdown does.
-    const tenantLabel  = page.locator("span").filter({ hasText: /^Tenant$/ }).first();
-    const gatewayLabel = page.locator("span").filter({ hasText: /^Gateway$/ }).first();
-    const modelLabel   = page.locator("span").filter({ hasText: /^Model$/ }).first();
+    const tenantLabel = page.locator("span").filter({ hasText: /^Tenant$/ }).first();
+    await expect(tenantLabel, "Tenant label must be visible at 960 px").toBeVisible({ timeout: 5_000 });
 
-    await expect(tenantLabel,  "Tenant label must be visible at 960 px").toBeVisible({ timeout: 5_000 });
-    await expect(gatewayLabel, "Gateway label must be visible at 960 px").toBeVisible({ timeout: 3_000 });
-    await expect(modelLabel,   "Model label must be visible at 960 px").toBeVisible({ timeout: 3_000 });
+    // When the active tenant has presets configured, the config bar shows preset
+    // buttons instead of separate Gateway/Model selectors — in that case check
+    // that at least one preset button is visible (not hidden).
+    const presetOptions = page.locator('[data-testid="config-preset-options"]');
+    const presetsVisible = await presetOptions.isVisible({ timeout: 1_000 }).catch(() => false);
+    if (presetsVisible) {
+      const firstPreset = page.locator('[data-testid="config-preset-btn"]').first();
+      await expect(firstPreset, "Preset button must be visible at 960 px").toBeVisible({ timeout: 3_000 });
+    } else {
+      const gatewayLabel = page.locator("span").filter({ hasText: /^Gateway$/ }).first();
+      const modelLabel   = page.locator("span").filter({ hasText: /^Model$/ }).first();
+      await expect(gatewayLabel, "Gateway label must be visible at 960 px").toBeVisible({ timeout: 3_000 });
+      await expect(modelLabel,   "Model label must be visible at 960 px").toBeVisible({ timeout: 3_000 });
+    }
 
     await expect(page.getByText(/error/i).first()).toBeHidden();
   });
@@ -309,10 +317,8 @@ test.describe("Chat — 960 × 2142 viewport (GrapheneOS Vanadium, DPR=1)", () =
   test("config bar fits in a single row at 960 px (height < 80 px)", async ({ page }) => {
     await openChat(page);
 
-    const barHeight = await page.locator("select").first().evaluate((el) => {
-      const bar = el.closest("[class*='config-bar']");
-      if (!bar) throw new Error("config-bar not found");
-      return bar.getBoundingClientRect().height;
+    const barHeight = await page.locator('[data-testid="config-bar"]').evaluate((el) => {
+      return el.getBoundingClientRect().height;
     });
 
     // With labels and normal-width selects, everything fits in one row (~52 px).
@@ -331,7 +337,9 @@ test.describe("Chat — 960 × 2142 viewport (GrapheneOS Vanadium, DPR=1)", () =
     const hambBox = await hamburger.boundingBox();
     expect(hambBox).not.toBeNull();
 
-    const tenantSelect = page.locator("select").first();
+    // Use data-testid to avoid the React re-render detachment race condition.
+    const tenantSelect = page.locator('[data-testid="config-tenant-select"]');
+    await expect(tenantSelect).toBeVisible({ timeout: 5_000 });
     const selectBox = await tenantSelect.boundingBox();
     expect(selectBox).not.toBeNull();
 
@@ -377,7 +385,9 @@ test.describe("Chat — 960 × 2142 viewport (GrapheneOS Vanadium, DPR=1)", () =
     await openChat(page);
 
     // Selects and buttons need to be tap-friendly on a touch device.
-    const tenantSelect = page.locator("select").first();
+    // Use data-testid to avoid finding a detached element from a mid-render swap.
+    // Admin sees ≥2 tenants so the tenant select is always present.
+    const tenantSelect = page.locator('[data-testid="config-tenant-select"]');
     await expect(tenantSelect).toBeVisible({ timeout: 5_000 });
     const selectBox = await tenantSelect.boundingBox();
     expect(selectBox).not.toBeNull();

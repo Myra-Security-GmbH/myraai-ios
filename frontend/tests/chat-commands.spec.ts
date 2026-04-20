@@ -89,7 +89,7 @@ async function setChatPreferences(page: Page, gatewayId: string, model: string, 
   const currentUrl = page.url();
   if (currentUrl === "about:blank" || currentUrl === "") {
     await page.goto("/dashboard");
-    await page.waitForTimeout(300);
+    await page.waitForLoadState("domcontentloaded");
   }
   await page.evaluate(({ g, m, t }) => {
     localStorage.setItem("aig-chat-gateway", g);
@@ -98,10 +98,13 @@ async function setChatPreferences(page: Page, gatewayId: string, model: string, 
   }, { g: gatewayId, m: model, t: tenantId });
 }
 
-/** Navigates to /chat and waits for the textarea to be ready. */
+/** Navigates to /chat and waits for the textarea to be enabled. */
 async function openChat(page: Page) {
   await page.goto("/chat");
-  await page.waitForTimeout(600);
+  // Wait for the textarea to be enabled (gatewayId + model in React state).
+  // localStorage was pre-populated by setChatPreferences.
+  await expect(page.locator("textarea[aria-label='Message input']"))
+    .toBeEnabled({ timeout: 8000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -587,9 +590,8 @@ test.describe("chat picker UI", () => {
     await textarea.waitFor({ state: "visible", timeout: 5000 });
     await textarea.fill("/");
 
-    // No picker should appear
-    await page.waitForTimeout(500);
-    await expect(page.locator("[class*='picker']").first()).not.toBeVisible();
+    // No picker should appear (wait a moment for React to process the input)
+    await expect(page.locator("[class*='picker']").first()).not.toBeVisible({ timeout: 2000 });
   });
 });
 

@@ -68,20 +68,19 @@ async function selectFirstGateway(page: Page): Promise<void> {
   expect(tenantWithPresets, "myratest tenant (or any tenant with presets) must exist").toBeTruthy();
   const targetTenantId = tenantWithPresets!.id;
 
-  // Select the tenant in the Tenant dropdown
-  const tenantSel = page.locator("select").first();
-  await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  await tenantSel.selectOption({ value: targetTenantId });
+  // Select the tenant in the Tenant dropdown — only shown when multiple tenants exist.
+  const tenantSel = page.locator("[data-testid='config-tenant-select']");
+  if (await tenantSel.isVisible().catch(() => false)) {
+    await tenantSel.selectOption({ value: targetTenantId });
+  }
 
-  // In preset mode the gateway/model dropdowns are replaced by preset buttons.
-  // Wait for at least one preset button to appear.
-  const presetBtn = page.locator("[data-testid='config-preset-btn']");
-  await expect(presetBtn.first()).toBeVisible({ timeout: 5000 });
-
-  // Always use the first preset (SAFE local only / vllm) for inference tests.
-  // "PII claude-sonnet-4-6" uses Anthropic, whose key is encrypted with the
-  // production master key and cannot be decrypted in the local test environment.
-  await presetBtn.first().click();
+  // Presets are rendered as <button data-testid="config-preset-btn"> elements.
+  // Click the first preset button (SAFE local only / vllm).
+  // "PII claude-sonnet-4-6" uses Anthropic keys encrypted with the production
+  // master key — not available in the local test environment.
+  const firstPresetBtn = page.locator("[data-testid='config-preset-btn']").first();
+  await expect(firstPresetBtn, "at least one preset button must be visible").toBeVisible({ timeout: 5000 });
+  await firstPresetBtn.click();
 
   // Confirm textarea is enabled — gateway + model are now set in React state
   await expect(page.locator("textarea").first()).toBeEnabled({ timeout: 5000 });
@@ -366,11 +365,12 @@ test.describe("Ghost mode — regression", () => {
     const myratest = tenants.find((t) => t.slug === "myratest");
     expect(myratest, "myratest tenant must exist").toBeTruthy();
 
-    const tenantSel = page.locator("select").first();
-    await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-    await tenantSel.selectOption({ value: myratest!.id });
+    const tenantSel = page.locator("[data-testid='config-tenant-select']");
+    if (await tenantSel.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await tenantSel.selectOption({ value: myratest!.id });
+    }
 
-    const piiBtn = page.locator("[data-testid='config-preset-btn']", { hasText: "PII claude-sonnet-4-6" });
+    const piiBtn = page.getByRole("button", { name: "PII claude-sonnet-4-6" });
     await expect(piiBtn).toBeVisible({ timeout: 5000 });
     await piiBtn.click();
     await expect(page.locator("textarea").first()).toBeEnabled({ timeout: 5000 });

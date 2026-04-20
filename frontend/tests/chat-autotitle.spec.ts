@@ -35,12 +35,25 @@ async function deleteAllConversations(page: Page, createdAfter?: number) {
   } catch { /* best-effort */ }
 }
 
-/** Returns first tenant id + gateway id available to the session. */
+/** Returns first tenant id + gateway id available to the session.
+ *
+ * Prefers tenants WITHOUT chat_presets (e.g. konzern-sergej) so that the chat
+ * loads in non-preset mode and the gateway token is fetched exactly once —
+ * avoiding the double-fetch that occurs when preset mode overrides the gateway
+ * from localStorage on a preset tenant (e.g. myratest).
+ */
 async function getFirstTenantAndGateway(page: Page): Promise<{ tenantId: string; gatewayId: string } | null> {
   const tr = await page.request.get(`${ADMIN_URL}/admin/v1/tenants`);
   if (!tr.ok()) return null;
   const tenants = await tr.json() as TenantRow[];
-  for (const t of tenants) {
+  // Skip tenants that have chat_presets_config (preset mode triggers double token fetch).
+  // Also skip test-fixture tenants (z-perm-test-*) whose gateways lack real API keys.
+  const preferred = tenants.filter((t) =>
+    !(t as any).chat_presets_config?.length &&
+    !t.slug.startsWith("z-perm-test")
+  );
+  const ordered = preferred.length ? preferred : tenants;
+  for (const t of ordered) {
     const gr = await page.request.get(`${ADMIN_URL}/admin/v1/tenants/${t.id}/gateways`);
     if (!gr.ok()) continue;
     const gws = await gr.json() as GatewayRow[];
@@ -49,11 +62,15 @@ async function getFirstTenantAndGateway(page: Page): Promise<{ tenantId: string;
   return null;
 }
 
-/** Returns a model string suitable for chat (prefers anthropic claude). */
+/** Returns a model string suitable for chat (prefers claude-sonnet-4-6, the well-supported model). */
 async function getAModel(page: Page): Promise<string | null> {
   const r = await page.request.get(`${ADMIN_URL}/admin/v1/models`);
   if (!r.ok()) return null;
   const rows = await r.json() as ModelPriceRow[];
+  // Prefer claude-sonnet-4-6 — it's available on all test gateways.
+  // Older models (e.g. claude-3-5-haiku) may return 404 on some gateway configs.
+  const sonnet = rows.find((m) => m.provider === "anthropic" && m.model === "claude-sonnet-4-6");
+  if (sonnet) return `anthropic/${sonnet.model}`;
   const claude = rows.find((m) => m.provider === "anthropic" && m.model.startsWith("claude"));
   if (claude) return `anthropic/${claude.model}`;
   if (rows.length) return `${rows[0].provider}/${rows[0].model}`;
@@ -160,10 +177,11 @@ test.describe("Chat — auto-title generation", () => {
   });
 
   test("title updates when conversation is created inline (no pre-created conversation)", async ({ page }) => {
+    test.setTimeout(90_000); // LLM response + autotitle generation can take >30 s
     // Do NOT click "+ New Chat" — let sendMessage create the conversation inline
     const titlePatchPromise = page.waitForRequest(
       (req) => req.method() === "PATCH" && /\/conversations\/[^/]+$/.test(req.url()),
-      { timeout: 30_000 },
+      { timeout: 60_000 },
     );
 
     const textarea = page.locator("[class*='chat-textarea']");

@@ -18,16 +18,15 @@ const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra
 async function getFirstGatewayId(page: Page): Promise<string | null> {
   const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
   if (!tenantsResp.ok()) return null;
-  const tenants = (await tenantsResp.json()) as Array<{ id: string }>;
+  const tenants = (await tenantsResp.json()) as Array<{ id: string; slug: string }>;
   if (!tenants.length) return null;
 
-  for (const tenant of tenants) {
-    const gwResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants/${tenant.id}/gateways`);
-    if (!gwResp.ok()) continue;
-    const gws = (await gwResp.json()) as Array<{ id: string }>;
-    if (gws.length) return gws[0].id;
-  }
-  return null;
+  // Prefer myratest — test fixture tenants are newest and appear first in the list
+  const preferred = tenants.find((t) => t.slug === "myratest") ?? tenants[0];
+  const gwResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants/${preferred.id}/gateways`);
+  if (!gwResp.ok()) return null;
+  const gws = (await gwResp.json()) as Array<{ id: string }>;
+  return gws.length ? gws[0].id : null;
 }
 
 async function createConversation(page: Page, gatewayId: string, title: string): Promise<string | null> {
@@ -66,16 +65,11 @@ async function deleteConversation(page: Page, convId: string) {
 /** Open the conversation in the chat UI by clicking it in the sidebar. */
 async function openConversation(page: Page, convId: string) {
   await page.goto("/chat");
-  await page.waitForTimeout(800);
-  // Click the sidebar item whose href or data attribute matches the conv id
-  const convItem = page.locator(`[role='option'][data-id='${convId}'], [role='option']:has-text('')`).first();
-  // Fallback: find any sidebar item and look for the one matching by text or URL
-  // The sidebar renders conversations by title — click the first one that appeared
-  // after creation (it will be at the top)
-  const firstItem = page.locator("[role='option']").first();
-  await firstItem.waitFor({ state: "visible", timeout: 8000 });
-  await firstItem.click();
-  await page.waitForTimeout(600);
+  const convItem = page.locator(`[role='option'][data-id='${convId}']`);
+  await convItem.waitFor({ state: "visible", timeout: 8000 });
+  await convItem.click();
+  // Wait until the conversation is active (aria-selected becomes true)
+  await expect(convItem).toHaveAttribute("aria-selected", "true", { timeout: 5000 });
 }
 
 // ---------------------------------------------------------------------------

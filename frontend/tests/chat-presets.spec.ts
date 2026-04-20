@@ -16,7 +16,10 @@ import { test, expect } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
-const ADMIN_SESSION        = path.resolve(__dirname, ".auth/session.json");
+// Admin API base — must use the admin vhost directly (not the SPA baseURL).
+const ADMIN_BASE = (process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu") + "/admin/v1";
+
+const ADMIN_SESSION        = path.resolve(__dirname, ".auth/docker-session.json");
 const MEMBER_SESSION       = path.resolve(__dirname, ".auth/member-session.json");
 const TENANT_ADMIN_SESSION = path.resolve(__dirname, ".auth/tenant-admin-session.json");
 const FIXTURES_PATH        = path.resolve(__dirname, ".auth/fixtures.json");
@@ -51,12 +54,12 @@ test.describe("chat presets: admin API", () => {
     const { tenantAId, gatewayAId } = fix();
     const preset = { ...PRESET_A, gateway_id: gatewayAId };
 
-    const patch = await page.request.patch(`/admin/v1/tenants/${tenantAId}`, {
+    const patch = await page.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, {
       data: { chat_presets: [preset] },
     });
     expect(patch.status()).toBe(200);
 
-    const get = await page.request.get("/admin/v1/tenants");
+    const get = await page.request.get(`${ADMIN_BASE}/tenants`);
     expect(get.status()).toBe(200);
     const tenants = await get.json() as Array<{ id: string; plan: string; chat_presets: unknown[] }>;
     const ta = tenants.find((t) => t.id === tenantAId);
@@ -76,19 +79,19 @@ test.describe("chat presets: admin API", () => {
     const { tenantAId, gatewayAId } = fix();
 
     // First get current plan so we can verify it's preserved
-    const before = await page.request.get("/admin/v1/tenants");
+    const before = await page.request.get(`${ADMIN_BASE}/tenants`);
     const tenantsBefore = await before.json() as Array<{ id: string; plan: string }>;
     const planBefore = tenantsBefore.find((t) => t.id === tenantAId)!.plan;
     expect(planBefore).toBeTruthy(); // plan must not be null
 
     // PATCH only chat_presets
-    const patch = await page.request.patch(`/admin/v1/tenants/${tenantAId}`, {
+    const patch = await page.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, {
       data: { chat_presets: [{ ...PRESET_A, gateway_id: gatewayAId }] },
     });
     expect(patch.status()).toBe(200);
 
     // plan must still be the original value
-    const after = await page.request.get("/admin/v1/tenants");
+    const after = await page.request.get(`${ADMIN_BASE}/tenants`);
     const tenantsAfter = await after.json() as Array<{ id: string; plan: string }>;
     const planAfter = tenantsAfter.find((t) => t.id === tenantAId)!.plan;
     expect(planAfter).toBe(planBefore);
@@ -97,12 +100,12 @@ test.describe("chat presets: admin API", () => {
   test("PATCH empty array clears presets → GET returns []", async ({ page }) => {
     const { tenantAId } = fix();
 
-    const patch = await page.request.patch(`/admin/v1/tenants/${tenantAId}`, {
+    const patch = await page.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, {
       data: { chat_presets: [] },
     });
     expect(patch.status()).toBe(200);
 
-    const get = await page.request.get("/admin/v1/tenants");
+    const get = await page.request.get(`${ADMIN_BASE}/tenants`);
     const tenants = await get.json() as Array<{ id: string; chat_presets: unknown[] }>;
     const ta = tenants.find((t) => t.id === tenantAId);
     expect(Array.isArray(ta!.chat_presets)).toBe(true);
@@ -116,12 +119,12 @@ test.describe("chat presets: admin API", () => {
       { ...PRESET_A, id: "preset-test-0002", name: "Local Processing",  gateway_id: gatewayAId, provider: "vllm", model: "qwen3-30b" },
     ];
 
-    const patch = await page.request.patch(`/admin/v1/tenants/${tenantAId}`, {
+    const patch = await page.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, {
       data: { chat_presets: presets },
     });
     expect(patch.status()).toBe(200);
 
-    const get = await page.request.get("/admin/v1/tenants");
+    const get = await page.request.get(`${ADMIN_BASE}/tenants`);
     const tenants = await get.json() as Array<{ id: string; chat_presets: typeof presets }>;
     const ta = tenants.find((t) => t.id === tenantAId)!;
     expect(ta.chat_presets).toHaveLength(2);
@@ -130,7 +133,7 @@ test.describe("chat presets: admin API", () => {
     expect(ta.chat_presets[1].provider).toBe("vllm");
 
     // Cleanup
-    await page.request.patch(`/admin/v1/tenants/${tenantAId}`, { data: { chat_presets: [] } });
+    await page.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, { data: { chat_presets: [] } });
   });
 });
 
@@ -157,27 +160,25 @@ test.describe("chat presets: member sees preset selector", () => {
     // Set preset as admin
     const adminCtx = await browser.newContext({ storageState: ADMIN_SESSION });
     const adminPage = await adminCtx.newPage();
-    await adminPage.request.patch(`/admin/v1/tenants/${tenantAId}`, {
+    await adminPage.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, {
       data: { chat_presets: [{ ...PRESET_A, id: "preset-ui-test-001", gateway_id: gatewayAId }] },
     });
     await adminCtx.close();
 
     try {
       await ensureLoggedIn(page);
-
-      const tenantSel = page.locator("select").first();
-      await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-      await tenantSel.selectOption(tenantAId);
-      await page.waitForTimeout(600);
+      // Member has exactly 1 tenant (tenantA) — no tenant select is shown.
+      // Presets are loaded automatically for the member's tenant.
+      await page.locator('[data-testid="config-bar"]').waitFor({ state: "visible", timeout: 5000 });
 
       // Preset button visible; gateway+model selectors replaced
-      await expect(page.getByRole("button", { name: "Safe PII" })).toBeVisible({ timeout: 3000 });
+      await expect(page.getByRole("button", { name: "Safe PII" })).toBeVisible({ timeout: 5000 });
       await expect(page.getByText("Gateway", { exact: true })).not.toBeVisible();
       await expect(page.getByText("Model", { exact: true })).not.toBeVisible();
     } finally {
       const cleanCtx = await browser.newContext({ storageState: ADMIN_SESSION });
       const cleanPage = await cleanCtx.newPage();
-      await cleanPage.request.patch(`/admin/v1/tenants/${tenantAId}`, { data: { chat_presets: [] } });
+      await cleanPage.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, { data: { chat_presets: [] } });
       await cleanCtx.close();
     }
   });
@@ -187,17 +188,15 @@ test.describe("chat presets: member sees preset selector", () => {
 
     const adminCtx = await browser.newContext({ storageState: ADMIN_SESSION });
     const adminPage = await adminCtx.newPage();
-    await adminPage.request.patch(`/admin/v1/tenants/${tenantAId}`, { data: { chat_presets: [] } });
+    await adminPage.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, { data: { chat_presets: [] } });
     await adminCtx.close();
 
     await ensureLoggedIn(page);
+    // Member has exactly 1 tenant (tenantA) — no tenant select is shown.
+    // Wait for the config bar, then check the gateway label appears.
+    await page.locator('[data-testid="config-bar"]').waitFor({ state: "visible", timeout: 5000 });
 
-    const tenantSel = page.locator("select").first();
-    await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-    await tenantSel.selectOption(tenantAId);
-    await page.waitForTimeout(600);
-
-    await expect(page.getByText("Gateway", { exact: true })).toBeVisible({ timeout: 3000 });
+    await expect(page.getByText("Gateway", { exact: true })).toBeVisible({ timeout: 5000 });
   });
 });
 
@@ -213,41 +212,36 @@ test.describe("chat presets: admin sees preset selector", () => {
     const preset = { ...PRESET_A, id: "preset-admin-test-001", gateway_id: gatewayAId };
 
     // Set preset
-    await page.request.patch(`/admin/v1/tenants/${tenantAId}`, {
+    await page.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, {
       data: { chat_presets: [preset] },
     });
 
     try {
       await page.goto("/chat");
-      await page.waitForTimeout(800);
-
-      const tenantSel = page.locator("select").first();
-      await tenantSel.waitFor({ state: "visible", timeout: 5000 });
+      // Use data-testid to avoid the detachment race when React swaps gateway→preset select.
+      const tenantSel = page.locator('[data-testid="config-tenant-select"]');
+      await tenantSel.waitFor({ state: "visible", timeout: 8000 });
       await tenantSel.selectOption(tenantAId);
-      await page.waitForTimeout(600);
 
       // Admin sees preset buttons too
-      await expect(page.getByRole("button", { name: "Safe PII" })).toBeVisible({ timeout: 3000 });
+      await expect(page.getByRole("button", { name: "Safe PII" })).toBeVisible({ timeout: 5000 });
       await expect(page.getByText("Gateway", { exact: true })).not.toBeVisible();
     } finally {
-      await page.request.patch(`/admin/v1/tenants/${tenantAId}`, { data: { chat_presets: [] } });
+      await page.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, { data: { chat_presets: [] } });
     }
   });
 
   test("admin sees full selectors when no presets defined", async ({ page }) => {
     const { tenantAId } = fix();
 
-    await page.request.patch(`/admin/v1/tenants/${tenantAId}`, { data: { chat_presets: [] } });
+    await page.request.patch(`${ADMIN_BASE}/tenants/${tenantAId}`, { data: { chat_presets: [] } });
 
     await page.goto("/chat");
-    await page.waitForTimeout(800);
-
-    const tenantSel = page.locator("select").first();
-    await tenantSel.waitFor({ state: "visible", timeout: 5000 });
+    const tenantSel = page.locator('[data-testid="config-tenant-select"]');
+    await tenantSel.waitFor({ state: "visible", timeout: 8000 });
     await tenantSel.selectOption(tenantAId);
-    await page.waitForTimeout(600);
 
-    await expect(page.getByText("Gateway", { exact: true })).toBeVisible({ timeout: 3000 });
+    await expect(page.getByText("Gateway", { exact: true })).toBeVisible({ timeout: 5000 });
     await expect(page.locator("[aria-haspopup='listbox']")).toBeVisible({ timeout: 3000 });
   });
 });

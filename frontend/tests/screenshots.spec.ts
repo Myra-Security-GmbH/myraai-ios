@@ -175,7 +175,7 @@ test("chat-file-attach", async ({ page }) => {
   await waitReady(page);
   // Click the attach / paperclip button to reveal the file picker area
   const attachBtn = page.locator("button[title*='ttach'], button[aria-label*='ttach'], button[title*='ile'], button[aria-label*='ile']").first();
-  if (await attachBtn.isVisible().catch(() => false)) {
+  if (await attachBtn.isVisible().catch(() => false) && await attachBtn.isEnabled().catch(() => false)) {
     await attachBtn.click();
     await page.waitForTimeout(400);
   }

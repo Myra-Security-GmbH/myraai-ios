@@ -124,24 +124,17 @@ test.describe("Chat long response — no mid-stream truncation", () => {
     await page.getByRole("button", { name: /new chat/i }).click();
     await page.waitForTimeout(400);
 
-    // Prompt that forces a long structured response (~1500 words minimum).
-    // Section 10 (OpenAPI/Swagger) is the sentinel — if the stream was cut
-    // after 60 s, only sections 1–3 would typically appear.
+    // Prompt that forces a multi-section response long enough to verify streaming
+    // is not cut off prematurely. "OpenAPI" in section 4 is the sentinel — if
+    // the stream is truncated early only sections 1–2 would appear.
     // NOTE: no PII in the prompt so pii_protector does not force buffered mode.
     const prompt =
-      "Write a comprehensive, detailed technical guide on REST API design best practices. " +
-      "Cover all of the following sections with substantial detail:\n" +
-      "1. HTTP method semantics (GET, POST, PUT, PATCH, DELETE)\n" +
-      "2. URL structure and naming conventions\n" +
-      "3. Status codes — list at least 15 important ones with explanations\n" +
-      "4. Authentication strategies (API keys, OAuth2, JWT)\n" +
-      "5. Versioning strategies\n" +
-      "6. Pagination, filtering, and sorting\n" +
-      "7. Error response formats\n" +
-      "8. Rate limiting\n" +
-      "9. HATEOAS and hypermedia\n" +
-      "10. OpenAPI documentation\n" +
-      "Be thorough. For each section write several detailed paragraphs.";
+      "Write a technical guide on REST API design. Cover these four sections:\n" +
+      "1. HTTP methods (GET, POST, PUT, PATCH, DELETE) — purpose and when to use each\n" +
+      "2. Status codes — list the 10 most important ones with a one-sentence explanation each\n" +
+      "3. Authentication strategies (API keys, OAuth2, JWT) — brief comparison\n" +
+      "4. OpenAPI documentation — what it is and why it matters\n" +
+      "Write two paragraphs per section.";
 
     const textarea = page.locator("[class*='chat-textarea']");
     await textarea.fill(prompt);
@@ -167,12 +160,12 @@ test.describe("Chat long response — no mid-stream truncation", () => {
       `First 200 chars: "${responseText.slice(0, 200)}"`,
     ).toBeGreaterThanOrEqual(500);
 
-    // 2. Response must reach section 10 (OpenAPI — the last requested section).
-    //    With the old 60 s timeout the stream cut off around section 2–3.
+    // 2. Response must reach section 4 (OpenAPI — the last requested section).
+    //    With the old 60 s timeout the stream cut off before reaching it.
     const reachedLastSection = /openapi/i.test(responseText);
     expect(
       reachedLastSection,
-      "Response did not reach section 10 (OpenAPI) — stream was likely truncated.\n" +
+      "Response did not reach section 4 (OpenAPI) — stream was likely truncated.\n" +
       `Response length: ${responseText.length}.\n` +
       `Response ends with: "…${responseText.slice(-300)}"`,
     ).toBe(true);

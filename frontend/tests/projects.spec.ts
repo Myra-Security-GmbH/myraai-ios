@@ -30,9 +30,12 @@ async function apiDelete(page: Page, path: string) {
 async function getFirstTenantId(page: Page): Promise<string> {
   const resp = await page.context().request.get(`${ADMIN_BASE}/tenants`);
   expect(resp.ok(), "GET /tenants must succeed").toBeTruthy();
-  const tenants = await resp.json() as Array<{ id: string }>;
+  const tenants = await resp.json() as Array<{ id: string; slug: string }>;
   expect(tenants.length, "at least one tenant must exist").toBeGreaterThan(0);
-  return tenants[0].id;
+  // Prefer myratest — test fixture tenants (created most recently) would otherwise be first
+  // because the API returns tenants ORDER BY created_at DESC.
+  const myratest = tenants.find((t) => t.slug === "myratest");
+  return (myratest ?? tenants[0]).id;
 }
 
 /** Fetch gateways for the first available tenant. Fails loudly if none found. */
@@ -464,6 +467,111 @@ test.describe("Projects — Members", () => {
     }
   });
 
+  test("invite rejected for empty email", async ({ page }) => {
+    const pid = await apiCreateProject(page, "E2E Invite Empty");
+    try {
+      await page.goto(`/projects/${pid}`);
+      await expect(page.getByRole("heading", { name: "E2E Invite Empty" })).toBeVisible({ timeout: 8000 });
+      await page.getByRole("button", { name: /members/i }).click();
+      await page.locator("[data-cy=invite-member-btn]").click();
+
+      const emailInput = page.locator("[data-cy=member-email-input]");
+      await expect(emailInput).toBeVisible({ timeout: 5000 });
+      // Leave email empty and click Invite
+      await page.locator("[data-cy=confirm-invite-btn]").click();
+
+      await expect(page.getByText(/email is required/i)).toBeVisible({ timeout: 5000 });
+    } finally {
+      await apiDeleteProject(page, pid);
+    }
+  });
+
+  test("successfully invite a member via UI", async ({ page }) => {
+    const pid = await apiCreateProject(page, "E2E Invite Success");
+    try {
+      await page.goto(`/projects/${pid}`);
+      await expect(page.getByRole("heading", { name: "E2E Invite Success" })).toBeVisible({ timeout: 8000 });
+      await page.getByRole("button", { name: /members/i }).click();
+      await page.locator("[data-cy=invite-member-btn]").click();
+
+      const emailInput = page.locator("[data-cy=member-email-input]");
+      await expect(emailInput).toBeVisible({ timeout: 5000 });
+      await emailInput.fill("sascha@schumann.net");
+      // Change role to editor — the select is the only combobox inside the invite modal
+      const roleSelect = page.locator("dialog select, [class*='modal'] select").first();
+      await roleSelect.selectOption("editor");
+      await page.locator("[data-cy=confirm-invite-btn]").click();
+
+      // Success message appears
+      await expect(page.getByText(/added as editor/i)).toBeVisible({ timeout: 5000 });
+
+      // Close modal and verify member appears in the table
+      await page.getByRole("button", { name: /close/i }).click();
+      await expect(page.getByRole("cell", { name: "sascha@schumann.net" })).toBeVisible({ timeout: 5000 });
+    } finally {
+      await apiDeleteProject(page, pid);
+    }
+  });
+
+  test("invited member appears with correct role badge", async ({ page }) => {
+    const pid = await apiCreateProject(page, "E2E Invite Role Badge");
+    try {
+      // Invite via API as viewer
+      const meResp = await page.context().request.get(`${ADMIN_BASE}/users/search?email=sascha@schumann.net`);
+      expect(meResp.ok()).toBeTruthy();
+      const users = await meResp.json() as Array<{ id: string }>;
+      expect(users.length).toBeGreaterThan(0);
+      const userId = users[0].id;
+
+      const addResp = await page.context().request.post(`${ADMIN_BASE}/projects/${pid}/members`, {
+        data: { user_id: userId, role: "viewer" },
+      });
+      expect(addResp.ok(), `add member: ${await addResp.text()}`).toBeTruthy();
+
+      // Navigate and verify
+      await page.goto(`/projects/${pid}`);
+      await expect(page.getByRole("heading", { name: "E2E Invite Role Badge" })).toBeVisible({ timeout: 8000 });
+      await page.getByRole("button", { name: /members/i }).click();
+
+      await expect(page.getByRole("cell", { name: "sascha@schumann.net" })).toBeVisible({ timeout: 5000 });
+      // The viewer badge should be present in the row
+      const row = page.locator("tr", { has: page.getByRole("cell", { name: "sascha@schumann.net" }) });
+      await expect(row.getByText("viewer")).toBeVisible();
+    } finally {
+      await apiDeleteProject(page, pid);
+    }
+  });
+
+  test("re-inviting existing member updates their role", async ({ page }) => {
+    const pid = await apiCreateProject(page, "E2E Re-invite Role");
+    try {
+      // Look up user id via the new search endpoint
+      const meResp = await page.context().request.get(`${ADMIN_BASE}/users/search?email=sascha@schumann.net`);
+      const users = await meResp.json() as Array<{ id: string }>;
+      const userId = users[0].id;
+
+      // Invite as viewer first
+      await page.context().request.post(`${ADMIN_BASE}/projects/${pid}/members`, {
+        data: { user_id: userId, role: "viewer" },
+      });
+      // Re-invite as editor (ON DUPLICATE KEY UPDATE)
+      const reInvite = await page.context().request.post(`${ADMIN_BASE}/projects/${pid}/members`, {
+        data: { user_id: userId, role: "editor" },
+      });
+      expect(reInvite.ok(), `re-invite: ${await reInvite.text()}`).toBeTruthy();
+
+      // Navigate and verify role is editor, not viewer
+      await page.goto(`/projects/${pid}`);
+      await expect(page.getByRole("heading", { name: "E2E Re-invite Role" })).toBeVisible({ timeout: 8000 });
+      await page.getByRole("button", { name: /members/i }).click();
+
+      const row = page.locator("tr", { has: page.getByRole("cell", { name: "sascha@schumann.net" }) });
+      await expect(row.getByText("editor")).toBeVisible({ timeout: 5000 });
+    } finally {
+      await apiDeleteProject(page, pid);
+    }
+  });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -567,11 +675,25 @@ test.describe("Projects — Chat Integration", () => {
 
   test("'New conversation' button click creates conversation linked to project (Bug fix: send-path)", async ({ page }) => {
     const pid = await apiCreateProject(page, "E2E Conv Send Project");
-    const gw = await getFirstGateway(page);
 
-    // Pre-set gateway in localStorage so chat input is immediately active
+    // Pre-set gateway+model in localStorage so chat input is immediately active.
+    // We fetch the first preset from myratest to get a valid gateway+model pair.
+    const tr = await page.context().request.get(`${ADMIN_BASE}/tenants`);
+    const tenants = await tr.json() as Array<{ id: string; slug: string; chat_presets?: Array<{ gateway_id: string; model: string }> }>;
+    const myratest = tenants.find((t) => t.slug === "myratest");
+    const firstPreset = myratest?.chat_presets?.[0];
+
     await page.goto("/dashboard");
-    await page.evaluate((gwId) => { localStorage.setItem("aig-chat-gateway", gwId); }, gw.id);
+    if (firstPreset) {
+      await page.evaluate(({ gwId, model, tenantId }) => {
+        localStorage.setItem("aig-chat-gateway", gwId);
+        localStorage.setItem("aig-chat-model",   model);
+        localStorage.setItem("aig-chat-tenant",  tenantId);
+      }, { gwId: firstPreset.gateway_id, model: firstPreset.model, tenantId: myratest!.id });
+    } else {
+      const gw = await getFirstGateway(page);
+      await page.evaluate((gwId) => { localStorage.setItem("aig-chat-gateway", gwId); }, gw.id);
+    }
 
     try {
       await page.goto(`/chat?project_id=${pid}`);
@@ -584,7 +706,7 @@ test.describe("Projects — Chat Integration", () => {
 
       // The text input area must be present and enabled for typing
       const textarea = page.locator("[data-cy=chat-input]").or(page.locator("textarea[placeholder]")).first();
-      await expect(textarea).toBeVisible({ timeout: 8000 });
+      await expect(textarea).toBeEnabled({ timeout: 8000 });
 
       await textarea.fill("Hello from E2E test");
       await page.keyboard.press("Enter");
@@ -1414,13 +1536,22 @@ test.describe("Search/Filter/Sort toolbar", () => {
       await expect(page.locator("[data-cy=projects-sort]")).toBeVisible({ timeout: 8000 });
 
       await page.locator("[data-cy=projects-sort]").selectOption("created");
-      // pid2 was created later → should appear before pid1 in the table
+      // pid2 was created later → should appear before pid1 in the table.
+      // Scan all rows to find relative positions — parallel workers may have
+      // created other projects between or after our two, so we cannot assume
+      // pid1/pid2 occupy rows 0 and 1.
       const rows = page.locator("[data-cy=projects-table] tbody tr");
-      const firstRowId  = await rows.first().getAttribute("data-cy");
-      const secondRowId = await rows.nth(1).getAttribute("data-cy");
-      // The most recently created project should come first
-      expect(firstRowId).toContain(pid2);
-      expect(secondRowId).toContain(pid1);
+      const rowCount = await rows.count();
+      let idx1 = -1, idx2 = -1;
+      for (let i = 0; i < rowCount; i++) {
+        const id = await rows.nth(i).getAttribute("data-cy") ?? "";
+        if (id.includes(pid1)) idx1 = i;
+        if (id.includes(pid2)) idx2 = i;
+        if (idx1 !== -1 && idx2 !== -1) break;
+      }
+      expect(idx2, `pid2 not found in table (pid1 at row ${idx1})`).not.toBe(-1);
+      expect(idx1, `pid1 not found in table (pid2 at row ${idx2})`).not.toBe(-1);
+      expect(idx2, "pid2 (newer) should appear before pid1 (older) when sorted by created desc").toBeLessThan(idx1);
     } finally {
       await apiDeleteProject(page, pid1);
       await apiDeleteProject(page, pid2);

@@ -180,7 +180,7 @@ test.describe("Chat — preset switching in project conversations", () => {
       const inputVisible = await renameInput.isVisible({ timeout: 2000 }).catch(() => false);
       if (inputVisible) {
         await renameInput.fill("Conv A — renamed");
-        await renameInput.press("Enter");
+        await page.keyboard.press("Enter");
       } else {
         // Fallback: use API rename which triggers setConversations in-app via star action
         // Star conv B to trigger setConversations
