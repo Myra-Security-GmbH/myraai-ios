@@ -72,8 +72,34 @@ function extractText(node: React.ReactNode): string {
 }
 
 // Matches first-line filename comments across common languages:
-// # filename.py  // index.ts  -- schema.sql  % script.m  ; config.asm
-const FILENAME_COMMENT_RE = /^(?:#|\/\/|--|%|;)\s*([\w\-./ ]+\.\w+)\s*$/;
+// # filename.py  // index.ts  -- schema.sql  % script.m  ; config.asm  <!-- index.html -->
+const FILENAME_COMMENT_RE = /^(?:#|\/\/|--|%|;|<!--)\s*([\w\-./ ]+\.\w+)\s*(?:-->)?\s*$/;
+
+// Transform <write_file filename="x">content</write_file> tags into fenced code blocks
+// so they get picked up by the existing ArtifactCard / scanFilenameBlocks pipeline.
+function transformWriteFileTags(text: string): string {
+  return text.replace(
+    /<write_file\s+filename="([^"]+)">([\s\S]*?)<\/write_file>/g,
+    (_, filename: string, content: string) => {
+      const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+      const langMap: Record<string, string> = {
+        html: "html", htm: "html", css: "css", js: "javascript",
+        ts: "typescript", tsx: "typescript", jsx: "javascript",
+        py: "python", sh: "bash", sql: "sql", lua: "lua",
+        json: "json", yaml: "yaml", yml: "yaml", xml: "xml", md: "markdown",
+      };
+      const lang = langMap[ext] ?? "";
+      const commentMap: Record<string, string> = {
+        html: `<!-- ${filename} -->`, xml: `<!-- ${filename} -->`,
+        sql: `-- ${filename}`, lua: `-- ${filename}`,
+        python: `# ${filename}`, bash: `# ${filename}`,
+        yaml: `# ${filename}`, yml: `# ${filename}`,
+      };
+      const comment = commentMap[lang] ?? `// ${filename}`;
+      return `\`\`\`${lang}\n${comment}\n${content.trim()}\n\`\`\``;
+    }
+  );
+}
 
 /** Context passed into CodeBlock without prop-drilling through ReactMarkdown */
 interface ProjectCtx {
@@ -192,7 +218,7 @@ function CodeBlock({ className, children }: { inline?: boolean; className?: stri
             {codeCopied ? "Copied!" : "Copy"}
           </button>
         </div>
-        <pre style={{ margin: 0, padding: "12px 16px", overflowX: "auto" }}>
+        <pre style={{ margin: 0, padding: "12px 16px", overflowX: "auto", background: "#22272e", color: "#adbac7" }}>
           <code className={className}>{children}</code>
         </pre>
       </div>
@@ -422,8 +448,10 @@ const MessageBubble = memo(function MessageBubble({
                     />
                   )}
                   {(() => {
+                    // Transform <write_file> tags into fenced code blocks for rendering
+                    const displayText = transformWriteFileTags(textContent);
                     const { entries: fileBlocks, codeToFilename } = !isUser
-                      ? scanFilenameBlocks(textContent)
+                      ? scanFilenameBlocks(displayText)
                       : { entries: [], codeToFilename: new Map<string, string>() };
                     // SaveAllCard: only when projectId set, multiple files, not streaming
                     const useConsolidated = !!projectId && fileBlocks.length > 1 && !useIndividual && !isStreaming;
@@ -442,7 +470,7 @@ const MessageBubble = memo(function MessageBubble({
                             rehypePlugins={[rehypeKatex, rehypeHighlight]}
                             components={MD_COMPONENTS_DEFAULT}
                           >
-                            {textContent}
+                            {displayText}
                           </ReactMarkdown>
                         </ProjectIdContext.Provider>
                         {useConsolidated && projectId && (

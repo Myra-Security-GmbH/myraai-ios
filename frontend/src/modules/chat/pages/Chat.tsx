@@ -169,20 +169,21 @@ function buildProjectSystemPrompt(project: ChatProject, knowledgeFiles: ProjectK
   if (project.instructions) parts.push(project.instructions.trim());
   // Guide the model to annotate code blocks with filenames so they can be saved back
   parts.push(
-    "When the user asks you to create or update a file, output it as a fenced code block " +
-    "where the very first line INSIDE the code fence is a comment containing only the filename. " +
-    "Do NOT put the filename as a heading or text outside/before the code block. " +
-    "The filename comment must be literally the first line inside the fence. Examples:\n" +
-    "```bash\n# check_ssh.sh\n#!/bin/sh\n...\n```\n" +
-    "```typescript\n// api.ts\nexport const api = {};\n```\n" +
-    "```sql\n-- schema.sql\nCREATE TABLE users (id INT);\n```"
+    "## Reading and writing project files\n\n" +
+    "You CAN both read and write files in this project's knowledge base.\n\n" +
+    "**Reading:** To read the full content of a file, emit exactly: <read_file>filename</read_file>\n\n" +
+    "**Writing / updating:** To create or update a file, emit:\n" +
+    "<write_file filename=\"example.html\">\nfile content here\n</write_file>\n\n" +
+    "The UI will automatically save the file to the project knowledge base.\n\n" +
+    "When the user asks to update an existing file, ALWAYS read it first with <read_file>, " +
+    "then output the complete updated file with <write_file>.\n\n" +
+    "IMPORTANT: Always use <write_file> for file output — never use fenced code blocks with filename comments."
   );
   if (knowledgeFiles.length > 0) {
     const fileList = knowledgeFiles.map((f) => `- ${f.filename}`).join("\n");
     parts.push(
       "## Project Knowledge Files\n\n" +
-      "The following files are available in this project's knowledge base. " +
-      "To read the full content of a file, emit exactly: <read_file>filename</read_file>\n\n" +
+      "The following files are available in this project's knowledge base:\n\n" +
       fileList
     );
   }
@@ -251,6 +252,12 @@ export default function Chat() {
     "Formatting:\n" +
     "- Use markdown (headers, bold, lists, code blocks) when it genuinely aids clarity — not for simple conversational replies.\n" +
     "- Calibrate length to the question: short answers for simple questions, detailed answers for complex ones. Avoid padding.\n\n" +
+    "Code and structured output:\n" +
+    "- Always wrap code snippets, configuration examples, CLI output, and log excerpts in fenced code blocks (```language).\n" +
+    "- Always wrap ASCII art, ASCII diagrams, aligned tables, and any whitespace-dependent layout in fenced code blocks (```). These MUST use a code fence — never render them as plain text paragraphs, because proportional fonts will break alignment.\n" +
+    "- For tabular data with more than 3 columns or wide content, prefer a fenced code block over a markdown table to preserve alignment.\n" +
+    "- When asked to create a file, emit it as: <write_file filename=\"name.ext\">content</write_file>. This renders as an interactive file card the user can view, copy, or download.\n" +
+    "- Never wrap your entire answer, analysis, report, or explanation in a fenced code block. Fences are for the content types listed above — code, config, CLI output, and file contents — not for the prose response itself. Structured prose with headers and lists must be written as plain markdown, never enclosed in a code fence.\n\n" +
     "Behavior:\n" +
     "- Be direct and confident. State your view clearly rather than hedging everything.\n" +
     "- If you're uncertain about a fact, say so — don't fabricate.\n" +
@@ -1293,38 +1300,64 @@ export default function Chat() {
 
       let finishReason: string | null = null;
 
+      const reqBody = {
+        model: effectiveModel,
+        messages: reqMessages,
+        // Anthropic rejects requests with both temperature and thinking enabled
+        ...(drawerSettings.thinkingBudget === null ? { temperature: drawerSettings.temperature } : {}),
+        max_tokens: drawerSettings.maxTokens,
+        stream: true,
+        // Inject MCP tools if any are loaded
+        ...(mcpTools.length > 0 ? {
+          tools: mcpTools.map(({ tool }) => ({
+            type: "function",
+            function: {
+              name: tool.name,
+              description: tool.description ?? "",
+              parameters: tool.inputSchema,
+            },
+          })),
+        } : {}),
+      };
+
+      // ── Full request/response trace ─────────────────────────────────────
+      console.group(`[chat_trace] leg ${continueCount}`);
+      console.log("[REQ] POST", compatUrl);
+      console.log("[REQ] model:", effectiveModel, "| messages:", reqMessages.length,
+        "| tools:", reqBody.tools?.length ?? 0, "| stream:", true);
+      console.log("[REQ] last user msg:", (() => {
+        const last = [...reqMessages].reverse().find(m => m.role === "user");
+        const c = typeof last?.content === "string" ? last.content : JSON.stringify(last?.content);
+        return c ? c.slice(0, 300) + (c.length > 300 ? "…" : "") : "(none)";
+      })());
+      if (pendingFileInjection !== null || continueCount > 0) {
+        console.log("[REQ] continuation reason:",
+          pendingFileInjection !== null ? "read_file injection" : "auto-continue (max_tokens)");
+      }
+
+      const allChunks: unknown[] = [];
+
       try {
         const res = await fetch(compatUrl, {
           method: "POST",
           signal: abort.signal,
           headers: reqHeaders,
-          body: JSON.stringify({
-            model: effectiveModel,
-            messages: reqMessages,
-            // Anthropic rejects requests with both temperature and thinking enabled
-            ...(drawerSettings.thinkingBudget === null ? { temperature: drawerSettings.temperature } : {}),
-            max_tokens: drawerSettings.maxTokens,
-            stream: true,
-            // Inject MCP tools if any are loaded
-            ...(mcpTools.length > 0 ? {
-              tools: mcpTools.map(({ tool }) => ({
-                type: "function",
-                function: {
-                  name: tool.name,
-                  description: tool.description ?? "",
-                  parameters: tool.inputSchema,
-                },
-              })),
-            } : {}),
-          }),
+          body: JSON.stringify(reqBody),
         });
 
         if (!res.ok) {
           const body = await res.text().catch(() => "");
           let msg = `HTTP ${res.status}`;
           try { msg = JSON.parse(body)?.error?.message ?? JSON.parse(body)?.error ?? msg; } catch { /* */ }
+          console.error("[RES] HTTP error", res.status, body.slice(0, 500));
+          console.groupEnd();
           throw new Error(msg);
         }
+
+        console.log("[RES] status:", res.status,
+          "| content-type:", res.headers.get("content-type"),
+          "| x-aig-provider:", res.headers.get("x-aig-provider"),
+          "| x-aig-cache:", res.headers.get("x-aig-cache"));
 
         // Surface guardrail degradation (fail_open path on the gateway) as a
         // non-blocking banner. The gateway exposes this header via CORS, so it
@@ -1341,6 +1374,19 @@ export default function Chat() {
         while (true) {
           const { value, done } = await reader.read();
           if (done) {
+            console.log("[RES] stream done | receivedDone:", receivedDone,
+              "| finishReason:", finishReason,
+              "| accumulatedChars:", accumulated.length,
+              "| chunks:", allChunks.length,
+              "| elapsed:", Math.round(performance.now() - legStart), "ms");
+            console.log("[RES] accumulated text:", accumulated.slice(0, 500) + (accumulated.length > 500 ? "…" : ""));
+            if (allChunks.length <= 20) {
+              console.log("[RES] all chunks:", JSON.stringify(allChunks));
+            } else {
+              console.log("[RES] first 5 chunks:", JSON.stringify(allChunks.slice(0, 5)));
+              console.log("[RES] last 5 chunks:", JSON.stringify(allChunks.slice(-5)));
+            }
+            console.groupEnd();
             if (!receivedDone && !abort.signal.aborted) {
               console.warn(
                 "[stream_truncated] SSE stream body closed without [DONE] token",
@@ -1377,11 +1423,26 @@ export default function Chat() {
             if (data === "[DONE]") { receivedDone = true; continue; }
             try {
               const chunk = JSON.parse(data);
+              allChunks.push(chunk);
               const delta = chunk?.choices?.[0]?.delta?.content;
               if (delta != null) {
                 if (!accumulated) setProcessingStatus(null); // first token — hide status
                 accumulated += delta;
-                setStreamingContent(accumulated);
+                // While a <write_file> tag is open but not yet closed, hide its
+                // raw content from the user (ReactMarkdown would swallow it as
+                // an unknown HTML element, making the cursor vanish).  Show a
+                // "Writing file…" status instead.
+                const openWriteIdx = accumulated.lastIndexOf("<write_file ");
+                const closeWriteIdx = accumulated.lastIndexOf("</write_file>");
+                if (openWriteIdx >= 0 && (closeWriteIdx < 0 || closeWriteIdx < openWriteIdx)) {
+                  // Extract filename from the open tag for the status message
+                  const fnMatch = accumulated.slice(openWriteIdx).match(/filename="([^"]+)"/);
+                  const fn = fnMatch ? fnMatch[1] : "file";
+                  setProcessingStatus(`📝 Writing ${fn}…`);
+                  setStreamingContent(accumulated.slice(0, openWriteIdx).trim());
+                } else {
+                  setStreamingContent(accumulated);
+                }
                 // Track <think> block duration
                 if (thinkBlockStartRef.current === null && accumulated.includes("<think>")) {
                   thinkBlockStartRef.current = performance.now();
@@ -1486,14 +1547,48 @@ export default function Chat() {
         continue streaming;
       }
 
-      // MCP tool call loop: model requested tool(s) — call MCP servers and send results back
+      // Handle tool_calls: MCP tools, or native read_file/write_file from Anthropic tool_use
       if (
         !abort.signal.aborted &&
-        (finishReason === "tool_calls" || finishReason === "tool_use") &&
-        mcpToolCallCount < MAX_MCP_TOOL_CALLS
+        (finishReason === "tool_calls" || finishReason === "tool_use")
       ) {
         const calls = Object.values(pendingToolCalls);
-        if (calls.length > 0) {
+
+        // Handle read_file tool calls (Anthropic native tool_use for file reading)
+        const readFileCalls = calls.filter((c) => c.name === "read_file");
+        if (readFileCalls.length > 0 && projectKnowledge.length > 0 && fileReadCount < MAX_FILE_READS) {
+          const injectionParts: string[] = [];
+          const readSummary: string[] = [];
+          for (const c of readFileCalls) {
+            let filename = "";
+            try { filename = JSON.parse(c.argumentsAccum)?.filename ?? ""; } catch { /* */ }
+            if (!filename) continue;
+            const reqLower = filename.toLowerCase();
+            const kf = projectKnowledge.find(
+              (f) => f.filename.toLowerCase() === reqLower
+                  || f.filename.toLowerCase().endsWith("/" + reqLower)
+            );
+            if (kf) {
+              injectionParts.push(`## File: ${kf.filename}\n\n\`\`\`\n${kf.extracted_text.trim()}\n\`\`\``);
+              readSummary.push(`📄 Read: \`${kf.filename}\` (${kf.extracted_text.length.toLocaleString()} chars)`);
+            } else {
+              injectionParts.push(`## File: ${filename}\n\n[File not found in project knowledge base. Available files: ${projectKnowledge.map(f => f.filename).join(", ")}]`);
+              readSummary.push(`❌ Not found: \`${filename}\``);
+            }
+          }
+          if (injectionParts.length > 0) {
+            if (accumulated.trim()) accumulated += "\n\n";
+            accumulated += "> " + readSummary.join("\n> ") + "\n";
+            setStreamingContent(accumulated);
+            pendingFileInjection = injectionParts.join("\n\n---\n\n");
+            fileReadCount += readFileCalls.length;
+            setProcessingStatus(`Reading ${readFileCalls.map(c => { try { return JSON.parse(c.argumentsAccum)?.filename; } catch { return "file"; } }).join(", ")}…`);
+            continue streaming;
+          }
+        }
+
+        // Handle MCP tool calls (existing behavior)
+        if (calls.length > 0 && mcpTools.length > 0 && mcpToolCallCount < MAX_MCP_TOOL_CALLS) {
           // Status: show which tools are being called
           setProcessingStatus(`⚙️ Calling ${calls.map((c) => c.name).join(", ")}…`);
           // Build assistant message with tool_calls
@@ -1553,20 +1648,34 @@ export default function Chat() {
         while ((fm = readFileRe.exec(accumulated)) !== null) fileMatches.push(fm);
 
         if (fileMatches.length > 0) {
+          console.log("[FLOW] read_file detected:",
+            fileMatches.map(m => m[1].trim()).join(", "),
+            "| fileReadCount:", fileReadCount,
+            "| accumulated:", accumulated.slice(0, 200));
           let cleaned = accumulated;
           const injectionParts: string[] = [];
+          const readSummary: string[] = [];
           for (const m of fileMatches) {
             const requestedName = m[1].trim();
             cleaned = cleaned.replace(m[0], "");
+            // Case-insensitive filename matching + trim whitespace
+            const reqLower = requestedName.toLowerCase();
             const kf = projectKnowledge.find(
-              (f) => f.filename === requestedName || f.filename.endsWith("/" + requestedName)
+              (f) => f.filename.toLowerCase() === reqLower
+                  || f.filename.toLowerCase().endsWith("/" + reqLower)
             );
             if (kf) {
               injectionParts.push(`## File: ${kf.filename}\n\n\`\`\`\n${kf.extracted_text.trim()}\n\`\`\``);
+              readSummary.push(`📄 Read: \`${kf.filename}\` (${kf.extracted_text.length.toLocaleString()} chars)`);
             } else {
-              injectionParts.push(`## File: ${requestedName}\n\n[File not found in project knowledge]`);
+              injectionParts.push(`## File: ${requestedName}\n\n[File not found in project knowledge base. Available files: ${projectKnowledge.map(f => f.filename).join(", ")}]`);
+              readSummary.push(`❌ Not found: \`${requestedName}\``);
             }
           }
+          // Show the user which files were read
+          cleaned = cleaned.trim();
+          if (cleaned) cleaned += "\n\n";
+          cleaned += "> " + readSummary.join("\n> ") + "\n";
           accumulated = cleaned.trim();
           setStreamingContent(accumulated);
           pendingFileInjection = injectionParts.join("\n\n---\n\n");
@@ -1576,6 +1685,68 @@ export default function Chat() {
         }
       }
 
+      // Detect <write_file filename="...">content</write_file> tags
+      {
+        const writeFileRe = /<write_file\s+filename="([^"]+)">([\s\S]*?)<\/write_file>/g;
+        const writeMatches: RegExpExecArray[] = [];
+        let wm: RegExpExecArray | null;
+        while ((wm = writeFileRe.exec(accumulated)) !== null) writeMatches.push(wm);
+
+        if (writeMatches.length > 0) {
+          let cleaned = accumulated;
+          for (const m of writeMatches) {
+            const filename = m[1].trim();
+            const content = m[2];
+
+            // Replace the <write_file> tag with a fenced code block so the
+            // ArtifactCard pipeline renders it with the split-screen editor.
+            const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+            const langMap: Record<string, string> = {
+              html: "html", htm: "html", css: "css", js: "javascript",
+              ts: "typescript", tsx: "typescript", py: "python", sh: "bash",
+              sql: "sql", lua: "lua", json: "json", yaml: "yaml", yml: "yaml",
+              xml: "xml", md: "markdown",
+            };
+            const lang = langMap[ext] ?? "";
+            const commentMap: Record<string, string> = {
+              html: `<!-- ${filename} -->`, xml: `<!-- ${filename} -->`,
+              sql: `-- ${filename}`, lua: `-- ${filename}`,
+              python: `# ${filename}`, bash: `# ${filename}`,
+              yaml: `# ${filename}`, yml: `# ${filename}`,
+            };
+            const comment = commentMap[lang] ?? `// ${filename}`;
+            const codeBlock = `\`\`\`${lang}\n${comment}\n${content.trim()}\n\`\`\``;
+            cleaned = cleaned.replace(m[0], codeBlock);
+
+            // Project chat: auto-save to knowledge base
+            if (projectIdParam) {
+              const mimeMap: Record<string, string> = {
+                html: "text/html", htm: "text/html", css: "text/css",
+                js: "text/javascript", ts: "text/typescript", py: "text/x-python",
+                sh: "text/x-sh", sql: "text/x-sql", lua: "text/x-lua",
+                json: "application/json", xml: "text/xml", md: "text/markdown",
+                yaml: "text/yaml", yml: "text/yaml", txt: "text/plain",
+              };
+              try {
+                await api.put(`/projects/${projectIdParam}/knowledge/${encodeURIComponent(filename)}`, {
+                  extracted_text: content,
+                  content_type: mimeMap[ext] ?? "text/plain",
+                  size_bytes: new Blob([content]).size,
+                });
+                cleaned += `\n\n> ✅ File saved to project: \`${filename}\`\n`;
+              } catch {
+                cleaned += `\n\n> ❌ Failed to save: \`${filename}\`\n`;
+              }
+            }
+          }
+          accumulated = cleaned.trim();
+          setStreamingContent(accumulated);
+        }
+      }
+
+      console.log("[FLOW] breaking out of streaming loop | finishReason:", finishReason,
+        "| accumulatedChars:", accumulated.length,
+        "| continueCount:", continueCount);
       break streaming;
     }
 
