@@ -1763,6 +1763,22 @@ All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
 
 ---
 
+### Revision & Iteration Overhead
+
+The git history (~85 commits) shows substantial revision work on top of the initial feature build. The following categories are **not** captured in the per-feature rows above:
+
+| Revision category | Evidence in git log | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|---|
+| Storage migration: SQLite → MySQL/MariaDB | `d8dc7c3`, `54063e9`, `6ec5ca8`, `458e4cf`, `7a89617` | 20 | 8 | 2 | 30 | **4 500** |
+| Guardrails pipeline rewrite (DLP middleware → detector pipeline) | `93ef4cd`, `80916ab`, `d93b5d5`, `a550333` | 32 | 12 | 4 | 48 | **7 200** |
+| Bug fixes: streaming, compat, BYOK, providers, timestamps (~12 fix commits) | `27d5230`, `9ede118`, `5917cb7`, `fix/*` | 24 | 8 | 0 | 32 | **4 800** |
+| Infrastructure & DevOps (Docker, nginx, build scripts, presidio sidecar, vLLM services) | `d8dc7c3`, `2ca9cfa`, `5503fc3`, `bbbae16` | 16 | 4 | 2 | 22 | **3 300** |
+| Documentation refresh cycles (architecture rewrite, screenshots ×3, competitive analysis) | `afcde7e`, `9539788`, `6553f9f`, `9cabffa`, `b04a6f2` | 0 | 0 | 32 | 32 | **4 800** |
+| E2E test suite expansion rounds (3 separate rounds of new specs + infrastructure) | `824ec0a`, `9af4a2b`, `7a89617`, `f884946` | 8 | 40 | 4 | 52 | **7 800** |
+| **Revision subtotal** | | **100** | **72** | **44** | **216** | **32 400** |
+
+---
+
 ### Summary
 
 | Category | Dev h | QA h | Docs h | Total h | **EUR** |
@@ -1770,8 +1786,9 @@ All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
 | Backend | 452 | 167 | 76 | 695 | **104 250** |
 | Frontend | 380 | 140 | 47 | 567 | **85 050** |
 | QA infrastructure & test suite | 76 | 192 | 29 | 297 | **44 550** |
-| **Total** | **908** | **499** | **152** | **1 559** | **233 850** |
+| Revision & iteration overhead | 100 | 72 | 44 | 216 | **32 400** |
+| **Total** | **1 008** | **571** | **196** | **1 775** | **266 250** |
 
-**Total estimated investment: ~1 560 hours / ~233 850 EUR** at 150 EUR/h.
+**Total estimated investment: ~1 775 hours / ~266 250 EUR** at 150 EUR/h.
 
-> These figures represent estimated hours for a single senior engineer working end-to-end (design → implementation → tests → documentation). A team of 2–3 engineers working in parallel would reduce calendar time but not total hours. Estimates assume familiarity with OpenResty/LuaJIT, React, and Playwright; onboarding a less experienced engineer would add 20–30% to the Dev bucket.
+> These figures represent estimated hours for a single senior engineer working end-to-end (design → implementation → tests → documentation), including the actual iteration and refactoring cycles visible in the git history. A team of 2–3 engineers working in parallel would reduce calendar time but not total hours. Estimates assume familiarity with OpenResty/LuaJIT, React, and Playwright; onboarding a less experienced engineer would add 20–30% to the Dev bucket.
