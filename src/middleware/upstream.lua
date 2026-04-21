@@ -231,6 +231,9 @@ local function handle_compat_streaming(ctx, res)
     local stop_reason_seen = nil    -- accumulated from message_delta before message_stop fires
     -- #1: table accumulator avoids O(n²) string copies for large responses
     local acc_parts        = {}
+    -- Accumulate Anthropic tool_use calls so we can forward them as OpenAI tool_calls
+    local pending_tool_calls = {}  -- array of { id, name, input_parts }
+    local current_tool_idx = 0
     -- Diagnostics: count raw bytes and read() calls for truncation logging
     local bytes_read       = 0
     local read_calls       = 0
@@ -265,10 +268,23 @@ local function handle_compat_streaming(ctx, res)
 
         -- When the model starts a tool-use block, forward the tool name so the
         -- client can show a brief "Searching the web…" / "Using computer…" badge.
+        -- Also accumulate tool calls so we can forward them as OpenAI tool_calls.
         if parsed.tool_name then
             local tool_evt = "data: " .. json.encode({ aig_tool_call = parsed.tool_name }) .. "\n\n"
             ngx.print(tool_evt)
             ngx.flush(true)
+            current_tool_idx = current_tool_idx + 1
+            pending_tool_calls[current_tool_idx] = {
+                id = parsed.tool_id or ("call_" .. current_tool_idx),
+                name = parsed.tool_name,
+                input_parts = {},
+            }
+        end
+
+        -- Accumulate tool input_json_delta fragments
+        if parsed.tool_input_delta and current_tool_idx > 0 then
+            local tc = pending_tool_calls[current_tool_idx]
+            if tc then tc.input_parts[#tc.input_parts + 1] = parsed.tool_input_delta end
         end
 
         if parsed.done and not done_sent then
@@ -276,13 +292,59 @@ local function handle_compat_streaming(ctx, res)
             -- Normalise to "max_tokens" (not OpenAI's "length") so both old and
             -- new frontend builds recognise it and trigger auto-continue.
             -- Anthropic "end_turn" → "stop"; everything else passes through.
+            -- Special case: when the model returns "tool_use" but no middleware
+            -- injected tools (web_search/url_fetch didn't run), convert to "stop"
+            -- so the frontend doesn't hang waiting for a tool handler.
             local finish_reason = "stop"
             local sr = stop_reason_seen   -- use accumulated value, not parsed.stop_reason
             if sr == "max_tokens" or sr == "length" then
                 finish_reason = "max_tokens"
+            elseif sr == "tool_use" then
+                -- Forward tool_calls to the client so the frontend can handle them.
+                -- This covers both MCP tools (handled by the frontend) and
+                -- hallucinated/native tool calls.
+                finish_reason = "tool_calls"
             elseif sr and sr ~= "end_turn" and sr ~= "stop" and sr ~= "" then
                 finish_reason = sr   -- pass through unknown reasons as-is
             end
+
+            -- When forwarding tool_use as tool_calls, emit tool_calls deltas
+            -- in OpenAI format so the frontend can parse them.
+            if finish_reason == "tool_calls" and #pending_tool_calls > 0 then
+                local compat_tool_calls = {}
+                for i, tc in ipairs(pending_tool_calls) do
+                    compat_tool_calls[i] = {
+                        index    = i - 1,
+                        id       = tc.id,
+                        type     = "function",
+                        ["function"] = {
+                            name      = tc.name,
+                            arguments = table.concat(tc.input_parts),
+                        },
+                    }
+                end
+                ngx.log(ngx.INFO,
+                    "[tool_calls_forward] forwarding ", #pending_tool_calls, " tool call(s): ",
+                    table.concat((function()
+                        local names = {}
+                        for _, tc in ipairs(pending_tool_calls) do names[#names+1] = tc.name end
+                        return names
+                    end)(), ", "),
+                    " | provider=", res.provider_name,
+                    " model=", model,
+                    " gateway=", tostring(ctx.gateway_id))
+                -- Emit a single chunk with all tool_calls
+                local tc_line = "data: " .. json.encode({
+                    id      = chat_id,
+                    object  = "chat.completion.chunk",
+                    model   = model,
+                    choices = {{ index = 0, delta = { tool_calls = compat_tool_calls },
+                                 finish_reason = json.null }},
+                }) .. "\n\n"
+                ngx.print(tc_line)
+                ngx.flush(true)
+            end
+
             local finish_line = "data: " .. json.encode({
                 id      = chat_id,
                 object  = "chat.completion.chunk",
@@ -364,16 +426,27 @@ local function handle_compat_streaming(ctx, res)
             .. " output_tokens=", output_tokens
             .. " first_chunk_seen=", tostring(first_chunk_seen))
     elseif not stream_errored then
-        ngx.log(ngx.ERR,
-            "[stream_ok] compat stream completed cleanly"
+        local level = (stop_reason_seen == "tool_use" or stop_reason_seen == "tool_calls")
+            and ngx.WARN or ngx.ERR
+        ngx.log(level,
+            "[stream_ok] compat stream completed"
             .. " | provider=", res.provider_name
             .. " model=", model
             .. " gateway=", tostring(ctx.gateway_id)
+            .. " request_id=", tostring(ctx.request_id)
             .. " finish_reason=", tostring(stop_reason_seen)
             .. " elapsed_ms=", elapsed_total_ms
             .. " bytes_read=", bytes_read
             .. " content_chars=", #accumulated_content
             .. " output_tokens=", output_tokens)
+        if stop_reason_seen == "tool_use" or stop_reason_seen == "tool_calls" then
+            ngx.log(ngx.WARN,
+                "[tool_use_passthrough] model returned tool_use but no middleware handled it"
+                .. " | provider=", res.provider_name
+                .. " model=", model
+                .. " gateway=", tostring(ctx.gateway_id)
+                .. " content_preview=", accumulated_content:sub(1, 200))
+        end
     end
 
     -- #8: on read error emit an error-finish chunk so clients don't hang
@@ -732,6 +805,13 @@ function M.run(ctx)
             total_attempts = total_attempts + 1
 
             -- TRACE: what we are about to send to the provider
+            local rb = ctx.request_body or {}
+            local tools_summary = {}
+            for _, t in ipairs(rb.tools or {}) do
+                tools_summary[#tools_summary + 1] = t.name
+                    or (t["function"] and t["function"].name)
+                    or (t.type or "unknown")
+            end
             trace.step(ctx, "upstream_request", {
                 attempt    = total_attempts,
                 provider   = provider_name,
@@ -739,7 +819,15 @@ function M.run(ctx)
                 streaming  = is_streaming,
                 body_size  = ctx.raw_request_body and #ctx.raw_request_body or 0,
                 timeout_ms = ctx.rule_timeout_ms or ctx.gateway_config.timeout_ms or 60000,
+                msg_count  = rb.messages and #rb.messages or 0,
+                tools      = #tools_summary > 0 and tools_summary or nil,
             })
+            ngx.log(ngx.INFO, "upstream: attempt=", total_attempts,
+                " provider=", provider_name, " model=", model,
+                " stream=", tostring(is_streaming),
+                " msgs=", rb.messages and #rb.messages or 0,
+                " tools=[", table.concat(tools_summary, ","), "]",
+                " gateway=", tostring(ctx.gateway_id))
 
             local t_call = ngx.now()
             local res, err, req_ctx = call_provider(ctx, provider_name, model, is_streaming)

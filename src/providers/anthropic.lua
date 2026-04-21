@@ -306,11 +306,19 @@ function M.parse_sse_chunk(line, st)
 
     -- Surface the tool name when a tool-use block starts so the client can
     -- show "Searching the web…" / "Using computer…" etc. in the status bar.
-    local tool_name
+    local tool_name, tool_id, tool_input_delta
     if chunk.type == "content_block_start"
        and chunk.content_block
        and chunk.content_block.type == "tool_use" then
         tool_name = chunk.content_block.name
+        tool_id   = chunk.content_block.id
+    end
+
+    -- Capture tool input_json_delta so callers can reconstruct tool arguments
+    if chunk.type == "content_block_delta"
+       and chunk.delta
+       and chunk.delta.type == "input_json_delta" then
+        tool_input_delta = chunk.delta.partial_json
     end
 
     local done = (chunk.type == "message_stop")
@@ -332,6 +340,8 @@ function M.parse_sse_chunk(line, st)
         delta                 = delta,
         done                  = done,
         tool_name             = tool_name,
+        tool_id               = tool_id,
+        tool_input_delta      = tool_input_delta,
         stop_reason           = stop_reason,   -- "end_turn", "max_tokens", "stop_sequence", …
         input_tokens          = input_tokens,
         output_tokens         = output_tokens,

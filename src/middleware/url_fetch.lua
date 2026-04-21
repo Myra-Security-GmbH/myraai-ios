@@ -165,6 +165,40 @@ end
 
 -- ── Main ─────────────────────────────────────────────────────────────────────
 
+-- Only activate Leg 1 when the ORIGINAL user message contains a URL.
+-- Skip injected context (file reads, continuations) to avoid false positives
+-- from URLs inside project knowledge files.
+local function last_user_message_has_url(ctx)
+    local msgs = ctx.request_body and ctx.request_body.messages
+    if not msgs or #msgs == 0 then return false end
+    -- Walk backwards to find the last user message that is NOT injected context
+    for i = #msgs, 1, -1 do
+        local m = msgs[i]
+        if m.role == "user" then
+            local text = type(m.content) == "string" and m.content or ""
+            if type(m.content) == "table" then
+                -- content-block array: concatenate text blocks
+                for _, block in ipairs(m.content) do
+                    if type(block) == "table" and block.text then
+                        text = text .. " " .. block.text
+                    elseif type(block) == "string" then
+                        text = text .. " " .. block
+                    end
+                end
+            end
+            -- Skip injected context messages: file-read injections from the
+            -- frontend start with "## File:" or "Continue"; these often contain
+            -- URLs from project knowledge files that shouldn't trigger url_fetch.
+            if text:match("^## File:") or text:match("^Continue$") then
+                -- This is injected context — check the NEXT user message up
+            else
+                return text:match("https?://[%w%.%-]+%.[%w]+") ~= nil
+            end
+        end
+    end
+    return false
+end
+
 function M.run(ctx)
     -- Skip if web_search already handled this request
     if ctx.web_search_done or ctx.web_search_leg2 then return end
@@ -174,6 +208,13 @@ function M.run(ctx)
 
     local is_anthropic = (provider == "anthropic")
     if not is_anthropic and not OPENAI_FORMAT_PROVIDERS[provider] then return end
+
+    -- Only proceed if the user's message contains a URL
+    if not last_user_message_has_url(ctx) then
+        ngx.log(ngx.DEBUG, "url_fetch: skipped — no URL in last user message")
+        return
+    end
+    ngx.log(ngx.NOTICE, "url_fetch: ACTIVATING — URL detected in last user message")
 
     local fetch_url = require("utils.fetch_url")
 
