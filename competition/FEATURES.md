@@ -1763,6 +1763,23 @@ All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
 
 ---
 
+### Technical Documentation Site
+
+The published documentation is a standalone deliverable separate from inline code comments. It comprises **81 Markdown source files**, **~74,640 words**, **75 annotated screenshots**, and a full MkDocs site with PDF export (`gen_pdf.py`, WeasyPrint). This maps to **~300 printed pages** at ~250 words/page.
+
+| Work item | Detail | Hours |
+|---|---|---|
+| Content writing — 81 pages of technical reference | ~2.5 h/page avg (getting-started, concepts, API reference, config, guardrails ×10, admin-ui ×11, providers ×8, routing ×5, observability ×6, security ×6, integrations, troubleshooting, changelog) | 202 |
+| Screenshots — 75 annotated PNG captures | Setup, capture, highlight/callout annotations, embedding, alt text | 38 |
+| MkDocs infrastructure | mkdocs.yml nav, custom theme, PDF generation script, CI hook, CSS overrides | 20 |
+| Revision cycles | 3 complete refresh rounds visible in git (`9539788`, `6553f9f`, `0c6b42c`) — content updates, screenshot re-takes, structural reorganisation | 80 |
+| German-language prompt guide (`prompts-de.md`) | Localised variant of the prompts chapter | 10 |
+| **Documentation subtotal** | | **350** |
+
+350 h × 150 EUR = **52 500 EUR**
+
+---
+
 ### Revision & Iteration Overhead
 
 The git history (~85 commits) shows substantial revision work on top of the initial feature build. The following categories are **not** captured in the per-feature rows above:
@@ -1787,8 +1804,11 @@ The git history (~85 commits) shows substantial revision work on top of the init
 | Frontend | 380 | 140 | 47 | 567 | **85 050** |
 | QA infrastructure & test suite | 76 | 192 | 29 | 297 | **44 550** |
 | Revision & iteration overhead | 100 | 72 | 44 | 216 | **32 400** |
-| **Total** | **1 008** | **571** | **196** | **1 775** | **266 250** |
+| Technical documentation site (300+ pages, 75 screenshots, 3 refresh cycles) | 0 | 0 | 350 | 350 | **52 500** |
+| **Total** | **1 008** | **571** | **546** | **2 125** | **318 750** |
 
-**Total estimated investment: ~1 775 hours / ~266 250 EUR** at 150 EUR/h.
+**Total estimated investment: ~2 125 hours / ~318 750 EUR** at 150 EUR/h.
 
+> The "Docs h" column in the per-feature rows covers inline documentation (code comments, config examples, FEATURES.md entries). The documentation site row covers the separately deliverable 300-page MkDocs site as a distinct writing and production effort.
+>
 > These figures represent estimated hours for a single senior engineer working end-to-end (design → implementation → tests → documentation), including the actual iteration and refactoring cycles visible in the git history. A team of 2–3 engineers working in parallel would reduce calendar time but not total hours. Estimates assume familiarity with OpenResty/LuaJIT, React, and Playwright; onboarding a less experienced engineer would add 20–30% to the Dev bucket.
