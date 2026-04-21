@@ -643,9 +643,10 @@ During the fetch phase a custom SSE event is emitted for client UIs to show a st
 
 Same `buffered_needs_sse_reemit` pathway as web_search (§9). Leg 1 is always buffered; if the model answers directly (no tool call) the buffered JSON is re-emitted as SSE `chat.completion.chunk` events so a streaming client still gets a valid SSE response.
 
-### Skip condition
+### Skip conditions
 
-`ctx.web_search_done` or `ctx.web_search_leg2` being set makes this middleware a no-op — web search already did a two-leg loop for this request.
+- `ctx.web_search_done` or `ctx.web_search_leg2` being set — web search already did a two-leg loop for this request.
+- **URL guard** — Leg 1 is only activated when the *last real user message* contains an `http://` or `https://` URL. The middleware walks backwards through the message list, skipping injected context messages (those starting with `## File:` or `Continue`). This prevents project knowledge files that contain URLs from spuriously triggering a fetch loop.
 
 ### SSRF guard
 
@@ -761,6 +762,16 @@ Anthropic `stop_reason` values are translated to OpenAI `finish_reason` in the c
 | `tool_use` | `tool_calls` |
 
 This ensures clients that branch on `finish_reason: "length"` (to detect truncated responses) behave correctly with Anthropic models.
+
+### Tool-Calls Forwarding
+
+When the Anthropic stream ends with `stop_reason: "tool_use"`, the gateway forwards the tool call(s) to the client in OpenAI `tool_calls` delta format before emitting the finish chunk:
+
+1. During streaming, `content_block_start` events with `content_block.type == "tool_use"` are captured: `tool_id`, `tool_name`, and `input_json_delta` fragments are accumulated
+2. On stream end, a single SSE chunk is emitted with `delta.tool_calls` containing all accumulated calls in OpenAI format (`index`, `id`, `type: "function"`, `function.name`, `function.arguments`)
+3. The finish chunk is emitted with `finish_reason: "tool_calls"`
+
+This allows the Chat UI to dispatch MCP tool calls, `read_file`, and other native tool uses from Anthropic models using the same `pendingToolCalls` path as OpenAI tool calls.
 
 ### Token Count Injection for Local / OpenAI-Compat Providers
 
@@ -1351,8 +1362,9 @@ A full-featured conversational AI interface built into the admin React SPA (`/ch
 - **Markdown** — GitHub Flavoured Markdown via `react-markdown` with:
   - GFM tables, task lists, strikethrough
   - KaTeX math (`$inline$` and `$$display$$`)
-  - Code blocks with syntax highlighting (highlight.js, `github-dark-dimmed` theme), language label, and per-block Copy button
+  - Code blocks with syntax highlighting (highlight.js, `github-dark-dimmed` theme — `#22272e` background, `#adbac7` text), language label, and per-block Copy button
   - Emoji shortcodes (`:dog:` etc.)
+  - `<write_file filename="x">content</write_file>` tags emitted by the model are transformed into fenced code blocks on render, so they pass through the artifact card pipeline without raw XML leaking into the visible text
 - **Thinking blocks** — `<think>...</think>` content from reasoning models (Qwen3, DeepSeek-R1) is parsed and displayed as a collapsible "Thought process" panel:
   - Shown above the visible response
   - While streaming: open by default with a spinner and "Thinking…" label
@@ -1455,27 +1467,54 @@ Files are uploaded via the project detail page (Knowledge tab) or by drag-and-dr
 
 Binary uploads (`source='upload'`) store the original file in `chat_project_knowledge_blob` (CASCADE-deleted with the row). The download endpoint (`GET /knowledge/:kid/download`) returns the original binary. Text-only items (`source='text'`) return 404 from the download endpoint.
 
-#### On-demand reading during inference
+#### On-demand reading and writing during inference
 
-Project knowledge files are **not** injected into the system prompt verbatim. Instead, the system prompt includes a file index and instructions:
+Project knowledge files are **not** injected into the system prompt verbatim. Instead, the system prompt includes a file index and instructions for both reading and writing:
 
 ```
+## Reading and writing project files
+
+You CAN both read and write files in this project's knowledge base.
+
+**Reading:** To read the full content of a file, emit exactly: <read_file>filename</read_file>
+
+**Writing / updating:** To create or update a file, emit:
+<write_file filename="example.html">
+file content here
+</write_file>
+
+The UI will automatically save the file to the project knowledge base.
+
+When the user asks to update an existing file, ALWAYS read it first with <read_file>,
+then output the complete updated file with <write_file>.
+
 ## Project Knowledge Files
 
-The following files are available in this project's knowledge base.
-To read the full content of a file, emit exactly: <read_file>filename</read_file>
+The following files are available in this project's knowledge base:
 
 - report.pdf
 - schema.sql
 ```
 
+**Reading (`<read_file>`):**
 When the model emits a `<read_file>filename</read_file>` tag:
-1. The frontend strips the tag from the visible assistant bubble
-2. Fetches the file's `extracted_text` via the single-item knowledge API
-3. Injects the content as a follow-up user message (`[File: filename]\n\ncontent`)
+1. The frontend strips the tag from the visible assistant bubble and shows a `📄 Read: filename (N chars)` blockquote
+2. Looks up the file in the in-memory `projectKnowledge` array (case-insensitive match)
+3. Injects the content as a follow-up user message (`## File: filename\n\n\`\`\`\ncontent\n\`\`\``)
 4. Makes a second inference request with the enriched context
 
-A cap of 5 file reads per response (`MAX_FILE_READS`) prevents infinite loops. Missing files inject `[File not found: filename]` gracefully.
+The frontend also handles `read_file` responses delivered as Anthropic native `tool_use` (via the `tool_calls` finish reason forwarded by the gateway), using the same injection flow.
+
+A cap of 5 file reads per response (`MAX_FILE_READS`) prevents infinite loops. Missing files inject a `[File not found in project knowledge base. Available files: …]` message listing the available files.
+
+**Writing (`<write_file>`):**
+When the model emits `<write_file filename="name.ext">content</write_file>`:
+1. While streaming, the raw tag content is hidden from view and a `📝 Writing filename…` status is shown
+2. After the stream ends, the tag is replaced with a fenced code block (with correct language tag and filename comment) for the artifact card pipeline to pick up
+3. The file content is saved to the project knowledge base via `PUT /projects/{id}/knowledge/{filename}`
+4. A `✅ File saved to project: filename` (or `❌ Failed to save`) notice is appended inline
+
+The same transformation is applied in `MessageBubble` on render, so saved messages display consistently.
 
 ### Input Box
 
