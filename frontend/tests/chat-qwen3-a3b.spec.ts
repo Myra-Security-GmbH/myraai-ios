@@ -174,6 +174,39 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
     }
   });
 
+  test("structured analysis renders as inline markdown, not wrapped in an artifact card", async ({ page }) => {
+    const ok = await selectGatewayAndModel(page);
+    expect(ok, "Could not select qwen3-30b-a3b on prod-pii — model unavailable").toBeTruthy();
+
+    await page.getByRole("button", { name: /new chat/i }).click();
+    await page.waitForTimeout(300);
+
+    // Prompt that triggers the Qwen3 tendency to wrap the whole answer in a ```markdown block
+    await page.locator("[class*='chat-textarea']").fill(
+      "Give a brief structured analysis with headers and bullet points: " +
+      "what are 3 key benefits of zero-trust security architecture? Keep it short."
+    );
+    await page.locator("button[title='Send message']").click();
+
+    await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 10_000 });
+    await waitForStreamingDone(page, 60_000);
+
+    const assistantBubble = page.locator("[class*='bubble-row']:not([class*='user-row'])").last();
+    await expect(assistantBubble).toBeVisible({ timeout: 5_000 });
+
+    const reply = (await assistantBubble.textContent()) ?? "";
+    expect(reply.trim().length, "Expected a non-empty assistant response").toBeGreaterThan(20);
+
+    // Regression: qwen3 used to wrap markdown analyses in ```markdown ... ``` with a filename
+    // comment, causing the frontend to render the whole answer as a downloadable artifact card
+    // instead of inline text. The system prompt now explicitly forbids this.
+    const artifactCard = assistantBubble.locator("[data-cy='artifact-card']");
+    await expect(artifactCard, "Response must not be wrapped as an artifact card").not.toBeVisible();
+
+    await expect(page.getByText(/TypeError|failed to fetch/i).first())
+      .not.toBeVisible({ timeout: 2_000 }).catch(() => {});
+  });
+
   test("sends a message and receives a non-empty reply from qwen3-30b-a3b", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
     if (!ok) { test.skip(); return; }

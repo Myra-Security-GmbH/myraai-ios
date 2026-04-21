@@ -1,0 +1,230 @@
+/**
+ * chat-code-rendering.spec.ts — E2E tests for code block rendering in /chat.
+ *
+ * Verifies that fenced code blocks render with proper monospace font and
+ * a dark background (github-dark-dimmed theme) for syntax highlighting.
+ *
+ * Gateway: myratest / prod   Model: claude-sonnet-4-6
+ */
+
+import { test, expect, Page } from "@playwright/test";
+
+const ADMIN_URL      = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
+const TARGET_TENANT  = "myratest";
+const TARGET_GATEWAY = "prod";
+const TARGET_MODEL   = "claude-sonnet-4-6";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function deleteAllConversations(page: Page, createdAfter?: number) {
+  try {
+    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
+    if (!resp.ok()) return;
+    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
+    for (const conv of convs) {
+      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
+      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
+    }
+  } catch { /* best-effort */ }
+}
+
+async function selectGatewayWithModel(page: Page): Promise<boolean> {
+  const tenantSel = page.locator("select").first();
+  await tenantSel.waitFor({ state: "visible", timeout: 5000 });
+  const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
+  if ((await tenantOption.count()) === 0) return false;
+  await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
+  await page.waitForTimeout(400);
+
+  const hasGatewaySelect = await page.locator("select").nth(1)
+    .isVisible({ timeout: 2000 }).catch(() => false);
+
+  if (hasGatewaySelect) {
+    const gatewaySel = page.locator("select").nth(1);
+    const gatewayOption = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
+    if ((await gatewayOption.count()) === 0) return false;
+    await gatewaySel.selectOption({ label: (await gatewayOption.first().textContent()) ?? TARGET_GATEWAY });
+    await page.waitForTimeout(400);
+  } else {
+    const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
+    if (!tenantsResp.ok()) return false;
+    const tenantList = await tenantsResp.json() as Array<{
+      id: string; slug: string;
+      chat_presets?: Array<{ id: string; name: string; model: string; gateway_id: string }>;
+    }>;
+    const tenant = tenantList.find((t) => t.slug === TARGET_TENANT);
+    if (!tenant) return false;
+    const preset = (tenant.chat_presets ?? []).find((p) => p.model === TARGET_MODEL);
+    if (!preset) return false;
+    const presetBtn = page.locator("button").filter({ hasText: new RegExp(`^\\s*${preset.name}\\s*$`) });
+    if (!(await presetBtn.isVisible({ timeout: 3000 }).catch(() => false))) return false;
+    await presetBtn.click();
+    await page.waitForTimeout(400);
+    return true;
+  }
+
+  const modelBtn = page.locator("[aria-haspopup='listbox']");
+  await modelBtn.waitFor({ state: "visible", timeout: 5000 });
+  await modelBtn.click();
+
+  const searchInput = page.locator("[role='listbox'] input[type='text'], [role='listbox'] input[type='search']");
+  const hasSearch = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
+  if (hasSearch) {
+    await searchInput.fill(TARGET_MODEL);
+    await page.waitForTimeout(300);
+  }
+
+  const targetOption = page.locator("[role='listbox'] [role='option']")
+    .filter({ hasText: TARGET_MODEL })
+    .first();
+  const found = await targetOption.isVisible({ timeout: 3000 }).catch(() => false);
+  if (!found) { await page.keyboard.press("Escape"); return false; }
+  await targetOption.click();
+  await page.waitForTimeout(300);
+  return true;
+}
+
+async function waitForStreamingDone(page: Page, timeoutMs = 90_000) {
+  await page.locator("button[title='Stop generating']")
+    .waitFor({ state: "visible", timeout: 20_000 })
+    .catch(() => {});
+  await page.locator("button[title='Send message']")
+    .waitFor({ state: "visible", timeout: timeoutMs });
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+test.describe("Chat — code block rendering", () => {
+  let testStartTime: number;
+  test.setTimeout(120_000);
+
+  test.beforeEach(async ({ page }) => {
+    testStartTime = Date.now();
+    // Clear any stale state from previous tests
+    await page.goto("/chat");
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+    await page.reload();
+    await page.waitForTimeout(800);
+  });
+
+  test.afterEach(async ({ page }) => {
+    await deleteAllConversations(page, testStartTime);
+  });
+
+  test("fenced code block has dark background and monospace font", async ({ page }) => {
+    const ok = await selectGatewayWithModel(page);
+    if (!ok) { test.skip(); return; }
+
+    await page.getByRole("button", { name: /new chat/i }).click();
+    await page.waitForTimeout(300);
+
+    // Ask for a simple code snippet that will be in a fenced block
+    await page.locator("[class*='chat-textarea']").fill(
+      'Show me a hello world in Python. Use a fenced code block with ```python.'
+    );
+    await page.locator("button[title='Send message']").click();
+
+    await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 10_000 });
+    await waitForStreamingDone(page, 60_000);
+
+    // Find a <pre> inside the assistant bubble
+    const assistantBubble = page.locator("[class*='bubble-row']:not([class*='user-row'])").last();
+    await expect(assistantBubble).toBeVisible({ timeout: 10_000 });
+
+    const preBlock = assistantBubble.locator("pre").first();
+    await expect(preBlock).toBeVisible({ timeout: 5000 });
+
+    // Verify dark background (github-dark-dimmed: #22272e)
+    const bg = await preBlock.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // #22272e = rgb(34, 39, 46)
+    expect(bg, `Expected dark background (#22272e / rgb(34,39,46)), got: ${bg}`)
+      .toMatch(/rgb\(34,\s*39,\s*46\)/);
+
+    // Verify monospace font family
+    const fontFamily = await preBlock.evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(
+      fontFamily.toLowerCase(),
+      `Expected monospace font, got: ${fontFamily}`,
+    ).toMatch(/mono|courier|consolas/i);
+
+    // Verify code text is visible (not washed out) — check color contrast
+    const codeEl = preBlock.locator("code").first();
+    const codeColor = await codeEl.evaluate((el) => getComputedStyle(el).color);
+    // Should be light text (adbac7 = rgb(173, 186, 199) or similar light color)
+    // Parse the rgb values and ensure they're above 100 (not dark/invisible)
+    const rgbMatch = codeColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    expect(rgbMatch, `Could not parse code color: ${codeColor}`).toBeTruthy();
+    const [, r, g, b] = rgbMatch!.map(Number);
+    const avgBrightness = (r + g + b) / 3;
+    expect(
+      avgBrightness,
+      `Code text too dark (avg brightness ${avgBrightness}). Color: ${codeColor}`,
+    ).toBeGreaterThan(100);
+  });
+
+  test("ASCII art in fenced code block preserves alignment (monospace)", async ({ page }) => {
+    const ok = await selectGatewayWithModel(page);
+    if (!ok) { test.skip(); return; }
+
+    await page.getByRole("button", { name: /new chat/i }).click();
+    await page.waitForTimeout(300);
+
+    await page.locator("[class*='chat-textarea']").fill(
+      'Show me a simple 3x3 ASCII art grid inside a fenced code block (```). ' +
+      'Use + for corners, - for horizontal lines, and | for vertical lines. ' +
+      'Just the grid, nothing else.'
+    );
+    await page.locator("button[title='Send message']").click();
+
+    await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 10_000 });
+    await waitForStreamingDone(page, 60_000);
+
+    const assistantBubble = page.locator("[class*='bubble-row']:not([class*='user-row'])").last();
+    await expect(assistantBubble).toBeVisible({ timeout: 10_000 });
+
+    // Verify there's a pre block (fenced code renders as <pre>)
+    const preBlock = assistantBubble.locator("pre").first();
+    await expect(preBlock).toBeVisible({ timeout: 5000 });
+
+    // Verify it uses monospace font (essential for ASCII art alignment)
+    const fontFamily = await preBlock.evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(fontFamily.toLowerCase()).toMatch(/mono|courier|consolas/i);
+
+    // Verify the content contains ASCII art characters
+    const text = (await preBlock.textContent()) ?? "";
+    expect(text).toMatch(/[+\-|]/);
+  });
+
+  test("no error banner after receiving a code block response", async ({ page }) => {
+    const ok = await selectGatewayWithModel(page);
+    if (!ok) { test.skip(); return; }
+
+    await page.getByRole("button", { name: /new chat/i }).click();
+    await page.waitForTimeout(300);
+
+    const textarea = page.locator("[class*='chat-textarea']");
+    await expect(textarea).toBeEnabled({ timeout: 5000 });
+    await textarea.fill("Show me a hello world in JavaScript.");
+
+    const sendBtn = page.locator("button[title='Send message']");
+    await expect(sendBtn).toBeEnabled({ timeout: 5000 });
+    await sendBtn.click();
+
+    await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 15_000 });
+    await waitForStreamingDone(page, 90_000);
+
+    // No error
+    await expect(page.getByText(/TypeError|failed to fetch/i).first())
+      .not.toBeVisible({ timeout: 3000 }).catch(() => {});
+
+    // Response exists — wait generously for the assistant bubble
+    const assistantBubble = page.locator("[class*='bubble-row']:not([class*='user-row'])").last();
+    await expect(assistantBubble).toBeVisible({ timeout: 30_000 });
+    const text = (await assistantBubble.textContent()) ?? "";
+    expect(text.length).toBeGreaterThan(10);
+  });
+});

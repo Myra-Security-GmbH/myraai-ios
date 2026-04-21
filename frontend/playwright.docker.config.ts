@@ -51,6 +51,8 @@ export const SEQUENTIAL_TESTS = [
   "**/chat-preset-switch.spec.ts",
   // Uses deleteAllConversations in afterEach (UI suite) and runs a long inference flow.
   "**/chat-pdf-export.spec.ts",
+  // Uses deleteAllConversations; real-inference tests for response formatting regressions.
+  "**/chat-sonnet-format.spec.ts",
   // Creates a project fixture and mutates localStorage for dark-mode testing.
   "**/css-rendering.spec.ts",
   // Runs docker exec for pymupdf geometry analysis; not safe to parallelise.

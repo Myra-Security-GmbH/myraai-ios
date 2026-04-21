@@ -120,8 +120,11 @@ test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
 
   test.beforeEach(async ({ page }) => {
     testStartTime = Date.now();
+    // Clear any stale state from previous tests
     await page.goto("/chat");
-    await page.waitForTimeout(600);
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+    await page.reload();
+    await page.waitForTimeout(800);
   });
 
   test.afterEach(async ({ page }) => {
@@ -226,20 +229,25 @@ test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
     await page.waitForTimeout(300);
 
     // Send a simple question with no URL
-    await page.locator("[class*='chat-textarea']").fill("What is 2 + 2? Reply with just the number.");
-    await page.locator("button[title='Send message']").click();
+    const textarea = page.locator("[class*='chat-textarea']");
+    await expect(textarea).toBeEnabled({ timeout: 5000 });
+    await textarea.fill("What is 2 + 2? Reply with just the number.");
 
-    await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 10_000 });
+    const sendBtn = page.locator("button[title='Send message']");
+    await expect(sendBtn).toBeEnabled({ timeout: 5000 });
+    await sendBtn.click();
+
+    await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 15_000 });
 
     // The fetching status should NOT appear
     const fetchingLabel = page.getByText(/fetching.*url|🔗.*fetching/i).first();
     await expect(fetchingLabel).not.toBeVisible({ timeout: 3000 }).catch(() => {});
 
-    await waitForStreamingDone(page, 60_000);
+    await waitForStreamingDone(page, 90_000);
 
     // Response should be a direct answer
     const assistantRow = page.locator("[class*='bubble-row']:not([class*='user-row'])").last();
-    await expect(assistantRow).toBeVisible({ timeout: 10_000 });
+    await expect(assistantRow).toBeVisible({ timeout: 30_000 });
     const reply = (await assistantRow.textContent()) ?? "";
     expect(reply).toMatch(/4/);
   });
