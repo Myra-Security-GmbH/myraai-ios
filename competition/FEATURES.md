@@ -34,6 +34,7 @@
 21. [Chat Console UI](#21-chat-console-ui)
 22. [Gateway Configuration Reference](#22-gateway-configuration-reference)
 23. [Error Handling](#23-error-handling)
+24. [Development Cost Estimation](#24-development-cost-estimation)
 
 ---
 
@@ -1672,3 +1673,105 @@ All errors return a JSON body:
 | `provider_error` | 502 | Upstream provider returned 5xx |
 | `all_providers_failed` | 502 | All retry and fallback attempts exhausted |
 | `internal` | 500 | Gateway internal error |
+
+---
+
+## 24. Development Cost Estimation
+
+**Rate: 150 EUR/h** (senior full-stack + DevOps, all-in: design, implementation, unit/integration tests, E2E tests, documentation)
+
+### Methodology
+
+Each feature row is broken into three cost buckets:
+
+- **Dev** — Architecture, implementation, local testing, code review
+- **QA** — E2E test authoring, test infrastructure, CI integration, real-inference test runs
+- **Docs** — Technical documentation, config reference, inline comments
+
+All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
+
+---
+
+### Backend (OpenResty / Lua)
+
+| Feature | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|
+| §1 Request Pipeline (middleware chain, 3-phase Nginx) | 24 | 8 | 4 | 36 | **5 400** |
+| §2 Multi-Provider Support (21 providers, compat resolution, LiteLLM prefix stripping, translation layers) | 60 | 16 | 8 | 84 | **12 600** |
+| §3 Authentication & Authorization (OTP email, Google OAuth2, roles, token hashing, access matrix) | 20 | 8 | 4 | 32 | **4 800** |
+| §4 Dynamic Routing & Fallback (rules engine, load balancing, sticky sessions, circuit breaker) | 28 | 10 | 4 | 42 | **6 300** |
+| §5 Caching — exact-match + semantic (embeddings, cosine similarity, async store) | 24 | 8 | 4 | 36 | **5 400** |
+| §6 Rate Limiting (sliding-window, per-gateway, per-token) | 8 | 4 | 2 | 14 | **2 100** |
+| §7 Budget & Quota Enforcement (3-level hierarchy, micro-dollar accounting, resets) | 12 | 4 | 2 | 18 | **2 700** |
+| §7a Webhooks (async delivery, HMAC signing, 3 event types) | 8 | 4 | 2 | 14 | **2 100** |
+| §8 Guardrail Pipeline (7 Tier-1 detectors, 3 Tier-2 sidecars, orchestrator, fail-open, CORS header, outage classification) | 48 | 16 | 8 | 72 | **10 800** |
+| §9 Web Search (Brave API, 4-step agentic loop, Gemini native grounding, parallel fetch) | 24 | 8 | 4 | 36 | **5 400** |
+| §9a URL Fetch (2-leg tool-use, SSRF guard, URL guard for injected context) | 16 | 6 | 3 | 25 | **3 750** |
+| §10 Reasoning Model Support (Anthropic extended thinking, DeepSeek-R1 strip, Qwen3/Ollama think) | 16 | 6 | 3 | 25 | **3 750** |
+| §11 Provider Key Management / BYOK (AES-256-CBC encrypt, shared-dict cache, alias routing) | 12 | 4 | 2 | 18 | **2 700** |
+| §12 IP Allowlist (CIDR matching, per-gateway config) | 4 | 2 | 1 | 7 | **1 050** |
+| §13 Response Streaming (SSE normalisation, finish_reason mapping, tool_calls forwarding, token injection) | 24 | 8 | 4 | 36 | **5 400** |
+| §14 Cost Attribution & Pricing (model catalog, pricing DB, auto-sync, micro-dollar, cache token accounting) | 16 | 6 | 3 | 25 | **3 750** |
+| §15 Observability & Logging (structured JSON log, payload capture, SIEM export, OpenTelemetry tracing) | 20 | 8 | 4 | 32 | **4 800** |
+| §16 Prometheus Metrics (counters, histograms, shared-dict scrape) | 8 | 3 | 2 | 13 | **1 950** |
+| §17 Multi-Tenancy (data isolation, cross-tenant guard, schema, cascade deletes) | 16 | 6 | 3 | 25 | **3 750** |
+| §18 Admin REST API (130+ endpoints across 15 resource groups) | 60 | 20 | 8 | 88 | **13 200** |
+| §23 Error Handling (structured JSON errors, consistent codes) | 4 | 2 | 1 | 7 | **1 050** |
+| **Backend subtotal** | **452** | **167** | **76** | **695** | **104 250** |
+
+---
+
+### Frontend (React / TypeScript)
+
+| Feature | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|
+| §19 Dashboard UI (hero cards, sparklines, timeframe switcher, top models, tenant usage) | 16 | 6 | 2 | 24 | **3 600** |
+| §19a Admin UI Pages (13 module pages: gateways, tenants, users, analytics, logs, prices, guardrail builder, MCP, commands, monitor, projects, settings, profile) | 80 | 24 | 8 | 112 | **16 800** |
+| §20 Playground UI (multi-panel comparison, streaming, status bar, debug log, error badges, state persistence) | 32 | 10 | 4 | 46 | **6 900** |
+| §21 Chat UI — conversation management (sidebar, search, rename, star, archive, create, delete) | 20 | 8 | 3 | 31 | **4 650** |
+| §21 Chat UI — configuration bar & presets (tenant/gateway/model selectors, preset mode, web search toggle, export buttons) | 16 | 6 | 2 | 24 | **3 600** |
+| §21 Chat UI — settings drawer (system prompt, temperature, max tokens, extended thinking, preset save/load/delete, MCP toggles) | 16 | 6 | 2 | 24 | **3 600** |
+| §21 Chat UI — message rendering (GFM, KaTeX, code blocks with dark theme, thinking panels, artifact panel, streaming cursor, metadata, copy/edit/regenerate) | 32 | 10 | 4 | 46 | **6 900** |
+| §21 Chat UI — file attachments (8 formats, drag-and-drop, chips, server-side extraction pipeline) | 24 | 8 | 3 | 35 | **5 250** |
+| §21 Chat UI — slash commands (picker overlay, template variables, fill modal, tenant merge) | 16 | 6 | 2 | 24 | **3 600** |
+| §21 Chat UI — memories (auto-write, manual CRUD, system prompt injection, per-conversation opt-out) | 14 | 5 | 2 | 21 | **3 150** |
+| §21 Chat UI — conversation sharing (share link CRUD, public viewer, fork-from-share) | 12 | 5 | 2 | 19 | **2 850** |
+| §21 Chat UI — feedback, starring, archiving | 8 | 4 | 1 | 13 | **1 950** |
+| §21 Chat UI — project knowledge base (file upload panel, on-demand read, `<read_file>` injection, `<write_file>` auto-save, streaming hide, render transform) | 32 | 12 | 4 | 48 | **7 200** |
+| §21 Chat UI — input box (auto-grow textarea, focus management, Enter/Shift+Enter) | 6 | 3 | 1 | 10 | **1 500** |
+| §21 Chat UI — auto-title generation (background request, Qwen3 `/no_think`, strip `<think>`) | 8 | 4 | 1 | 13 | **1 950** |
+| §21 Chat UI — auto-continue (max_tokens loop, content stitching, 10× cap) | 8 | 4 | 1 | 13 | **1 950** |
+| §21 Chat UI — ghost mode (ephemeral conversations, no log header, export/feedback hidden) | 8 | 4 | 1 | 13 | **1 950** |
+| §21 Chat UI — background streaming (cross-conversation in-flight, sidebar indicator, cross-conversation gate) | 10 | 4 | 1 | 15 | **2 250** |
+| §21 Chat UI — tool-use activity display (status badge mapping, gateway aig_status events) | 6 | 3 | 1 | 10 | **1 500** |
+| §21 Chat UI — guardrail & stream-health banners (yellow warn, red hard error, empty-stream detection) | 8 | 4 | 1 | 13 | **1 950** |
+| §21 Chat UI — export (Markdown client-side, PDF server-side WeasyPrint) | 8 | 4 | 2 | 14 | **2 100** |
+| **Frontend subtotal** | **380** | **140** | **47** | **567** | **85 050** |
+
+---
+
+### QA Infrastructure & Test Suite
+
+| Area | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|
+| Playwright config (docker vs local, sequential isolation, auth setup, MySQL OTP flow) | 8 | 4 | 2 | 14 | **2 100** |
+| 60 spec files / ~740 test cases — backend API tests (CRUD, auth, RBAC, guardrails, routing, budget, rate limit) | 20 | 60 | 8 | 88 | **13 200** |
+| 60 spec files / ~740 test cases — frontend E2E UI tests (chat flows, file uploads, presets, commands, memory, sharing, projects, ghost mode) | 24 | 80 | 10 | 114 | **17 100** |
+| Real-inference regression tests (sonnet format, qwen3 format, write_file, project read, code rendering, docx, PDF, web search, URL fetch, export) | 12 | 40 | 6 | 58 | **8 700** |
+| CI integration & test infra (auth.setup.ts, docker test environment, screenshot baseline) | 12 | 8 | 3 | 23 | **3 450** |
+| **QA subtotal** | **76** | **192** | **29** | **297** | **44 550** |
+
+---
+
+### Summary
+
+| Category | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|
+| Backend | 452 | 167 | 76 | 695 | **104 250** |
+| Frontend | 380 | 140 | 47 | 567 | **85 050** |
+| QA infrastructure & test suite | 76 | 192 | 29 | 297 | **44 550** |
+| **Total** | **908** | **499** | **152** | **1 559** | **233 850** |
+
+**Total estimated investment: ~1 560 hours / ~233 850 EUR** at 150 EUR/h.
+
+> These figures represent estimated hours for a single senior engineer working end-to-end (design → implementation → tests → documentation). A team of 2–3 engineers working in parallel would reduce calendar time but not total hours. Estimates assume familiarity with OpenResty/LuaJIT, React, and Playwright; onboarding a less experienced engineer would add 20–30% to the Dev bucket.
