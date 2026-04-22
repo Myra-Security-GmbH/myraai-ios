@@ -54,6 +54,27 @@ local function inject_message_cache(msg, ttl)
     end
 end
 
+-- Overwrite all existing cache_control blocks in system and messages to use
+-- the gateway-configured TTL. Required when the client (e.g. Claude Code)
+-- already manages its own prompt caching: mixing ttl='5m' from the client
+-- with ttl='1h' injected later causes an Anthropic 400 (longer TTLs must
+-- precede shorter ones in tools→system→messages processing order).
+local function overwrite_cache_ttl(body, ttl)
+    local cc = cache_control_block(ttl)
+    if type(body.system) == "table" then
+        for _, blk in ipairs(body.system) do
+            if blk.cache_control then blk.cache_control = cc end
+        end
+    end
+    for _, msg in ipairs(body.messages or {}) do
+        if type(msg.content) == "table" then
+            for _, blk in ipairs(msg.content) do
+                if blk.cache_control then blk.cache_control = cc end
+            end
+        end
+    end
+end
+
 local BASE_URL = "https://api.anthropic.com"
 local API_VERSION = "2023-06-01"
 
@@ -175,10 +196,15 @@ function M.build_request(ctx)
             strip_deprecated_temperature(body, ctx.model)
             -- Prompt caching: inject cache_control on native path too
             local pc = ctx.gateway_config and ctx.gateway_config.prompt_caching
-            if pc and pc.enabled and body.system then
+            if pc and pc.enabled then
                 local ttl = pc.ttl or "5m"
-                body.system = inject_system_cache(body.system, ttl)
-                -- Cache message history breakpoint (second-to-last user turn)
+                -- Normalise any cache_control blocks the client already placed
+                -- (e.g. Claude Code always sends ttl='5m') to the gateway TTL so
+                -- the request uses a single consistent TTL throughout.
+                overwrite_cache_ttl(body, ttl)
+                if body.system then
+                    body.system = inject_system_cache(body.system, ttl)
+                end
                 local msgs = body.messages or {}
                 if #msgs >= 4 then
                     local user_count = 0
