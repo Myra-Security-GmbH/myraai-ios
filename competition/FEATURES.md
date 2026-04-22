@@ -1199,7 +1199,7 @@ Model Context Protocol connectors let an admin configure external MCP servers an
 | POST | `/chat-commands` | Create slash command (`name`, `description`, `template`) |
 | PATCH | `/chat-commands/{id}` | Update slash command |
 | DELETE | `/chat-commands/{id}` | Delete slash command |
-| GET | `/memories` | List global (standalone) memories for current user |
+| GET | `/memories` | List user memories (project_id IS NULL) for current user |
 | GET | `/memories?project_id={id}` | List project-scoped memories (membership required) |
 | POST | `/memories` | Create memory; optional `project_id` field for project scope |
 | PATCH | `/memories/{id}` | Update memory content or type |
@@ -1496,16 +1496,16 @@ A personalisation layer that persists facts, preferences, and instructions acros
 - `content` — the memory text
 - `type` — `fact` | `preference` | `instruction`
 - `source` — `manual` (user-created) or `auto` (model-extracted)
-- `project_id` — optional; `NULL` = global (standalone) pool; non-null = project-scoped pool
+- `project_id` — optional; `NULL` = user pool (per-user, standalone chats); non-null = project pool
 
 #### Scope model
 
 | Chat context | Memory pool used | System prompt section |
 |---|---|---|
-| Standalone chat | Global (user-level, `project_id IS NULL`) | `## What I know about you` |
+| Standalone chat | User (per-user, `project_id IS NULL`) | `## What I know about you` |
 | Project chat | Project-specific (`project_id = X`) | `## What I know about this project` |
 
-The two pools are strictly isolated: global memories never appear in project chats and vice versa.
+The two pools are strictly isolated: user memories never appear in project chats and vice versa.
 
 #### How it works
 
@@ -1517,7 +1517,7 @@ The two pools are strictly isolated: global memories never appear in project cha
 
 #### API
 
-- `GET /memories` — global pool (`project_id IS NULL` memories for current user)
+- `GET /memories` — user pool (`project_id IS NULL` memories for current user)
 - `GET /memories?project_id=X` — project pool (requires project membership; admins bypass)
 - `POST /memories` — create memory; optional `project_id` field; validates project existence (404) and membership (403) before inserting
 - `PATCH/DELETE /memories/{id}` — update/delete (scoped by `user_id`)
@@ -1709,7 +1709,7 @@ CREATE TABLE chat_memory (
 )
 ```
 
-`project_id IS NULL` = global memory (standalone-chat pool). `project_id = X` = project-scoped memory (isolated to that project). Project deletion hard-deletes its memories.
+`project_id IS NULL` = user memory (per-user pool). `project_id = X` = project-scoped memory (isolated to that project). Project deletion hard-deletes its memories.
 
 #### Scope isolation
 
@@ -1718,7 +1718,7 @@ CREATE TABLE chat_memory (
 | Standalone chat | `WHERE user_id = ? AND project_id IS NULL` | `## What I know about you` |
 | Project chat (`?project_id=X`) | `WHERE user_id = ? AND project_id = X` | `## What I know about this project` |
 
-The two pools are strictly isolated — global memories never appear in project chats and vice versa. This matches Claude.ai's memory model.
+The two pools are strictly isolated — user memories never appear in project chats and vice versa. This matches Claude.ai's memory model.
 
 #### Auto-extraction
 
@@ -1837,7 +1837,7 @@ This would cover Claude.ai's `conversation_search` and `recent_chats` tool pair 
 #### 3. Memory export / import
 
 A UI button and API endpoint to:
-- **Export** — download all memories (global + all project pools) as a structured JSON or plain Markdown file
+- **Export** — download all memories (user pool + all project pools) as a structured JSON or plain Markdown file
 - **Import** — upload a memory file (from Claude.ai, ChatGPT, or a previous export) to seed the memory system
 
 The import flow would parse the file, deduplicate against existing memories, and create new entries with `source: "import"`.

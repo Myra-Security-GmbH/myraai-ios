@@ -324,8 +324,8 @@ function M.migrate(cfg)
     db:query("ALTER TABLE chat_conversation ADD COLUMN IF NOT EXISTS memory_disabled TINYINT NOT NULL DEFAULT 0")
 
     -- Add project_id to chat_memory for project-scoped memory silos (idempotent)
-    -- project_id IS NULL = global (standalone chat) memory
-    -- project_id = X    = project-specific memory, isolated from other projects and standalone
+    -- project_id IS NULL = user memory (per-user, shared across all standalone chats)
+    -- project_id = X    = project memory (isolated to that project)
     -- No ON DELETE CASCADE: chat_project uses soft-delete (deleted_at), so the physical row is
     -- never removed. Project memories are cleaned up explicitly in delete_project().
     db:query([[
@@ -2735,7 +2735,7 @@ end
 -- ---------------------------------------------------------------------------
 
 -- list_memories(user_id, project_id)
---   project_id = nil  → return global (project_id IS NULL) memories
+--   project_id = nil  → return user memories (project_id IS NULL)
 --   project_id = <id> → return project-scoped memories for that project
 function M.list_memories(user_id, project_id)
     local db, err = get_conn()

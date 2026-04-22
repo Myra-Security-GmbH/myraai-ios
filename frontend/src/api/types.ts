@@ -494,7 +494,7 @@ export interface ChatMemory {
   content:     string;
   type:        "fact" | "preference" | "instruction";
   source:      "manual" | "auto";
-  project_id?: string;   // absent = global (standalone) scope; present = project-scoped
+  project_id?: string;   // absent = user scope (per-user pool); present = project scope
   created_at:  string;
   updated_at:  string;
 }

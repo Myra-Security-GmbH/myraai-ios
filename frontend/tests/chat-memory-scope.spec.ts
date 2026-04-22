@@ -2,7 +2,7 @@
  * chat-memory-scope.spec.ts — E2E tests for project-scoped memory isolation.
  *
  * Coverage:
- *   Group 1 — API: scope isolation (global vs project), membership guards
+ *   Group 1 — API: scope isolation (user vs project), membership guards
  *   Group 2 — UI: MemoriesPanel title changes with scope
  *   Group 3 — UI: manual add from panel saves to correct scope
  *   Group 4 — UI: auto-extraction writes to correct scope (route injection)
@@ -46,9 +46,9 @@ async function deleteProject(page: Page, id: string) {
   await page.request.delete(`${ADMIN_BASE}/projects/${id}`).catch(() => {});
 }
 
-async function createGlobalMemory(page: Page, content: string, type = "fact"): Promise<MemRow> {
+async function createUserMemory(page: Page, content: string, type = "fact"): Promise<MemRow> {
   const r = await page.request.post(`${ADMIN_BASE}/memories`, { data: { content, type, source: "manual" } });
-  expect(r.ok(), `createGlobalMemory: ${await r.text()}`).toBeTruthy();
+  expect(r.ok(), `createUserMemory: ${await r.text()}`).toBeTruthy();
   return r.json();
 }
 
@@ -64,9 +64,9 @@ async function deleteMemory(page: Page, id: string) {
   await page.request.delete(`${ADMIN_BASE}/memories/${id}`).catch(() => {});
 }
 
-async function listGlobalMemories(page: Page): Promise<MemRow[]> {
+async function listUserMemories(page: Page): Promise<MemRow[]> {
   const r = await page.request.get(`${ADMIN_BASE}/memories`);
-  expect(r.ok(), "listGlobalMemories ok").toBeTruthy();
+  expect(r.ok(), "listUserMemories ok").toBeTruthy();
   return r.json();
 }
 
@@ -135,7 +135,7 @@ async function injectMemoryTag(page: Page, content: string, type = "fact") {
 // ---------------------------------------------------------------------------
 
 test.describe("Memory scope — API isolation", () => {
-  let globalMem: MemRow;
+  let userMem: MemRow;
   let projId: string;
   let projMem: MemRow;
   let tenantId: string;
@@ -145,7 +145,7 @@ test.describe("Memory scope — API isolation", () => {
     const page = await ctx.newPage();
     tenantId = await getTenantId(page);
     projId   = await createProject(page, tenantId, "scope-api-test-" + Date.now());
-    globalMem = await createGlobalMemory(page, "global-fact-" + Date.now());
+    userMem = await createUserMemory(page, "user-fact-" + Date.now());
     projMem   = await createProjectMemory(page, projId, "project-fact-" + Date.now());
     await page.close(); await ctx.close();
   });
@@ -153,16 +153,16 @@ test.describe("Memory scope — API isolation", () => {
   test.afterAll(async ({ browser }) => {
     const ctx  = await browser.newContext({ storageState: "tests/.auth/docker-session.json" });
     const page = await ctx.newPage();
-    await deleteMemory(page, globalMem.id);
+    await deleteMemory(page, userMem.id);
     await deleteProject(page, projId);  // cascade-deletes projMem
     await page.close(); await ctx.close();
   });
 
-  test("GET /memories returns global memories only (project_id absent)", async ({ page }) => {
-    const mems = await listGlobalMemories(page);
-    // Our global memory is present
-    expect(mems.some(m => m.id === globalMem.id)).toBeTruthy();
-    // Our project memory is absent from global pool
+  test("GET /memories returns user memories only (project_id absent)", async ({ page }) => {
+    const mems = await listUserMemories(page);
+    // Our user memory is present
+    expect(mems.some(m => m.id === userMem.id)).toBeTruthy();
+    // Our project memory is absent from user pool
     expect(mems.some(m => m.id === projMem.id)).toBeFalsy();
     // All returned rows have no project_id field
     const withProjectId = mems.filter(m => m.project_id != null && m.project_id !== undefined);
@@ -172,18 +172,18 @@ test.describe("Memory scope — API isolation", () => {
   test("GET /memories?project_id=X returns only project memories", async ({ page }) => {
     const mems = await listProjectMemories(page, projId);
     expect(mems.some(m => m.id === projMem.id)).toBeTruthy();
-    expect(mems.some(m => m.id === globalMem.id)).toBeFalsy();
+    expect(mems.some(m => m.id === userMem.id)).toBeFalsy();
     for (const m of mems) {
       expect(m.project_id, "all rows have correct project_id").toBe(projId);
     }
   });
 
-  test("POST /memories without project_id creates global memory absent from project GET", async ({ page }) => {
+  test("POST /memories without project_id creates user memory absent from project GET", async ({ page }) => {
     const content = "isolation-test-global-" + Date.now();
-    const m = await createGlobalMemory(page, content);
+    const m = await createUserMemory(page, content);
     try {
       // Appears in global GET
-      const global = await listGlobalMemories(page);
+      const global = await listUserMemories(page);
       expect(global.some(x => x.id === m.id)).toBeTruthy();
       // Absent from project GET
       const proj = await listProjectMemories(page, projId);
@@ -193,13 +193,13 @@ test.describe("Memory scope — API isolation", () => {
     }
   });
 
-  test("POST /memories with project_id creates project memory absent from global GET", async ({ page }) => {
+  test("POST /memories with project_id creates project memory absent from user GET", async ({ page }) => {
     const content = "isolation-test-proj-" + Date.now();
     const m = await createProjectMemory(page, projId, content);
     try {
       expect(m.project_id, "returned memory has project_id").toBe(projId);
       // Absent from global GET
-      const global = await listGlobalMemories(page);
+      const global = await listUserMemories(page);
       expect(global.some(x => x.id === m.id)).toBeFalsy();
       // Present in project GET
       const proj = await listProjectMemories(page, projId);
@@ -277,10 +277,10 @@ test.describe("Memory scope — MemoriesPanel title", () => {
   });
 
   test("switching from standalone to project reloads memory pool", async ({ page }) => {
-    // Create one global and one project memory
-    const globalContent = "global-reload-test-" + Date.now();
+    // Create one user memory and one project memory
+    const userContent = "global-reload-test-" + Date.now();
     const projContent   = "project-reload-test-" + Date.now();
-    const gm = await createGlobalMemory(page, globalContent);
+    const gm = await createUserMemory(page, userContent);
     const pm = await createProjectMemory(page, projId, projContent);
     try {
       // Load standalone
@@ -290,7 +290,7 @@ test.describe("Memory scope — MemoriesPanel title", () => {
       await page.locator("[data-cy='memories-btn']").click();
       await expect(page.locator("[data-cy='memories-panel']")).toBeVisible({ timeout: 5_000 });
       // Global memory visible in standalone panel
-      await expect(page.locator("[data-cy='memories-panel']")).toContainText(globalContent, { timeout: 5_000 });
+      await expect(page.locator("[data-cy='memories-panel']")).toContainText(userContent, { timeout: 5_000 });
       // Project memory not in standalone panel
       await expect(page.locator("[data-cy='memories-panel']")).not.toContainText(projContent);
       await page.locator("[data-cy='memories-panel'] button[title='Close']").click().catch(() =>
@@ -305,7 +305,7 @@ test.describe("Memory scope — MemoriesPanel title", () => {
       // Project memory visible in project panel
       await expect(page.locator("[data-cy='memories-panel']")).toContainText(projContent, { timeout: 5_000 });
       // Global memory not in project panel
-      await expect(page.locator("[data-cy='memories-panel']")).not.toContainText(globalContent);
+      await expect(page.locator("[data-cy='memories-panel']")).not.toContainText(userContent);
     } finally {
       await deleteMemory(page, gm.id);
       // pm deleted with project in afterAll
@@ -352,9 +352,9 @@ test.describe("Memory scope — manual add scoping", () => {
 
     // Verify via API: appears in project scope, not global
     const projMems   = await listProjectMemories(page, projId);
-    const globalMems = await listGlobalMemories(page);
+    const globalMems = await listUserMemories(page);
     expect(projMems.some(m => m.content.includes(content)),   "in project scope").toBeTruthy();
-    expect(globalMems.some(m => m.content.includes(content)), "not in global scope").toBeFalsy();
+    expect(globalMems.some(m => m.content.includes(content)), "not in user scope").toBeFalsy();
   });
 
   test("adding memory in standalone context saves without project_id", async ({ page }) => {
@@ -369,12 +369,12 @@ test.describe("Memory scope — manual add scoping", () => {
     await page.locator("[data-cy='memory-add-btn']").click();
     await expect(page.locator("[data-cy='memories-panel']")).toContainText(content, { timeout: 5_000 });
 
-    // Verify via API: appears in global scope, not in project
-    const globalMems = await listGlobalMemories(page);
+    // Verify via API: appears in user scope, not in project
+    const globalMems = await listUserMemories(page);
     const projMems   = await listProjectMemories(page, projId);
     const found = globalMems.find(m => m.content.includes(content));
-    expect(found, "in global scope").toBeTruthy();
-    expect(found?.project_id, "no project_id on global memory").toBeUndefined();
+    expect(found, "in user scope").toBeTruthy();
+    expect(found?.project_id, "no project_id on user memory").toBeUndefined();
     expect(projMems.some(m => m.content.includes(content)), "not in project scope").toBeFalsy();
 
     // Clean up
@@ -424,12 +424,12 @@ test.describe("Memory scope — auto-extraction scoping", () => {
 
     // Verify via API: memory is in project scope
     const projMems   = await listProjectMemories(page, projId);
-    const globalMems = await listGlobalMemories(page);
+    const globalMems = await listUserMemories(page);
     expect(projMems.some(m => m.content.includes(marker)),   "in project scope").toBeTruthy();
-    expect(globalMems.some(m => m.content.includes(marker)), "not in global scope").toBeFalsy();
+    expect(globalMems.some(m => m.content.includes(marker)), "not in user scope").toBeFalsy();
   });
 
-  test("auto-extracted memory in standalone chat is global", async ({ page }) => {
+  test("auto-extracted memory in standalone chat is user-scoped", async ({ page }) => {
     const marker = "AUTO-GLOBAL-" + Date.now();
     await injectMemoryTag(page, `User likes ${marker}`);
 
@@ -445,10 +445,10 @@ test.describe("Memory scope — auto-extraction scoping", () => {
     // Wait for the memory toast — it fires when the auto-save POST completes
     await expect(page.locator("[data-cy='memory-toast']")).toBeVisible({ timeout: 30_000 });
 
-    const globalMems = await listGlobalMemories(page);
+    const globalMems = await listUserMemories(page);
     const projMems   = await listProjectMemories(page, projId);
     const found = globalMems.find(m => m.content.includes(marker));
-    expect(found, "in global scope").toBeTruthy();
+    expect(found, "in user scope").toBeTruthy();
     expect(found?.project_id, "no project_id").toBeUndefined();
     expect(projMems.some(m => m.content.includes(marker)), "not in project scope").toBeFalsy();
 

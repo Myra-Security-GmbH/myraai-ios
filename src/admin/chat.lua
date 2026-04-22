@@ -1347,8 +1347,8 @@ a {
     -- ── Memories ───────────────────────────────────────────────────────────────
 
     -- GET /admin/v1/memories[?project_id=X] — list memories for current scope
-    -- No project_id → global (standalone) memories (project_id IS NULL)
-    -- project_id=X   → project-scoped memories; caller must be a project member
+    -- No project_id → user memories (project_id IS NULL, per-user pool)
+    -- project_id=X   → project memories; caller must be a project member
     route("GET", "^/admin/v1/memories$", function()
         local u   = ngx.ctx.admin_user
         local pid = ngx.req.get_uri_args().project_id

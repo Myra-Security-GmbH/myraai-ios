@@ -7,7 +7,7 @@ import s from "../pages/Chat.module.scss";
 interface Props {
   memories: ChatMemory[];
   activeConvId: string | null;
-  projectId?: string | null;   // absent/null = standalone scope; present = project scope
+  projectId?: string | null;   // absent/null = user scope; present = project scope
   onClose: () => void;
   onMemoriesChange: (memories: ChatMemory[]) => void;
   onConvMemoryDisabledChange: (convId: string, disabled: boolean) => void;
