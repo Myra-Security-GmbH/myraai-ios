@@ -137,7 +137,7 @@ function PresetModal({ preset, gateways, onClose, onSaved }: {
   }
 
   return (
-    <Modal title={isEdit ? `Edit preset: ${preset!.name}` : "Add Chat Preset"} onClose={onClose} error={error}>
+    <Modal title={isEdit ? `Edit preset: ${preset!.name}` : "Add Chat Preset"} onClose={onClose} error={error} modalStyle={{ minHeight: "680px" }}>
       <form onSubmit={handleSubmit}>
         <div className={s["form-group"]}>
           <label className={s["form-label"]}>Name *</label>

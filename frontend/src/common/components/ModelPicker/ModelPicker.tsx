@@ -21,7 +21,7 @@ const ModelPicker = memo(function ModelPicker({
 }: ModelPickerProps) {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
-  const [onlyRunnable, setOnlyRunnable] = useState(false);
+  const [onlyRunnable, setOnlyRunnable] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
   const { byProvider, providers } = useMemo(() => {

@@ -200,23 +200,23 @@ export default function Sidebar() {
 
         <div className={styles["nav-sections"]}>
           <SectionLabel label="MAIN" collapsed={effectiveCollapsed} />
-          <NavItem to="/dashboard" label="Dashboard" icon={<DashboardIcon />} {...navProps} />
           <NavItem to="/chat" label="Chat" icon={<ChatIcon />} {...navProps} />
           <NavItem to="/projects" label="Projects" icon={<ProjectsIcon />} {...navProps} />
           <NavItem to="/playground" label="Playground" icon={<PlaygroundIcon />} {...navProps} />
+
+          <SectionLabel label="OBSERVABILITY" collapsed={effectiveCollapsed} />
+          <NavItem to="/dashboard" label="Dashboard" icon={<DashboardIcon />} {...navProps} />
+          {(user?.role === "admin" || user?.role === "tenant_admin") && (<>
+          <NavItem to="/analytics" label="Cost Analytics" icon={<AnalyticsIcon />} {...navProps} />
+          <NavItem to="/monitor" label="Live Monitor" icon={<MonitorIcon />} {...navProps} />
+          <NavItem to="/logs" label="Request Logs" icon={<LogsIcon />} {...navProps} />
+          </>)}
 
           {(user?.role === "admin" || user?.role === "tenant_admin") && (<>
             <SectionLabel label="MANAGEMENT" collapsed={effectiveCollapsed} />
             <NavItem to="/tenants" label="Tenants" icon={<TenantsIcon />} {...navProps} />
             <NavItem to="/gateways" label="Gateways" icon={<GatewayIcon />} {...navProps} />
             <NavItem to="/users" label="Users" icon={<UsersIcon />} {...navProps} />
-          </>)}
-
-          {(user?.role === "admin" || user?.role === "tenant_admin") && (<>
-          <SectionLabel label="OBSERVABILITY" collapsed={effectiveCollapsed} />
-          <NavItem to="/analytics" label="Cost Analytics" icon={<AnalyticsIcon />} {...navProps} />
-          <NavItem to="/monitor" label="Live Monitor" icon={<MonitorIcon />} {...navProps} />
-          <NavItem to="/logs" label="Request Logs" icon={<LogsIcon />} {...navProps} />
           </>)}
 
           <SectionLabel label="CONFIG" collapsed={effectiveCollapsed} />
