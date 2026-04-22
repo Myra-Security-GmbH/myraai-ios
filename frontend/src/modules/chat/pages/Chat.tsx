@@ -169,15 +169,11 @@ function buildProjectSystemPrompt(project: ChatProject, knowledgeFiles: ProjectK
   if (project.instructions) parts.push(project.instructions.trim());
   // Guide the model to annotate code blocks with filenames so they can be saved back
   parts.push(
-    "## Reading and writing project files\n\n" +
-    "You CAN both read and write files in this project's knowledge base.\n\n" +
-    "**Reading:** To read the full content of a file, emit exactly: <read_file>filename</read_file>\n\n" +
-    "**Writing / updating:** To create or update a file, emit:\n" +
-    "<write_file filename=\"example.html\">\nfile content here\n</write_file>\n\n" +
-    "The UI will automatically save the file to the project knowledge base.\n\n" +
-    "When the user asks to update an existing file, ALWAYS read it first with <read_file>, " +
-    "then output the complete updated file with <write_file>.\n\n" +
-    "IMPORTANT: Always use <write_file> for file output — never use fenced code blocks with filename comments."
+    "## Project files\n\n" +
+    "You have read_file and write_file tools available. Use them to access files " +
+    "in this project's knowledge base.\n\n" +
+    "When the user asks to update an existing file, ALWAYS read it first with read_file, " +
+    "then write the complete updated file with write_file."
   );
   if (knowledgeFiles.length > 0) {
     const fileList = knowledgeFiles.map((f) => `- ${f.filename}`).join("\n");
@@ -1259,6 +1255,16 @@ export default function Chat() {
     let outputTokens: number | null = null;
     let costUsd: number | null = null;
 
+    // Build MCP tools header for server-side tool_loop
+    const mcpToolsHeader = mcpTools.length > 0
+      ? JSON.stringify(mcpTools.map(({ tool, connectorId }) => ({
+          type: "function",
+          connector_id: connectorId,
+          name: tool.name,
+          function: { name: tool.name, description: tool.description ?? "", parameters: tool.inputSchema },
+        })))
+      : undefined;
+
     const reqHeaders = Object.fromEntries(
       Object.entries({
         "Content-Type": "application/json",
@@ -1269,34 +1275,19 @@ export default function Chat() {
         ...(drawerSettings.thinkingBudget !== null
           ? { "x-aig-thinking-budget": String(drawerSettings.thinkingBudget) }
           : {}),
+        ...(projectIdParam ? { "x-project-id": projectIdParam } : {}),
+        ...(mcpToolsHeader ? { "x-mcp-tools": mcpToolsHeader } : {}),
       }).filter(([, v]) => v !== undefined)
     ) as Record<string, string>;
 
     let continueCount = 0;
     const MAX_CONTINUATIONS = 10;
-    let fileReadCount = 0;
-    const MAX_FILE_READS = 5;
-    let pendingFileInjection: string | null = null;
-    // MCP tool call loop: extra messages to append (assistant + tool_result pairs)
-    const mcpExtraMessages: Array<{ role: string; content: unknown }> = [];
-    let mcpToolCallCount = 0;
-    const MAX_MCP_TOOL_CALLS = 10;
 
     streaming: while (true) {
-      const reqMessages = (() => {
-        if (continueCount === 0 && pendingFileInjection === null && mcpExtraMessages.length === 0) return apiMessages;
-        const msgs = [...apiMessages, ...mcpExtraMessages];
-        if (pendingFileInjection !== null || (continueCount > 0 && mcpExtraMessages.length === 0)) {
-          msgs.push({ role: "assistant", content: accumulated });
-          msgs.push({ role: "user", content: pendingFileInjection ?? "Continue" });
-        }
-        return msgs;
-      })();
-      pendingFileInjection = null; // consumed
-
-      // Accumulate tool_calls deltas across SSE chunks
-      // Shape: { [index]: { id, name, argumentsAccum } }
-      const pendingToolCalls: Record<number, { id: string; name: string; argumentsAccum: string }> = {};
+      // On continuation (max_tokens), append assistant partial + "Continue" prompt
+      const reqMessages = continueCount === 0
+        ? apiMessages
+        : [...apiMessages, { role: "assistant", content: accumulated }, { role: "user", content: "Continue" }];
 
       let finishReason: string | null = null;
 
@@ -1307,32 +1298,16 @@ export default function Chat() {
         ...(drawerSettings.thinkingBudget === null ? { temperature: drawerSettings.temperature } : {}),
         max_tokens: drawerSettings.maxTokens,
         stream: true,
-        // Inject MCP tools if any are loaded
-        ...(mcpTools.length > 0 ? {
-          tools: mcpTools.map(({ tool }) => ({
-            type: "function",
-            function: {
-              name: tool.name,
-              description: tool.description ?? "",
-              parameters: tool.inputSchema,
-            },
-          })),
-        } : {}),
+        // Tools are injected server-side by tool_loop.lua based on X-Project-Id,
+        // X-MCP-Tools, X-AIG-Web-Search headers.
       };
 
       // ── Full request/response trace ─────────────────────────────────────
       console.group(`[chat_trace] leg ${continueCount}`);
       console.log("[REQ] POST", compatUrl);
-      console.log("[REQ] model:", effectiveModel, "| messages:", reqMessages.length,
-        "| tools:", reqBody.tools?.length ?? 0, "| stream:", true);
-      console.log("[REQ] last user msg:", (() => {
-        const last = [...reqMessages].reverse().find(m => m.role === "user");
-        const c = typeof last?.content === "string" ? last.content : JSON.stringify(last?.content);
-        return c ? c.slice(0, 300) + (c.length > 300 ? "…" : "") : "(none)";
-      })());
-      if (pendingFileInjection !== null || continueCount > 0) {
-        console.log("[REQ] continuation reason:",
-          pendingFileInjection !== null ? "read_file injection" : "auto-continue (max_tokens)");
+      console.log("[REQ] model:", effectiveModel, "| messages:", reqMessages.length, "| stream:", true);
+      if (continueCount > 0) {
+        console.log("[REQ] continuation: auto-continue (max_tokens), count:", continueCount);
       }
 
       const allChunks: unknown[] = [];
@@ -1456,22 +1431,8 @@ export default function Chat() {
                   setStreamingThinkingDurationMs(thinkBlockDurationRef.current);
                 }
               }
-              // Accumulate OpenAI-compat tool_calls deltas
-              const toolCallDeltas = chunk?.choices?.[0]?.delta?.tool_calls;
-              if (Array.isArray(toolCallDeltas)) {
-                for (const tc of toolCallDeltas) {
-                  const idx: number = tc.index ?? 0;
-                  if (!pendingToolCalls[idx]) {
-                    pendingToolCalls[idx] = { id: tc.id ?? "", name: tc.function?.name ?? "", argumentsAccum: "" };
-                  } else {
-                    if (tc.id) pendingToolCalls[idx].id = tc.id;
-                    if (tc.function?.name) pendingToolCalls[idx].name = tc.function.name;
-                  }
-                  if (tc.function?.arguments) {
-                    pendingToolCalls[idx].argumentsAccum += tc.function.arguments;
-                  }
-                }
-              }
+              // Tool calls are handled server-side by tool_loop.lua.
+              // No client-side tool_calls accumulation needed.
               const reason = chunk?.choices?.[0]?.finish_reason;
               if (reason) finishReason = reason;
               const usage = chunk?.usage;
@@ -1490,11 +1451,33 @@ export default function Chat() {
                 const n = chunk.count;
                 setProcessingStatus(`🔗 Fetching ${n ?? ""} URL${n !== 1 ? "s" : ""}…`.trim());
               }
+              // Server-side tool_loop status events
+              if (chunk?.aig_status === "tool_call") {
+                const toolStatusLabels: Record<string, string> = {
+                  read_file:  "📄 Reading",
+                  write_file: "📝 Writing",
+                  fetch_url:  "🔗 Fetching",
+                  web_search: "🔎 Searching",
+                };
+                const label = toolStatusLabels[chunk.tool as string] ?? `⚙️ ${chunk.tool}`;
+                const argStr = chunk.args?.filename ?? chunk.args?.url ?? chunk.args?.query ?? "";
+                setProcessingStatus(`${label}${argStr ? ` ${argStr}` : ""}…`);
+              }
+              if (chunk?.aig_status === "tool_result") {
+                const tool = chunk.tool as string;
+                if (tool === "write_file") {
+                  // Append a visible note about the save
+                  const fn = chunk.filename ?? "";
+                  if (fn) accumulated += `\n\n> ✅ File saved to project: \`${fn}\`\n`;
+                }
+              }
               // Native Anthropic tool-use event (forwarded by on_compat_chunk in upstream.lua)
               if (chunk?.aig_tool_call) {
                 const toolLabels: Record<string, string> = {
                   web_search:     "🔎 Searching the web…",
                   fetch_url:      "🔗 Fetching URL…",
+                  read_file:      "📄 Reading file…",
+                  write_file:     "📝 Writing file…",
                   computer_use:   "🖥️ Using computer…",
                   code_execution: "⚙️ Running code…",
                 };
@@ -1547,202 +1530,9 @@ export default function Chat() {
         continue streaming;
       }
 
-      // Handle tool_calls: MCP tools, or native read_file/write_file from Anthropic tool_use
-      if (
-        !abort.signal.aborted &&
-        (finishReason === "tool_calls" || finishReason === "tool_use")
-      ) {
-        const calls = Object.values(pendingToolCalls);
-
-        // Handle read_file tool calls (Anthropic native tool_use for file reading)
-        const readFileCalls = calls.filter((c) => c.name === "read_file");
-        if (readFileCalls.length > 0 && projectKnowledge.length > 0 && fileReadCount < MAX_FILE_READS) {
-          const injectionParts: string[] = [];
-          const readSummary: string[] = [];
-          for (const c of readFileCalls) {
-            let filename = "";
-            try { filename = JSON.parse(c.argumentsAccum)?.filename ?? ""; } catch { /* */ }
-            if (!filename) continue;
-            const reqLower = filename.toLowerCase();
-            const kf = projectKnowledge.find(
-              (f) => f.filename.toLowerCase() === reqLower
-                  || f.filename.toLowerCase().endsWith("/" + reqLower)
-            );
-            if (kf) {
-              injectionParts.push(`## File: ${kf.filename}\n\n\`\`\`\n${kf.extracted_text.trim()}\n\`\`\``);
-              readSummary.push(`📄 Read: \`${kf.filename}\` (${kf.extracted_text.length.toLocaleString()} chars)`);
-            } else {
-              injectionParts.push(`## File: ${filename}\n\n[File not found in project knowledge base. Available files: ${projectKnowledge.map(f => f.filename).join(", ")}]`);
-              readSummary.push(`❌ Not found: \`${filename}\``);
-            }
-          }
-          if (injectionParts.length > 0) {
-            if (accumulated.trim()) accumulated += "\n\n";
-            accumulated += "> " + readSummary.join("\n> ") + "\n";
-            setStreamingContent(accumulated);
-            pendingFileInjection = injectionParts.join("\n\n---\n\n");
-            fileReadCount += readFileCalls.length;
-            setProcessingStatus(`Reading ${readFileCalls.map(c => { try { return JSON.parse(c.argumentsAccum)?.filename; } catch { return "file"; } }).join(", ")}…`);
-            continue streaming;
-          }
-        }
-
-        // Handle MCP tool calls (existing behavior)
-        if (calls.length > 0 && mcpTools.length > 0 && mcpToolCallCount < MAX_MCP_TOOL_CALLS) {
-          // Status: show which tools are being called
-          setProcessingStatus(`⚙️ Calling ${calls.map((c) => c.name).join(", ")}…`);
-          // Build assistant message with tool_calls
-          mcpExtraMessages.push({
-            role: "assistant",
-            content: accumulated || null,
-            // OpenAI-compat format
-            // @ts-expect-error extra field
-            tool_calls: calls.map((c) => ({
-              id: c.id || `call_${c.name}_${mcpToolCallCount}`,
-              type: "function",
-              function: { name: c.name, arguments: c.argumentsAccum },
-            })),
-          });
-          // Execute each tool call
-          const toolResults = await Promise.allSettled(calls.map(async (c) => {
-            // Find which connector exposes this tool
-            const entry = mcpTools.find((t) => t.tool.name === c.name);
-            if (!entry) {
-              return { call: c, result: { error: `Tool "${c.name}" not found in any connector` } };
-            }
-            let args: unknown = {};
-            try { args = JSON.parse(c.argumentsAccum); } catch { /* leave empty */ }
-            try {
-              const res = await api.post<{ result?: unknown; error?: unknown }>(
-                `/mcp/${entry.connectorId}/call`,
-                { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: c.name, arguments: args } }
-              );
-              return { call: c, result: res.result ?? res };
-            } catch (e) {
-              return { call: c, result: { error: String(e) } };
-            }
-          }));
-          // Append tool_result messages (one per call in OpenAI format)
-          for (const r of toolResults) {
-            const { call: c, result } = r.status === "fulfilled" ? r.value : { call: calls[0], result: { error: "tool execution failed" } };
-            mcpExtraMessages.push({
-              role: "tool",
-              // @ts-expect-error extra field
-              tool_call_id: c.id || `call_${c.name}_${mcpToolCallCount}`,
-              content: typeof result === "string" ? result : JSON.stringify(result),
-            });
-          }
-          mcpToolCallCount++;
-          // Reset streaming content for next leg
-          accumulated = "";
-          setStreamingContent("");
-          continue streaming;
-        }
-      }
-
-      // Detect <read_file> tags emitted by the model — only in project context
-      if (!abort.signal.aborted && projectKnowledge.length > 0 && fileReadCount < MAX_FILE_READS) {
-        const readFileRe = /<read_file>([\s\S]*?)<\/read_file>/g;
-        const fileMatches: RegExpExecArray[] = [];
-        let fm: RegExpExecArray | null;
-        while ((fm = readFileRe.exec(accumulated)) !== null) fileMatches.push(fm);
-
-        if (fileMatches.length > 0) {
-          console.log("[FLOW] read_file detected:",
-            fileMatches.map(m => m[1].trim()).join(", "),
-            "| fileReadCount:", fileReadCount,
-            "| accumulated:", accumulated.slice(0, 200));
-          let cleaned = accumulated;
-          const injectionParts: string[] = [];
-          const readSummary: string[] = [];
-          for (const m of fileMatches) {
-            const requestedName = m[1].trim();
-            cleaned = cleaned.replace(m[0], "");
-            // Case-insensitive filename matching + trim whitespace
-            const reqLower = requestedName.toLowerCase();
-            const kf = projectKnowledge.find(
-              (f) => f.filename.toLowerCase() === reqLower
-                  || f.filename.toLowerCase().endsWith("/" + reqLower)
-            );
-            if (kf) {
-              injectionParts.push(`## File: ${kf.filename}\n\n\`\`\`\n${kf.extracted_text.trim()}\n\`\`\``);
-              readSummary.push(`📄 Read: \`${kf.filename}\` (${kf.extracted_text.length.toLocaleString()} chars)`);
-            } else {
-              injectionParts.push(`## File: ${requestedName}\n\n[File not found in project knowledge base. Available files: ${projectKnowledge.map(f => f.filename).join(", ")}]`);
-              readSummary.push(`❌ Not found: \`${requestedName}\``);
-            }
-          }
-          // Show the user which files were read
-          cleaned = cleaned.trim();
-          if (cleaned) cleaned += "\n\n";
-          cleaned += "> " + readSummary.join("\n> ") + "\n";
-          accumulated = cleaned.trim();
-          setStreamingContent(accumulated);
-          pendingFileInjection = injectionParts.join("\n\n---\n\n");
-          fileReadCount += fileMatches.length;
-          setProcessingStatus(`Reading ${fileMatches.map((m) => m[1].trim()).join(", ")}…`);
-          continue streaming;
-        }
-      }
-
-      // Detect <write_file filename="...">content</write_file> tags
-      {
-        const writeFileRe = /<write_file\s+filename="([^"]+)">([\s\S]*?)<\/write_file>/g;
-        const writeMatches: RegExpExecArray[] = [];
-        let wm: RegExpExecArray | null;
-        while ((wm = writeFileRe.exec(accumulated)) !== null) writeMatches.push(wm);
-
-        if (writeMatches.length > 0) {
-          let cleaned = accumulated;
-          for (const m of writeMatches) {
-            const filename = m[1].trim();
-            const content = m[2];
-
-            // Replace the <write_file> tag with a fenced code block so the
-            // ArtifactCard pipeline renders it with the split-screen editor.
-            const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-            const langMap: Record<string, string> = {
-              html: "html", htm: "html", css: "css", js: "javascript",
-              ts: "typescript", tsx: "typescript", py: "python", sh: "bash",
-              sql: "sql", lua: "lua", json: "json", yaml: "yaml", yml: "yaml",
-              xml: "xml", md: "markdown",
-            };
-            const lang = langMap[ext] ?? "";
-            const commentMap: Record<string, string> = {
-              html: `<!-- ${filename} -->`, xml: `<!-- ${filename} -->`,
-              sql: `-- ${filename}`, lua: `-- ${filename}`,
-              python: `# ${filename}`, bash: `# ${filename}`,
-              yaml: `# ${filename}`, yml: `# ${filename}`,
-            };
-            const comment = commentMap[lang] ?? `// ${filename}`;
-            const codeBlock = `\`\`\`${lang}\n${comment}\n${content.trim()}\n\`\`\``;
-            cleaned = cleaned.replace(m[0], codeBlock);
-
-            // Project chat: auto-save to knowledge base
-            if (projectIdParam) {
-              const mimeMap: Record<string, string> = {
-                html: "text/html", htm: "text/html", css: "text/css",
-                js: "text/javascript", ts: "text/typescript", py: "text/x-python",
-                sh: "text/x-sh", sql: "text/x-sql", lua: "text/x-lua",
-                json: "application/json", xml: "text/xml", md: "text/markdown",
-                yaml: "text/yaml", yml: "text/yaml", txt: "text/plain",
-              };
-              try {
-                await api.put(`/projects/${projectIdParam}/knowledge/${encodeURIComponent(filename)}`, {
-                  extracted_text: content,
-                  content_type: mimeMap[ext] ?? "text/plain",
-                  size_bytes: new Blob([content]).size,
-                });
-                cleaned += `\n\n> ✅ File saved to project: \`${filename}\`\n`;
-              } catch {
-                cleaned += `\n\n> ❌ Failed to save: \`${filename}\`\n`;
-              }
-            }
-          }
-          accumulated = cleaned.trim();
-          setStreamingContent(accumulated);
-        }
-      }
+      // All tool execution (read_file, write_file, fetch_url, web_search, MCP)
+      // is now handled server-side by tool_loop.lua. The client only receives
+      // the final streamed text + status events.
 
       console.log("[FLOW] breaking out of streaming loop | finishReason:", finishReason,
         "| accumulatedChars:", accumulated.length,
