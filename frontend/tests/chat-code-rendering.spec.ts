@@ -13,6 +13,7 @@ const ADMIN_URL      = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin
 const TARGET_TENANT  = "myratest";
 const TARGET_GATEWAY = "prod";
 const TARGET_MODEL   = "claude-sonnet-4-6";
+const TARGET_PRESET  = "UNSAFE claude-sonnet-4-6";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,58 +32,18 @@ async function deleteAllConversations(page: Page, createdAfter?: number) {
 }
 
 async function selectGatewayWithModel(page: Page): Promise<boolean> {
+  // Select tenant
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
   const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
   if ((await tenantOption.count()) === 0) return false;
   await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
-  await page.waitForTimeout(400);
 
-  const hasGatewaySelect = await page.locator("select").nth(1)
-    .isVisible({ timeout: 2000 }).catch(() => false);
-
-  if (hasGatewaySelect) {
-    const gatewaySel = page.locator("select").nth(1);
-    const gatewayOption = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
-    if ((await gatewayOption.count()) === 0) return false;
-    await gatewaySel.selectOption({ label: (await gatewayOption.first().textContent()) ?? TARGET_GATEWAY });
-    await page.waitForTimeout(400);
-  } else {
-    const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
-    if (!tenantsResp.ok()) return false;
-    const tenantList = await tenantsResp.json() as Array<{
-      id: string; slug: string;
-      chat_presets?: Array<{ id: string; name: string; model: string; gateway_id: string }>;
-    }>;
-    const tenant = tenantList.find((t) => t.slug === TARGET_TENANT);
-    if (!tenant) return false;
-    const preset = (tenant.chat_presets ?? []).find((p) => p.model === TARGET_MODEL);
-    if (!preset) return false;
-    const presetBtn = page.locator("button").filter({ hasText: new RegExp(`^\\s*${preset.name}\\s*$`) });
-    if (!(await presetBtn.isVisible({ timeout: 3000 }).catch(() => false))) return false;
-    await presetBtn.click();
-    await page.waitForTimeout(400);
-    return true;
-  }
-
-  const modelBtn = page.locator("[aria-haspopup='listbox']");
-  await modelBtn.waitFor({ state: "visible", timeout: 5000 });
-  await modelBtn.click();
-
-  const searchInput = page.locator("[role='listbox'] input[type='text'], [role='listbox'] input[type='search']");
-  const hasSearch = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
-  if (hasSearch) {
-    await searchInput.fill(TARGET_MODEL);
-    await page.waitForTimeout(300);
-  }
-
-  const targetOption = page.locator("[role='listbox'] [role='option']")
-    .filter({ hasText: TARGET_MODEL })
-    .first();
-  const found = await targetOption.isVisible({ timeout: 3000 }).catch(() => false);
-  if (!found) { await page.keyboard.press("Escape"); return false; }
-  await targetOption.click();
-  await page.waitForTimeout(300);
+  // Click preset button directly
+  const presetBtn = page.locator("button").filter({ hasText: new RegExp(TARGET_PRESET.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "i") });
+  if (!(await presetBtn.isVisible({ timeout: 5000 }).catch(() => false))) return false;
+  await presetBtn.click();
+  await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
   return true;
 }
 
@@ -108,7 +69,7 @@ test.describe("Chat — code block rendering", () => {
     await page.goto("/chat");
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await page.reload();
-    await page.waitForTimeout(800);
+    await page.locator("select").first().waitFor({ state: "visible", timeout: 10_000 });
   });
 
   test.afterEach(async ({ page }) => {
@@ -120,7 +81,7 @@ test.describe("Chat — code block rendering", () => {
     if (!ok) { test.skip(); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     // Ask for a simple code snippet that will be in a fenced block
     await page.locator("[class*='chat-textarea']").fill(
@@ -171,7 +132,7 @@ test.describe("Chat — code block rendering", () => {
     if (!ok) { test.skip(); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     await page.locator("[class*='chat-textarea']").fill(
       'Show me a simple 3x3 ASCII art grid inside a fenced code block (```). ' +
@@ -204,8 +165,6 @@ test.describe("Chat — code block rendering", () => {
     if (!ok) { test.skip(); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
-
     const textarea = page.locator("[class*='chat-textarea']");
     await expect(textarea).toBeEnabled({ timeout: 5000 });
     await textarea.fill("Show me a hello world in JavaScript.");

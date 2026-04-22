@@ -35,6 +35,7 @@ async function deleteAllConversations(page: Page, createdAfter?: number) {
 const TARGET_TENANT  = "myratest";
 const TARGET_GATEWAY = "prod";
 const TARGET_MODEL   = "claude-sonnet-4-6";
+const TARGET_PRESET  = "UNSAFE claude-sonnet-4-6";
 
 async function selectGatewayWithModel(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
@@ -42,55 +43,10 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
   const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
   if ((await tenantOption.count()) === 0) return false;
   await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
-  await page.waitForTimeout(400);
-
-  // Gateway — native select OR preset mode
-  const hasGatewaySelect = await page.locator("select").nth(1)
-    .isVisible({ timeout: 2000 }).catch(() => false);
-
-  if (hasGatewaySelect) {
-    const gatewaySel = page.locator("select").nth(1);
-    const gatewayOption = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
-    if ((await gatewayOption.count()) === 0) return false;
-    await gatewaySel.selectOption({ label: (await gatewayOption.first().textContent()) ?? TARGET_GATEWAY });
-    await page.waitForTimeout(400);
-  } else {
-    // Preset mode: find the preset for our target model via admin API and click its button.
-    const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
-    if (!tenantsResp.ok()) return false;
-    const tenantList = await tenantsResp.json() as Array<{
-      id: string; slug: string;
-      chat_presets?: Array<{ id: string; name: string; model: string; gateway_id: string }>;
-    }>;
-    const tenant = tenantList.find((t) => t.slug === TARGET_TENANT);
-    if (!tenant) return false;
-    const preset = (tenant.chat_presets ?? []).find((p) => p.model === TARGET_MODEL);
-    if (!preset) return false;
-    const presetBtn = page.locator("button").filter({ hasText: new RegExp(`^\\s*${preset.name}\\s*$`) });
-    if (!(await presetBtn.isVisible({ timeout: 3000 }).catch(() => false))) return false;
-    await presetBtn.click();
-    await page.waitForTimeout(400);
-    return true;
-  }
-
-  const modelBtn = page.locator("[aria-haspopup='listbox']");
-  await modelBtn.waitFor({ state: "visible", timeout: 5000 });
-  await modelBtn.click();
-
-  const searchInput = page.locator("[role='listbox'] input[type='text'], [role='listbox'] input[type='search']");
-  const hasSearch = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
-  if (hasSearch) {
-    await searchInput.fill(TARGET_MODEL);
-    await page.waitForTimeout(300);
-  }
-
-  const targetOption = page.locator("[role='listbox'] [role='option']")
-    .filter({ hasText: TARGET_MODEL })
-    .first();
-  const found = await targetOption.isVisible({ timeout: 3000 }).catch(() => false);
-  if (!found) { await page.keyboard.press("Escape"); return false; }
-  await targetOption.click();
-  await page.waitForTimeout(300);
+  const presetBtn = page.locator("button").filter({ hasText: new RegExp(TARGET_PRESET.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "i") });
+  if (!(await presetBtn.isVisible({ timeout: 5000 }).catch(() => false))) return false;
+  await presetBtn.click();
+  await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
   return true;
 }
 async function enableWebSearch(page: Page) {
@@ -99,7 +55,6 @@ async function enableWebSearch(page: Page) {
   // Only click if not already ON
   const title = await btn.getAttribute("title") ?? "";
   if (!/ON/i.test(title)) await btn.click();
-  await page.waitForTimeout(200);
 }
 
 /** Wait for streaming to finish: stop button disappears, send button reappears. */
@@ -122,7 +77,9 @@ test.describe("Chat — web search with claude-sonnet-4-6", () => {
   test.beforeEach(async ({ page }) => {
     testStartTime = Date.now();
     await page.goto("/chat");
-    await page.waitForTimeout(600);
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+    await page.reload();
+    await page.locator("select").first().waitFor({ state: "visible", timeout: 10_000 });
   });
 
   test.afterEach(async ({ page }) => {
@@ -161,7 +118,6 @@ test.describe("Chat — web search with claude-sonnet-4-6", () => {
     // Enable it
     const titleBefore = await btn.getAttribute("title") ?? "";
     if (!/ON/i.test(titleBefore)) await btn.click();
-    await page.waitForTimeout(200);
 
     const titleAfter = await btn.getAttribute("title") ?? "";
     expect(titleAfter.toLowerCase()).toContain("on");
@@ -174,8 +130,6 @@ test.describe("Chat — web search with claude-sonnet-4-6", () => {
     if (!ok) { test.skip(); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
-
     await enableWebSearch(page);
 
     // Intercept the compat request and capture headers
@@ -201,8 +155,6 @@ test.describe("Chat — web search with claude-sonnet-4-6", () => {
     if (!ok) { test.skip(); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
-
     await enableWebSearch(page);
 
     // Ask a question that benefits from current web data

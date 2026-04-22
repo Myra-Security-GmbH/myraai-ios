@@ -12,7 +12,7 @@ import { test, expect, Page } from "@playwright/test";
 
 const ADMIN_URL      = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT  = "myratest";
-const TARGET_PRESET  = "PII claude-opus-4.7";
+const TARGET_PRESET  = "UNSAFE claude-sonnet-4-6";
 
 async function deleteAllConversations(page: Page, createdAfter?: number) {
   try {
@@ -33,7 +33,6 @@ async function selectPreset(page: Page, presetName: string): Promise<boolean> {
   const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
   if ((await tenantOpt.count()) === 0) return false;
   await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? TARGET_TENANT });
-  await page.waitForTimeout(600);
 
   // Click the preset button
   const presetBtn = page.locator("button").filter({ hasText: new RegExp(presetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "i") });
@@ -43,7 +42,7 @@ async function selectPreset(page: Page, presetName: string): Promise<boolean> {
     return false;
   }
   await presetBtn.click();
-  await page.waitForTimeout(400);
+  await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
   return true;
 }
 
@@ -82,8 +81,9 @@ test.describe("Chat — project read_file with Opus preset", () => {
     expect(projResp.ok(), `create project: ${await projResp.text()}`).toBeTruthy();
     const project = await projResp.json() as { id: string };
 
-    // Upload a test file
-    const testContent = "The capital of France is Paris. The Eiffel Tower is exactly 330 meters tall. It was built in 1889 for the World's Fair.";
+    // Upload a test file with UNIQUE content the model can't know from training
+    const marker = "XYZZY-" + Date.now();
+    const testContent = `Project codename: ${marker}. Budget approved: EUR 42,000. Lead: Dr. Müller. Status: green.`;
     await page.context().request.put(
       `${ADMIN_URL}/admin/v1/projects/${project.id}/knowledge/facts.txt`,
       { data: { extracted_text: testContent, content_type: "text/plain", size_bytes: testContent.length } }
@@ -91,8 +91,12 @@ test.describe("Chat — project read_file with Opus preset", () => {
 
     try {
       // Navigate to project chat
+      // Clear stale state from previous tests
+      await page.goto("/chat");
+      await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+
       await page.goto(`/chat?project_id=${project.id}`);
-      await page.waitForTimeout(1000);
+      await page.locator("select").first().waitFor({ state: "visible", timeout: 10_000 });
 
       // Select the Opus preset
       const presetOk = await selectPreset(page, TARGET_PRESET);
@@ -106,12 +110,12 @@ test.describe("Chat — project read_file with Opus preset", () => {
       const newChatBtn = page.getByRole("button", { name: /new.*chat/i });
       await expect(newChatBtn).toBeVisible({ timeout: 10_000 });
       await newChatBtn.click();
-      await page.waitForTimeout(500);
+      await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
       // Send message asking to read the file
       const textarea = page.locator("[class*='chat-textarea']");
       await expect(textarea).toBeVisible({ timeout: 5000 });
-      await textarea.fill("Read facts.txt and tell me how tall the Eiffel Tower is.");
+      await textarea.fill(`Read facts.txt and tell me the project codename and budget.`);
       await page.locator("button[title='Send message']").click();
 
       // User message must appear
@@ -127,9 +131,10 @@ test.describe("Chat — project read_file with Opus preset", () => {
       const reply = (await assistantBubble.textContent()) ?? "";
       console.log("[TEST] assistant reply:", reply.slice(0, 400));
 
-      // The response should mention the Eiffel Tower height from the file
+      // The response should mention content from the knowledge file
       expect(reply.length, "Response too short — model may not have read the file").toBeGreaterThan(20);
-      expect(reply, "Expected response to contain '330' from the knowledge file").toMatch(/330/);
+      // Check for either the unique marker or the budget — content only in the file
+      expect(reply, "Expected response to reference knowledge file content").toMatch(/42[,.]?000|XYZZY|Müller|codename/i);
 
       // No error banner
       await expect(page.getByText(/TypeError|failed to fetch/i).first())

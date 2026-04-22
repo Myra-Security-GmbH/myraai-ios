@@ -15,6 +15,7 @@ const ADMIN_URL      = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin
 const TARGET_TENANT  = "myratest";
 const TARGET_GATEWAY = "prod";
 const TARGET_MODEL   = "claude-sonnet-4-6";
+const TARGET_PRESET  = "UNSAFE claude-sonnet-4-6";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,50 +39,10 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
   const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
   if ((await tenantOption.count()) === 0) return false;
   await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
-  await page.waitForTimeout(400);
-
-  const hasGatewaySelect = await page.locator("select").nth(1)
-    .isVisible({ timeout: 2000 }).catch(() => false);
-
-  if (hasGatewaySelect) {
-    const gatewaySel = page.locator("select").nth(1);
-    const gatewayOption = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
-    if ((await gatewayOption.count()) === 0) return false;
-    await gatewaySel.selectOption({ label: (await gatewayOption.first().textContent()) ?? TARGET_GATEWAY });
-    await page.waitForTimeout(400);
-  } else {
-    const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
-    if (!tenantsResp.ok()) return false;
-    const tenantList = await tenantsResp.json() as Array<{
-      id: string; slug: string;
-      chat_presets?: Array<{ id: string; name: string; model: string; gateway_id: string }>;
-    }>;
-    const tenant = tenantList.find((t) => t.slug === TARGET_TENANT);
-    if (!tenant) return false;
-    const preset = (tenant.chat_presets ?? []).find((p) => p.model === TARGET_MODEL);
-    if (!preset) return false;
-    const presetBtn = page.locator("button").filter({ hasText: new RegExp(`^\\s*${preset.name}\\s*$`) });
-    if (!(await presetBtn.isVisible({ timeout: 3000 }).catch(() => false))) return false;
-    await presetBtn.click();
-    await page.waitForTimeout(400);
-    return true;
-  }
-
-  const modelBtn = page.locator("[aria-haspopup='listbox']");
-  await modelBtn.waitFor({ state: "visible", timeout: 5000 });
-  await modelBtn.click();
-  const searchInput = page.locator("[role='listbox'] input[type='text'], [role='listbox'] input[type='search']");
-  const hasSearch = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
-  if (hasSearch) {
-    await searchInput.fill(TARGET_MODEL);
-    await page.waitForTimeout(300);
-  }
-  const targetOption = page.locator("[role='listbox'] [role='option']")
-    .filter({ hasText: TARGET_MODEL }).first();
-  const found = await targetOption.isVisible({ timeout: 3000 }).catch(() => false);
-  if (!found) { await page.keyboard.press("Escape"); return false; }
-  await targetOption.click();
-  await page.waitForTimeout(300);
+  const presetBtn = page.locator("button").filter({ hasText: new RegExp(TARGET_PRESET.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "i") });
+  if (!(await presetBtn.isVisible({ timeout: 5000 }).catch(() => false))) return false;
+  await presetBtn.click();
+  await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
   return true;
 }
 
@@ -110,7 +71,9 @@ test.describe("Chat — write_file tag", () => {
   test.beforeEach(async ({ page }) => {
     testStartTime = Date.now();
     await page.goto("/chat");
-    await page.waitForTimeout(600);
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+    await page.reload();
+    await page.locator("select").first().waitFor({ state: "visible", timeout: 10_000 });
   });
 
   test.afterEach(async ({ page }) => {
@@ -124,7 +87,7 @@ test.describe("Chat — write_file tag", () => {
     if (!ok) { test.skip(); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     await page.locator("[class*='chat-textarea']").fill(
       'Create a file called hello.py that prints "Hello World". Use the <write_file> tag.'
@@ -171,7 +134,7 @@ test.describe("Chat — write_file tag", () => {
     try {
       // Navigate to project chat — the project param must be in the URL
       await page.goto(`/chat?project=${project.id}`);
-      await page.waitForTimeout(1000);
+      await page.locator("select").first().waitFor({ state: "visible", timeout: 10_000 });
 
       // Re-select gateway/model
       const ok2 = await selectGatewayWithModel(page);
@@ -182,7 +145,7 @@ test.describe("Chat — write_file tag", () => {
       const hasProjectCtx = await projectBanner.isVisible({ timeout: 3000 }).catch(() => false);
 
       await page.getByRole("button", { name: /new chat/i }).click();
-      await page.waitForTimeout(300);
+      await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
       const marker = "e2e_write_" + Date.now();
       await page.locator("[class*='chat-textarea']").fill(
@@ -228,7 +191,7 @@ test.describe("Chat — write_file tag", () => {
     if (!ok) { test.skip(); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     await page.locator("[class*='chat-textarea']").fill(
       'Create a minimal HTML file called test.html with a heading "Test". Use <write_file>.'
