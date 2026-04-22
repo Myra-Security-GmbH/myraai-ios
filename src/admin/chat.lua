@@ -1082,6 +1082,14 @@ except Exception as e:
                     warning = "Image could not be analyzed — the model will see a placeholder instead of the actual content.",
                 })
             end
+            -- Very sparse extraction (< 50 chars): warn the user that the image
+            -- had little readable content, while still passing through what was found.
+            if #text < 50 then
+                return send(200, {
+                    text    = text,
+                    warning = "Only limited text could be extracted from this image — the model may not fully understand its visual content.",
+                })
+            end
             return send(200, { text = text })
         end
 

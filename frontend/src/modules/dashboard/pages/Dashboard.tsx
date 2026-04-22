@@ -230,7 +230,7 @@ function CacheEfficiencyCard({ data }: { data: CacheEfficiency }) {
       </div>
 
       {/* Cost summary footer */}
-      <div style={{ display: "flex", gap: 24, fontSize: 12, color: "var(--text-secondary)", borderTop: "1px solid var(--card-border)", paddingTop: 8 }}>
+      <div style={{ display: "flex", gap: 24, fontSize: 12, color: "var(--text-secondary)", borderTop: "1px solid var(--card-border)", paddingTop: 8, flexWrap: "wrap" }}>
         <span>
           Cached input cost: <strong style={{ color: "#10b981" }}>{fmtCost(cachedCost)}</strong>
           <span style={{ marginLeft: 4, opacity: 0.7 }}>(reads at 0.1× rate)</span>
@@ -239,6 +239,14 @@ function CacheEfficiencyCard({ data }: { data: CacheEfficiency }) {
           Uncached input cost: <strong style={{ color: "#f59e0b" }}>{fmtCost(uncachedCost)}</strong>
           <span style={{ marginLeft: 4, opacity: 0.7 }}>(writes + new tokens)</span>
         </span>
+        {(data.compaction_tokens_saved ?? 0) > 0 && (
+          <span style={{ marginLeft: "auto" }}>
+            🗜️ Compaction saved: <strong style={{ color: "#10b981" }}>{fmtTokens(data.compaction_tokens_saved)}</strong> tokens
+            {(data.compaction_cost_saved ?? 0) > 0 && (
+              <> · <strong style={{ color: "#10b981" }}>{fmtCost(data.compaction_cost_saved)}</strong></>
+            )}
+          </span>
+        )}
       </div>
     </div>
   );

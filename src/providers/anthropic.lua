@@ -122,6 +122,12 @@ end
 -- Attempting compaction below this causes a 400 error from the API.
 local ANTHROPIC_MIN_COMPACT_TOKENS = 50000
 
+-- Public alias so other modules (upstream.lua) can estimate token counts
+-- without duplicating the character-counting logic.
+function M.estimate_tokens_public(system, messages)
+    return estimate_tokens(system, messages)
+end
+
 -- Inject Anthropic's native compaction when context exceeds the gateway threshold.
 -- Sets ctx.compact_requested so build_headers can add the required beta header.
 local function maybe_inject_compaction(body, ctx)
@@ -133,7 +139,8 @@ local function maybe_inject_compaction(body, ctx)
     -- Guard: only trigger if above both our threshold AND Anthropic's API minimum.
     if estimated < threshold or estimated < ANTHROPIC_MIN_COMPACT_TOKENS then return end
     body.context_management = { type = "compact_20260112" }
-    ctx.compact_requested = true
+    ctx.compact_requested        = true
+    ctx.compaction_tokens_before = estimated  -- saved for savings calculation in log phase
     ngx.log(ngx.NOTICE,
         "[compaction] triggering: estimated_tokens=", estimated,
         " threshold=", threshold,

@@ -233,6 +233,8 @@ CREATE TABLE IF NOT EXISTS request_log (
     token_quota_remaining  DOUBLE,
     tenant_quota_remaining DOUBLE,
     trace_id               VARCHAR(36),
+    compaction_tokens_saved BIGINT  NOT NULL DEFAULT 0,
+    compaction_cost_saved   DOUBLE  NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     KEY idx_log_trace_id  (trace_id),
     KEY idx_log_tenant_ts  (tenant_id, ts),

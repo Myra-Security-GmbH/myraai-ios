@@ -70,6 +70,9 @@ function M.emit(ctx)
         scrub_applied          = ctx.log_fields and ctx.log_fields.scrub_applied or false,
         -- Request trace link
         trace_id               = ctx.trace_id,
+        -- Context compaction savings: tokens and cost saved vs uncompacted context
+        compaction_tokens_saved = ctx.compaction_tokens_saved or 0,
+        compaction_cost_saved   = ctx.compaction_cost_saved   or 0,
     }
 
     -- Merge any extra log fields added by other middleware (e.g. blocked_by, block_reason)

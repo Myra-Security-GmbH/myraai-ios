@@ -485,7 +485,9 @@ export interface CacheEfficiency {
   standard_input_tokens: number;   // tokens not cached at all (tiny new message tokens)
   uncached_cost_usd:     number;   // cost of cache writes + standard input (processed fresh)
   cached_cost_usd:       number;   // cost of cache reads only (served from cache)
-  cache_hit_pct:         number;   // cache_read / (write + read + standard) × 100
+  cache_hit_pct:            number;   // cache_read / (write + read + standard) × 100
+  compaction_tokens_saved:  number;   // tokens not sent due to context compaction
+  compaction_cost_saved:    number;   // cost equivalent of compacted tokens (at input price)
 }
 
 export interface AnalyticsDepth {

@@ -501,8 +501,9 @@ function M.insert_log(f)
              fallback_provider, fallback_model, provider_request_id,
              request_size_bytes, quota_remaining, user_id, token_label,
              detectors_fired, scrub_applied, response_raw, prompt_scrubbed,
-             token_quota_remaining, tenant_quota_remaining, trace_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             token_quota_remaining, tenant_quota_remaining, trace_id,
+             compaction_tokens_saved, compaction_cost_saved)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
@@ -534,7 +535,9 @@ function M.insert_log(f)
         f.prompt_scrubbed,
         f.token_quota_remaining,
         f.tenant_quota_remaining,
-        f.trace_id
+        f.trace_id,
+        f.compaction_tokens_saved or 0,
+        f.compaction_cost_saved   or 0
     )
     release(db)
     return e
@@ -1554,7 +1557,9 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
             ROUND(
                 COALESCE(SUM(r.cache_read_tokens), 0) * 100.0 /
                 NULLIF(SUM(r.cache_creation_tokens + r.cache_read_tokens + r.input_tokens), 0),
-            1) AS cache_hit_pct
+            1) AS cache_hit_pct,
+            COALESCE(SUM(r.compaction_tokens_saved), 0) AS compaction_tokens_saved,
+            ROUND(COALESCE(SUM(r.compaction_cost_saved), 0), 4) AS compaction_cost_saved
         FROM request_log r
         LEFT JOIN model_price mp ON mp.provider = r.provider AND mp.model = r.model
         WHERE r.provider = 'anthropic' AND r.status = 200 AND r.ts >= ?%s%s

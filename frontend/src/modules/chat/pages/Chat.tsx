@@ -281,6 +281,9 @@ export default function Chat() {
   const [inputValue, setInputValue] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+  // Tokens before the last compaction — passed as X-AIG-Compaction-Baseline so the
+  // gateway can log per-turn savings. Resets when the conversation changes.
+  const [compactionBaseline, setCompactionBaseline] = useState<number | null>(null);
 
   // ── Drag-and-drop ──────────────────────────────────────────────────────────
   const [isDragOver, setIsDragOver] = useState(false);
@@ -577,6 +580,7 @@ export default function Chat() {
   // ── Load conversation messages ─────────────────────────────────────────────
   async function loadConversation(id: string) {
     setGhostMode(false);
+    setCompactionBaseline(null); // reset per-conversation compaction baseline
     loadingConvRef.current = id;
     setArtifactMap(new Map());
     setActiveArtifactKey(null);
@@ -1036,6 +1040,7 @@ export default function Chat() {
     // Build content — plain text or content blocks if attachments
     let userContent: string;
     let hasSkill: string | null = null; // reserved for future skill-based providers
+    let attachmentWarning: string | null = null;
     if (pendingAttachments.length > 0) {
       const blocks: object[] = [{ type: "text", text }];
       const unsupported: string[] = [];
@@ -1060,7 +1065,7 @@ export default function Chat() {
                 extract_text: true,
               });
               description = res.text;
-              if (res.warning) setWarning(res.warning);
+              if (res.warning) attachmentWarning = res.warning;
             } catch (e) {
               setError("Failed to process image: " + String(e));
               return;
@@ -1199,7 +1204,7 @@ export default function Chat() {
     setInputValue("");
     setPendingAttachments([]);
     setError(null);
-    setWarning(null);
+    setWarning(attachmentWarning);
     focusInput();
 
     // Persist user message (skip in ghost mode)
@@ -1362,6 +1367,11 @@ export default function Chat() {
           : {}),
         ...(projectIdParam ? { "x-project-id": projectIdParam } : {}),
         ...(mcpToolsHeader ? { "x-mcp-tools": mcpToolsHeader } : {}),
+        // Tell the gateway how large the context was before compaction so it can
+        // compute and log per-turn token savings for the compaction impact report.
+        ...(compactionBaseline !== null
+          ? { "x-aig-compaction-baseline": String(compactionBaseline) }
+          : {}),
       }).filter(([, v]) => v !== undefined)
     ) as Record<string, string>;
 
@@ -1525,6 +1535,13 @@ export default function Chat() {
                 inputTokens  = (inputTokens  ?? 0) + (usage.prompt_tokens     ?? 0);
                 outputTokens = (outputTokens ?? 0) + (usage.completion_tokens ?? 0);
                 costUsd      = (costUsd      ?? 0) + (usage.cost_usd          ?? 0);
+              }
+              // Context compaction event — Anthropic summarised the conversation history.
+              // Store tokens_before as the baseline for future per-turn savings logging.
+              if (chunk?.aig_status === "compacted") {
+                const tokensBefore = chunk.tokens_before as number | undefined;
+                if (tokensBefore && tokensBefore > 0) setCompactionBaseline(tokensBefore);
+                setProcessingStatus("🗜️ Context compacted — summary saved");
               }
               // Gateway web-search status event (emitted by web_search.lua before fetching)
               if (chunk?.aig_status === "fetching") {

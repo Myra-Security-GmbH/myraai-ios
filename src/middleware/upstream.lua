@@ -297,11 +297,14 @@ local function handle_compat_streaming(ctx, res)
             }
         end
 
-        -- Forward compaction event to client so the UI can show a notice
+        -- Forward compaction event to client so the UI can show a notice.
+        -- Include tokens_before so the frontend can calculate per-turn savings
+        -- by passing X-AIG-Compaction-Baseline on subsequent requests.
         if parsed.compaction_summary then
             local compact_evt = "data: " .. json.encode({
                 aig_status          = "compacted",
                 compaction_summary  = parsed.compaction_summary,
+                tokens_before       = ctx.compaction_tokens_before or 0,
             }) .. "\n\n"
             ngx.print(compact_evt)
             ngx.flush(true)
@@ -802,6 +805,35 @@ end
 
 function M.run(ctx)
     -- (tool_loop no longer sets tool_loop_done — it streams through upstream)
+
+    -- Compaction savings: if the client sends X-AIG-Compaction-Baseline, it means
+    -- a prior compaction reduced the context from that token count to the current size.
+    -- We estimate the current context size and compute tokens_saved for the log phase.
+    local baseline_hdr = ngx.req.get_headers()["x-aig-compaction-baseline"]
+    if baseline_hdr then
+        local baseline = tonumber(baseline_hdr)
+        if baseline and baseline > 0 and ctx.provider == "anthropic" then
+            local anthropic = require("providers.anthropic")
+            local rb = ctx.request_body or {}
+            local actual_estimated = anthropic.estimate_tokens_public(rb.system, rb.messages)
+            local saved = math.max(0, baseline - actual_estimated)
+            if saved > 0 then
+                ctx.compaction_tokens_saved = saved
+                -- Price the savings using the model's input rate
+                local storage = require("storage")
+                local price = storage.get_model_pricing(ctx.provider, ctx.model)
+                if price and price.input_per_1k then
+                    ctx.compaction_cost_saved = (saved / 1000) * price.input_per_1k
+                end
+                ngx.log(ngx.INFO,
+                    "[compaction_savings] baseline=", baseline,
+                    " actual=", actual_estimated,
+                    " saved_tokens=", saved,
+                    " saved_usd=", tostring(ctx.compaction_cost_saved),
+                    " gateway=", tostring(ctx.gateway_id))
+            end
+        end
+    end
 
     -- pii_protector forces buffered mode for compat streaming requests so that
     -- the response phase can restore tokens before the client sees them.
