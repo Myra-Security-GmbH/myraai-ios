@@ -29,7 +29,7 @@ services:
       AIG_BOOTSTRAP_ADMIN_EMAIL: "${AIG_BOOTSTRAP_ADMIN_EMAIL}"
       # --- SMTP relay for OTP emails ---
       AIG_SMTP_HOST:            "${AIG_SMTP_HOST}"
-      AIG_SMTP_PORT:            "${AIG_SMTP_PORT:-587}"
+      AIG_SMTP_PORT:            "${AIG_SMTP_PORT:-25}"
       AIG_SMTP_USER:            "${AIG_SMTP_USER}"
       AIG_SMTP_PASS:            "${AIG_SMTP_PASS}"
       # --- optional: Google SSO ---

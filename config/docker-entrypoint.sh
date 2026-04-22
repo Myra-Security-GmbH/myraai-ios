@@ -3,7 +3,7 @@
 # Required env vars: AIG_MASTER_KEY, AIG_JWT_SECRET
 # Required when AIG_STORAGE=mysql: AIG_MYSQL_PASS
 # Optional SMTP:    AIG_SMTP_HOST, AIG_SMTP_USER, AIG_SMTP_PASS
-#                   AIG_SMTP_PORT (default 587), AIG_SMTP_FROM (default AIG_OTP_FROM_EMAIL)
+#                   AIG_SMTP_PORT (default 25), AIG_SMTP_FROM (default AIG_OTP_FROM_EMAIL)
 
 set -e
 
@@ -45,7 +45,7 @@ if [ "$_fail" = "1" ]; then
 fi
 
 SMTP_HOST="${AIG_SMTP_HOST:-}"
-SMTP_PORT="${AIG_SMTP_PORT:-587}"
+SMTP_PORT="${AIG_SMTP_PORT:-25}"
 SMTP_USER="${AIG_SMTP_USER:-}"
 SMTP_PASS="${AIG_SMTP_PASS:-}"
 SMTP_FROM="${AIG_SMTP_FROM:-${AIG_OTP_FROM_EMAIL:-noreply@localhost}}"
@@ -65,12 +65,11 @@ port           ${SMTP_PORT}
 from           ${SMTP_FROM}
 user           ${SMTP_USER}
 password       ${SMTP_PASS}
-source_ip      ::
 EOF
     chmod 644 /etc/msmtprc
 
     # Verify TCP connectivity to the SMTP relay so failures are visible at startup.
-    if curl -sf --max-time 5 --ipv6 "smtp://${SMTP_HOST}:${SMTP_PORT}" -o /dev/null 2>/dev/null; then
+    if curl -sf --max-time 5 "smtp://${SMTP_HOST}:${SMTP_PORT}" -o /dev/null 2>/dev/null; then
         echo "SMTP: relay ${SMTP_HOST}:${SMTP_PORT} reachable" >&2
     else
         echo "WARNING: cannot reach SMTP relay ${SMTP_HOST}:${SMTP_PORT} — OTP email delivery will fail" >&2
