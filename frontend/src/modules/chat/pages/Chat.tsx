@@ -29,7 +29,7 @@ import ChatInput, { type ChatInputHandle, type PendingAttachment } from "../comp
 import ConversationList from "../components/ConversationList";
 import MessageThread from "../components/MessageThread";
 import SettingsDrawer, { type DrawerSettings } from "../components/SettingsDrawer";
-import ArtifactPanel, { type Artifact } from "../components/ArtifactPanel";
+import ArtifactPanel, { type Artifact, type ArtifactTab } from "../components/ArtifactPanel";
 import { Modal } from "src/common/components/Modal";
 import { VariableFillModal } from "../components/VariableFillModal";
 import MemoriesPanel from "../components/MemoriesPanel";
@@ -318,14 +318,11 @@ export default function Chat() {
   const [guardrailWarning, setGuardrailWarning] = useState<string | null>(null);
 
   // ── Ghost mode — no DB writes, no request log ──────────────────────────────
-  const [ghostMode, setGhostMode] = useState<boolean>(() =>
-    localStorage.getItem("aig-chat-ghost") === "1"
-  );
+  const [ghostMode, setGhostMode] = useState(false);
 
   function toggleGhostMode() {
     const next = !ghostMode;
     setGhostMode(next);
-    localStorage.setItem("aig-chat-ghost", next ? "1" : "0");
     // A ghost conversation and a normal conversation cannot share state
     setActiveConvId(null);
     setMessages([]);
@@ -358,8 +355,69 @@ export default function Chat() {
   const [showFilesPanel, setShowFilesPanel] = useState(false);
   const [previewFileFromChat, setPreviewFileFromChat] = useState<ProjectKnowledgeText | null>(null);
 
-  // ── Artifact panel ─────────────────────────────────────────────────────────
-  const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
+  // ── Artifact panel — multi-tab + versioning ────────────────────────────────
+  // artifactMap: key → ordered array of versions (oldest first)
+  // artifactVersionIndex: key → currently viewed version index
+  const [artifactMap,          setArtifactMap]          = useState<Map<string, Artifact[]>>(new Map());
+  const [activeArtifactKey,    setActiveArtifactKey]    = useState<string | null>(null);
+  const [artifactVersionIndex, setArtifactVersionIndex] = useState<Map<string, number>>(new Map());
+
+  /** Called by ArtifactCard onClick — opens the artifact, version-stacking if key already exists. */
+  function handleOpenArtifact(artifact: Artifact) {
+    const key = artifact.key ?? artifact.filename ?? `${artifact.lang}:${artifact.code.trim().slice(0, 60)}`;
+    const tagged = { ...artifact, key };
+    // Use a single updater pass to avoid stale-closure issues between the two set calls.
+    // We compute the new version index from the CURRENT map inside setArtifactMap's updater,
+    // then flush setArtifactVersionIndex in the same batch.
+    let newVersionIndex = 0;
+    setArtifactMap(prev => {
+      const next     = new Map(prev);
+      const existing = next.get(key) ?? [];
+      const lastCode = existing[existing.length - 1]?.code;
+      if (lastCode === artifact.code) {
+        // Identical — no new version; keep current index
+        newVersionIndex = existing.length - 1;
+        return prev;
+      }
+      next.set(key, [...existing, tagged]);
+      newVersionIndex = existing.length; // index of the newly appended version
+      return next;
+    });
+    setArtifactVersionIndex(prev => {
+      const next = new Map(prev);
+      next.set(key, newVersionIndex);
+      return next;
+    });
+    setActiveArtifactKey(key);
+  }
+
+  /** Push an updated artifact as a new version (called by ArtifactPanel "Update Artifact"). */
+  function handleUpdateArtifact(updated: Artifact) {
+    const key = updated.key ?? activeArtifactKey;
+    if (!key) return;
+    const tagged = { ...updated, key };
+    let newIdx = 0;
+    setArtifactMap(prev => {
+      const next = new Map(prev);
+      const existing = next.get(key) ?? [];
+      next.set(key, [...existing, tagged]);
+      newIdx = existing.length; // index of the newly appended version
+      return next;
+    });
+    setArtifactVersionIndex(prev => {
+      const next = new Map(prev);
+      next.set(key, newIdx);
+      return next;
+    });
+  }
+
+  /** Build the ArtifactTab array for the panel from current state. */
+  const artifactTabs: ArtifactTab[] = Array.from(artifactMap.entries()).map(([key, versions]) => ({
+    key,
+    label: versions[0]?.filename ?? versions[0]?.lang?.toUpperCase() ?? key,
+    versions,
+    versionIndex: artifactVersionIndex.get(key) ?? versions.length - 1,
+  }));
 
   // ── Slash commands ─────────────────────────────────────────────────────────
   const [userCommands, setUserCommands] = useState<SlashCommand[]>([]);
@@ -491,11 +549,6 @@ export default function Chat() {
     ((gateways.find((g) => g.id === gatewayId) as any)?.configured_providers ?? []) as string[]
   );
 
-  // ── Web search availability + toggle ──────────────────────────────────────
-  const [webSearchOn, setWebSearchOn] = useState(true);
-  const selectedGateway = gateways.find((g) => g.id === gatewayId);
-  const webSearchAvailable = !!(selectedGateway?.config as any)?.web_search?.enabled;
-
   const freeProviders = new Set(providerMeta.filter((p) => !p.requires_key).map((p) => p.name));
   const runnableProviders = new Set<string>([...freeProviders, ...configuredProviders]);
 
@@ -522,8 +575,11 @@ export default function Chat() {
 
   // ── Load conversation messages ─────────────────────────────────────────────
   async function loadConversation(id: string) {
+    setGhostMode(false);
     loadingConvRef.current = id;
-    setActiveArtifact(null);
+    setArtifactMap(new Map());
+    setActiveArtifactKey(null);
+    setArtifactVersionIndex(new Map());
     setConversationSummaries([]);
     try {
       const conv = await api.get<ChatConversation>(`/conversations/${id}`);
@@ -564,6 +620,7 @@ export default function Chat() {
 
   // ── Create conversation ────────────────────────────────────────────────────
   async function createConversation() {
+    setGhostMode(false);
     if (!gatewayId) { setError("Select a gateway first"); return; }
     setCreating(true);
     try {
@@ -887,8 +944,8 @@ export default function Chat() {
       setShareProjectLoading(false);
     }
   }
-  async function sendMessage() {
-    const text = inputValue.trim();
+  async function sendMessage(overrideText?: string) {
+    const text = (overrideText ?? inputValue).trim();
     if (!text && pendingAttachments.length === 0) return;
 
     // Snapshot scope at send-time so auto-extracted <memory> tags are written to the
@@ -907,11 +964,14 @@ export default function Chat() {
     if (!effectiveGatewayId) { setError("Select a gateway first"); return; }
     if (!effectiveModel) { setError("Select a model first"); return; }
 
-    // Fetch token on-demand if the background effect hasn't completed yet
-    // (can happen when the user sends before the async refresh finishes on first load)
-    if (!playToken) {
-      const tok = await refreshToken(effectiveGatewayId);
-      if (!tok) { setError("No gateway token — select a gateway"); return; }
+    // Fetch token on-demand if the background effect hasn't completed yet.
+    // IMPORTANT: use the returned token directly — do NOT fall through to
+    // `let currentTok = playToken` below, because setPlayToken() is async
+    // and `playToken` in this closure is still null until the next render.
+    let currentTok: PlaygroundToken | null = playToken;
+    if (!currentTok) {
+      currentTok = await refreshToken(effectiveGatewayId);
+      if (!currentTok) { setError("No gateway token — select a gateway"); return; }
     }
 
     // Refresh token if expiring soon OR if it belongs to a different gateway
@@ -919,9 +979,8 @@ export default function Chat() {
     const tokenAge = tokenExpiresAt.current
       ? tokenExpiresAt.current.getTime() - Date.now()
       : null;
-    let currentTok: PlaygroundToken | null = playToken;
     const currentGateway = gateways.find((g) => g.id === effectiveGatewayId);
-    const tokenMismatch = currentGateway && playToken && playToken.gateway_slug !== currentGateway.slug;
+    const tokenMismatch = currentGateway && currentTok && currentTok.gateway_slug !== currentGateway.slug;
     const tokenExpiring = tokenAge !== null && tokenAge < 60_000;
     if (tokenMismatch || tokenExpiring) {
       currentTok = await refreshToken(effectiveGatewayId);
@@ -1188,7 +1247,7 @@ export default function Chat() {
       ? "## What I know about this project"
       : "## What I know about you";
     const memBlock = (!memoryDisabled && memories.length > 0)
-      ? `\n\n---\n${memHeader}\n` + memories.map(m => `- ${m.content}`).join("\n")
+      ? `\n\n---\n${memHeader}\nApply the following in your responses:\n` + memories.map(m => `- ${m.content}`).join("\n")
       : "";
     const memInstruction = !memoryDisabled
       ? (projectIdParam
@@ -1196,6 +1255,8 @@ export default function Chat() {
           : "\n\nWhen the user states a personal fact, preference, or instruction worth remembering across conversations, emit it exactly as:\n<memory type=\"fact|preference|instruction\">concise fact in third-person</memory>\nThis tag is invisible to the user. Use sparingly — only for durable facts.")
       : "";
     const systemContent = (drawerSettings.systemPrompt || "") + memBlock + memInstruction;
+    // Test hook: expose the system content for E2E inspection without HTTP body capture.
+    (window as unknown as Record<string, unknown>).__aig_last_system_content__ = systemContent;
 
     // Build the ID set of messages already covered by summaries so we can skip them
     const summarizedUpToIds = new Set(conversationSummaries.map((s) => s.last_message_id));
@@ -1292,7 +1353,7 @@ export default function Chat() {
         Authorization: `Bearer ${tok.token}`,
         ...(ghostMode ? { "x-aig-collect-log": "false" } : {}),
         ...(needsSkill ? { "x-aig-skill": needsSkill } : {}),
-        ...(webSearchAvailable && webSearchOn ? { "x-aig-web-search": "1" } : {}),
+        "x-aig-web-search": "1",
         ...(drawerSettings.thinkingBudget !== null
           ? { "x-aig-thinking-budget": String(drawerSettings.thinkingBudget) }
           : {}),
@@ -1749,21 +1810,15 @@ export default function Chat() {
   }
 
   // ── Regenerate last response ───────────────────────────────────────────────
-  async function regenerate() {
+  async function regenerate(reason?: string) {
     if (!activeConvId || messages.length === 0) return;
     const last = messages[messages.length - 1];
     if (last.role !== "assistant") return;
-    // Remove last assistant message and re-send
     await api.delete(`/conversations/${activeConvId}/messages/${last.id}`).catch(() => {});
     setMessages((prev) => prev.slice(0, -1));
-    // Re-trigger send with last user message (no new input text, just history)
-    const userMsg = [...messages].reverse().find((m) => m.role === "user");
-    if (!userMsg) return;
-    setInputValue(""); // user message already in history
-    // Just re-run inference with current history minus the removed assistant message
-    // This is done by calling sendMessage with empty input but the history is already set
-    // We need to trigger the streaming directly here
-    await sendMessage();
+    // Pass the reason directly to sendMessage to avoid the stale-closure problem
+    // that arises when setting inputValue then immediately calling sendMessage.
+    await sendMessage(reason);
   }
 
   // ── Save settings to active conversation ──────────────────────────────────
@@ -1982,17 +2037,7 @@ export default function Chat() {
           </button>
         )}
 
-        {webSearchAvailable && (
-          <button
-            className={chatS["icon-btn"]}
-            title={webSearchOn ? "Web Search ON — click to disable" : "Web Search OFF — click to enable"}
-            onClick={() => setWebSearchOn((v) => !v)}
-            style={webSearchOn ? { color: "var(--accent, #0052cc)", opacity: 1 } : {}}
-            data-cy="web-search-toggle"
-          >
-            🔎
-          </button>
-        )}
+
 
         <button
           className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
@@ -2017,6 +2062,23 @@ export default function Chat() {
             disabled={!activeConvId}
           >
             <FlagIcon />
+          </button>
+        )}
+
+        {supportsThinking && (
+          <button
+            className={chatS["icon-btn"]}
+            title={drawerSettings.thinkingBudget !== null
+              ? `Extended thinking ON (${(drawerSettings.thinkingBudget / 1000).toFixed(0)}k tokens) — click to disable`
+              : "Enable extended thinking"}
+            onClick={() => setDrawerSettings(s => ({
+              ...s,
+              thinkingBudget: s.thinkingBudget !== null ? null : 10000,
+            }))}
+            style={drawerSettings.thinkingBudget !== null ? { color: "var(--accent, #0052cc)", opacity: 1 } : {}}
+            data-cy="thinking-toggle-toolbar"
+          >
+            💡
           </button>
         )}
 
@@ -2253,23 +2315,36 @@ export default function Chat() {
               streamingThinkingDurationMs={activeConvId === streamingConvId ? streamingThinkingDurationMs : null}
               projectId={projectIdParam}
               onFileSaved={projectIdParam ? handleFileSaved : null}
-              onOpenArtifact={setActiveArtifact}
+              onOpenArtifact={handleOpenArtifact}
               onCopy={copyToClipboard}
               onEdit={editMessage}
               onRegenerate={regenerate}
               activeProject={activeProject}
               projectKnowledge={projectKnowledge}
             />
-            {activeArtifact && (
+            {artifactTabs.length > 0 && activeArtifactKey && (
               <ArtifactPanel
-                artifact={activeArtifact}
+                tabs={artifactTabs}
+                activeKey={activeArtifactKey}
+                onTabSelect={setActiveArtifactKey}
+                onTabClose={(key) => {
+                  setArtifactMap(prev => { const n = new Map(prev); n.delete(key); return n; });
+                  setArtifactVersionIndex(prev => { const n = new Map(prev); n.delete(key); return n; });
+                  setActiveArtifactKey(prev => {
+                    if (prev !== key) return prev;
+                    const remaining = artifactTabs.filter(t => t.key !== key);
+                    return remaining[remaining.length - 1]?.key ?? null;
+                  });
+                }}
+                onVersionNav={(key, idx) => setArtifactVersionIndex(prev => new Map(prev).set(key, idx))}
                 isStreaming={isStreaming && activeConvId === streamingConvId}
-                onClose={() => setActiveArtifact(null)}
+                onClose={() => { setArtifactMap(new Map()); setActiveArtifactKey(null); setArtifactVersionIndex(new Map()); }}
                 projectId={projectIdParam ?? undefined}
                 onSave={projectIdParam ? handleFileSaved : undefined}
-                onUpdateArtifact={setActiveArtifact}
+                onUpdateArtifact={handleUpdateArtifact}
                 onSendRevision={(filename, code, instruction) => {
-                  const lang = activeArtifact.lang;
+                  const activeTab = artifactTabs.find(t => t.key === activeArtifactKey);
+                  const lang = activeTab?.versions[0]?.lang ?? "text";
                   const msg = `Re: \`${filename}\`\n\n\`\`\`${lang}\n${code}\n\`\`\`\n\n${instruction}`;
                   setInputValue(msg);
                   chatInputRef.current?.focus();

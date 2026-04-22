@@ -3,26 +3,34 @@ import { api } from "src/api/client";
 import s from "./ArtifactPanel.module.scss";
 
 export interface Artifact {
-  lang: string;       // any language — "html", "svg", "python", "typescript", etc.
+  lang: string;
   code: string;
   complete: boolean;
-  filename?: string;  // the detected filename, e.g. "utils.py"
+  filename?: string;
+  /** Stable key for versioning — derived from filename or lang+code prefix */
+  key?: string;
+}
+
+export interface ArtifactTab {
+  key: string;
+  label: string;        // filename or LANG — shown in the tab
+  versions: Artifact[]; // index 0 = oldest, last = newest
+  versionIndex: number; // which version is currently shown
 }
 
 interface Props {
-  artifact: Artifact;
+  tabs: ArtifactTab[];
+  activeKey: string | null;
+  onTabSelect: (key: string) => void;
+  onTabClose: (key: string) => void;
+  onVersionNav: (key: string, index: number) => void;
   isStreaming?: boolean;
   onClose: () => void;
-  /** When set, a "Save to Project" button appears in the header */
   projectId?: string;
   onSave?: (filename: string, content: string, lang: string) => void;
-  /** Called when user clicks "Update Artifact" — updates parent state */
-  onUpdateArtifact?: (updated: Artifact) => void;
-  /** Called when user clicks "Ask Claude to Revise" — sends message to chat */
+  onUpdateArtifact?: (artifact: Artifact) => void;
   onSendRevision?: (filename: string, code: string, instruction: string) => void;
 }
-
-/* ── SVG icons ──────────────────────────────────────────────────────────── */
 
 function CloseIcon() {
   return (
@@ -105,7 +113,6 @@ function guessMimeType(lang: string, filename?: string): string {
   return map[ext] ?? "text/plain";
 }
 
-/** Build srcdoc for iframe — wraps SVG in minimal HTML, renders markdown */
 function buildSrcdoc(code: string, lang: string): string {
   if (lang === "svg") {
     return (
@@ -116,7 +123,6 @@ function buildSrcdoc(code: string, lang: string): string {
     );
   }
   if (lang === "md" || lang === "markdown") {
-    // Minimal markdown → HTML: headers, bold, italic, code, lists, links, paragraphs
     const escaped = code
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const html = escaped
@@ -145,9 +151,7 @@ function openInNewTab(srcdoc: string) {
   const blob = new Blob([srcdoc], { type: "text/html" });
   const url = URL.createObjectURL(blob);
   const win = window.open(url, "_blank");
-  if (win) {
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  }
+  if (win) setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 function downloadArtifact(code: string, lang: string, filename?: string) {
@@ -162,47 +166,49 @@ function downloadArtifact(code: string, lang: string, filename?: string) {
 }
 
 export default function ArtifactPanel({
-  artifact, isStreaming, onClose, projectId, onSave,
-  onUpdateArtifact, onSendRevision,
+  tabs, activeKey, onTabSelect, onTabClose, onVersionNav,
+  isStreaming, onClose, projectId, onSave, onUpdateArtifact, onSendRevision,
 }: Props) {
-  const generating = isStreaming && !artifact.complete;
-  const canPreview = PREVIEW_LANGS.has(artifact.lang.toLowerCase());
+  const activeTab  = tabs.find(t => t.key === activeKey) ?? tabs[0] ?? null;
+  const versions   = activeTab?.versions ?? [];
+  const versionIdx = activeTab ? Math.max(0, Math.min(activeTab.versionIndex, versions.length - 1)) : 0;
+  const artifact   = versions[versionIdx] ?? null;
 
-  // ── Edit state ───────────────────────────────────────────────────────────
-  const [editedCode, setEditedCode] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"code" | "split" | "preview">(canPreview ? "split" : "code");
-  const [showReviseInput, setShowReviseInput] = useState(false);
-  const [revisePrompt, setRevisePrompt] = useState("");
+  const generating = !!(isStreaming && artifact && !artifact.complete);
+  const canPreview = artifact ? PREVIEW_LANGS.has(artifact.lang.toLowerCase()) : false;
+
+  const [editedCode, setEditedCode]             = useState<string | null>(null);
+  const [viewMode, setViewMode]                 = useState<"code" | "split" | "preview">("split");
+  const [showReviseInput, setShowReviseInput]   = useState(false);
+  const [revisePrompt, setRevisePrompt]         = useState("");
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const isDirty = editedCode !== null && editedCode !== artifact.code;
-  const displayCode = editedCode ?? artifact.code;
+  const isDirty     = editedCode !== null && artifact != null && editedCode !== artifact.code;
+  const displayCode = editedCode ?? artifact?.code ?? "";
 
-  // ── Header state ─────────────────────────────────────────────────────────
   const [codeCopied, setCodeCopied] = useState(false);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveState, setSaveState]   = useState<"idle" | "saving" | "saved" | "error">("idle");
 
-  const langLabel = artifact.lang.toUpperCase();
-  const displayName = artifact.filename ?? langLabel;
+  const langLabel   = artifact?.lang.toUpperCase() ?? "";
+  const displayName = artifact?.filename ?? langLabel;
 
-  // ── beforeunload guard ───────────────────────────────────────────────────
+  // Reset edit state when active artifact or version changes
+  useEffect(() => {
+    setEditedCode(null);
+    setShowReviseInput(false);
+    setRevisePrompt("");
+    setShowDiscardConfirm(false);
+    setViewMode(canPreview ? "split" : "code");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artifact?.code, artifact?.filename, activeKey, versionIdx]);
+
   useEffect(() => {
     if (!isDirty) return;
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
-
-  // Reset edit state when artifact changes (e.g. user clicks a different artifact card)
-  useEffect(() => {
-    setEditedCode(null);
-    setShowReviseInput(false);
-    setRevisePrompt("");
-    setShowDiscardConfirm(false);
-  }, [artifact.code, artifact.filename]);
-
-  // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(displayCode);
@@ -211,7 +217,7 @@ export default function ArtifactPanel({
   }, [displayCode]);
 
   const handleSaveToProject = useCallback(async () => {
-    if (!projectId || !artifact.filename) return;
+    if (!projectId || !artifact?.filename) return;
     setSaveState("saving");
     try {
       const mime = guessMimeType(artifact.lang, artifact.filename);
@@ -229,21 +235,20 @@ export default function ArtifactPanel({
     }
   }, [projectId, artifact, displayCode, onSave]);
 
-  function handleTabKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function handleTabKeyPress(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Tab") {
       e.preventDefault();
       const ta = e.currentTarget;
       const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      const val = ta.value;
-      const newVal = val.substring(0, start) + "  " + val.substring(end);
+      const end   = ta.selectionEnd;
+      const newVal = ta.value.substring(0, start) + "  " + ta.value.substring(end);
       setEditedCode(newVal);
       requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2; });
     }
   }
 
   function handleUpdate() {
-    if (!isDirty || !onUpdateArtifact) return;
+    if (!isDirty || !onUpdateArtifact || !artifact) return;
     onUpdateArtifact({ ...artifact, code: displayCode });
     setEditedCode(null);
   }
@@ -255,7 +260,7 @@ export default function ArtifactPanel({
   }
 
   function handleSendRevision() {
-    if (!onSendRevision || !revisePrompt.trim()) return;
+    if (!onSendRevision || !revisePrompt.trim() || !artifact) return;
     onSendRevision(artifact.filename ?? langLabel, displayCode, revisePrompt.trim());
     setShowReviseInput(false);
     setRevisePrompt("");
@@ -272,16 +277,15 @@ export default function ArtifactPanel({
     onClose();
   }
 
-  // ── Debounced preview srcdoc ─────────────────────────────────────────────
   const [debouncedCode, setDebouncedCode] = useState(displayCode);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedCode(displayCode), 300);
     return () => clearTimeout(t);
   }, [displayCode]);
 
-  const srcdoc = buildSrcdoc(debouncedCode, artifact.lang.toLowerCase());
+  if (!artifact) return null;
 
-  // ── Render helpers ───────────────────────────────────────────────────────
+  const srcdoc = buildSrcdoc(debouncedCode, artifact.lang.toLowerCase());
 
   const codeView = (
     <div className={s.codeBody}>
@@ -293,7 +297,7 @@ export default function ArtifactPanel({
         className={s.editArea}
         value={displayCode}
         onChange={(e) => setEditedCode(e.target.value)}
-        onKeyDown={handleTabKey}
+        onKeyDown={handleTabKeyPress}
         spellCheck={false}
         autoComplete="off"
         readOnly={generating}
@@ -312,10 +316,42 @@ export default function ArtifactPanel({
   );
 
   return (
-    <div className={s.panel}>
+    <div className={s.panel} data-cy="artifact-panel">
+
+      {/* ── Multi-artifact tab bar ───────────────────────────────────────── */}
+      {tabs.length > 1 && (
+        <div className={s.tabBar} role="tablist" aria-label="Open artifacts" data-cy="artifact-tab-bar">
+          {tabs.map(tab => (
+            <div
+              key={tab.key}
+              role="tab"
+              aria-selected={tab.key === activeKey}
+              className={`${s.artifactTab} ${tab.key === activeKey ? s["artifactTab--active"] : ""}`}
+              onClick={() => onTabSelect(tab.key)}
+              data-cy={`artifact-tab`}
+              title={tab.label}
+            >
+              <span className={s.artifactTabLabel}>{tab.label}</span>
+              {tab.versions.length > 1 && (
+                <span className={s.artifactTabBadge} title={`${tab.versions.length} versions`}>
+                  {tab.versions.length}
+                </span>
+              )}
+              <button
+                className={s.artifactTabClose}
+                onClick={(e) => { e.stopPropagation(); onTabClose(tab.key); }}
+                title={`Close ${tab.label}`}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className={s.header}>
-        {/* Mobile back button */}
         <button className={s.mobileBack} onClick={handleClose} title="Back">
           <BackIcon />
         </button>
@@ -325,8 +361,37 @@ export default function ArtifactPanel({
           {isDirty && <span className={s.dirtyDot} />}
         </span>
         {generating && <span className={s.generating}>Generating...</span>}
+
+        {/* Version navigation */}
+        {versions.length > 1 && (
+          <div className={s.versionNav} data-cy="version-nav">
+            <button
+              className={s.versionBtn}
+              onClick={() => activeKey && onVersionNav(activeKey, versionIdx - 1)}
+              disabled={versionIdx === 0}
+              title="Previous version"
+              type="button"
+              data-cy="version-prev"
+            >
+              ‹
+            </button>
+            <span className={s.versionLabel} data-cy="version-label">
+              v{versionIdx + 1}/{versions.length}
+            </span>
+            <button
+              className={s.versionBtn}
+              onClick={() => activeKey && onVersionNav(activeKey, versionIdx + 1)}
+              disabled={versionIdx === versions.length - 1}
+              title="Next version"
+              type="button"
+              data-cy="version-next"
+            >
+              ›
+            </button>
+          </div>
+        )}
+
         <div className={s.actions}>
-          {/* Save to Project */}
           {projectId && artifact.filename && !generating && (
             <button
               className={`${s.actionBtn} ${s.saveBtn}`}
@@ -335,39 +400,36 @@ export default function ArtifactPanel({
               disabled={saveState === "saving" || saveState === "saved"}
               data-cy="panel-save-btn"
             >
-              {saveState === "saved" ? "\u2713" : saveState === "error" ? "\u2717" : <SaveIcon />}
+              {saveState === "saved" ? "✓" : saveState === "error" ? "✗" : <SaveIcon />}
             </button>
           )}
-          {/* Download */}
           {!generating && (
             <button className={s.actionBtn} title="Download" onClick={() => downloadArtifact(displayCode, artifact.lang, artifact.filename)} data-cy="panel-download-btn">
               <DownloadIcon />
             </button>
           )}
-          {/* Open in new tab (preview modes) */}
           {canPreview && !generating && viewMode !== "code" && (
             <button className={s.actionBtn} title="Open in new tab" onClick={() => openInNewTab(srcdoc)}>
               <PopoutIcon />
             </button>
           )}
-          <button className={`${s.actionBtn} ${s.desktopOnly}`} title="Close" onClick={handleClose}>
+          <button
+            className={`${s.actionBtn} ${s.desktopOnly}`}
+            title={tabs.length > 1 ? `Close ${displayName}` : "Close"}
+            onClick={() => tabs.length > 1 && activeKey ? onTabClose(activeKey) : handleClose()}
+            data-cy="panel-close-btn"
+          >
             <CloseIcon />
           </button>
         </div>
       </div>
 
-      {/* ── View mode tabs (segmented control) ──────────────────────────── */}
+      {/* ── Code / Split / Preview mode tabs ────────────────────────────── */}
       {canPreview && (
         <div className={s.tabs}>
-          <button className={`${s.tab} ${viewMode === "code" ? s["tab--active"] : ""}`} onClick={() => setViewMode("code")} type="button">
-            Code
-          </button>
-          <button className={`${s.tab} ${viewMode === "split" ? s["tab--active"] : ""}`} onClick={() => setViewMode("split")} type="button">
-            Split
-          </button>
-          <button className={`${s.tab} ${viewMode === "preview" ? s["tab--active"] : ""}`} onClick={() => setViewMode("preview")} type="button">
-            Preview
-          </button>
+          <button className={`${s.tab} ${viewMode === "code"    ? s["tab--active"] : ""}`} onClick={() => setViewMode("code")}    type="button">Code</button>
+          <button className={`${s.tab} ${viewMode === "split"   ? s["tab--active"] : ""}`} onClick={() => setViewMode("split")}   type="button">Split</button>
+          <button className={`${s.tab} ${viewMode === "preview" ? s["tab--active"] : ""}`} onClick={() => setViewMode("preview")} type="button">Preview</button>
         </div>
       )}
 
@@ -390,7 +452,7 @@ export default function ArtifactPanel({
         )}
       </div>
 
-      {/* ── Footer bar — actions when dirty ─────────────────────────────── */}
+      {/* ── Footer — edit actions ────────────────────────────────────────── */}
       {isDirty && !showReviseInput && !generating && (
         <div className={s.footer}>
           <button className={s.revertBtn} onClick={handleRevert} type="button">Revert</button>
@@ -409,7 +471,6 @@ export default function ArtifactPanel({
         </div>
       )}
 
-      {/* ── Revision prompt input ───────────────────────────────────────── */}
       {showReviseInput && (
         <div className={s.footer}>
           <input
@@ -417,7 +478,10 @@ export default function ArtifactPanel({
             placeholder="Tell Claude what to change..."
             value={revisePrompt}
             onChange={(e) => setRevisePrompt(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && revisePrompt.trim()) handleSendRevision(); if (e.key === "Escape") setShowReviseInput(false); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && revisePrompt.trim()) handleSendRevision();
+              if (e.key === "Escape") setShowReviseInput(false);
+            }}
             autoFocus
           />
           <button className={s.updateBtn} onClick={handleSendRevision} disabled={!revisePrompt.trim()} type="button">Send</button>
@@ -425,7 +489,6 @@ export default function ArtifactPanel({
         </div>
       )}
 
-      {/* ── Discard confirmation popover ─────────────────────────────────── */}
       {showDiscardConfirm && (
         <div className={s.discardOverlay} onClick={() => setShowDiscardConfirm(false)}>
           <div className={s.discardPopover} onClick={(e) => e.stopPropagation()}>
