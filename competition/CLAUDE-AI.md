@@ -509,18 +509,18 @@ Features we ship that Claude.ai does not offer:
 | **Projects** (grouping, knowledge base, shared instructions) | ✅ | ✅ | critical | ~~15–20 d~~ shipped |
 | **Slash commands** (per-message prompt templates) | ✅ | ✅ (tenant-wide) | high | ~~4 d~~ shipped |
 | **Ghost mode** (ephemeral no-log chat) | ❌ | ✅ | medium | shipped — our differentiator |
+| **Memory system** (auto + manual, cross-conversation) | ✅ | ✅ | high | ~~8–10 d~~ shipped |
+| **Conversation share links** | ✅ | ✅ | high | ~~4 d~~ shipped |
+| **Conversation starring + archiving** | ✅ | ✅ | medium | ~~2 d~~ shipped |
+| **Extended thinking toggle** | ✅ | ✅ | medium | ~~2 d~~ shipped |
+| **Semantic conversation search** | ✅ | ✅ | medium | ~~5 d~~ shipped |
 | **External integrations** (GitHub, Drive, Jira…) | ✅ | ❌ | high | 10–15 d each |
 | **MCP server connections** | ✅ | ❌ | high | 5 d |
-| **Memory system** (auto + manual, cross-conversation) | ✅ | ❌ | high | 8–10 d |
 | **Multiple artifacts + persistence** | ✅ | partial | high | 3 d |
 | **Artifact versioning** | ✅ | ❌ | high | 2 d |
 | **Artifact inline editing** | ✅ | ❌ | high | 3 d |
 | **React component rendering** | ✅ | ❌ | medium | 4 d |
-| **Conversation share links** | ✅ | ❌ | high | 4 d |
 | **Cowork (real-time collaboration)** | ✅ | ❌ | high | 8–10 d |
-| **Extended thinking toggle** | ✅ | partial | medium | 2 d |
-| **Conversation starring + archiving** | ✅ | ❌ | medium | 2 d |
-| **Semantic conversation search** | ✅ | ❌ | medium | 5 d |
 | **Message branching** | ✅ | ❌ | medium | 6–8 d |
 | **Per-message feedback** | ✅ | ❌ | low–medium | 2 d |
 | **Reason-annotated regeneration** | ✅ | ❌ | low | 1 d |
@@ -532,20 +532,20 @@ Features we ship that Claude.ai does not offer:
 
 ### Priority order for implementation
 
-**Phase 1 — Structural (highest ROI, unblocks everything else):**
+**Phase 1 — Structural:** ✅ **COMPLETE**
 1. ~~Projects (~15–20 d)~~ ✅ **SHIPPED**
-2. Memory (~8–10 d) — personalization; high user satisfaction delta; reuses existing embedding infrastructure
+2. ~~Memory (~8–10 d)~~ ✅ **SHIPPED**
 
-**Phase 2 — Collaboration and discovery:**
-3. Conversation share links (~4 d) — viral growth driver; minimal backend complexity
+**Phase 2 — Collaboration and discovery:** ✅ **COMPLETE**
+3. ~~Conversation share links (~4 d)~~ ✅ **SHIPPED**
 4. ~~Slash commands (~4 d)~~ ✅ **SHIPPED** (tenant-wide; per-user personal commands still outstanding)
-5. Starring + archiving (~2 d) — essential housekeeping for growing history
-6. Semantic search (~5 d) — unlocks the value of stored conversation history
+5. ~~Starring + archiving (~2 d)~~ ✅ **SHIPPED**
+6. ~~Semantic search (~5 d)~~ ✅ **SHIPPED**
+7. ~~Extended thinking toggle (~2 d)~~ ✅ **SHIPPED**
 
 **Phase 3 — Artifact and interaction depth:**
-7. Multi-artifact panel + versioning (~5 d combined)
-8. Artifact inline editing (~3 d)
-9. Extended thinking toggle (~2 d) — almost free given existing rendering
+8. Multi-artifact panel + versioning (~5 d combined)
+9. Artifact inline editing (~3 d)
 10. Message branching (~6–8 d)
 
 **Phase 4 — Integrations and agent workflows:**
@@ -555,5 +555,5 @@ Features we ship that Claude.ai does not offer:
 14. Agent task panel (~20–30 d) — long runway; begin architecture now
 
 **Total estimated effort to reach feature parity with Claude.ai web:**
-~~130–160~~ now **~110–130 engineering-days** (Projects + Slash Commands shipped).
-~~60–70~~ now **~45–50 days** to reach the most impactful scope (Memory + Sharing + Artifacts + remaining gaps).
+~~130–160~~ → ~~110–130~~ → now **~85–100 engineering-days** remaining.
+~~60–70~~ → ~~45–50~~ → now **~25–30 days** to reach the most impactful remaining scope (Artifacts + Integrations).
