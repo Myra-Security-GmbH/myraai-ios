@@ -124,6 +124,17 @@ local function call_provider(ctx, provider_name, model, is_streaming)
     ctx.provider = provider_name
     ctx.model    = model
 
+    -- Align ctx.request_body.stream with is_streaming before build_request so the
+    -- provider request body carries the correct stream flag.  This is critical for
+    -- the pii_force_buffered path where the client sent stream:true but upstream
+    -- must make a buffered call — without this, build_request forwards stream:true
+    -- to the provider and gets back an SSE stream instead of JSON.
+    local orig_rb_stream
+    if ctx.request_body then
+        orig_rb_stream          = ctx.request_body.stream
+        ctx.request_body.stream = is_streaming or false
+    end
+
     local url     = provider_mod.base_url(ctx)
     -- Allow per-gateway base URL override (used by tests to point at mock provider)
     local overrides = ctx.gateway_config.provider_base_urls
@@ -138,6 +149,11 @@ local function call_provider(ctx, provider_name, model, is_streaming)
         if ok then headers["traceparent"] = tracer.traceparent(ctx) end
     end
     local body    = provider_mod.build_request(ctx)
+
+    -- Restore stream flag so the rest of the pipeline sees the original value
+    if ctx.request_body then
+        ctx.request_body.stream = orig_rb_stream
+    end
 
     ctx.provider = orig_provider
     ctx.model    = orig_model
@@ -489,6 +505,28 @@ local function handle_compat_streaming(ctx, res)
         done_sent     = done_sent,
     })
 
+    -- Store streaming results in ctx for tool_loop to inspect
+    ctx.stream_accumulated_content = accumulated_content
+    ctx.stream_stop_reason         = stop_reason_seen
+    ctx.stream_input_tokens        = input_tokens
+    ctx.stream_output_tokens       = output_tokens
+    ctx.stream_pending_tool_calls  = #pending_tool_calls > 0 and pending_tool_calls or nil
+
+    -- When tool_loop is active and the model returned tool_use, suppress [DONE]
+    -- so tool_loop can execute tools and continue streaming in the same response.
+    if ctx.tool_loop_active and (stop_reason_seen == "tool_use" or stop_reason_seen == "tool_calls")
+       and #pending_tool_calls > 0 then
+        ngx.log(ngx.NOTICE, "[stream_tool_pause] tool_use detected, pausing for tool_loop"
+            .. " | provider=", res.provider_name
+            .. " | tools=", (function()
+                local names = {}
+                for _, tc in ipairs(pending_tool_calls) do names[#names+1] = tc.name end
+                return table.concat(names, ",")
+            end)())
+        -- Don't send [DONE] — tool_loop will continue the stream
+        return
+    end
+
     -- #8: only emit [DONE] when the stream completed without a read error
     if not stream_errored then
         ngx.print("data: [DONE]\n\n")
@@ -751,8 +789,7 @@ function M.call_one(ctx)
 end
 
 function M.run(ctx)
-    -- web_search / url_fetch middleware sets this when it already handled the full response
-    if ctx.web_search_done or ctx.url_fetch_done then return end
+    -- (tool_loop no longer sets tool_loop_done — it streams through upstream)
 
     -- pii_protector forces buffered mode for compat streaming requests so that
     -- the response phase can restore tokens before the client sees them.
@@ -994,6 +1031,75 @@ function M.run(ctx)
             if is_streaming then
                 if ctx.is_compat then
                     handle_compat_streaming(ctx, res)
+
+                    -- Server-side tool loop: after Leg 1 streaming, if tool_use
+                    -- was detected and tool_loop is active, execute tools and
+                    -- stream Leg 2+ in the same HTTP response.
+                    if ctx.tool_loop_active and ctx.stream_pending_tool_calls then
+                        local tool_loop = require("middleware.tool_loop")
+                        local max_rounds = 10
+                        for round = 2, max_rounds do
+                            local tool_calls = ctx.stream_pending_tool_calls
+                            ctx.stream_pending_tool_calls = nil
+
+                            -- Execute each tool
+                            local results = {}
+                            for i, tc in ipairs(tool_calls) do
+                                local tc_input = {}
+                                pcall(function() tc_input = json.decode(table.concat(tc.input_parts)) end)
+                                ngx.log(ngx.NOTICE, "[tool_loop_stream] executing tool=", tc.name,
+                                    " round=", round)
+
+                                -- Emit status event
+                                local status_evt = json.encode({
+                                    aig_status = "tool_call",
+                                    tool       = tc.name,
+                                    args       = tc_input,
+                                    round      = round,
+                                })
+                                ngx.print("data: " .. status_evt .. "\n\n")
+                                ngx.flush(true)
+
+                                results[i] = tool_loop.execute_tool(ctx, {
+                                    id = tc.id, name = tc.name, input = tc_input,
+                                })
+
+                                -- Emit result event
+                                local result_evt = json.encode({
+                                    aig_status = "tool_result",
+                                    tool       = tc.name,
+                                    chars      = results[i] and #results[i] or 0,
+                                    round      = round,
+                                })
+                                ngx.print("data: " .. result_evt .. "\n\n")
+                                ngx.flush(true)
+                            end
+
+                            -- Inject results into messages
+                            tool_loop.inject_results_from_stream(ctx, tool_calls, results)
+
+                            -- Make next provider call (streaming)
+                            local next_res, next_err = call_provider(
+                                ctx, ctx.provider, ctx.model, true)
+                            if not next_res or next_res.status >= 400 then
+                                ngx.log(ngx.WARN, "[tool_loop_stream] leg ", round,
+                                    " failed: ", tostring(next_err or next_res and next_res.status))
+                                break
+                            end
+
+                            -- Stream Leg N response
+                            handle_compat_streaming(ctx, next_res)
+
+                            -- Check if another round of tool_use happened
+                            if not ctx.stream_pending_tool_calls then
+                                break  -- final answer streamed
+                            end
+                        end
+                    end
+
+                    -- Send [DONE] (was suppressed during tool_loop rounds)
+                    ngx.print("data: [DONE]\n\n")
+                    ngx.flush(true)
                 else
                     handle_streaming(ctx, res)
                 end

@@ -44,6 +44,7 @@ local function reemit_as_sse(ctx)
         choices = {{ index = 0, delta = { role = "assistant", content = "" },
                      finish_reason = json.null }},
     }) .. "\n\n")
+    ngx.flush(true)
 
     -- content delta
     if content ~= "" then
@@ -54,6 +55,7 @@ local function reemit_as_sse(ctx)
             choices = {{ index = 0, delta = { content = content },
                          finish_reason = json.null }},
         }) .. "\n\n")
+        ngx.flush(true)
     end
 
     -- usage chunk
@@ -64,6 +66,7 @@ local function reemit_as_sse(ctx)
             model  = model,
             usage  = usage,
         }) .. "\n\n")
+        ngx.flush(true)
     end
 
     -- stop delta
@@ -73,6 +76,7 @@ local function reemit_as_sse(ctx)
         model   = model,
         choices = {{ index = 0, delta = {}, finish_reason = "stop" }},
     }) .. "\n\n")
+    ngx.flush(true)
 
     ngx.print("data: [DONE]\n\n")
     ngx.flush(true)

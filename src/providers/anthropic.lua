@@ -155,6 +155,9 @@ function M.build_request(ctx)
                     elseif block.type == "document" or block.type == "text" then
                         -- Pass text and document blocks through as-is
                         ant_blocks[#ant_blocks + 1] = block
+                    elseif block.type == "tool_use" or block.type == "tool_result" then
+                        -- Already Anthropic-format (injected by tool_loop after streaming Leg 1)
+                        ant_blocks[#ant_blocks + 1] = block
                     end
                 end
                 content = ant_blocks

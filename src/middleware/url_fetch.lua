@@ -200,8 +200,9 @@ local function last_user_message_has_url(ctx)
 end
 
 function M.run(ctx)
-    -- Skip if web_search already handled this request
+    -- Skip if web_search or tool_loop already handled this request
     if ctx.web_search_done or ctx.web_search_leg2 then return end
+    if ctx.tool_loop_done or ctx.tool_loop_leg2 then return end
 
     local provider = ctx.provider
     if not provider then return end

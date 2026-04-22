@@ -178,6 +178,9 @@ end
 -- ── Main ─────────────────────────────────────────────────────────────────────
 
 function M.run(ctx)
+    -- Skip if tool_loop already handled this request
+    if ctx.tool_loop_done or ctx.tool_loop_leg2 then return end
+
     local ws = ctx.gateway_config.web_search
     if type(ws) ~= "table" or not ws.enabled or not ws.api_key then return end
 
