@@ -139,6 +139,10 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
   const pcCfg = (cfg as any).prompt_caching;
   const [pcEnabled, setPcEnabled] = useState<boolean>(pcCfg?.enabled ?? false);
   const [pcTtl, setPcTtl] = useState<"5m" | "1h">(pcCfg?.ttl ?? "1h");
+  const ccCfg = (cfg as any).context_compaction;
+  const [ccEnabled, setCcEnabled] = useState<boolean>(ccCfg?.enabled ?? true);
+  const [ccThreshold, setCcThreshold] = useState(String(ccCfg?.threshold_tokens ?? 200000));
+  const [ccKeepTurns, setCcKeepTurns] = useState(String(ccCfg?.keep_last_turns ?? 10));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -216,6 +220,9 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
       newConfig.prompt_caching = pcEnabled
         ? { enabled: true, ttl: pcTtl }
         : null;
+      newConfig.context_compaction = ccEnabled
+        ? { enabled: true, threshold_tokens: parseInt(ccThreshold) || 200000, keep_last_turns: parseInt(ccKeepTurns) || 10 }
+        : { enabled: false };
       await api.patch(`/gateways/${gw.id}`, { config: newConfig });
       onSaved({ ...gw, config: { ...cfg, ...newConfig } });
       onClose();
@@ -540,6 +547,48 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
                   <option value="5m">5 minutes (1.25× write cost)</option>
                   <option value="1h">1 hour (2× write cost)</option>
                 </select>
+              </div>
+            )}
+          </div>
+
+          {/* Context Compaction */}
+          <div className={s["form-group"]}>
+            <label className={s["form-label"]}>Context Compaction (Anthropic)</label>
+            <p className={s["form-hint"]} style={{ marginBottom: 8 }}>
+              Automatically summarise conversation history when input tokens exceed the threshold.
+              Uses Anthropic's native compaction API — the summary replaces verbatim history so future turns stay cheap.
+              Default: 200 000 tokens.
+            </p>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, marginBottom: 8 }}>
+              <input type="checkbox" checked={ccEnabled} onChange={(e) => setCcEnabled(e.target.checked)} />
+              Enable context compaction
+            </label>
+            {ccEnabled && (
+              <div className={s["form-row"]}>
+                <div className={s["form-group"]} style={{ margin: 0 }}>
+                  <label className={s["form-label"]}>Threshold (tokens)</label>
+                  <input
+                    className={s["form-input"]}
+                    type="number"
+                    min={50000}
+                    step={10000}
+                    value={ccThreshold}
+                    onChange={(e) => setCcThreshold(e.target.value)}
+                    style={{ width: 140 }}
+                  />
+                </div>
+                <div className={s["form-group"]} style={{ margin: 0 }}>
+                  <label className={s["form-label"]}>Keep last N turns verbatim</label>
+                  <input
+                    className={s["form-input"]}
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={ccKeepTurns}
+                    onChange={(e) => setCcKeepTurns(e.target.value)}
+                    style={{ width: 100 }}
+                  />
+                </div>
               </div>
             )}
           </div>

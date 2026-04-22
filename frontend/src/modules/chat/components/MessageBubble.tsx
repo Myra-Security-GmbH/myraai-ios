@@ -511,7 +511,31 @@ const MessageBubble = memo(function MessageBubble({
 
             <div className={s["bubble-text"]}>
               {isUser ? (
-                <span style={{ whiteSpace: "pre-wrap" }}>{textContent}</span>
+                <>
+                  {/* Render inline images from image_url content blocks (pasted screenshots) */}
+                  {blocks
+                    .filter((b): b is { type: "image_url"; image_url?: { url: string } } => b.type === "image_url")
+                    .map((b, i) => {
+                      const url = b.image_url?.url;
+                      if (!url) return null;
+                      return (
+                        <div key={i} style={{ marginBottom: 6 }}>
+                          <img
+                            src={url}
+                            alt="screenshot"
+                            style={{
+                              maxWidth: "100%",
+                              maxHeight: 320,
+                              borderRadius: 6,
+                              border: "1px solid var(--card-border)",
+                              display: "block",
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  {textContent && <span style={{ whiteSpace: "pre-wrap" }}>{textContent}</span>}
+                </>
               ) : (
                 <>
                   {thinking != null && (

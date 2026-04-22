@@ -480,12 +480,12 @@ export interface TopModelRow {
 }
 
 export interface CacheEfficiency {
-  cache_write_tokens:    number;
-  cache_read_tokens:     number;
-  uncached_input_tokens: number;
-  cached_cost_usd:       number;   // cache write + cache read cost
-  uncached_cost_usd:     number;   // standard input token cost
-  cache_hit_pct:         number;   // cache_read / (write + read + input) × 100
+  cache_write_tokens:    number;   // tokens processed fresh + written to cache
+  cache_read_tokens:     number;   // tokens served from cache (cheap)
+  standard_input_tokens: number;   // tokens not cached at all (tiny new message tokens)
+  uncached_cost_usd:     number;   // cost of cache writes + standard input (processed fresh)
+  cached_cost_usd:       number;   // cost of cache reads only (served from cache)
+  cache_hit_pct:         number;   // cache_read / (write + read + standard) × 100
 }
 
 export interface AnalyticsDepth {

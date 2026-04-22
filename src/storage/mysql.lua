@@ -1535,21 +1535,22 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
         LIMIT 50
     ]], tc, uc), from) or {}
 
-    -- Anthropic prompt-cache efficiency: aggregates cache_write, cache_read, and
-    -- uncached input tokens across all Anthropic requests in the window.
-    -- Joins model_price per row so costs reflect each model's actual pricing.
+    -- Anthropic prompt-cache efficiency.
+    -- "Uncached" = cache_creation_tokens + input_tokens (processed fresh, not served from cache).
+    -- "Cached"   = cache_read_tokens only (served cheaply from Anthropic's cache).
+    -- Joins model_price per row for accurate per-model pricing.
     local cache_eff = query_one(db, string.format([[
         SELECT
             COALESCE(SUM(r.cache_creation_tokens), 0) AS cache_write_tokens,
             COALESCE(SUM(r.cache_read_tokens),     0) AS cache_read_tokens,
-            COALESCE(SUM(r.input_tokens),          0) AS uncached_input_tokens,
+            COALESCE(SUM(r.input_tokens),          0) AS standard_input_tokens,
             ROUND(SUM(
                 r.cache_creation_tokens * COALESCE(mp.cache_write_per_1k, 0) / 1000 +
-                r.cache_read_tokens     * COALESCE(mp.cache_read_per_1k,  0) / 1000
-            ), 4) AS cached_cost_usd,
-            ROUND(SUM(
-                r.input_tokens * COALESCE(mp.input_per_1k, 0) / 1000
+                r.input_tokens          * COALESCE(mp.input_per_1k,       0) / 1000
             ), 4) AS uncached_cost_usd,
+            ROUND(SUM(
+                r.cache_read_tokens * COALESCE(mp.cache_read_per_1k, 0) / 1000
+            ), 4) AS cached_cost_usd,
             ROUND(
                 COALESCE(SUM(r.cache_read_tokens), 0) * 100.0 /
                 NULLIF(SUM(r.cache_creation_tokens + r.cache_read_tokens + r.input_tokens), 0),

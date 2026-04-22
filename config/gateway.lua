@@ -94,6 +94,8 @@ return {
         log_payloads   = true,    -- store prompt+response bodies in logs
         config_cache_ttl = 30,    -- seconds to cache gateway config in state
         byok_cache_ttl   = 60,    -- seconds to cache decrypted provider keys
+        prompt_caching     = { enabled = true, ttl = "1h" },
+        context_compaction = { enabled = true, threshold_tokens = 200000, keep_last_turns = 10 },
     },
 
     -- -------------------------------------------------------------------------

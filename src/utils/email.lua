@@ -1,8 +1,9 @@
 -- utils/email.lua — send email via local sendmail (msmtp relay)
--- Uses io.popen("sendmail -t") so no library dependency.
+-- Uses utils.proc (ngx.pipe) for non-blocking subprocess execution.
 -- Supports multipart/alternative (text + html) when an html body is supplied.
 
 local crypto = require("utils.crypto")
+local proc   = require("utils.proc")
 
 local M = {}
 
@@ -80,20 +81,10 @@ function M.send(to, subject, plain, html)
 
     ngx.log(ngx.NOTICE, "email: sending to=", to, " subject=", subject, " from=", from)
 
-    -- timeout(1) caps the sendmail process at 10 s so a hung SMTP relay can't
-    -- block a worker indefinitely (belt-and-suspenders alongside the timer.at
-    -- fire-and-forget pattern used by callers).
-    local pipe, err = io.popen("timeout 10 /usr/sbin/sendmail -t 2>&1", "w")
-    if not pipe then
-        local errmsg = "sendmail unavailable: " .. tostring(err)
-        ngx.log(ngx.ERR, "email: ", errmsg)
-        return errmsg
-    end
-    pipe:write(msg)
-    local ok2, reason, code = pipe:close()
-    if not ok2 then
-        local errmsg = "sendmail process failed (exit " .. tostring(code) .. ")"
-        if reason then errmsg = errmsg .. ": " .. tostring(reason) end
+    local _, status, err_msg = proc.run({"sendmail", "-t"}, msg, {timeout_ms = 10000})
+    if status ~= 0 then
+        local errmsg = "sendmail process failed (exit " .. tostring(status) .. ")"
+        if err_msg then errmsg = errmsg .. ": " .. tostring(err_msg) end
         ngx.log(ngx.ERR, "email: ", errmsg, " to=", to)
         return errmsg
     end

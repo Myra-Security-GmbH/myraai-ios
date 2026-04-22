@@ -59,20 +59,86 @@ end
 -- already manages its own prompt caching: mixing ttl='5m' from the client
 -- with ttl='1h' injected later causes an Anthropic 400 (longer TTLs must
 -- precede shorter ones in tools→system→messages processing order).
-local function overwrite_cache_ttl(body, ttl)
-    local cc = cache_control_block(ttl)
-    if type(body.system) == "table" then
-        for _, blk in ipairs(body.system) do
-            if blk.cache_control then blk.cache_control = cc end
+-- Recursively overwrite cache_control in a content-block array.
+-- Claude Code nests cache_control inside tool_result blocks:
+--   msg.content[i].type == "tool_result"
+--     .content[j].cache_control  ← second level, previously missed
+local function overwrite_blocks(blocks, cc)
+    if type(blocks) ~= "table" then return end
+    for _, blk in ipairs(blocks) do
+        if blk.cache_control then blk.cache_control = cc end
+        -- Recurse into tool_result nested content arrays
+        if type(blk.content) == "table" then
+            overwrite_blocks(blk.content, cc)
         end
     end
+end
+
+local function overwrite_cache_ttl(body, ttl)
+    local cc = cache_control_block(ttl)
+    overwrite_blocks(body.system, cc)
     for _, msg in ipairs(body.messages or {}) do
-        if type(msg.content) == "table" then
+        overwrite_blocks(msg.content, cc)
+    end
+end
+
+-- ── Context compaction helpers ────────────────────────────────────────────────
+--
+-- Estimates input token count from message content (chars ÷ 3.5).
+-- Used to decide whether to trigger Anthropic's native compaction API.
+-- Intentionally approximate — accuracy within ±15% is sufficient for threshold gating.
+local function estimate_tokens(system, messages)
+    local chars = 0
+    -- System prompt
+    if type(system) == "string" then
+        chars = chars + #system
+    elseif type(system) == "table" then
+        for _, blk in ipairs(system) do
+            if type(blk.text) == "string" then chars = chars + #blk.text end
+        end
+    end
+    -- Messages
+    for _, msg in ipairs(messages or {}) do
+        if type(msg.content) == "string" then
+            chars = chars + #msg.content
+        elseif type(msg.content) == "table" then
             for _, blk in ipairs(msg.content) do
-                if blk.cache_control then blk.cache_control = cc end
+                if type(blk) == "table" then
+                    if type(blk.text) == "string" then chars = chars + #blk.text end
+                    -- Recurse into tool_result nested content
+                    if type(blk.content) == "table" then
+                        for _, inner in ipairs(blk.content) do
+                            if type(inner.text) == "string" then chars = chars + #inner.text end
+                        end
+                    end
+                end
             end
         end
     end
+    return math.floor(chars / 3.5)
+end
+
+-- Anthropic's compaction API requires a minimum context size to work.
+-- Attempting compaction below this causes a 400 error from the API.
+local ANTHROPIC_MIN_COMPACT_TOKENS = 50000
+
+-- Inject Anthropic's native compaction when context exceeds the gateway threshold.
+-- Sets ctx.compact_requested so build_headers can add the required beta header.
+local function maybe_inject_compaction(body, ctx)
+    local cc = ctx.gateway_config and ctx.gateway_config.context_compaction
+    -- cc may be cjson.null (userdata) when the gateway DB field is JSON null
+    if type(cc) ~= "table" or not cc.enabled then return end
+    local threshold = cc.threshold_tokens or 200000
+    local estimated = estimate_tokens(body.system, body.messages)
+    -- Guard: only trigger if above both our threshold AND Anthropic's API minimum.
+    if estimated < threshold or estimated < ANTHROPIC_MIN_COMPACT_TOKENS then return end
+    body.context_management = { type = "compact_20260112" }
+    ctx.compact_requested = true
+    ngx.log(ngx.NOTICE,
+        "[compaction] triggering: estimated_tokens=", estimated,
+        " threshold=", threshold,
+        " gateway=", tostring(ctx.gateway_id),
+        " model=", tostring(ctx.model))
 end
 
 local BASE_URL = "https://api.anthropic.com"
@@ -119,6 +185,15 @@ function M.build_headers(ctx, api_key)
             headers["anthropic-beta"] = headers["anthropic-beta"] .. "," .. tb_beta
         else
             headers["anthropic-beta"] = tb_beta
+        end
+    end
+    -- Context compaction: build_request sets ctx.compact_requested when threshold exceeded
+    if ctx.compact_requested then
+        local compact_beta = "compact-2026-01-12"
+        if headers["anthropic-beta"] then
+            headers["anthropic-beta"] = headers["anthropic-beta"] .. "," .. compact_beta
+        else
+            headers["anthropic-beta"] = compact_beta
         end
     end
     -- Forward any x-aig-provider-* overrides as raw provider headers.
@@ -194,6 +269,8 @@ function M.build_request(ctx)
             end
             inject_thinking(body, req_headers)
             strip_deprecated_temperature(body, ctx.model)
+            -- Context compaction: inject before prompt caching so token estimate is accurate
+            maybe_inject_compaction(body, ctx)
             -- Prompt caching: inject cache_control on native path too
             local pc = ctx.gateway_config and ctx.gateway_config.prompt_caching
             if pc and pc.enabled then
@@ -357,6 +434,8 @@ function M.build_request(ctx)
     -- Extended thinking — inject after all other body fields are set
     inject_thinking(body, req_headers)
     strip_deprecated_temperature(body, ctx.model)
+    -- Context compaction
+    maybe_inject_compaction(body, ctx)
 
     return json.sanitize_surrogates(json.encode(body))
 end
@@ -443,6 +522,16 @@ function M.parse_sse_chunk(line, st)
         tool_id   = chunk.content_block.id
     end
 
+    -- Detect compaction block: Anthropic inserts a content_block_start with
+    -- type="compaction" and a summary field when context compaction fires.
+    local compaction_summary
+    if chunk.type == "content_block_start"
+       and chunk.content_block
+       and chunk.content_block.type == "compaction" then
+        compaction_summary = chunk.content_block.summary or ""
+        ngx.log(ngx.NOTICE, "[compaction] summary block received, length=", #compaction_summary)
+    end
+
     -- Capture tool input_json_delta so callers can reconstruct tool arguments
     if chunk.type == "content_block_delta"
        and chunk.delta
@@ -471,11 +560,12 @@ function M.parse_sse_chunk(line, st)
         tool_name             = tool_name,
         tool_id               = tool_id,
         tool_input_delta      = tool_input_delta,
-        stop_reason           = stop_reason,   -- "end_turn", "max_tokens", "stop_sequence", …
+        stop_reason           = stop_reason,
         input_tokens          = input_tokens,
         output_tokens         = output_tokens,
         cache_creation_tokens = cache_creation_tokens,
         cache_read_tokens     = cache_read_tokens,
+        compaction_summary    = compaction_summary,  -- set when compaction block arrives
     }
 end
 

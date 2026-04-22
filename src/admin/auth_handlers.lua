@@ -136,16 +136,23 @@ route("POST", "^/admin/auth/otp/request$", function()
         return send(500, { error = "internal error" })
     end
 
-    local mail_err = email.send_template(addr, "otp", {
-        code            = code,
-        expiry_minutes  = math.floor((auth.otp_expiry_secs or 900) / 60),
-    })
-    if mail_err then
-        ngx.log(ngx.ERR, "otp email failed to=", addr, " err=", mail_err,
-            " — code stored in DB, admin can retrieve it manually")
-    else
-        ngx.log(ngx.NOTICE, "otp email sent ok to=", addr)
-    end
+    -- Send email in a background timer so the HTTP response is immediate.
+    -- The OTP is already persisted; a delivery failure only means the admin
+    -- must retrieve the code manually from the DB — the login flow still works.
+    local email_addr = addr
+    local email_vars = {
+        code           = code,
+        expiry_minutes = math.floor((auth.otp_expiry_secs or 900) / 60),
+    }
+    ngx.timer.at(0, function()
+        local mail_err = email.send_template(email_addr, "otp", email_vars)
+        if mail_err then
+            ngx.log(ngx.ERR, "otp email failed to=", email_addr, " err=", mail_err,
+                " — code stored in DB, admin can retrieve it manually")
+        else
+            ngx.log(ngx.NOTICE, "otp email sent ok to=", email_addr)
+        end
+    end)
 
     send(200, GENERIC_OK)
 end)

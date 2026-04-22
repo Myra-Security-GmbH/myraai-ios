@@ -297,6 +297,16 @@ local function handle_compat_streaming(ctx, res)
             }
         end
 
+        -- Forward compaction event to client so the UI can show a notice
+        if parsed.compaction_summary then
+            local compact_evt = "data: " .. json.encode({
+                aig_status          = "compacted",
+                compaction_summary  = parsed.compaction_summary,
+            }) .. "\n\n"
+            ngx.print(compact_evt)
+            ngx.flush(true)
+        end
+
         -- Accumulate tool input_json_delta fragments
         if parsed.tool_input_delta and current_tool_idx > 0 then
             local tc = pending_tool_calls[current_tool_idx]

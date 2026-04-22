@@ -314,7 +314,8 @@ export default function Chat() {
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [guardrailWarning, setGuardrailWarning] = useState<string | null>(null);
 
   // ── Ghost mode — no DB writes, no request log ──────────────────────────────
@@ -1051,7 +1052,7 @@ export default function Chat() {
             let description: string;
             try {
               setProcessingStatus(`Analyzing image "${att.filename}" with MinerU…`);
-              const res = await api.post<{ text: string }>("/chat/files", {
+              const res = await api.post<{ text: string; warning?: string }>("/chat/files", {
                 gateway_id: effectiveGatewayId,
                 filename: att.filename,
                 mime_type: att.mime_type,
@@ -1059,6 +1060,7 @@ export default function Chat() {
                 extract_text: true,
               });
               description = res.text;
+              if (res.warning) setWarning(res.warning);
             } catch (e) {
               setError("Failed to process image: " + String(e));
               return;
@@ -1197,6 +1199,7 @@ export default function Chat() {
     setInputValue("");
     setPendingAttachments([]);
     setError(null);
+    setWarning(null);
     focusInput();
 
     // Persist user message (skip in ghost mode)
@@ -2130,6 +2133,27 @@ export default function Chat() {
           <button
             onClick={() => { setError(null); focusInput(); }}
             style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#c62828" }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {warning && (
+        <div
+          style={{
+            padding: "6px 16px",
+            background: "#fffde7",
+            color: "#795548",
+            fontSize: 13,
+            borderBottom: "1px solid #fff9c4",
+            flexShrink: 0,
+          }}
+        >
+          ⚠ {warning}
+          <button
+            onClick={() => { setWarning(null); focusInput(); }}
+            style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#795548" }}
           >
             ✕
           </button>

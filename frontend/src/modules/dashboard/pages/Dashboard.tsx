@@ -156,79 +156,89 @@ function fmtTokens(n: number): string {
 }
 
 function CacheEfficiencyCard({ data }: { data: CacheEfficiency }) {
-  const totalInput = data.cache_write_tokens + data.cache_read_tokens + data.uncached_input_tokens;
-  const hitPct     = data.cache_hit_pct ?? 0;
-  const hitColor   = hitPct >= 60 ? "#10b981" : hitPct >= 30 ? "#f59e0b" : "#ef4444";
-  const totalCachedCost   = data.cached_cost_usd ?? 0;
-  const totalUncachedCost = data.uncached_cost_usd ?? 0;
-  const totalCost         = totalCachedCost + totalUncachedCost;
+  const totalTokens    = data.cache_write_tokens + data.cache_read_tokens + data.standard_input_tokens;
+  const hitPct         = data.cache_hit_pct ?? 0;
+  const hitColor       = hitPct >= 60 ? "#10b981" : hitPct >= 30 ? "#f59e0b" : "#ef4444";
+  const cachedCost     = data.cached_cost_usd   ?? 0;   // reads only
+  const uncachedCost   = data.uncached_cost_usd ?? 0;   // writes + standard input
+  const totalCost      = cachedCost + uncachedCost;
 
-  // What uncached cost would have been without cache writes (all at standard rate)
-  // Use the ratio of actual uncached cost as a proxy for the per-token rate
-  const uncachedRate = data.uncached_input_tokens > 0
-    ? totalUncachedCost / data.uncached_input_tokens
-    : 0;
-  const wouldHaveCost = uncachedRate > 0
-    ? totalInput * uncachedRate
-    : null;
-  const savedByCache = wouldHaveCost != null ? wouldHaveCost - totalCost : null;
-
-  if (totalInput === 0) return null;
+  if (totalTokens === 0) return null;
 
   return (
     <div className={s["hero-card"]} style={{ gridColumn: "1 / -1" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
         <div className={s["hero-label"]}>Anthropic Input Token Caching Efficiency</div>
         <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-          {fmtTokens(totalInput)} total input tokens
+          {fmtTokens(totalTokens)} total Anthropic input tokens · {fmtCost(totalCost)} total input cost
         </div>
       </div>
 
       {/* Hit rate bar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <div style={{ flex: 1, height: 8, background: "var(--table-row-hover)", borderRadius: 4, overflow: "hidden" }}>
           <div style={{ width: `${hitPct}%`, height: "100%", background: hitColor, borderRadius: 4, transition: "width 0.4s" }} />
         </div>
         <div style={{ fontSize: 20, fontWeight: 700, color: hitColor, minWidth: 64, textAlign: "right" }}>
           {hitPct.toFixed(1)}%
         </div>
-        <div style={{ fontSize: 12, color: "var(--text-secondary)", minWidth: 80 }}>cache hit rate</div>
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", minWidth: 100 }}>served from cache</div>
       </div>
 
-      {/* Token breakdown */}
+      {/* Token breakdown: 3 columns */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 10 }}>
+
+        {/* Cache reads — served from cache, cheap */}
         <div style={{ background: "var(--table-row-hover)", borderRadius: 8, padding: "10px 14px" }}>
-          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>Cache reads</div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>
+            Served from cache (reads)
+          </div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "#10b981" }}>{fmtTokens(data.cache_read_tokens)}</div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
-            {totalInput > 0 ? ((data.cache_read_tokens / totalInput) * 100).toFixed(1) : 0}% of total · {fmtCost(totalCachedCost * (data.cache_read_tokens / Math.max(data.cache_read_tokens + data.cache_write_tokens, 1)))}
+            {totalTokens > 0 ? ((data.cache_read_tokens / totalTokens) * 100).toFixed(1) : 0}% of total
           </div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#10b981", marginTop: 4 }}>{fmtCost(cachedCost)}</div>
         </div>
+
+        {/* Cache writes — processed fresh, written to cache */}
         <div style={{ background: "var(--table-row-hover)", borderRadius: 8, padding: "10px 14px" }}>
-          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>Cache writes</div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>
+            Processed fresh (cache writes)
+          </div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "#f59e0b" }}>{fmtTokens(data.cache_write_tokens)}</div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
-            {totalInput > 0 ? ((data.cache_write_tokens / totalInput) * 100).toFixed(1) : 0}% of total · {fmtCost(totalCachedCost * (data.cache_write_tokens / Math.max(data.cache_read_tokens + data.cache_write_tokens, 1)))}
+            {totalTokens > 0 ? ((data.cache_write_tokens / totalTokens) * 100).toFixed(1) : 0}% of total
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#f59e0b", marginTop: 4 }}>
+            {fmtCost(uncachedCost * (data.cache_write_tokens / Math.max(data.cache_write_tokens + data.standard_input_tokens, 1)))}
           </div>
         </div>
+
+        {/* Standard input — new tokens not in cache at all */}
         <div style={{ background: "var(--table-row-hover)", borderRadius: 8, padding: "10px 14px" }}>
-          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>Uncached input</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#ef4444" }}>{fmtTokens(data.uncached_input_tokens)}</div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>
+            New tokens (not cached)
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>{fmtTokens(data.standard_input_tokens)}</div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
-            {totalInput > 0 ? ((data.uncached_input_tokens / totalInput) * 100).toFixed(1) : 0}% of total · {fmtCost(totalUncachedCost)}
+            {totalTokens > 0 ? ((data.standard_input_tokens / totalTokens) * 100).toFixed(1) : 0}% of total
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginTop: 4 }}>
+            {fmtCost(uncachedCost * (data.standard_input_tokens / Math.max(data.cache_write_tokens + data.standard_input_tokens, 1)))}
           </div>
         </div>
       </div>
 
-      {/* Cost summary */}
-      <div style={{ display: "flex", gap: 20, fontSize: 12, color: "var(--text-secondary)", borderTop: "1px solid var(--card-border)", paddingTop: 8 }}>
-        <span>Cached input cost: <strong style={{ color: "var(--text-primary)" }}>{fmtCost(totalCachedCost)}</strong></span>
-        <span>Uncached input cost: <strong style={{ color: "var(--text-primary)" }}>{fmtCost(totalUncachedCost)}</strong></span>
-        {savedByCache != null && savedByCache > 0 && (
-          <span style={{ marginLeft: "auto" }}>
-            Saved vs all-uncached: <strong style={{ color: "#10b981" }}>{fmtCost(savedByCache)}</strong>
-          </span>
-        )}
+      {/* Cost summary footer */}
+      <div style={{ display: "flex", gap: 24, fontSize: 12, color: "var(--text-secondary)", borderTop: "1px solid var(--card-border)", paddingTop: 8 }}>
+        <span>
+          Cached input cost: <strong style={{ color: "#10b981" }}>{fmtCost(cachedCost)}</strong>
+          <span style={{ marginLeft: 4, opacity: 0.7 }}>(reads at 0.1× rate)</span>
+        </span>
+        <span>
+          Uncached input cost: <strong style={{ color: "#f59e0b" }}>{fmtCost(uncachedCost)}</strong>
+          <span style={{ marginLeft: 4, opacity: 0.7 }}>(writes + new tokens)</span>
+        </span>
       </div>
     </div>
   );

@@ -24,6 +24,7 @@
 
 local json    = require("utils.json")
 local storage = require("storage")
+local proc    = require("utils.proc")
 
 local M = {}
 
@@ -451,12 +452,11 @@ except Exception:
 ]])
                 sf:close()
             end
-            local pipe = io.popen("python3 " .. script .. " " .. tmpfile .. " 2>/dev/null", "r")
-            extracted_text = pipe and pipe:read("*a") or ""
-            if pipe then pipe:close() end
+            local exit_code
+            extracted_text, exit_code = proc.run({"python3", script, tmpfile})
             os.remove(tmpfile); os.remove(script)
             extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
-            if extracted_text == "" then
+            if exit_code ~= 0 or extracted_text == "" then
                 send(422, { error = "Could not extract text from .docx file" }); return
             end
 
@@ -465,13 +465,12 @@ except Exception:
             or mime == "application/vnd.ms-excel"
             or mime == "application/vnd.ms-excel.sheet.macroenabled.12" then
             local tmpfile = "/tmp/aig_proj_" .. rand_sfx .. ".xlsx"
-            local csvfile = tmpfile .. ".csv"
             local f = io.open(tmpfile, "wb"); if f then f:write(bin); f:close() end
             local script = tmpfile .. ".py"
             local sf = io.open(script, "w")
             if sf then
                 sf:write([[
-import sys, zipfile, csv, io, re
+import sys, zipfile, csv, re
 import xml.etree.ElementTree as ET
 NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 def col_index(ref):
@@ -481,8 +480,7 @@ def col_index(ref):
         result = result * 26 + (ord(c.upper()) - ord('A') + 1)
     return result - 1
 try:
-    xlsx_path, out_path = sys.argv[1], sys.argv[2]
-    with zipfile.ZipFile(xlsx_path) as z:
+    with zipfile.ZipFile(sys.argv[1]) as z:
         names = z.namelist()
         shared = []
         if 'xl/sharedStrings.xml' in names:
@@ -491,68 +489,62 @@ try:
                 parts = [t.text or '' for t in si.iter('{' + NS + '}t')]
                 shared.append(''.join(parts))
         sheets = sorted([n for n in names if re.match(r'xl/worksheets/sheet\d+\.xml', n)])
-        with io.open(out_path, 'w', newline='', encoding='utf-8') as fout:
-            w = csv.writer(fout)
-            for sp in sheets:
-                root = ET.fromstring(z.read(sp))
-                for row in root.findall('.//{' + NS + '}row'):
-                    cmap = {}
-                    for cell in row.findall('{' + NS + '}c'):
-                        r = cell.get('r', '')
-                        col = col_index(r) if r else len(cmap)
-                        t = cell.get('t', '')
-                        v_el = cell.find('{' + NS + '}v')
-                        val = ''
-                        if t == 's' and v_el is not None:
-                            idx = int(v_el.text or 0)
-                            val = shared[idx] if 0 <= idx < len(shared) else ''
-                        elif t == 'inlineStr':
-                            is_el = cell.find('.//{' + NS + '}t')
-                            val = (is_el.text or '') if is_el is not None else ''
-                        elif v_el is not None:
-                            val = v_el.text or ''
-                        cmap[col] = val
-                    if cmap:
-                        mx = max(cmap.keys())
-                        rd = [cmap.get(i, '') for i in range(mx + 1)]
-                        while rd and rd[-1] == '':
-                            rd.pop()
-                        if rd:
-                            w.writerow(rd)
+        w = csv.writer(sys.stdout, lineterminator='\n')
+        for sp in sheets:
+            root = ET.fromstring(z.read(sp))
+            for row in root.findall('.//{' + NS + '}row'):
+                cmap = {}
+                for cell in row.findall('{' + NS + '}c'):
+                    r = cell.get('r', '')
+                    col = col_index(r) if r else len(cmap)
+                    t = cell.get('t', '')
+                    v_el = cell.find('{' + NS + '}v')
+                    val = ''
+                    if t == 's' and v_el is not None:
+                        idx = int(v_el.text or 0)
+                        val = shared[idx] if 0 <= idx < len(shared) else ''
+                    elif t == 'inlineStr':
+                        is_el = cell.find('.//{' + NS + '}t')
+                        val = (is_el.text or '') if is_el is not None else ''
+                    elif v_el is not None:
+                        val = v_el.text or ''
+                    cmap[col] = val
+                if cmap:
+                    mx = max(cmap.keys())
+                    rd = [cmap.get(i, '') for i in range(mx + 1)]
+                    while rd and rd[-1] == '':
+                        rd.pop()
+                    if rd:
+                        w.writerow(rd)
 except Exception:
     sys.exit(1)
 ]])
                 sf:close()
             end
-            os.execute("python3 " .. script .. " " .. tmpfile .. " " .. csvfile .. " 2>/dev/null")
+            local exit_code
+            extracted_text, exit_code = proc.run({"python3", script, tmpfile})
             os.remove(tmpfile); os.remove(script)
-            local cf = io.open(csvfile, "rb")
-            extracted_text = cf and cf:read("*a") or ""
-            if cf then cf:close() end
-            os.remove(csvfile)
             extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
-            if extracted_text == "" then
+            if exit_code ~= 0 or extracted_text == "" then
                 send(422, { error = "Could not convert spreadsheet to CSV" }); return
             end
 
         -- ── ODS ───────────────────────────────────────────────────────────────
         elseif mime == "application/vnd.oasis.opendocument.spreadsheet" then
             local tmpfile = "/tmp/aig_proj_" .. rand_sfx .. ".ods"
-            local csvfile = tmpfile .. ".csv"
             local f = io.open(tmpfile, "wb"); if f then f:write(bin); f:close() end
             local script = tmpfile .. ".py"
             local sf = io.open(script, "w")
             if sf then
                 sf:write([[
-import sys, zipfile, csv, io
+import sys, zipfile, csv
 import xml.etree.ElementTree as ET
 NS = {'t': 'urn:oasis:names:tc:opendocument:xmlns:table:1.0',
       'tx': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0'}
 try:
     z = zipfile.ZipFile(sys.argv[1])
     root = ET.fromstring(z.read('content.xml'))
-    out = io.open(sys.argv[2], 'w', newline='', encoding='utf-8')
-    w = csv.writer(out)
+    w = csv.writer(sys.stdout, lineterminator='\n')
     for sheet in root.findall('.//t:table', NS):
         for row in sheet.findall('t:table-row', NS):
             cells = []
@@ -565,20 +557,16 @@ try:
                 cells.pop()
             if cells:
                 w.writerow(cells)
-    out.close()
 except Exception:
     sys.exit(1)
 ]])
                 sf:close()
             end
-            os.execute("python3 " .. script .. " " .. tmpfile .. " " .. csvfile .. " 2>/dev/null")
+            local exit_code
+            extracted_text, exit_code = proc.run({"python3", script, tmpfile})
             os.remove(tmpfile); os.remove(script)
-            local cf = io.open(csvfile, "rb")
-            extracted_text = cf and cf:read("*a") or ""
-            if cf then cf:close() end
-            os.remove(csvfile)
             extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
-            if extracted_text == "" then
+            if exit_code ~= 0 or extracted_text == "" then
                 send(422, { error = "Could not convert .ods to CSV" }); return
             end
 
@@ -609,12 +597,11 @@ except Exception:
 ]])
                 sf:close()
             end
-            local pipe = io.popen("python3 " .. script .. " " .. tmpfile .. " 2>/dev/null", "r")
-            extracted_text = pipe and pipe:read("*a") or ""
-            if pipe then pipe:close() end
+            local exit_code
+            extracted_text, exit_code = proc.run({"python3", script, tmpfile})
             os.remove(tmpfile); os.remove(script)
             extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
-            if extracted_text == "" then
+            if exit_code ~= 0 or extracted_text == "" then
                 send(422, { error = "Could not extract text from .pptx file" }); return
             end
 
@@ -706,12 +693,11 @@ except Exception as e:
 ]])
                 sf:close()
             end
-            local pipe = io.popen("python3 " .. script .. " " .. tmpfile .. " 2>/dev/null", "r")
-            extracted_text = pipe and pipe:read("*a") or ""
-            if pipe then pipe:close() end
+            local exit_code
+            extracted_text, exit_code = proc.run({"python3", script, tmpfile}, nil, {timeout_ms = 300000})
             os.remove(tmpfile); os.remove(script)
             extracted_text = extracted_text:gsub("^%s+", ""):gsub("%s+$", "")
-            if extracted_text == "" then
+            if exit_code ~= 0 or extracted_text == "" then
                 send(422, { error = "Could not extract text from PDF" }); return
             end
 

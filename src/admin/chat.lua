@@ -27,6 +27,7 @@ local storage   = require("storage")
 local byok      = require("auth.byok")
 local http_util = require("utils.http")
 local uuid      = require("utils.uuid")
+local proc      = require("utils.proc")
 
 local M = {}
 
@@ -820,15 +821,12 @@ except Exception as e:
 ]])
                 sf:close()
             end
-            local cmd = "python3 " .. script .. " " .. tmpfile .. " 2>/dev/null"
-            local pipe = io.popen(cmd, "r")
-            local text = pipe and pipe:read("*a") or ""
-            if pipe then pipe:close() end
+            local text, exit_code = proc.run({"python3", script, tmpfile})
             os.remove(tmpfile)
             os.remove(script)
 
             text = text:gsub("^%s+", ""):gsub("%s+$", "")
-            if text == "" then
+            if exit_code ~= 0 or text == "" then
                 return send(422, { error = "Could not extract text from .docx file" })
             end
             return send(200, { text = text })
@@ -844,22 +842,18 @@ except Exception as e:
             f:write(bin)
             f:close()
 
-            local csvfile = tmpfile .. ".csv"
             local script  = tmpfile .. ".py"
             local sf = io.open(script, "w")
             if sf then
                 sf:write([[
-import sys, zipfile, csv, io
+import sys, zipfile, csv
 import xml.etree.ElementTree as ET
 NS = {'t': 'urn:oasis:names:tc:opendocument:xmlns:table:1.0',
-      'o': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
-      'tx': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
-      'v': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0'}
+      'tx': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0'}
 try:
     z = zipfile.ZipFile(sys.argv[1])
     root = ET.fromstring(z.read('content.xml'))
-    out = io.open(sys.argv[2], 'w', newline='', encoding='utf-8')
-    w = csv.writer(out)
+    w = csv.writer(sys.stdout, lineterminator='\n')
     for sheet in root.findall('.//t:table', NS):
         for row in sheet.findall('t:table-row', NS):
             cells = []
@@ -868,29 +862,21 @@ try:
                 parts = [p.text or '' for p in cell.findall('.//tx:p', NS)]
                 val = ' '.join(parts)
                 cells.extend([val] * repeat_n)
-            # trim trailing empty cells
             while cells and cells[-1] == '':
                 cells.pop()
             if cells:
                 w.writerow(cells)
-    out.close()
-except Exception as e:
+except Exception:
     sys.exit(1)
 ]])
                 sf:close()
             end
-            local cmd = "python3 " .. script .. " " .. tmpfile .. " " .. csvfile .. " 2>/dev/null"
-            os.execute(cmd)
+            local csv_data, exit_code = proc.run({"python3", script, tmpfile})
             os.remove(tmpfile)
             os.remove(script)
 
-            local cf = io.open(csvfile, "rb")
-            local csv_data = cf and cf:read("*a") or ""
-            if cf then cf:close() end
-            os.remove(csvfile)
-
             csv_data = csv_data:gsub("^%s+", ""):gsub("%s+$", "")
-            if csv_data == "" then
+            if exit_code ~= 0 or csv_data == "" then
                 return send(422, { error = "Could not convert .ods to CSV" })
             end
 
@@ -912,12 +898,11 @@ except Exception as e:
             f:write(bin)
             f:close()
 
-            local csvfile = tmpfile .. ".csv"
             local script  = tmpfile .. ".py"
             local sf = io.open(script, "w")
             if sf then
                 sf:write([[
-import sys, zipfile, csv, io, re
+import sys, zipfile, csv, re
 import xml.etree.ElementTree as ET
 NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 def col_index(ref):
@@ -927,8 +912,7 @@ def col_index(ref):
         result = result * 26 + (ord(c.upper()) - ord('A') + 1)
     return result - 1
 try:
-    xlsx_path, out_path = sys.argv[1], sys.argv[2]
-    with zipfile.ZipFile(xlsx_path) as z:
+    with zipfile.ZipFile(sys.argv[1]) as z:
         names = z.namelist()
         shared = []
         if 'xl/sharedStrings.xml' in names:
@@ -937,51 +921,44 @@ try:
                 parts = [t.text or '' for t in si.iter('{' + NS + '}t')]
                 shared.append(''.join(parts))
         sheets = sorted([n for n in names if re.match(r'xl/worksheets/sheet\d+\.xml', n)])
-        with io.open(out_path, 'w', newline='', encoding='utf-8') as fout:
-            w = csv.writer(fout)
-            for sp in sheets:
-                root = ET.fromstring(z.read(sp))
-                for row in root.findall('.//{' + NS + '}row'):
-                    cmap = {}
-                    for cell in row.findall('{' + NS + '}c'):
-                        r = cell.get('r', '')
-                        col = col_index(r) if r else len(cmap)
-                        t = cell.get('t', '')
-                        v_el = cell.find('{' + NS + '}v')
-                        val = ''
-                        if t == 's' and v_el is not None:
-                            idx = int(v_el.text or 0)
-                            val = shared[idx] if 0 <= idx < len(shared) else ''
-                        elif t == 'inlineStr':
-                            is_el = cell.find('.//{' + NS + '}t')
-                            val = (is_el.text or '') if is_el is not None else ''
-                        elif v_el is not None:
-                            val = v_el.text or ''
-                        cmap[col] = val
-                    if cmap:
-                        mx = max(cmap.keys())
-                        rd = [cmap.get(i, '') for i in range(mx + 1)]
-                        while rd and rd[-1] == '':
-                            rd.pop()
-                        if rd:
-                            w.writerow(rd)
+        w = csv.writer(sys.stdout, lineterminator='\n')
+        for sp in sheets:
+            root = ET.fromstring(z.read(sp))
+            for row in root.findall('.//{' + NS + '}row'):
+                cmap = {}
+                for cell in row.findall('{' + NS + '}c'):
+                    r = cell.get('r', '')
+                    col = col_index(r) if r else len(cmap)
+                    t = cell.get('t', '')
+                    v_el = cell.find('{' + NS + '}v')
+                    val = ''
+                    if t == 's' and v_el is not None:
+                        idx = int(v_el.text or 0)
+                        val = shared[idx] if 0 <= idx < len(shared) else ''
+                    elif t == 'inlineStr':
+                        is_el = cell.find('.//{' + NS + '}t')
+                        val = (is_el.text or '') if is_el is not None else ''
+                    elif v_el is not None:
+                        val = v_el.text or ''
+                    cmap[col] = val
+                if cmap:
+                    mx = max(cmap.keys())
+                    rd = [cmap.get(i, '') for i in range(mx + 1)]
+                    while rd and rd[-1] == '':
+                        rd.pop()
+                    if rd:
+                        w.writerow(rd)
 except Exception:
     sys.exit(1)
 ]])
                 sf:close()
             end
-            local cmd = "python3 " .. script .. " " .. tmpfile .. " " .. csvfile .. " 2>/dev/null"
-            os.execute(cmd)
+            local csv_data, exit_code = proc.run({"python3", script, tmpfile})
             os.remove(tmpfile)
             os.remove(script)
 
-            local cf = io.open(csvfile, "rb")
-            local csv_data = cf and cf:read("*a") or ""
-            if cf then cf:close() end
-            os.remove(csvfile)
-
             csv_data = csv_data:gsub("^%s+", ""):gsub("%s+$", "")
-            if csv_data == "" then
+            if exit_code ~= 0 or csv_data == "" then
                 return send(422, { error = "Could not convert .xlsx to CSV" })
             end
 
@@ -1028,14 +1005,12 @@ except Exception:
 ]])
                 sf:close()
             end
-            local pipe = io.popen("python3 " .. script .. " " .. tmpfile .. " 2>/dev/null", "r")
-            local text_data = pipe and pipe:read("*a") or ""
-            if pipe then pipe:close() end
+            local text_data, exit_code = proc.run({"python3", script, tmpfile})
             os.remove(tmpfile)
             os.remove(script)
 
             text_data = text_data:gsub("^%s+", ""):gsub("%s+$", "")
-            if text_data == "" then
+            if exit_code ~= 0 or text_data == "" then
                 return send(422, { error = "Could not extract text from .pptx file" })
             end
 
@@ -1074,7 +1049,7 @@ payload = json.dumps({
     "model": "mineru2",
     "messages": [{"role": "user", "content": [
         {"type": "image_url", "image_url": {"url": "data:" + mime_type + ";base64," + b64}},
-        {"type": "text", "text": "Describe this image in detail, extracting all visible text, data, and content."}
+        {"type": "text", "text": "Describe this image thoroughly. List all visible text, labels, numbers, and UI elements. If it is a screenshot, describe the interface, content, and any messages shown. If it is a document or form, transcribe all text. Be specific and complete."}
     ]}],
     "max_tokens": 2048
 }).encode()
@@ -1090,16 +1065,22 @@ except Exception as e:
                 sf:close()
             end
 
-            local cmd = "python3 " .. script .. " " .. tmpfile .. " " .. mime .. " 2>/dev/null"
-            local pipe = io.popen(cmd, "r")
-            local text = pipe and pipe:read("*a") or ""
-            if pipe then pipe:close() end
+            local text, exit_code = proc.run({"python3", script, tmpfile, mime}, nil, {timeout_ms = 150000})
             os.remove(tmpfile)
             os.remove(script)
 
             text = text:gsub("^%s+", ""):gsub("%s+$", "")
-            if text == "" then
+            if exit_code ~= 0 then
                 return send(422, { error = "MinerU could not describe the image" })
+            end
+            -- MinerU returns empty for non-document images (screenshots, photos).
+            -- Return a placeholder text with a warning flag so the frontend can
+            -- notify the user while still allowing the message to be sent.
+            if text == "" then
+                return send(200, {
+                    text    = "[Image: " .. (body.filename or "image") .. " — visual content, no extractable text]",
+                    warning = "Image could not be analyzed — the model will see a placeholder instead of the actual content.",
+                })
             end
             return send(200, { text = text })
         end
@@ -1214,15 +1195,12 @@ except Exception as e:
                 sf:close()
             end
 
-            local cmd = "python3 " .. script .. " " .. tmpfile .. " 2>/dev/null"
-            local pipe = io.popen(cmd, "r")
-            local text = pipe and pipe:read("*a") or ""
-            if pipe then pipe:close() end
+            local text, exit_code = proc.run({"python3", script, tmpfile}, nil, {timeout_ms = 300000})
             os.remove(tmpfile)
             os.remove(script)
 
             text = text:gsub("^%s+", ""):gsub("%s+$", "")
-            if text == "" then
+            if exit_code ~= 0 or text == "" then
                 return send(422, { error = "MinerU could not extract text from PDF" })
             end
             return send(200, { text = text })
@@ -1441,21 +1419,20 @@ a {
         cf:write(css)
         cf:close()
 
-        -- Run pandoc → weasyprint (cd /tmp so pandoc's own temp files land there;
-        -- use full path to weasyprint since nginx worker may have a minimal PATH)
-        local cmd = string.format(
-            "cd /tmp && pandoc --pdf-engine=/usr/local/bin/weasyprint --standalone --metadata title='Chat Export' --css=%s -o %s %s 2>&1",
+        -- Run pandoc → weasyprint via /bin/sh so the cd and path expansion work.
+        -- filenames are numeric-only (/tmp/aig_pdf_<ts>_<rand>.*) — no injection risk.
+        -- 60 s timeout: weasyprint rendering of large transcripts can take ~30 s.
+        local pandoc_cmd = string.format(
+            "cd /tmp && pandoc --pdf-engine=/usr/local/bin/weasyprint --standalone --metadata title='Chat Export' --css=%s -o %s %s",
             tmpcss, tmppdf, tmpmd
         )
-        local pipe    = io.popen(cmd, "r")
-        local out     = pipe and pipe:read("*a") or ""
-        local ok_pipe = pipe and pipe:close()
+        local out, pandoc_exit = proc.run({"/bin/sh", "-c", pandoc_cmd}, nil, {timeout_ms = 60000})
         os.remove(tmpmd)
         os.remove(tmpcss)
 
         local pf = io.open(tmppdf, "rb")
         if not pf then
-            return send(500, { error = "PDF generation failed: " .. (out or "") })
+            return send(500, { error = "PDF generation failed (exit " .. tostring(pandoc_exit) .. "): " .. (out or "") })
         end
         local pdf_data = pf:read("*a")
         pf:close()

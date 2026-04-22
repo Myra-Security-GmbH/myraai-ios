@@ -74,6 +74,8 @@ return {
         log_payloads     = env("AIG_LOG_PAYLOADS", "true") == "true",
         config_cache_ttl = tonumber(env("AIG_CONFIG_CACHE_TTL", "30")),
         byok_cache_ttl   = tonumber(env("AIG_BYOK_CACHE_TTL",   "60")),
+        prompt_caching      = { enabled = true, ttl = "1h" },
+        context_compaction  = { enabled = true, threshold_tokens = 200000, keep_last_turns = 10 },
     },
 
     -- -------------------------------------------------------------------------
