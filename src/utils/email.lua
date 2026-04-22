@@ -80,7 +80,10 @@ function M.send(to, subject, plain, html)
 
     ngx.log(ngx.NOTICE, "email: sending to=", to, " subject=", subject, " from=", from)
 
-    local pipe, err = io.popen("sendmail -t 2>&1", "w")
+    -- timeout(1) caps the sendmail process at 10 s so a hung SMTP relay can't
+    -- block a worker indefinitely (belt-and-suspenders alongside the timer.at
+    -- fire-and-forget pattern used by callers).
+    local pipe, err = io.popen("timeout 10 /usr/sbin/sendmail -t 2>&1", "w")
     if not pipe then
         local errmsg = "sendmail unavailable: " .. tostring(err)
         ngx.log(ngx.ERR, "email: ", errmsg)
