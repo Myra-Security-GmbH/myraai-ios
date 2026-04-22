@@ -42,6 +42,7 @@ local SUPPORTED_PROVIDERS = {
     azure       = true,
     cloudflare  = true,
     cohere      = true,
+    vllm        = true,
 }
 
 -- ── Tool definitions (Anthropic + OpenAI format) ─────────────────────────────
@@ -231,9 +232,16 @@ end
 
 local function execute_read_file(ctx, input)
     local project_id = ctx.project_id
-    if not project_id then return "Error: no project context" end
-    local filename = input.filename
-    if not filename or filename == "" then return "Error: filename required" end
+    if not project_id then
+        ngx.log(ngx.WARN, "tool_loop: read_file no project context")
+        return "Error: no project context"
+    end
+    -- Accept "filename" or "path" — models occasionally use the wrong field name
+    local filename = input.filename or input.path
+    if not filename or filename == "" then
+        ngx.log(ngx.WARN, "tool_loop: read_file no filename, input=", json.encode(input))
+        return "Error: filename required"
+    end
 
     local files = storage.get_project_knowledge_text(project_id)
     local fname_lower = filename:lower()
@@ -411,8 +419,10 @@ local function execute_tool(ctx, tool_call)
     end
 end
 
--- Public: called by upstream.lua's streaming tool loop
-M.execute_tool = execute_tool
+-- Public: called by upstream.lua's streaming and buffered tool loops
+M.execute_tool      = execute_tool
+M.extract_tool_calls = extract_tool_calls
+M.inject_results     = inject_results
 
 -- Inject tool results from stream-accumulated tool calls into messages.
 -- tool_calls: array of { id, name, input_parts } from handle_compat_streaming

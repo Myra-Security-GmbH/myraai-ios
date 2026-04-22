@@ -127,7 +127,10 @@ end
 
 -- Parse a single SSE data line for streaming responses.
 -- Returns a table or nil (for non-data or keep-alive lines).
-function M.parse_sse_chunk(line)
+-- st is a per-stream state table (unused currently, kept for interface parity
+-- with anthropic.parse_sse_chunk so drain_sse_buf can pass parse_state uniformly).
+function M.parse_sse_chunk(line, st)
+    st = st or {}  -- luacheck: ignore (reserved for future stateful use)
     local data = line:match("^data:%s*(.+)$")
     if not data then return nil end
     if data == "[DONE]" then
@@ -138,6 +141,9 @@ function M.parse_sse_chunk(line)
 
     local delta  = ""
     local choice = chunk.choices and chunk.choices[1]
+
+    local tool_name, tool_id, tool_input_delta
+
     if choice and choice.delta then
         -- Use only delta.content for the visible answer.
         -- delta.reasoning is the model's internal chain-of-thought and must
@@ -145,16 +151,39 @@ function M.parse_sse_chunk(line)
         -- <think> tags or plain prose.  The actual answer always arrives in
         -- delta.content once the reasoning phase is complete.
         delta = choice.delta.content or ""
+
+        -- Extract tool_calls from streaming delta so the server-side tool loop
+        -- (upstream.lua:handle_compat_streaming) can accumulate and execute them.
+        -- OpenAI streaming sends one element per chunk:
+        --   first chunk  → function.name set, function.arguments = ""
+        --   later chunks → only function.arguments (incremental JSON fragment)
+        local tcs = choice.delta.tool_calls
+        if tcs and #tcs > 0 then
+            local tc = tcs[1]
+            local fn = tc["function"]
+            if fn then
+                if fn.name and fn.name ~= "" then
+                    tool_name = fn.name
+                    tool_id   = tc.id or ("call_" .. tostring(tc.index or 0))
+                end
+                if fn.arguments and fn.arguments ~= "" then
+                    tool_input_delta = fn.arguments
+                end
+            end
+        end
     end
 
     -- OpenAI sends usage in the final chunk when stream_options.include_usage=true
     local usage = chunk.usage
     return {
-        delta         = delta,
-        done          = (choice and type(choice.finish_reason) == "string") or false,
-        stop_reason   = choice and choice.finish_reason or nil,
-        input_tokens  = usage and usage.prompt_tokens     or nil,
-        output_tokens = usage and usage.completion_tokens or nil,
+        delta            = delta,
+        done             = (choice and type(choice.finish_reason) == "string") or false,
+        stop_reason      = choice and choice.finish_reason or nil,
+        input_tokens     = usage and usage.prompt_tokens     or nil,
+        output_tokens    = usage and usage.completion_tokens or nil,
+        tool_name        = tool_name,
+        tool_id          = tool_id,
+        tool_input_delta = tool_input_delta,
     }
 end
 

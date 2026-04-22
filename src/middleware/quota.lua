@@ -37,9 +37,12 @@ function M.run(ctx)
     ctx.log_fields = ctx.log_fields or {}
 
     -- ctx.token_id, ctx.token_budget_usd, ctx.token_budget_period set by auth.lua
+    -- Budget fields may arrive as cjson.null or ngx.null userdata (JSON null or
+    -- SQL NULL) rather than Lua nil; guard on type "number" to treat unset values
+    -- uniformly.
 
     -- ── Per-token budget ─────────────────────────────────────────────────────
-    if ctx.token_budget_usd and ctx.token_id then
+    if type(ctx.token_budget_usd) == "number" and ctx.token_id then
         local period      = budget_lib.current_period(ctx.token_budget_period or "monthly")
         local spent_micro = get_spend_cached("token", ctx.token_id, period)
         local cap_micro   = math.floor(ctx.token_budget_usd * 1e6)
@@ -61,7 +64,7 @@ function M.run(ctx)
 
     -- ── Per-tenant budget ────────────────────────────────────────────────────
     local tenant_budget = ctx.gateway_config.tenant_budget_usd
-    if tenant_budget and ctx.tenant_id then
+    if type(tenant_budget) == "number" and ctx.tenant_id then
         local period      = budget_lib.current_period(
             ctx.gateway_config.tenant_budget_period or "monthly")
         local spent_micro = get_spend_cached("tenant", ctx.tenant_id, period)
@@ -84,7 +87,7 @@ function M.run(ctx)
 
     -- ── Per-gateway budget ───────────────────────────────────────────────────
     local gw_budget = ctx.gateway_config.budget_usd
-    if not gw_budget then return end
+    if type(gw_budget) ~= "number" then return end
 
     local period      = budget_lib.current_period(
         ctx.gateway_config.budget_period or "monthly")

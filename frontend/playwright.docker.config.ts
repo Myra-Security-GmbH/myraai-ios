@@ -45,6 +45,8 @@ export const SEQUENTIAL_TESTS = [
   "**/chat-summarize.spec.ts",
   "**/chat-web-search.spec.ts",
   "**/chat-xlsx.spec.ts",
+  // Full permutation matrix: real inference across all model/PII/tool combinations.
+  "**/chat-tool-matrix.spec.ts",
   // Contains real-inference Suite B (vllm); fails under parallel load from 16 workers.
   "**/chat-project-read-commands.spec.ts",
   // Creates conversations + checks sidebar auto-title; sidebar state conflicts with parallel workers.
