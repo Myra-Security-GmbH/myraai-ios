@@ -63,3 +63,4 @@ Thumbs.db
 # Production secrets — never commit
 .env.production
 run-docker-gw.sh
+results/
