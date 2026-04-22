@@ -512,6 +512,51 @@ test.describe("memory injected into system prompt", () => {
     }
   });
 
+  test("preference memory is injected with an 'Apply the following' directive (regression: passive listing caused model to ignore preferences)", async ({ page }) => {
+    // Regression: memories were injected as a passive list under "## What I know about you"
+    // with no instruction to act on them. The model treated them as context, not directives,
+    // and ignored preferences such as "display prices in EUR" (feedback 791e12be).
+    // Fix: prepend "Apply the following in your responses:" before the bullet list.
+    const marker = "PREF-DIRECTIVE-" + Date.now();
+    const mem = await createMemory(page, `User prefers all prices in EUR (marker: ${marker})`, "preference");
+
+    try {
+      await goToChatFresh(page);
+      const ok = await selectChatPreset(page);
+      expect(ok, `Could not select preset "${PRESET_NAME}"`).toBeTruthy();
+
+      // Wait for memory badge — confirms memories loaded into React state
+      await expect(page.locator("[data-cy='memories-btn'] span")).toBeVisible({ timeout: 10_000 });
+
+      // Fulfill the inference call with a fake SSE so no real keys are needed
+      await interceptInference(page, { visibleText: "OK." });
+
+      await sendChatMessage(page, "What is the current Bitcoin price?");
+      await waitForStreamDone(page);
+
+      // Read the system content built by Chat.tsx. The hook is set synchronously
+      // inside sendMessage before the fetch; poll briefly in case React batched the update.
+      const capturedSystemContent = await page.waitForFunction(
+        () => (window as unknown as Record<string, unknown>).__aig_last_system_content__ as string | undefined,
+        { timeout: 5_000 }
+      ).then(h => h.jsonValue() as Promise<string>).catch(() => null as string | null);
+
+      expect(capturedSystemContent, "system prompt hook was populated").toBeTruthy();
+
+      // Memory content must appear in the system prompt
+      expect(capturedSystemContent!, "memory content injected into system prompt").toContain(marker);
+
+      // ── This assertion FAILS with current code (bug) ──────────────────────
+      // Without the directive, the model sees memories as passive context and ignores them.
+      // After fix (prepend "Apply the following in your responses:"), this passes.
+      expect(capturedSystemContent!, "system prompt must direct model to apply memories, not just list them")
+        .toContain("Apply the following in your responses:");
+
+    } finally {
+      await deleteMemory(page, mem.id);
+    }
+  });
+
   test("memory_disabled=1 suppresses injection — model does NOT follow instruction memory", async ({ page }) => {
     // Create an instruction memory. When injected, the model would include the marker.
     // With memory_disabled=1 it should NOT be injected, so the model won't use it.

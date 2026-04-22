@@ -55,6 +55,8 @@ export const SEQUENTIAL_TESTS = [
   "**/chat-pdf-export.spec.ts",
   // Uses deleteAllConversations; real-inference tests for response formatting regressions.
   "**/chat-sonnet-format.spec.ts",
+  // Uses deleteAllConversations; artifact panel, model badge, and regeneration tests.
+  "**/chat-artifact-panel.spec.ts",
   // Creates a project fixture and mutates localStorage for dark-mode testing.
   "**/css-rendering.spec.ts",
   // Runs docker exec for pymupdf geometry analysis; not safe to parallelise.
