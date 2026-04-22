@@ -57,6 +57,7 @@ auth           on
 tls            on
 tls_starttls   on
 tls_certcheck  off
+timeout        10
 logfile        /proc/1/fd/2
 
 account        default
@@ -65,6 +66,7 @@ port           ${SMTP_PORT}
 from           ${SMTP_FROM}
 user           ${SMTP_USER}
 password       ${SMTP_PASS}
+domain         myra.eu
 EOF
     chmod 644 /etc/msmtprc
 
