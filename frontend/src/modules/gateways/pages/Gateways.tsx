@@ -136,6 +136,9 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
   const [tracingEnabled, setTracingEnabled] = useState<boolean>(tracingCfg?.enabled ?? false);
   const [tracingBodies, setTracingBodies] = useState<boolean>(tracingCfg?.include_bodies ?? false);
   const [tracingRetention, setTracingRetention] = useState(String(tracingCfg?.retention_hours ?? 48));
+  const pcCfg = (cfg as any).prompt_caching;
+  const [pcEnabled, setPcEnabled] = useState<boolean>(pcCfg?.enabled ?? false);
+  const [pcTtl, setPcTtl] = useState<"5m" | "1h">(pcCfg?.ttl ?? "1h");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -210,6 +213,9 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
       } else {
         newConfig.tracing = null;
       }
+      newConfig.prompt_caching = pcEnabled
+        ? { enabled: true, ttl: pcTtl }
+        : null;
       await api.patch(`/gateways/${gw.id}`, { config: newConfig });
       onSaved({ ...gw, config: { ...cfg, ...newConfig } });
       onClose();
@@ -510,6 +516,34 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
             )}
           </div>
           <hr className={s.divider} />
+          {/* Prompt Caching (Anthropic) */}
+          <div className={s["form-group"]}>
+            <label className={s["form-label"]}>Anthropic Prompt Caching</label>
+            <p className={s["form-hint"]} style={{ marginBottom: 8 }}>
+              Inject <code>cache_control</code> breakpoints on the system prompt and conversation history so Anthropic
+              reuses cached tokens across turns. Cache reads cost 0.1× standard input price.
+              The 1 h TTL costs 2× write price vs 1.25× for 5 min — worthwhile for active sessions with many turns.
+            </p>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, marginBottom: 8 }}>
+              <input type="checkbox" checked={pcEnabled} onChange={(e) => setPcEnabled(e.target.checked)} />
+              Enable prompt caching (Anthropic models only)
+            </label>
+            {pcEnabled && (
+              <div className={s["form-group"]} style={{ margin: 0 }}>
+                <label className={s["form-label"]}>Cache TTL</label>
+                <select
+                  className={s["form-input"]}
+                  value={pcTtl}
+                  onChange={(e) => setPcTtl(e.target.value as "5m" | "1h")}
+                  style={{ width: 160 }}
+                >
+                  <option value="5m">5 minutes (1.25× write cost)</option>
+                  <option value="1h">1 hour (2× write cost)</option>
+                </select>
+              </div>
+            )}
+          </div>
+
           {/* Request Tracing */}
           <div className={s["form-group"]}>
             <label className={s["form-label"]} style={{ display: "flex", alignItems: "center", gap: 6 }}>Request Tracing <DocLink path="/observability/tracing/" label="Tracing docs" /></label>

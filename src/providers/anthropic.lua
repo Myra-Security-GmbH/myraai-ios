@@ -4,6 +4,56 @@ local json = require("utils.json")
 
 local M = {}
 
+-- ── Prompt caching helpers ────────────────────────────────────────────────────
+--
+-- Anthropic supports cache_control breakpoints on system prompt and message
+-- content blocks. Two TTLs are available:
+--   "5m"  (default) — 1.25× base input write cost, free reads at 0.1× base
+--   "1h"            — 2.0× base input write cost, free reads at 0.1× base
+--
+-- Gateway config: gateway_config.prompt_caching = { enabled=true, ttl="1h" }
+--
+-- Strategy: inject cache_control on
+--   1. The system prompt (always; it's the largest stable block)
+--   2. The second-to-last user message, if messages >= 4 turns
+--      (caches the accumulated conversation history before the current turn)
+
+local function cache_control_block(ttl)
+    if ttl == "1h" then
+        return { type = "ephemeral", ttl = "1h" }
+    end
+    return { type = "ephemeral" }   -- default 5-minute TTL
+end
+
+-- Wrap a plain string system prompt into a content-block array with cache_control.
+-- If already a table (content-block array), append cache_control to the last block.
+local function inject_system_cache(system, ttl)
+    if type(system) == "string" then
+        return {{ type = "text", text = system, cache_control = cache_control_block(ttl) }}
+    elseif type(system) == "table" then
+        local last = system[#system]
+        if last and not last.cache_control then
+            last.cache_control = cache_control_block(ttl)
+        end
+        return system
+    end
+    return system
+end
+
+-- Inject a cache breakpoint on the last content block of a given message.
+-- Handles string content (wraps to block array) and block-array content.
+local function inject_message_cache(msg, ttl)
+    local cc = cache_control_block(ttl)
+    if type(msg.content) == "string" then
+        msg.content = {{ type = "text", text = msg.content, cache_control = cc }}
+    elseif type(msg.content) == "table" and #msg.content > 0 then
+        local last = msg.content[#msg.content]
+        if last and not last.cache_control then
+            last.cache_control = cc
+        end
+    end
+end
+
 local BASE_URL = "https://api.anthropic.com"
 local API_VERSION = "2023-06-01"
 
@@ -123,6 +173,26 @@ function M.build_request(ctx)
             end
             inject_thinking(body, req_headers)
             strip_deprecated_temperature(body, ctx.model)
+            -- Prompt caching: inject cache_control on native path too
+            local pc = ctx.gateway_config and ctx.gateway_config.prompt_caching
+            if pc and pc.enabled and body.system then
+                local ttl = pc.ttl or "5m"
+                body.system = inject_system_cache(body.system, ttl)
+                -- Cache message history breakpoint (second-to-last user turn)
+                local msgs = body.messages or {}
+                if #msgs >= 4 then
+                    local user_count = 0
+                    for i = #msgs, 1, -1 do
+                        if msgs[i].role == "user" then
+                            user_count = user_count + 1
+                            if user_count == 2 then
+                                inject_message_cache(msgs[i], ttl)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
             return json.sanitize_surrogates(json.encode(body))
         end
         return json.sanitize_surrogates(raw)
@@ -172,6 +242,36 @@ function M.build_request(ctx)
         messages   = messages,
     }
     if system_msg        then body.system         = system_msg end
+
+    -- Prompt caching: inject cache_control breakpoints when enabled on this gateway
+    local pc = ctx.gateway_config and ctx.gateway_config.prompt_caching
+    if pc and pc.enabled then
+        local ttl = pc.ttl or "5m"
+        -- 1. Cache the system prompt
+        if body.system then
+            body.system = inject_system_cache(body.system, ttl)
+        end
+        -- 2. Cache the conversation history: put a breakpoint on the second-to-last
+        --    user message so the full prior context is cached before the current turn.
+        --    Only when there are enough turns (≥ 4 messages) to make it worthwhile.
+        if #messages >= 4 then
+            -- Walk backwards to find the second-to-last user message
+            local user_count = 0
+            for i = #messages, 1, -1 do
+                if messages[i].role == "user" then
+                    user_count = user_count + 1
+                    if user_count == 2 then
+                        inject_message_cache(messages[i], ttl)
+                        break
+                    end
+                end
+            end
+        end
+        ngx.log(ngx.DEBUG, "prompt_caching: injected cache_control ttl=", ttl,
+            " system=", body.system ~= nil and "yes" or "no",
+            " msgs=", #messages)
+    end
+
     if src.temperature   then body.temperature    = src.temperature end
     if src.top_p         then body.top_p          = src.top_p end
     if src.stop          then body.stop_sequences = type(src.stop) == "table"
