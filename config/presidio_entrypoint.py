@@ -38,23 +38,66 @@ from lingua import Language, LanguageDetectorBuilder
 
 app = Flask(__name__)
 
+# Chunking: keep well below GLiNER's 384-token internal limit.
+# ~5 chars/token average → 1 400 chars ≈ 280 tokens (safe headroom for entity labels).
+_CHUNK_CHARS   = 1400
+_OVERLAP_CHARS = 140   # ~10 % overlap to catch entities split at chunk boundaries
+
+
+def _chunk_text(text: str) -> list[tuple[str, int]]:
+    """
+    Split *text* into overlapping windows of ≤ _CHUNK_CHARS characters.
+    Returns list of (chunk_text, char_offset_in_original) tuples.
+    Breaks preferentially at NUL (pii_protector field separator) or whitespace.
+    """
+    if len(text) <= _CHUNK_CHARS:
+        return [(text, 0)]
+
+    chunks: list[tuple[str, int]] = []
+    start = 0
+    while start < len(text):
+        end = min(start + _CHUNK_CHARS, len(text))
+        if end < len(text):
+            for sep in ("\x00", " "):
+                pos = text.rfind(sep, end - 100, end)
+                if pos > start:
+                    end = pos + 1
+                    break
+        chunks.append((text[start:end], start))
+        next_start = end - _OVERLAP_CHARS
+        if next_start <= start:          # guard against infinite loop on very long tokens
+            next_start = start + _CHUNK_CHARS
+        start = next_start
+    return chunks
+
 
 # ── Language detection ────────────────────────────────────────────────────────
-# Distinguish English from German.  with_minimum_relative_distance(0.1) means
+# Cover EN + DE + FR + ES + IT + PT.  with_minimum_relative_distance(0.1) means
 # we require at least a 10 % confidence edge before committing; below that we
 # default to "en" rather than guessing.
 _lang_detector = (
     LanguageDetectorBuilder
-    .from_languages(Language.ENGLISH, Language.GERMAN)
+    .from_languages(
+        Language.ENGLISH, Language.GERMAN, Language.FRENCH,
+        Language.SPANISH, Language.ITALIAN, Language.PORTUGUESE,
+    )
     .with_minimum_relative_distance(0.1)
     .build()
 )
 
+_LINGUA_MAP = {
+    Language.GERMAN:     "de",
+    Language.FRENCH:     "fr",
+    Language.SPANISH:    "es",
+    Language.ITALIAN:    "it",
+    Language.PORTUGUESE: "pt",
+}
+
 
 def detect_language(text: str) -> str:
-    """Return 'de' if German is detected with sufficient confidence, else 'en'."""
+    """Return ISO code if detected with sufficient confidence, else 'en'."""
     lang = _lang_detector.detect_language_of(text)
-    return "de" if lang == Language.GERMAN else "en"
+    return _LINGUA_MAP.get(lang, "en")
 
 
 # ── GLiNER multilingual NER ───────────────────────────────────────────────────
@@ -92,8 +135,9 @@ def _run_gliner(
     Run GLiNER on *text* and return results in Presidio RecognizerResult dict format.
 
     GLiNER is language-agnostic — the same model handles en, de, fr, es, it, pt
-    without any language hint.  Results are filtered against *entities* (if given)
-    and *allow_list* (if given) before being returned.
+    without any language hint.  Long texts are split into overlapping windows to
+    stay below GLiNER's 384-token internal truncation limit (~1 400 chars).
+    Results are filtered against *entities* (if given) and *allow_list* (if given).
     """
     labels = _GLINER_LABELS
     if entities:
@@ -102,11 +146,23 @@ def _run_gliner(
     if not labels:
         return []
 
-    with torch.no_grad():
-        preds = _gliner.predict_entities(text, labels, threshold=threshold)
+    # Collect predictions across all chunks; deduplicate by (start, end, label).
+    seen: set[tuple[int, int, str]] = set()
+    all_preds: list[dict] = []
+
+    for chunk, offset in _chunk_text(text):
+        with torch.no_grad():
+            preds = _gliner.predict_entities(chunk, labels, threshold=threshold)
+        for p in preds:
+            abs_start = offset + p["start"]
+            abs_end   = offset + p["end"]
+            key = (abs_start, abs_end, p["label"])
+            if key not in seen:
+                seen.add(key)
+                all_preds.append({**p, "start": abs_start, "end": abs_end})
 
     results = []
-    for p in preds:
+    for p in all_preds:
         ptype = _GLINER_LABEL_MAP.get(p["label"])
         if not ptype:
             continue
@@ -175,6 +231,16 @@ _run_gliner(
 )
 
 gc.freeze()
+
+# Warm-up: exercise the chunking path with a text longer than _CHUNK_CHARS
+_long_warmup = (
+    "François Dupont, né le 12 mars 1980 à Paris. "
+    "Son adresse email est francois.dupont@example.fr. "
+    "Numéro de sécurité sociale: 1 80 03 75 123 456 78. "
+) * 20   # ~1 400 chars × 20 = ~28 000 chars → exercises multi-chunk path
+_run_gliner(_long_warmup, None, 0.1, None, "exact")
+del _long_warmup
+
 print("[presidio] Warm-up complete.", flush=True)
 
 
