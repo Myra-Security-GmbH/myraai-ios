@@ -700,6 +700,8 @@ local function handle_buffered(ctx, res)
 
     local parsed, err = provider_mod.parse_response(body_str)
     if not parsed then
+        ngx.log(ngx.WARN, "[parse_response] failed err=", tostring(err),
+            " body_preview=", body_str:sub(1, 300))
         return nil, "parse_response: " .. tostring(err)
     end
 
@@ -1046,9 +1048,17 @@ function M.run(ctx)
                             local results = {}
                             for i, tc in ipairs(tool_calls) do
                                 local tc_input = {}
-                                pcall(function() tc_input = json.decode(table.concat(tc.input_parts)) end)
+                                local raw_parts = table.concat(tc.input_parts)
+                                local ok_parse = pcall(function()
+                                    tc_input = json.decode(raw_parts) or {}
+                                end)
+                                if not ok_parse or (raw_parts ~= "" and next(tc_input) == nil) then
+                                    ngx.log(ngx.WARN,
+                                        "[tool_loop_stream] tool input parse failed tool=", tc.name,
+                                        " raw=", raw_parts:sub(1, 200))
+                                end
                                 ngx.log(ngx.NOTICE, "[tool_loop_stream] executing tool=", tc.name,
-                                    " round=", round)
+                                    " round=", round, " input=", json.encode(tc_input))
 
                                 -- Emit status event
                                 local status_evt = json.encode({
@@ -1078,6 +1088,23 @@ function M.run(ctx)
                             -- Inject results into messages
                             tool_loop.inject_results_from_stream(ctx, tool_calls, results)
 
+                            -- Separate Leg 1 pre-tool text from Leg 2 response so that
+                            -- markdown headings/paragraphs at the start of Leg 2 render
+                            -- correctly (without \n\n the ## is not at line-start).
+                            local leg1 = ctx.stream_accumulated_content or ""
+                            if leg1 ~= "" and not leg1:match("\n\n$") then
+                                local sep = leg1:match("\n$") and "\n" or "\n\n"
+                                local sep_evt = json.encode({
+                                    id      = "chatcmpl-sep",
+                                    object  = "chat.completion.chunk",
+                                    model   = ctx.model or "",
+                                    choices = {{ index = 0, delta = { content = sep },
+                                                 finish_reason = json.null }},
+                                })
+                                ngx.print("data: " .. sep_evt .. "\n\n")
+                                ngx.flush(true)
+                            end
+
                             -- Make next provider call (streaming)
                             local next_res, next_err = call_provider(
                                 ctx, ctx.provider, ctx.model, true)
@@ -1105,11 +1132,70 @@ function M.run(ctx)
                 end
                 return  -- response already sent; skip rest of pipeline
             else
-                local ok, parse_err = handle_buffered(ctx, res)
-                if not ok then
-                    last_err = parse_err
-                    ngx.log(ngx.WARN, "upstream: parse error: ", parse_err)
-                    goto next_try
+                -- Non-streaming path (e.g. pii_force_buffered).
+                -- When the tool loop is active, run a multi-leg buffered loop so
+                -- tool calls are actually executed instead of being silently dropped.
+                if ctx.tool_loop_active then
+                    local tool_loop = require("middleware.tool_loop")
+                    local is_anthropic = (ctx.provider == "anthropic")
+                    local current_res  = res
+
+                    for round = 2, 10 do
+                        local tool_calls = tool_loop.extract_tool_calls(
+                            current_res.body, is_anthropic)
+                        if not tool_calls then break end  -- final answer, no more tool calls
+
+                        ngx.log(ngx.NOTICE, "[buffered_tool_loop] round=", round,
+                            " tools=", (function()
+                                local n = {}
+                                for _, tc in ipairs(tool_calls) do n[#n+1] = tc.name end
+                                return table.concat(n, ",")
+                            end)(),
+                            " provider=", ctx.provider, " model=", ctx.model)
+
+                        local results = {}
+                        for i, tc in ipairs(tool_calls) do
+                            results[i] = tool_loop.execute_tool(ctx, tc)
+                        end
+
+                        tool_loop.inject_results(
+                            ctx, current_res.body, tool_calls, results, is_anthropic)
+
+                        local next_res, next_err = call_provider(
+                            ctx, ctx.provider, ctx.model, false)
+                        if not next_res then
+                            last_err = next_err
+                            goto next_try
+                        end
+                        if next_res.status >= 400 then
+                            local body_str = read_body_str(next_res.body)
+                            if next_res.httpc then next_res.httpc:set_keepalive() end
+                            ctx.response_body   = body_str
+                            ctx.provider_status = next_res.status
+                            ctx.is_streaming    = false
+                            ngx.status = next_res.status
+                            ngx.header["Content-Type"] = "application/json"
+                            ngx.header["X-AIG-Cache"]  = "MISS"
+                            return
+                        end
+                        current_res = next_res
+                    end
+
+                    -- current_res now holds the final (non-tool-use) response
+                    local ok, parse_err = handle_buffered(ctx, current_res)
+                    if not ok then
+                        last_err = parse_err
+                        ngx.log(ngx.WARN, "upstream: parse error (buffered tool loop): ",
+                            parse_err)
+                        goto next_try
+                    end
+                else
+                    local ok, parse_err = handle_buffered(ctx, res)
+                    if not ok then
+                        last_err = parse_err
+                        ngx.log(ngx.WARN, "upstream: parse error: ", parse_err)
+                        goto next_try
+                    end
                 end
 
                 -- Do NOT ngx.print here; send_response.lua runs after

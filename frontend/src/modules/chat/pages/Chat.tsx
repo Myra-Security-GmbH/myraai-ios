@@ -55,16 +55,6 @@ function DownloadIcon() {
     </svg>
   );
 }
-function GlobeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="2" y1="12" x2="22" y2="12" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-    </svg>
-  );
-}
-
 function PdfIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -186,6 +176,14 @@ function buildProjectSystemPrompt(project: ChatProject, knowledgeFiles: ProjectK
   return parts.join("\n\n");
 }
 
+/** Map internal gateway error strings to a user-friendly message. */
+function sanitizeGatewayError(msg: string): string {
+  if (/parse_response|json decode|internal_error|Internal gateway error/i.test(msg)) {
+    return "Something went wrong — please try again.";
+  }
+  return msg;
+}
+
 export default function Chat() {
   useDocumentTitle("Chat");
 
@@ -274,7 +272,6 @@ export default function Chat() {
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     temperature: 0.7,
     maxTokens: 8192,
-    webSearch: false,
     thinkingBudget: null,
   });
 
@@ -483,6 +480,11 @@ export default function Chat() {
     ((gateways.find((g) => g.id === gatewayId) as any)?.configured_providers ?? []) as string[]
   );
 
+  // ── Web search availability + toggle ──────────────────────────────────────
+  const [webSearchOn, setWebSearchOn] = useState(true);
+  const selectedGateway = gateways.find((g) => g.id === gatewayId);
+  const webSearchAvailable = !!(selectedGateway?.config as any)?.web_search?.enabled;
+
   const freeProviders = new Set(providerMeta.filter((p) => !p.requires_key).map((p) => p.name));
   const runnableProviders = new Set<string>([...freeProviders, ...configuredProviders]);
 
@@ -533,7 +535,6 @@ export default function Chat() {
         systemPrompt: conv.system_prompt ?? "",
         temperature: conv.temperature ?? 0.7,
         maxTokens: conv.max_tokens ?? 2048,
-        webSearch: false,
         thinkingBudget: null,
       });
       // Load existing feedback (silently — 404 means none yet)
@@ -1271,7 +1272,7 @@ export default function Chat() {
         Authorization: `Bearer ${tok.token}`,
         ...(ghostMode ? { "x-aig-collect-log": "false" } : {}),
         ...(needsSkill ? { "x-aig-skill": needsSkill } : {}),
-        ...(drawerSettings.webSearch ? { "x-aig-web-search": "1" } : {}),
+        ...(webSearchAvailable && webSearchOn ? { "x-aig-web-search": "1" } : {}),
         ...(drawerSettings.thinkingBudget !== null
           ? { "x-aig-thinking-budget": String(drawerSettings.thinkingBudget) }
           : {}),
@@ -1326,7 +1327,7 @@ export default function Chat() {
           try { msg = JSON.parse(body)?.error?.message ?? JSON.parse(body)?.error ?? msg; } catch { /* */ }
           console.error("[RES] HTTP error", res.status, body.slice(0, 500));
           console.groupEnd();
-          throw new Error(msg);
+          throw new Error(sanitizeGatewayError(msg));
         }
 
         console.log("[RES] status:", res.status,
@@ -1517,7 +1518,7 @@ export default function Chat() {
             generateTitle(convId, text, accumulated, tok, model);
           }
           setProcessingStatus(null);
-          setError(String(err));
+          setError(sanitizeGatewayError(String(err)));
           setIsStreaming(false);
           setStreamingContent(null);
           return;
@@ -1785,7 +1786,6 @@ export default function Chat() {
       systemPrompt: preset.system_prompt ?? "",
       temperature: preset.temperature ?? 0.7,
       maxTokens: preset.max_tokens ?? 2048,
-      webSearch: false,
       thinkingBudget: null,
     });
   }
@@ -1900,15 +1900,6 @@ export default function Chat() {
         <div className={chatS["config-divider"]} />
 
         <button
-          className={chatS["icon-btn"]}
-          title={drawerSettings.webSearch ? "Web search: ON (click to disable)" : "Enable web search"}
-          onClick={() => setDrawerSettings(s => ({ ...s, webSearch: !s.webSearch }))}
-          style={drawerSettings.webSearch ? { color: "var(--accent, #0052cc)" } : {}}
-        >
-          <GlobeIcon />
-        </button>
-
-        <button
           className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
           title="Download PDF"
           onClick={exportPdf}
@@ -1965,6 +1956,18 @@ export default function Chat() {
               <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
               <path d="M16 3.13a4 4 0 0 1 0 7.75" />
             </svg>
+          </button>
+        )}
+
+        {webSearchAvailable && (
+          <button
+            className={chatS["icon-btn"]}
+            title={webSearchOn ? "Web Search ON — click to disable" : "Web Search OFF — click to enable"}
+            onClick={() => setWebSearchOn((v) => !v)}
+            style={webSearchOn ? { color: "var(--accent, #0052cc)", opacity: 1 } : {}}
+            data-cy="web-search-toggle"
+          >
+            🔎
           </button>
         )}
 
