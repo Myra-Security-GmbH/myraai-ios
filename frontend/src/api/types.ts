@@ -490,12 +490,13 @@ export interface AnalyticsDepth {
 // ---------------------------------------------------------------------------
 
 export interface ChatMemory {
-  id:         string;
-  content:    string;
-  type:       "fact" | "preference" | "instruction";
-  source:     "manual" | "auto";
-  created_at: string;
-  updated_at: string;
+  id:          string;
+  content:     string;
+  type:        "fact" | "preference" | "instruction";
+  source:      "manual" | "auto";
+  project_id?: string;   // absent = global (standalone) scope; present = project-scoped
+  created_at:  string;
+  updated_at:  string;
 }
 
 export interface ChatConversation {

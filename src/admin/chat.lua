@@ -1346,13 +1346,24 @@ a {
 
     -- ── Memories ───────────────────────────────────────────────────────────────
 
-    -- GET /admin/v1/memories — list all memories for current user
+    -- GET /admin/v1/memories[?project_id=X] — list memories for current scope
+    -- No project_id → global (standalone) memories (project_id IS NULL)
+    -- project_id=X   → project-scoped memories; caller must be a project member
     route("GET", "^/admin/v1/memories$", function()
-        local u = ngx.ctx.admin_user
-        send(200, storage.list_memories(u.id))
+        local u   = ngx.ctx.admin_user
+        local pid = ngx.req.get_uri_args().project_id
+        if pid and pid ~= "" then
+            local member = storage.get_project_member(pid, u.id)
+            if not member and u.role ~= "admin" then
+                return send(403, { error = "forbidden" })
+            end
+            send(200, storage.list_memories(u.id, pid))
+        else
+            send(200, storage.list_memories(u.id, nil))
+        end
     end)
 
-    -- POST /admin/v1/memories — create a memory  { content, type?, source? }
+    -- POST /admin/v1/memories — create a memory  { content, type?, source?, project_id? }
     route("POST", "^/admin/v1/memories$", function()
         local u    = ngx.ctx.admin_user
         local body = read_body()
@@ -1361,23 +1372,35 @@ a {
         end
         local valid_types   = { fact = true, preference = true, instruction = true }
         local valid_sources = { manual = true, auto = true }
-        local mtype  = body.type   or "fact"
+        local mtype   = body.type   or "fact"
         local msource = body.source or "manual"
-        if not valid_types[mtype]   then return send(400, { error = "invalid type" }) end
+        if not valid_types[mtype]     then return send(400, { error = "invalid type" })   end
         if not valid_sources[msource] then return send(400, { error = "invalid source" }) end
+        local pid = nullable(body.project_id)
+        if pid then
+            -- Verify the project exists (protects against FK constraint errors)
+            local proj = storage.get_project(pid, u.id, u.role == "admin")
+            if not proj then return send(404, { error = "project not found" }) end
+            -- Verify the caller is a project member (admins bypass)
+            local member = storage.get_project_member(pid, u.id)
+            if not member and u.role ~= "admin" then
+                return send(403, { error = "forbidden" })
+            end
+        end
         local id, err = storage.create_memory({
-            user_id = u.id,
-            content = body.content,
-            type    = mtype,
-            source  = msource,
+            user_id    = u.id,
+            project_id = pid,
+            content    = body.content,
+            type       = mtype,
+            source     = msource,
         })
         if not id then return send(500, { error = tostring(err) }) end
-        -- Return the full memory object
-        local mems = storage.list_memories(u.id)
+        -- Return the full memory object including project_id
+        local mems = storage.list_memories(u.id, pid)
         for _, m in ipairs(mems) do
             if m.id == id then return send(201, m) end
         end
-        send(201, { id = id, content = body.content, type = mtype, source = msource })
+        send(201, { id = id, content = body.content, type = mtype, source = msource, project_id = pid })
     end)
 
     -- PATCH /admin/v1/memories/:id — update memory content  { content }

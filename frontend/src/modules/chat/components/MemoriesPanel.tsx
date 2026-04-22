@@ -7,6 +7,7 @@ import s from "../pages/Chat.module.scss";
 interface Props {
   memories: ChatMemory[];
   activeConvId: string | null;
+  projectId?: string | null;   // absent/null = standalone scope; present = project scope
   onClose: () => void;
   onMemoriesChange: (memories: ChatMemory[]) => void;
   onConvMemoryDisabledChange: (convId: string, disabled: boolean) => void;
@@ -20,13 +21,21 @@ const TYPE_BADGE: Record<MemType, string> = {
   instruction: ls["badge--warning"],
 };
 
-export default function MemoriesPanel({ memories, activeConvId, onClose, onMemoriesChange, onConvMemoryDisabledChange }: Props) {
+export default function MemoriesPanel({ memories, activeConvId, projectId, onClose, onMemoriesChange, onConvMemoryDisabledChange }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newType, setNewType] = useState<MemType>("fact");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const panelTitle  = projectId ? "Project Memories" : "Memories";
+  const emptyMsg    = projectId
+    ? "No project memories yet. Add one below or start a conversation — the AI will remember project facts automatically."
+    : "No memories yet. Add one below or start a conversation — the AI will remember things automatically.";
+  const toggleLabel = projectId
+    ? "Don't use project memories in this conversation"
+    : "Don't use memories in this conversation";
 
   async function handleDelete(id: string) {
     await api.delete(`/memories/${id}`).catch(() => {});
@@ -50,7 +59,12 @@ export default function MemoriesPanel({ memories, activeConvId, onClose, onMemor
     setAdding(true);
     setError(null);
     try {
-      const m = await api.post<ChatMemory>("/memories", { content: newContent.trim(), type: newType, source: "manual" });
+      const m = await api.post<ChatMemory>("/memories", {
+        content: newContent.trim(),
+        type:    newType,
+        source:  "manual",
+        ...(projectId ? { project_id: projectId } : {}),
+      });
       onMemoriesChange([...memories, m]);
       setNewContent("");
     } catch {
@@ -66,7 +80,7 @@ export default function MemoriesPanel({ memories, activeConvId, onClose, onMemor
 
         {/* Header */}
         <div className={s["settings-header"]}>
-          Memories {memories.length > 0 && <span style={{ fontWeight: 400, color: "var(--text-secondary)" }}>({memories.length})</span>}
+          {panelTitle} {memories.length > 0 && <span style={{ fontWeight: 400, color: "var(--text-secondary)" }}>({memories.length})</span>}
           <button className={s["icon-btn"]} onClick={onClose} title="Close">×</button>
         </div>
 
@@ -74,7 +88,7 @@ export default function MemoriesPanel({ memories, activeConvId, onClose, onMemor
         <div className={s["settings-body"]}>
           {memories.length === 0 && (
             <p className={ls["empty"]} style={{ padding: "24px 0" }}>
-              No memories yet. Add one below or start a conversation — the AI will remember things automatically.
+              {emptyMsg}
             </p>
           )}
 
@@ -174,7 +188,7 @@ export default function MemoriesPanel({ memories, activeConvId, onClose, onMemor
                   onConvMemoryDisabledChange(activeConvId, disabled);
                 }}
               />
-              Don&apos;t use memories in this conversation
+              {toggleLabel}
             </label>
           )}
         </div>

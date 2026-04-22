@@ -323,6 +323,24 @@ function M.migrate(cfg)
     -- Add memory_disabled to chat_conversation (idempotent)
     db:query("ALTER TABLE chat_conversation ADD COLUMN IF NOT EXISTS memory_disabled TINYINT NOT NULL DEFAULT 0")
 
+    -- Add project_id to chat_memory for project-scoped memory silos (idempotent)
+    -- project_id IS NULL = global (standalone chat) memory
+    -- project_id = X    = project-specific memory, isolated from other projects and standalone
+    -- No ON DELETE CASCADE: chat_project uses soft-delete (deleted_at), so the physical row is
+    -- never removed. Project memories are cleaned up explicitly in delete_project().
+    db:query([[
+        ALTER TABLE chat_memory
+            ADD COLUMN IF NOT EXISTS project_id VARCHAR(36) NULL DEFAULT NULL,
+            ADD KEY    IF NOT EXISTS idx_memory_project (project_id, created_at)
+    ]])
+    pcall(function()
+        db:query([[
+            ALTER TABLE chat_memory
+                ADD CONSTRAINT fk_memory_project
+                    FOREIGN KEY (project_id) REFERENCES chat_project(id)
+        ]])
+    end)
+
     -- Add source column to chat_project_knowledge (idempotent)
     -- 'text' = plain-text upload (no blob); 'upload' = binary file with blob stored
     db:query("ALTER TABLE chat_project_knowledge ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'text'")
@@ -2479,6 +2497,8 @@ function M.delete_project(id)
                        math.floor(ngx.now()), id)
     -- Detach conversations
     exec_one(db, "UPDATE chat_conversation SET project_id = NULL WHERE project_id = ?", id)
+    -- Hard-delete project-scoped memories (project is gone; memories are meaningless)
+    exec_one(db, "DELETE FROM chat_memory WHERE project_id = ?", id)
     release(db)
     return e
 end
@@ -2714,15 +2734,30 @@ end
 -- Chat: memories
 -- ---------------------------------------------------------------------------
 
-function M.list_memories(user_id)
+-- list_memories(user_id, project_id)
+--   project_id = nil  → return global (project_id IS NULL) memories
+--   project_id = <id> → return project-scoped memories for that project
+function M.list_memories(user_id, project_id)
     local db, err = get_conn()
     if not db then return setmetatable({}, cjson.array_mt) end
-    local rows = query_all(db, [[
-        SELECT id, content, type, source,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
-        FROM chat_memory WHERE user_id = ? ORDER BY created_at ASC
-    ]], user_id) or {}
+    local rows
+    if project_id then
+        rows = query_all(db, [[
+            SELECT id, user_id, project_id, content, type, source,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                   DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+            FROM chat_memory WHERE user_id = ? AND project_id = ?
+            ORDER BY created_at ASC
+        ]], user_id, project_id) or {}
+    else
+        rows = query_all(db, [[
+            SELECT id, user_id, project_id, content, type, source,
+                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                   DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+            FROM chat_memory WHERE user_id = ? AND project_id IS NULL
+            ORDER BY created_at ASC
+        ]], user_id) or {}
+    end
     release(db)
     return setmetatable(rows, cjson.array_mt)
 end
@@ -2733,9 +2768,10 @@ function M.create_memory(data)
     local id  = uuid()
     local now = math.floor(ngx.now())
     local e = exec_one(db, [[
-        INSERT INTO chat_memory (id, user_id, content, type, source, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?)
-    ]], id, data.user_id, data.content, data.type or "fact", data.source or "manual", now, now)
+        INSERT INTO chat_memory (id, user_id, project_id, content, type, source, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?)
+    ]], id, data.user_id, data.project_id, data.content,
+        data.type or "fact", data.source or "manual", now, now)
     release(db)
     if e then return nil, e end
     return id

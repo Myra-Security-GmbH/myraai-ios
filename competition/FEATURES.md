@@ -19,6 +19,7 @@
 8. [Guardrail Pipeline](#8-guardrail-pipeline)
 9. [Web Search](#9-web-search)
 9a. [URL Fetch](#9a-url-fetch)
+9b. [Server-Side Tool Loop](#9b-server-side-tool-loop-tool_loop-middleware)
 10. [Reasoning Model Support](#10-reasoning-model-support)
 11. [Provider Key Management (BYOK)](#11-provider-key-management-byok)
 12. [IP Allowlist](#12-ip-allowlist)
@@ -32,6 +33,7 @@
 19a. [Other Admin UI Pages](#19a-other-admin-ui-pages)
 20. [Playground UI](#20-playground-ui)
 21. [Chat Console UI](#21-chat-console-ui)
+21b. [Memory System](#21b-memory-system)
 22. [Gateway Configuration Reference](#22-gateway-configuration-reference)
 23. [Error Handling](#23-error-handling)
 24. [Development Cost Estimation](#24-development-cost-estimation)
@@ -56,9 +58,8 @@ Requests flow through a fixed middleware chain in phase order:
 3. `transform` — Parse and normalize request body
 4. `routing` — Rules engine (provider, model, fallback chain)
 5. `byok` — Decrypt and inject provider API key
-6. `web_search` — Optional: two-leg agentic search loop (Brave API)
-7. `url_fetch` — Optional: two-leg `fetch_url` tool-use loop for fetching page content (SSRF-guarded); skipped if `web_search` already handled the request
-8. `upstream` — Call provider with retry + fallback
+6. `tool_loop` — Server-side tool orchestration: injects read_file, write_file, fetch_url, web_search, and MCP tools; sets `ctx.tool_loop_active`; the actual execution happens inside `upstream` after each streaming leg
+7. `upstream` — Call provider with retry + fallback; runs the multi-leg streaming tool loop when `ctx.tool_loop_active` is set
 9. `guardrails_response` — Guardrail pipeline scan on response
 10. `send_response` — Write buffered response body to client (re-emits as SSE when `ctx.buffered_needs_sse_reemit` is set — see §9)
 11. `cost` — Token counting and budget increment
@@ -569,7 +570,7 @@ High-FP entities (PERSON, LOCATION, DATE_TIME, NRP) have their threshold auto-ra
 
 ## 9. Web Search
 
-Server-side agentic web search loop using the Brave Search API.
+Server-side agentic web search using the Brave Search API, now implemented entirely inside the `tool_loop` middleware (see §1, §9b).
 
 ### Configuration
 
@@ -582,26 +583,31 @@ Server-side agentic web search loop using the Brave Search API.
 }
 ```
 
-- `mode: "opt-in"` (default) — client must send `X-Web-Search: 1` to activate
+Configured per-gateway in the Gateway settings UI (Web Search section: enable toggle, Brave API key field, max results input).
+
+- `mode: "opt-in"` (default) — client must send `X-AIG-Web-Search: 1` to activate
 - `mode: "always"` — applied to every request on this gateway
+- **Chat UI** — always sends `X-AIG-Web-Search: 1` on every message (no toggle needed; web search activates if the gateway has it configured)
 
-### Flow
+### Flow (via tool_loop / upstream streaming loop)
 
-1. **Leg 1** — Non-streaming buffered call with `web_search` tool injected into the request
-2. **Search** — Parallel Brave API calls (non-blocking `ngx.thread.spawn`)
-3. **Fetch** — Parallel HTTP fetches for top-2 result URLs; emits `data: {"aig_status":"fetching","count":N}` SSE event
-4. **Leg 2** — Request updated with enriched search context; provider called again, response streamed to client
+1. `tool_loop` injects a `web_search` tool definition and sets `ctx.tool_loop_active = true`
+2. **Leg 1** — Provider streamed; if model emits `finish_reason: "tool_calls"` for `web_search`, the streaming loop pauses `[DONE]`
+3. **Execute** — `execute_web_search()` runs: parallel Brave API call + parallel HTTP fetch for top-2 result URLs
+4. Emits status events: `data: {"aig_status":"tool_call","tool":"web_search"}` and `data: {"aig_status":"tool_result",...}`
+5. **Leg 2** — Enriched results injected into messages; provider called again; final answer streamed to client
+6. `[DONE]` emitted after all legs complete
 
 ### Provider Support
 
-Two-leg tool-use loop: Anthropic (native), OpenAI, Groq, Mistral, DeepSeek, Cerebras, Together, Fireworks, OpenRouter, xAI, Ollama.
+Tool-use loop: Anthropic (native), OpenAI, Groq, Mistral, DeepSeek, Cerebras, Together, Fireworks, OpenRouter, xAI, Ollama, **vLLM** (including Qwen3 and other self-hosted models via OpenAI-compatible SSE tool_calls extraction).
 
 Gemini / Vertex: native `googleSearch` grounding (single leg, no tool loop).
 
 ### Client-Side Integration
 
 - **Playground UI** — shows a live status badge cycling through `searching → fetching N URLs → searched`; the final query persists in the panel footer.
-- **Chat UI** — reads the `aig_status: "fetching"` SSE event and displays `🔎 Fetching N URL(s)…` in the processing-status area (automatically cleared on first response token).
+- **Chat UI** — reads `aig_status: "tool_call"` / `aig_status: "tool_result"` SSE events and displays `🔎 Searching…` / `🔗 Fetching…` in the processing-status area (automatically cleared on first response token).
 
 The `X-Web-Search-Query` response header carries the query string that was searched; logged as `web_search_query`.
 
@@ -652,6 +658,64 @@ Same `buffered_needs_sse_reemit` pathway as web_search (§9). Leg 1 is always bu
 ### SSRF guard
 
 `utils/fetch_url` refuses to fetch URLs that resolve to loopback (127.0.0.0/8, ::1), link-local (169.254.0.0/16, fe80::/10), private ranges (10/8, 172.16/12, 192.168/16, fc00::/7), or the metadata service (169.254.169.254). Non-`http`/`https` schemes rejected. Response size capped.
+
+---
+
+## 9b. Server-Side Tool Loop (`tool_loop` middleware)
+
+A unified server-side tool orchestration layer that replaced the earlier separate `web_search` and `url_fetch` middleware. Implements the same multi-step "runTools / maxSteps" pattern as OpenAI's Assistants API and Vercel AI SDK.
+
+### Architecture
+
+The `tool_loop` middleware runs in the content phase **before** `upstream`. It:
+
+1. Determines which tools to inject based on request context:
+   - `read_file` + `write_file` — when `X-Project-Id` header is present (project context)
+   - `fetch_url` — when the last user message contains an `http://https://` URL
+   - `web_search` — when the gateway has `web_search.enabled: true` and the request activates it (`mode: always` or `X-AIG-Web-Search: 1`)
+   - MCP tools — from `X-MCP-Tools` header (JSON array of tool definitions with `connector_id`)
+2. Injects tool definitions into `ctx.request_body.tools` (Anthropic format for Anthropic provider; OpenAI function format for all others)
+3. Sets `ctx.tool_loop_active = true`
+
+The actual multi-leg execution happens inside `upstream.lua`'s `handle_compat_streaming`:
+
+- **Streaming tool loop** — after Leg 1 streaming ends with `finish_reason: "tool_calls"` and `pending_tool_calls` are accumulated, the loop executes each tool server-side, emits status/result SSE events, injects results into the message history, and makes the next provider call — all on the same HTTP response (no disconnect between legs)
+- **Buffered tool loop** — for the PII-force-buffered path (non-streaming), an equivalent multi-leg loop runs sequentially with non-streaming provider calls, then the final response is re-emitted as SSE by `send_response.lua`
+- **Max rounds** — 10 (prevents infinite tool loops)
+
+### Supported Tools
+
+| Tool | Activated when | Executor |
+|---|---|---|
+| `read_file` | `X-Project-Id` present | `storage.get_project_knowledge_text(project_id)` |
+| `write_file` | `X-Project-Id` present | `storage.upsert_project_knowledge(...)` |
+| `fetch_url` | URL in last user message | `utils/fetch_url` with SSRF guard |
+| `web_search` | Gateway configured + header/mode | Brave Search API + parallel URL fetch |
+| MCP tools | `X-MCP-Tools` header | Proxy to `/admin/v1/mcp/{id}/call` |
+
+### OpenAI-Format Tool Call Streaming
+
+The `openai.parse_sse_chunk` parser was extended to extract `tool_calls` from streaming `delta.tool_calls` chunks:
+
+- First chunk for a tool call: `function.name` and `tc.id` → `parsed.tool_name` + `parsed.tool_id`
+- Subsequent chunks: `function.arguments` fragments → `parsed.tool_input_delta`
+
+This enables the streaming tool loop for all OpenAI-compatible providers including **vLLM**, Groq, Mistral, DeepSeek, and any other provider using the OpenAI streaming format.
+
+### Supported Providers (tool loop)
+
+Anthropic (native `tool_use`), OpenAI, Groq, Mistral, DeepSeek, Cerebras, Together, Fireworks, OpenRouter, xAI, Ollama, HuggingFace, SambaNova, NVIDIA, Azure, Cloudflare, Cohere, **vLLM** (including Qwen3 and other self-hosted models).
+
+### PII + Tool Use
+
+When the PII protector forces buffered mode (`pii_force_buffered = true`), the streaming tool loop is unavailable. A dedicated **buffered tool loop** in `upstream.lua` handles this path:
+
+1. Non-streaming Leg 1 call → parse response for tool calls
+2. Execute tools, inject results into message history
+3. Non-streaming Leg 2 call → repeat until no tool calls
+4. Final response set in `ctx.response_body`; `send_response.lua` re-emits as SSE
+
+This ensures web search, file reads/writes, and URL fetch all work correctly when the PII protector is active.
 
 ---
 
@@ -1135,8 +1199,9 @@ Model Context Protocol connectors let an admin configure external MCP servers an
 | POST | `/chat-commands` | Create slash command (`name`, `description`, `template`) |
 | PATCH | `/chat-commands/{id}` | Update slash command |
 | DELETE | `/chat-commands/{id}` | Delete slash command |
-| GET | `/memories` | List personal memory items |
-| POST | `/memories` | Create memory (`content`, `type`: fact/preference/instruction, `source`: manual/auto) |
+| GET | `/memories` | List global (standalone) memories for current user |
+| GET | `/memories?project_id={id}` | List project-scoped memories (membership required) |
+| POST | `/memories` | Create memory; optional `project_id` field for project scope |
 | PATCH | `/memories/{id}` | Update memory content or type |
 | DELETE | `/memories/{id}` | Delete memory |
 | POST | `/chat/files` | Extract text from uploaded file (PDF, DOCX, PPTX via server-side extraction; image via MinerU/OCR; spreadsheet via Files API) |
@@ -1254,6 +1319,8 @@ The React admin SPA (`frontend/src/modules/`) exposes one page per area of the A
 
 Navigation uses a collapsible sidebar (`common/components/sidebar/Sidebar.tsx`); the active page is highlighted and links honour the user's role (viewers don't see destructive actions).
 
+**Sidebar section order:** MAIN (Chat, Projects, Playground) → OBSERVABILITY (Dashboard + admin-only: Cost Analytics, Live Monitor, Request Logs) → MANAGEMENT (admin-only: Tenants, Gateways, Users) → CONFIG → ACCOUNT. The "Only show runnable models" checkbox in the ModelPicker defaults to enabled.
+
 ---
 
 ## 20. Playground UI
@@ -1345,7 +1412,7 @@ A full-featured conversational AI interface built into the admin React SPA (`/ch
 - Gateway selector — updates available models
 - Model picker with provider-aware grouping and runnability indicators
 - **Preset mode** — when a tenant has named presets (`chat_presets`), the gateway/model dropdowns are replaced by preset buttons; preset applies a full configuration (gateway, model, system prompt, temperature, max tokens) with one click
-- Web search toggle (🌐 icon) — sends `X-Web-Search: 1` on the next request
+- **Web search always-on** — every Chat message includes `X-AIG-Web-Search: 1`; web search activates automatically when the gateway has it configured (Brave API key + `enabled: true`)
 - Export buttons: PDF (server-side WeasyPrint) and Markdown (client-side download)
 - Settings gear — opens settings drawer
 
@@ -1422,14 +1489,44 @@ Personal shortcuts that expand into prompt templates. Managed via the admin UI o
 
 ### Memories
 
-A personalisation layer that persists facts, preferences, and instructions across conversations.
+A personalisation layer that persists facts, preferences, and instructions across conversations, with **project-scoped isolation** matching Claude.ai's memory model.
 
-- Each memory has: `content` (string), `type` (`fact` | `preference` | `instruction`), `source` (`manual` | `auto`), `created_at`, `updated_at`
-- `auto` memories are written by the model when it detects a user preference worth remembering
-- `manual` memories are created by the user directly in the Memories panel
-- Memories are injected into the system prompt for every conversation under the user
-- Per-conversation opt-out: `memory_disabled: 1` on the conversation suppresses injection for that conversation only
-- CRUD via `GET/POST /memories`, `PATCH/DELETE /memories/{id}`
+#### Memory schema
+
+- `content` — the memory text
+- `type` — `fact` | `preference` | `instruction`
+- `source` — `manual` (user-created) or `auto` (model-extracted)
+- `project_id` — optional; `NULL` = global (standalone) pool; non-null = project-scoped pool
+
+#### Scope model
+
+| Chat context | Memory pool used | System prompt section |
+|---|---|---|
+| Standalone chat | Global (user-level, `project_id IS NULL`) | `## What I know about you` |
+| Project chat | Project-specific (`project_id = X`) | `## What I know about this project` |
+
+The two pools are strictly isolated: global memories never appear in project chats and vice versa.
+
+#### How it works
+
+- **Auto-extraction** — the model instruction in the system prompt asks the model to emit `<memory type="fact|preference|instruction">…</memory>` tags when it detects durable facts. These tags are stripped from the visible response and saved via `POST /memories` with the appropriate `project_id` (captured at send-time to prevent scope drift if the user navigates away mid-stream).
+- **Injection** — on each request, the full memory pool for the current scope is loaded and appended to the system prompt. The model instruction in project context is scoped to project-relevant facts (conventions, tech stack, team preferences).
+- **Scope-reactive load** — the frontend reloads the memory pool whenever `projectIdParam` changes; the state is cleared immediately to prevent stale-scope injection during the reload window.
+- **Per-conversation opt-out** — `memory_disabled: 1` on the conversation suppresses injection and auto-extraction for that conversation only. The MemoriesPanel toggle label adapts to context ("Don't use project memories in this conversation" vs "Don't use memories in this conversation").
+- **Project deletion cascade** — `delete_project()` hard-deletes all `chat_memory` rows for the project.
+
+#### API
+
+- `GET /memories` — global pool (`project_id IS NULL` memories for current user)
+- `GET /memories?project_id=X` — project pool (requires project membership; admins bypass)
+- `POST /memories` — create memory; optional `project_id` field; validates project existence (404) and membership (403) before inserting
+- `PATCH/DELETE /memories/{id}` — update/delete (scoped by `user_id`)
+
+#### MemoriesPanel UI
+
+- Title: "Project Memories" in project context, "Memories" in standalone
+- Manual add includes `project_id` from current context
+- Type badges: `fact`/`preference` (neutral), `instruction` (warning), `auto` source (success)
 
 ### Conversation Sharing
 
@@ -1585,6 +1682,192 @@ All status types are automatically cleared when the first real text token arrive
 
 ---
 
+## 21b. Memory System
+
+Cross-session personalisation that persists facts, preferences, and instructions across conversations — scoped either to a user globally or to a specific project.
+
+---
+
+### Current implementation
+
+#### Storage
+
+```sql
+CREATE TABLE chat_memory (
+    id          VARCHAR(36)  PRIMARY KEY,
+    user_id     VARCHAR(36)  NOT NULL,  -- always the creator
+    project_id  VARCHAR(36)  NULL,       -- NULL = global; non-null = project-scoped
+    content     TEXT         NOT NULL,
+    type        VARCHAR(16)  NOT NULL DEFAULT 'fact',    -- fact | preference | instruction
+    source      VARCHAR(16)  NOT NULL DEFAULT 'manual',  -- manual | auto
+    created_at  BIGINT,
+    updated_at  BIGINT,
+    KEY idx_memory_user    (user_id, created_at),
+    KEY idx_memory_project (project_id, created_at),
+    FOREIGN KEY (user_id)    REFERENCES user(id)         ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES chat_project(id)
+)
+```
+
+`project_id IS NULL` = global memory (standalone-chat pool). `project_id = X` = project-scoped memory (isolated to that project). Project deletion hard-deletes its memories.
+
+#### Scope isolation
+
+| Chat context | Pool queried | System prompt section |
+|---|---|---|
+| Standalone chat | `WHERE user_id = ? AND project_id IS NULL` | `## What I know about you` |
+| Project chat (`?project_id=X`) | `WHERE user_id = ? AND project_id = X` | `## What I know about this project` |
+
+The two pools are strictly isolated — global memories never appear in project chats and vice versa. This matches Claude.ai's memory model.
+
+#### Auto-extraction
+
+The system prompt appended to every inference request includes an instruction asking the model to emit hidden XML tags when it detects a durable fact:
+
+```
+When the user states a personal fact, preference, or instruction worth
+remembering, emit it exactly as:
+<memory type="fact|preference|instruction">concise fact in third-person</memory>
+This tag is invisible to the user. Use sparingly — only for durable facts.
+```
+
+In project context the instruction is tuned to project-relevant facts (coding conventions, tech-stack decisions, team preferences).
+
+After each streamed response the frontend:
+1. Scans the accumulated text with `/<memory(?:\s+type="([^"]+)")?>([\s\S]*?)<\/memory>/g`
+2. Strips matched tags from the visible content (users never see the XML)
+3. POSTs each extracted fact to `POST /memories` with `source: "auto"` and the `project_id` snapshotted at send-time (prevents scope drift if the user navigates away mid-stream)
+4. Shows a brief toast: "Remembered: {content}"
+
+#### Injection into inference requests
+
+On every request, the frontend loads the memory pool for the current scope and appends it to the assembled system prompt:
+
+```
+---
+## What I know about you        ← or "about this project" in project context
+- User prefers concise bullet-point answers
+- Works on a TypeScript monorepo with strict mode enabled
+- Prefers dark mode
+```
+
+The memory pool is loaded reactively: whenever `projectIdParam` changes in the URL, `setMemories([])` clears the state immediately (preventing stale-scope injection during the reload window) and the correct pool is fetched from the API.
+
+#### Memory types
+
+| Type | Meaning | Badge |
+|---|---|---|
+| `fact` | Objective fact about the user or project | neutral (grey) |
+| `preference` | Stylistic or workflow preference | neutral (grey) |
+| `instruction` | Standing order that overrides default behaviour | warning (orange) |
+
+`auto` memories (model-extracted) carry an additional green "auto" badge. Manual memories have no extra badge.
+
+#### Per-conversation opt-out
+
+`memory_disabled: 1` on a conversation record suppresses both injection and auto-extraction for that conversation only. Toggled via the MemoriesPanel ("Don't use memories in this conversation" / "Don't use project memories in this conversation"). All other conversations for the user are unaffected.
+
+#### API
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/memories` | Global memories (`project_id IS NULL`) for the calling user |
+| GET | `/memories?project_id=X` | Project-scoped memories; requires project membership (admins bypass) |
+| POST | `/memories` | Create memory; optional `project_id`; validates project existence (404) and membership (403) |
+| PATCH | `/memories/{id}` | Update `content` (scoped by `user_id`) |
+| DELETE | `/memories/{id}` | Delete (scoped by `user_id`) |
+
+#### MemoriesPanel UI
+
+An accessible drawer opened from the toolbar memory button. Features:
+- Title adapts to scope: **"Project Memories"** (project chat) or **"Memories"** (standalone)
+- Inline edit — click any memory text to edit in place
+- Delete button per row
+- Manual add: textarea + type selector (Fact / Preference / Instruction) + Add button
+- Per-conversation disable toggle at the bottom (label adapts to scope)
+- Empty-state message adapts to scope
+
+---
+
+### Comparison with Claude.ai memory
+
+| Feature | Claude.ai | This product |
+|---|---|---|
+| Cross-session persistence | ✅ | ✅ |
+| Auto-extraction from model output | ✅ | ✅ (`<memory>` tag protocol) |
+| Manual add / edit / delete | ✅ | ✅ MemoriesPanel |
+| Global pool for standalone chat | ✅ | ✅ |
+| Per-project isolated pool | ✅ | ✅ |
+| Memory types (fact / preference / instruction) | ❌ flat | ✅ |
+| Per-conversation opt-out | ❌ (global toggle only) | ✅ |
+| Memory synthesis (auto-summary of past chats) | ✅ (24h background job) | ❌ planned |
+| Past-chat RAG search | ✅ (paid plans) | ❌ planned |
+| Memory export / import | ✅ | ❌ planned |
+| Team / shared project memories | ❌ | ❌ planned |
+
+---
+
+### Planned future features
+
+#### 1. Memory synthesis (cross-conversation summarisation)
+
+A scheduled background job (running every 24 h per user) reads recent conversations and synthesises key facts, decisions, and patterns into new `auto` memories — without any model output containing `<memory>` tags. The synthesis prompt would ask the model to distil the last N conversations into concise, typed memory entries.
+
+Architectural approach:
+- Background timer (`ngx.timer.at`) or cron job polls for users with new conversation activity since the last synthesis run
+- Fetches the last 24 h of message text per user
+- Calls a gateway inference endpoint (model configurable; haiku/flash for cost)
+- Parses the response for typed facts and upserts into `chat_memory`
+- A `last_synthesised_at` timestamp prevents redundant re-processing
+
+This would cover the Claude.ai "Generate memory from chat history" feature.
+
+#### 2. Past-chat RAG search
+
+Semantic search across conversation history, surfaced as a model tool call (`conversation_search`). The model can invoke it when it needs context from a past session.
+
+Architectural approach:
+- Embed conversation messages (or summaries) into a vector store (pgvector, Qdrant, or the existing MySQL semantic-cache table adapted for memory vectors)
+- On tool call: embed the query, cosine-similarity search, return top-K excerpts
+- The tool result is injected as a user message, then the model continues with enriched context
+- Scoped: standalone-chat search covers only global conversations; project-chat search covers only project conversations
+
+This would cover Claude.ai's `conversation_search` and `recent_chats` tool pair (available on paid plans).
+
+#### 3. Memory export / import
+
+A UI button and API endpoint to:
+- **Export** — download all memories (global + all project pools) as a structured JSON or plain Markdown file
+- **Import** — upload a memory file (from Claude.ai, ChatGPT, or a previous export) to seed the memory system
+
+The import flow would parse the file, deduplicate against existing memories, and create new entries with `source: "import"`.
+
+#### 4. Memory consolidation and deduplication
+
+Over time, auto-extracted memories can accumulate near-duplicate or contradictory entries. A periodic consolidation pass would:
+- Embed all memories for a user/project
+- Cluster by cosine similarity (threshold ~0.92)
+- Merge near-duplicates into a single canonical entry (keeping the most recent or most specific wording)
+- Flag and resolve contradictions (e.g. "prefers tabs" vs "prefers spaces" for the same project)
+
+#### 5. Relevance-filtered injection
+
+Currently all memories for a scope are injected on every request. With large memory pools this wastes context tokens and may dilute prompt quality. Future improvement:
+- Embed the current user message and each memory
+- Inject only the top-K most relevant memories (cosine similarity ≥ threshold)
+- Fall back to full injection when the pool is small (< 20 entries)
+
+#### 6. Team / shared project memories
+
+Currently all project memories are created by individual users (`user_id = creator`). A shared memory model would:
+- Allow any project member to create, edit, or delete project memories (not just the original creator)
+- Show which team member created or last edited a memory
+- Allow a project owner to "lock" a memory so it can only be modified by owners/admins
+
+This covers the Claude.ai limitation: "Memory is personal — no mechanism for a team to build and share a common AI memory layer."
+
+---
+
 ## 22. Gateway Configuration Reference
 
 ```json
@@ -1707,6 +1990,7 @@ All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
 | §8 Guardrail Pipeline (7 Tier-1 detectors, 3 Tier-2 sidecars, orchestrator, fail-open, CORS header, outage classification) | 48 | 16 | 8 | 72 | **10 800** |
 | §9 Web Search (Brave API, 4-step agentic loop, Gemini native grounding, parallel fetch) | 24 | 8 | 4 | 36 | **5 400** |
 | §9a URL Fetch (2-leg tool-use, SSRF guard, URL guard for injected context) | 16 | 6 | 3 | 25 | **3 750** |
+| §9b Server-Side Tool Loop (unified tool_loop middleware; streaming + buffered multi-leg execution; OpenAI SSE tool_call streaming; vLLM support; PII-path buffered loop; read/write/fetch/search/MCP tools) | 32 | 12 | 5 | 49 | **7 350** |
 | §10 Reasoning Model Support (Anthropic extended thinking, DeepSeek-R1 strip, Qwen3/Ollama think) | 16 | 6 | 3 | 25 | **3 750** |
 | §11 Provider Key Management / BYOK (AES-256-CBC encrypt, shared-dict cache, alias routing) | 12 | 4 | 2 | 18 | **2 700** |
 | §12 IP Allowlist (CIDR matching, per-gateway config) | 4 | 2 | 1 | 7 | **1 050** |
@@ -1717,7 +2001,7 @@ All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
 | §17 Multi-Tenancy (data isolation, cross-tenant guard, schema, cascade deletes) | 16 | 6 | 3 | 25 | **3 750** |
 | §18 Admin REST API (130+ endpoints across 15 resource groups) | 60 | 20 | 8 | 88 | **13 200** |
 | §23 Error Handling (structured JSON errors, consistent codes) | 4 | 2 | 1 | 7 | **1 050** |
-| **Backend subtotal** | **452** | **167** | **76** | **695** | **104 250** |
+| **Backend subtotal** | **484** | **179** | **81** | **744** | **111 600** |
 
 ---
 
@@ -1729,12 +2013,12 @@ All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
 | §19a Admin UI Pages (13 module pages: gateways, tenants, users, analytics, logs, prices, guardrail builder, MCP, commands, monitor, projects, settings, profile) | 80 | 24 | 8 | 112 | **16 800** |
 | §20 Playground UI (multi-panel comparison, streaming, status bar, debug log, error badges, state persistence) | 32 | 10 | 4 | 46 | **6 900** |
 | §21 Chat UI — conversation management (sidebar, search, rename, star, archive, create, delete) | 20 | 8 | 3 | 31 | **4 650** |
-| §21 Chat UI — configuration bar & presets (tenant/gateway/model selectors, preset mode, web search toggle, export buttons) | 16 | 6 | 2 | 24 | **3 600** |
+| §21 Chat UI — configuration bar & presets (tenant/gateway/model selectors, preset mode, always-on web search, export buttons) | 16 | 6 | 2 | 24 | **3 600** |
 | §21 Chat UI — settings drawer (system prompt, temperature, max tokens, extended thinking, preset save/load/delete, MCP toggles) | 16 | 6 | 2 | 24 | **3 600** |
 | §21 Chat UI — message rendering (GFM, KaTeX, code blocks with dark theme, thinking panels, artifact panel, streaming cursor, metadata, copy/edit/regenerate) | 32 | 10 | 4 | 46 | **6 900** |
 | §21 Chat UI — file attachments (8 formats, drag-and-drop, chips, server-side extraction pipeline) | 24 | 8 | 3 | 35 | **5 250** |
 | §21 Chat UI — slash commands (picker overlay, template variables, fill modal, tenant merge) | 16 | 6 | 2 | 24 | **3 600** |
-| §21 Chat UI — memories (auto-write, manual CRUD, system prompt injection, per-conversation opt-out) | 14 | 5 | 2 | 21 | **3 150** |
+| §21 Chat UI — memories (project-scoped pools; auto-write with scope capture; manual CRUD; system prompt injection; scope-reactive load; per-conversation opt-out; panel title by context) | 20 | 8 | 3 | 31 | **4 650** |
 | §21 Chat UI — conversation sharing (share link CRUD, public viewer, fork-from-share) | 12 | 5 | 2 | 19 | **2 850** |
 | §21 Chat UI — feedback, starring, archiving | 8 | 4 | 1 | 13 | **1 950** |
 | §21 Chat UI — project knowledge base (file upload panel, on-demand read, `<read_file>` injection, `<write_file>` auto-save, streaming hide, render transform) | 32 | 12 | 4 | 48 | **7 200** |
@@ -1746,7 +2030,7 @@ All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
 | §21 Chat UI — tool-use activity display (status badge mapping, gateway aig_status events) | 6 | 3 | 1 | 10 | **1 500** |
 | §21 Chat UI — guardrail & stream-health banners (yellow warn, red hard error, empty-stream detection) | 8 | 4 | 1 | 13 | **1 950** |
 | §21 Chat UI — export (Markdown client-side, PDF server-side WeasyPrint) | 8 | 4 | 2 | 14 | **2 100** |
-| **Frontend subtotal** | **380** | **140** | **47** | **567** | **85 050** |
+| **Frontend subtotal** | **386** | **144** | **48** | **578** | **86 700** |
 
 ---
 
@@ -1800,14 +2084,14 @@ The git history (~85 commits) shows substantial revision work on top of the init
 
 | Category | Dev h | QA h | Docs h | Total h | **EUR** |
 |---|---|---|---|---|---|
-| Backend | 452 | 167 | 76 | 695 | **104 250** |
-| Frontend | 380 | 140 | 47 | 567 | **85 050** |
+| Backend | 484 | 179 | 81 | 744 | **111 600** |
+| Frontend | 386 | 144 | 48 | 578 | **86 700** |
 | QA infrastructure & test suite | 76 | 192 | 29 | 297 | **44 550** |
 | Revision & iteration overhead | 100 | 72 | 44 | 216 | **32 400** |
 | Technical documentation site (300+ pages, 75 screenshots, 3 refresh cycles) | 0 | 0 | 350 | 350 | **52 500** |
-| **Total** | **1 008** | **571** | **546** | **2 125** | **318 750** |
+| **Total** | **1 046** | **587** | **552** | **2 185** | **327 750** |
 
-**Total estimated investment: ~2 125 hours / ~318 750 EUR** at 150 EUR/h.
+**Total estimated investment: ~2 185 hours / ~327 750 EUR** at 150 EUR/h.
 
 > The "Docs h" column in the per-feature rows covers inline documentation (code comments, config examples, FEATURES.md entries). The documentation site row covers the separately deliverable 300-page MkDocs site as a distinct writing and production effort.
 >

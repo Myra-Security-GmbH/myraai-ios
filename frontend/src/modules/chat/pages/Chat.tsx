@@ -378,7 +378,7 @@ export default function Chat() {
     api.get<ChatConversation[]>("/conversations").then(setConversations).catch(() => {});
     api.get<ChatPreset[]>("/chat-presets").then(setPresets).catch(() => {});
     api.get<SlashCommand[]>("/chat-commands").then(setUserCommands).catch(() => {});
-    api.get<ChatMemory[]>("/memories").then(setMemories).catch(() => {});
+    // Memory load is scope-reactive (see projectIdParam useEffect below)
     // Load MCP connectors and fetch their tool lists
     api.get<McpConnector[]>("/mcp").then(async (connectors) => {
       setMcpConnectors(connectors);
@@ -412,6 +412,17 @@ export default function Chat() {
       .then(setProjectKnowledge)
       .catch(() => setProjectKnowledge([]));
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectIdParam]);
+
+  // ── Memory pool: reload when scope changes (project ↔ standalone) ─────────
+  // Clear immediately to prevent stale-scope injection during the reload window.
+  // Wrong-scope injection is a data leak; empty injection is safely recoverable.
+  useEffect(() => {
+    setMemories([]);
+    const url = projectIdParam
+      ? `/memories?project_id=${encodeURIComponent(projectIdParam)}`
+      : `/memories`;
+    api.get<ChatMemory[]>(url).then(setMemories).catch(() => setMemories([]));
   }, [projectIdParam]);
 
   // Auto-load a specific conversation when ?conv= is present in the URL
@@ -880,6 +891,10 @@ export default function Chat() {
     const text = inputValue.trim();
     if (!text && pendingAttachments.length === 0) return;
 
+    // Snapshot scope at send-time so auto-extracted <memory> tags are written to the
+    // correct pool even if the user navigates away before the stream completes.
+    const scopeProjectId = projectIdParam;
+
     // In preset mode: derive gateway + model directly from the selected preset.
     // This is the authoritative source — never use gatewayId/model state which
     // may have been transiently overridden by loadConversation.
@@ -1169,11 +1184,16 @@ export default function Chat() {
 
     const activeConv = conversations.find(c => c.id === activeConvId);
     const memoryDisabled = activeConv?.memory_disabled === 1;
+    const memHeader = projectIdParam
+      ? "## What I know about this project"
+      : "## What I know about you";
     const memBlock = (!memoryDisabled && memories.length > 0)
-      ? "\n\n---\n## What I know about you\n" + memories.map(m => `- ${m.content}`).join("\n")
+      ? `\n\n---\n${memHeader}\n` + memories.map(m => `- ${m.content}`).join("\n")
       : "";
     const memInstruction = !memoryDisabled
-      ? "\n\nWhen the user states a personal fact, preference, or instruction worth remembering across conversations, emit it exactly as:\n<memory type=\"fact|preference|instruction\">concise fact in third-person</memory>\nThis tag is invisible to the user. Use sparingly — only for durable facts."
+      ? (projectIdParam
+          ? "\n\nWhen the user states a project-relevant fact worth remembering (coding conventions, tech stack decisions, team preferences), emit it exactly as:\n<memory type=\"fact|preference|instruction\">concise fact in third-person</memory>\nThis tag is invisible to the user. Use sparingly — only for durable project facts."
+          : "\n\nWhen the user states a personal fact, preference, or instruction worth remembering across conversations, emit it exactly as:\n<memory type=\"fact|preference|instruction\">concise fact in third-person</memory>\nThis tag is invisible to the user. Use sparingly — only for durable facts.")
       : "";
     const systemContent = (drawerSettings.systemPrompt || "") + memBlock + memInstruction;
 
@@ -1565,7 +1585,10 @@ export default function Chat() {
         const content = match[2].trim();
         visibleContent = visibleContent.replace(match[0], "");
         if (!currentMemoryDisabled && content) {
-          api.post<ChatMemory>("/memories", { content, type: mtype, source: "auto" })
+          api.post<ChatMemory>("/memories", {
+              content, type: mtype, source: "auto",
+              ...(scopeProjectId ? { project_id: scopeProjectId } : {}),
+            })
             .then((m) => {
               setMemories((prev) => [...prev, m]);
               setMemToast(`Remembered: ${content}`);
@@ -2425,6 +2448,7 @@ export default function Chat() {
         <MemoriesPanel
           memories={memories}
           activeConvId={activeConvId}
+          projectId={projectIdParam}
           onClose={() => setShowMemories(false)}
           onMemoriesChange={setMemories}
           onConvMemoryDisabledChange={(convId, disabled) => {
