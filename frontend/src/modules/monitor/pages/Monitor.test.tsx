@@ -43,6 +43,7 @@ const STATS: UsageStats = {
       upstream_attempts: 1, fallback_provider: null, fallback_model: null,
       saved_cost_usd: null, request_size_bytes: 256, detectors_fired: [],
       guardrail_latency_ms: null, scrub_applied: 0,
+      cache_creation_tokens: 0, cache_read_tokens: 0,
     },
   ],
   recent_blocked: [],

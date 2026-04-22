@@ -104,6 +104,7 @@ const ANALYTICS: AnalyticsDepth = {
       errors: 0,
     },
   ],
+  cache_efficiency: null,
 };
 
 const EMPTY_ANALYTICS: AnalyticsDepth = {
@@ -112,6 +113,7 @@ const EMPTY_ANALYTICS: AnalyticsDepth = {
   by_tenant: [],
   by_gateway: [],
   by_user: [],
+  cache_efficiency: null,
 };
 
 const DETAIL: TenantAnalyticsDetail = {

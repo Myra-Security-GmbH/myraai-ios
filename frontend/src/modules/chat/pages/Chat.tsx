@@ -2074,16 +2074,6 @@ export default function Chat() {
           )}
         </button>
 
-        {!ghostMode && (
-          <button
-            className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
-            title="Session feedback"
-            onClick={() => { setShowFeedback(true); setFeedbackSaved(false); setFeedbackError(null); }}
-            disabled={!activeConvId}
-          >
-            <FlagIcon />
-          </button>
-        )}
 
         {supportsThinking && (
           <button
@@ -2254,6 +2244,20 @@ export default function Chat() {
             streamingConvId={streamingConvId}
             newChatLabel={activeProject ? "New project chat" : undefined}
           />
+          {/* Feedback flag — bottom of sidebar, hidden in ghost mode */}
+          {!ghostMode && (
+            <button
+              className={chatS["conv-archive-toggle"]}
+              onClick={() => { setShowFeedback(true); setFeedbackSaved(false); setFeedbackError(null); }}
+              disabled={!activeConvId}
+              title="Session feedback"
+              data-cy="feedback-flag-btn"
+              style={{ display: "flex", alignItems: "center", gap: 6, opacity: activeConvId ? 1 : 0.4 }}
+            >
+              <FlagIcon />
+              Session feedback
+            </button>
+          )}
         </div>
 
         {/* Message area */}
