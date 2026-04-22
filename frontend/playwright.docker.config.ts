@@ -61,6 +61,8 @@ export const SEQUENTIAL_TESTS = [
   "**/css-rendering.spec.ts",
   // Runs docker exec for pymupdf geometry analysis; not safe to parallelise.
   "**/css-pdf-quality.spec.ts",
+  // Reads Docker logs to verify SMTP delivery; not safe to parallelise.
+  "**/email-delivery.spec.ts",
 ];
 
 export default defineConfig({
