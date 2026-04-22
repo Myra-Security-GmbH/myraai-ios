@@ -26,6 +26,7 @@ local json      = require("utils.json")
 local storage   = require("storage")
 local byok      = require("auth.byok")
 local http_util = require("utils.http")
+local uuid      = require("utils.uuid")
 
 local M = {}
 
@@ -132,6 +133,99 @@ function M.register(route)
         send(201, conv)
     end)
 
+    -- GET /admin/v1/conversations/search?q=text&limit=N
+    -- Semantic cosine search when a gateway has semantic_cache configured;
+    -- falls back to SQL title LIKE search otherwise.
+    route("GET", "^/admin/v1/conversations/search$", function()
+        local u    = ngx.ctx.admin_user
+        local args = ngx.req.get_uri_args()
+        local q    = args.q or ""
+        local lim  = math.min(tonumber(args.limit) or 20, 100)
+
+        if #q < 2 then
+            return send(200, setmetatable({}, json.array_mt or cjson.array_mt))
+        end
+
+        -- Try to find a gateway with semantic_cache configured
+        local embed_cfg = nil
+        local ok_gw, gws = pcall(storage.list_gateways_all)
+        if ok_gw then
+            for _, gw in ipairs(gws or {}) do
+                local ok_cfg, cfg = pcall(json.decode, gw.config or "{}")
+                if ok_cfg and type(cfg) == "table" then
+                    local sc = cfg.semantic_cache
+                    if sc and sc.enabled and sc.embedding_url and sc.embedding_api_key then
+                        embed_cfg = sc
+                        break
+                    end
+                end
+            end
+        end
+
+        if not embed_cfg then
+            -- Fallback: title LIKE search
+            local rows = storage.search_conversations_by_title(u.id, q, lim)
+            return send(200, rows)
+        end
+
+        -- Semantic path: embed query → cosine rank → return top conversations
+        local semantic = require("cache.semantic")
+        local query_vec, err = semantic._embed_text(q, embed_cfg)
+        if not query_vec then
+            ngx.log(ngx.WARN, "[conv_search] embed failed: ", tostring(err))
+            local rows = storage.search_conversations_by_title(u.id, q, lim)
+            return send(200, rows)
+        end
+
+        local candidates = storage.get_user_conversation_embeddings(u.id)
+        if not candidates or #candidates == 0 then
+            return send(200, setmetatable({}, cjson.array_mt))
+        end
+
+        -- Score all candidates
+        local scored = {}
+        for _, row in ipairs(candidates) do
+            local ok2, stored_vec = pcall(json.decode, row.embedding)
+            if ok2 and type(stored_vec) == "table" and #stored_vec == #query_vec then
+                local sim = semantic._cosine_similarity(query_vec, stored_vec)
+                if sim > 0.3 then  -- minimum relevance threshold
+                    scored[#scored + 1] = { id = row.conversation_id, sim = sim }
+                end
+            end
+        end
+
+        -- Sort descending by similarity
+        table.sort(scored, function(a, b) return a.sim > b.sim end)
+
+        -- Collect top-N IDs
+        local top_ids = {}
+        for i = 1, math.min(lim, #scored) do
+            top_ids[i] = scored[i].id
+        end
+
+        if #top_ids == 0 then
+            return send(200, setmetatable({}, cjson.array_mt))
+        end
+
+        -- Fetch full conversation rows for matching IDs, preserving rank order
+        local by_id = {}
+        for _, id in ipairs(top_ids) do
+            local conv = storage.get_conversation(id, u.id)
+            if conv then
+                -- strip messages array (not needed for search results)
+                conv.messages = nil
+                by_id[id] = conv
+            end
+        end
+
+        local result = {}
+        for _, id in ipairs(top_ids) do
+            if by_id[id] then result[#result + 1] = by_id[id] end
+        end
+
+        send(200, result)
+    end)
+
     -- GET /admin/v1/conversations/:id
     route("GET", "^/admin/v1/conversations/([^/]+)$", function(id)
         local u = ngx.ctx.admin_user
@@ -159,6 +253,40 @@ function M.register(route)
         if body.archived_at     ~= nil then data.archived_at     = (body.archived_at == json.null) and ngx.null or body.archived_at end
         local err = storage.update_conversation(id, u.id, data)
         if err then return send(500, { error = tostring(err) }) end
+
+        -- Background: embed the updated title for semantic search
+        if data.title and data.title ~= ngx.null and data.title ~= "" then
+            local snap = { conv_id = id, user_id = u.id, title = data.title }
+            ngx.timer.at(0, function(_, s)
+                -- Find first gateway with semantic_cache config
+                local embed_cfg = nil
+                local ok_gw, gws = pcall(storage.list_gateways_all)
+                if ok_gw then
+                    for _, gw in ipairs(gws or {}) do
+                        local ok_cfg, cfg = pcall(json.decode, gw.config or "{}")
+                        if ok_cfg and type(cfg) == "table" then
+                            local sc = cfg.semantic_cache
+                            if sc and sc.enabled and sc.embedding_url and sc.embedding_api_key then
+                                embed_cfg = sc
+                                break
+                            end
+                        end
+                    end
+                end
+                if not embed_cfg then return end
+                local semantic = require("cache.semantic")
+                local vec, verr = semantic._embed_text(s.title, embed_cfg)
+                if not vec then
+                    ngx.log(ngx.WARN, "[conv_embed] embed failed: ", tostring(verr))
+                    return
+                end
+                local ok_store, stor = pcall(require, "storage")
+                if not ok_store then return end
+                stor.upsert_conversation_embedding(
+                    s.conv_id, s.user_id, s.title, json.encode(vec))
+            end, snap)
+        end
+
         send(200, { ok = true })
     end)
 

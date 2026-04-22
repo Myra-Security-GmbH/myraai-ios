@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { ChatConversation } from "src/api/types";
+import { api } from "src/api/client";
 import s from "../pages/Chat.module.scss";
 
 function diffDays(iso: string): number {
@@ -100,12 +101,30 @@ export default function ConversationList({
   newChatLabel = "New Chat",
 }: Props) {
   const [search, setSearch] = useState("");
+  const [semanticResults, setSemanticResults] = useState<ChatConversation[] | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
-  const filtered = search
-    ? conversations.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
-    : conversations;
+  // Debounced backend search — falls back to title LIKE if no embedding config
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (search.length < 2) { setSemanticResults(null); return; }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const results = await api.get<ChatConversation[]>(
+          `/conversations/search?q=${encodeURIComponent(search)}&limit=30`
+        );
+        setSemanticResults(Array.isArray(results) ? results : null);
+      } catch { setSemanticResults(null); }
+    }, 350);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [search]);
+
+  const filtered = semanticResults
+    ?? (search
+      ? conversations.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
+      : conversations);
 
   function startRename(conv: ChatConversation) {
     setRenamingId(conv.id);
@@ -227,9 +246,12 @@ export default function ConversationList({
             type="text"
             placeholder="Search…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setSemanticResults(null); }}
             aria-label="Search conversations"
           />
+          {semanticResults !== null && (
+            <span className={s["conv-search-badge"]} title="Semantic search results">✦</span>
+          )}
         </div>
       )}
 
