@@ -362,6 +362,20 @@ function M.migrate(cfg)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ]])
 
+    -- Conversation embeddings for semantic search (idempotent)
+    db:query([[
+        CREATE TABLE IF NOT EXISTS conversation_embeddings (
+            conversation_id  VARCHAR(36)  NOT NULL,
+            user_id          VARCHAR(36)  NOT NULL,
+            text             TEXT         NOT NULL,
+            embedding        MEDIUMTEXT   NOT NULL,
+            created_at       BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            updated_at       BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            PRIMARY KEY (conversation_id),
+            KEY idx_conv_emb_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ]])
+
     db:set_keepalive(0, 5)
 end
 
@@ -909,6 +923,16 @@ function M.list_gateways(tenant_id)
     return rows
 end
 
+function M.list_gateways_all()
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows = query_all(db, [[
+        SELECT id, slug, tenant_id, config FROM gateway ORDER BY created_at DESC LIMIT 200
+    ]]) or {}
+    release(db)
+    return rows
+end
+
 function M.get_gateway_by_id(gateway_id)
     local db, err = get_conn()
     if not db then return nil end
@@ -1184,7 +1208,8 @@ function M.list_logs(filters)
                tenant_id, gateway_id,
                provider, model, status, cached, blocked,
                blocked_by, block_reason, guardrail_verdict,
-               input_tokens, output_tokens, cost_usd, latency_ms,
+               input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+               cost_usd, latency_ms,
                upstream_latency_ms, guardrail_latency_ms, upstream_attempts,
                fallback_provider, fallback_model, saved_cost_usd, request_size_bytes,
                detectors_fired, scrub_applied, prompt, response_raw, trace_id
@@ -2793,6 +2818,57 @@ function M.delete_memory(id, user_id)
     local e = exec_one(db, "DELETE FROM chat_memory WHERE id = ? AND user_id = ?", id, user_id)
     release(db)
     return e
+end
+
+-- ---------------------------------------------------------------------------
+-- Conversation embeddings — semantic search
+-- ---------------------------------------------------------------------------
+
+function M.upsert_conversation_embedding(conversation_id, user_id, text, embedding_json)
+    local db, err = get_conn()
+    if not db then return err end
+    local now = math.floor(ngx.now())
+    local e = exec_one(db, [[
+        INSERT INTO conversation_embeddings
+            (conversation_id, user_id, text, embedding, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE text = ?, embedding = ?, updated_at = ?
+    ]], conversation_id, user_id, text, embedding_json, now, now,
+        text, embedding_json, now)
+    release(db)
+    return e
+end
+
+function M.get_user_conversation_embeddings(user_id)
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows = query_all(db, [[
+        SELECT conversation_id, embedding
+        FROM conversation_embeddings
+        WHERE user_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 500
+    ]], user_id) or {}
+    release(db)
+    return rows
+end
+
+function M.search_conversations_by_title(user_id, q, limit)
+    limit = math.min(limit or 20, 100)
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows = query_all(db, string.format([[
+        SELECT id, gateway_id, title, model, project_id, starred, archived_at,
+               DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
+        FROM chat_conversation
+        WHERE user_id = ? AND deleted_at IS NULL AND archived_at IS NULL
+          AND title LIKE ?
+        ORDER BY updated_at DESC
+        LIMIT %d
+    ]], limit), user_id, "%" .. q .. "%") or {}
+    release(db)
+    return rows
 end
 
 -- List conversations for a project (most recent 50)

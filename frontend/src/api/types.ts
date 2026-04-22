@@ -252,6 +252,8 @@ export interface LogEntry {
   fallback_provider: string | null;
   fallback_model: string | null;
   saved_cost_usd: number | null;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
   request_size_bytes: number;
   detectors_fired: string[];
   scrub_applied: number;

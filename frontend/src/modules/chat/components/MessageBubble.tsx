@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useContext, createContext, isValidElement } from "react";
+import { memo, useState, useCallback, useContext, createContext, isValidElement, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -196,7 +196,13 @@ function CodeBlock({ className, children }: { inline?: boolean; className?: stri
         lang={lang}
         code={code}
         isStreaming={isStreaming}
-        onOpen={() => onOpenArtifact?.({ lang, code, filename: detectedFilename, complete: !isStreaming })}
+        onOpen={() => onOpenArtifact?.({
+          lang,
+          code,
+          filename: detectedFilename,
+          complete: !isStreaming,
+          key: detectedFilename ?? `${lang}:${code.trim().slice(0, 60)}`,
+        })}
       />
     );
   }
@@ -229,6 +235,73 @@ function CodeBlock({ className, children }: { inline?: boolean; className?: stri
 const MD_COMPONENTS_DEFAULT: Components = {
   code: CodeBlock as Components["code"],
 };
+
+const REGEN_REASONS = [
+  { label: "Try again",   reason: undefined },
+  { label: "Too long",    reason: "Please regenerate — the previous response was too long. Be more concise." },
+  { label: "Too short",   reason: "Please regenerate — the previous response was too brief. Provide more detail." },
+  { label: "Too formal",  reason: "Please regenerate with a more casual, conversational tone." },
+  { label: "Too casual",  reason: "Please regenerate with a more formal, professional tone." },
+  { label: "Off topic",   reason: "Please regenerate — stay focused on what was actually asked." },
+  { label: "Inaccurate",  reason: "Please regenerate — the previous response contained inaccuracies. Be more careful and precise." },
+];
+
+function RegenerateButton({ onRegenerate }: { onRegenerate: (reason?: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-flex" }}>
+      <button className={s["bubble-action-btn"]} onClick={() => onRegenerate()} style={{ borderRadius: "5px 0 0 5px", paddingRight: 6 }}>
+        <RegenerateIcon />
+        Regenerate
+      </button>
+      <button
+        className={s["bubble-action-btn"]}
+        onClick={() => setOpen((v) => !v)}
+        style={{ borderRadius: "0 5px 5px 0", paddingLeft: 5, paddingRight: 5, borderLeft: "1px solid var(--card-border)" }}
+        title="Regenerate with reason"
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
+        ▾
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 4px)", right: 0,
+          background: "var(--card-bg)", border: "1px solid var(--card-border)",
+          borderRadius: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+          zIndex: 50, minWidth: 170, overflow: "hidden",
+        }}>
+          {REGEN_REASONS.map(({ label, reason }) => (
+            <button
+              key={label}
+              onClick={() => { setOpen(false); onRegenerate(reason); }}
+              style={{
+                display: "block", width: "100%", textAlign: "left",
+                padding: "7px 12px", background: "none", border: "none",
+                cursor: "pointer", fontSize: 12, color: "var(--text-primary)",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--table-row-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Split a plain-text assistant message into its thinking block and visible text. */
 function parseThinking(text: string): {
@@ -283,7 +356,8 @@ interface Props {
   onOpenArtifact?: ((artifact: Artifact) => void) | null;
   onCopy: (text: string) => void;
   onEdit?: (id: string, content: string) => void;
-  onRegenerate?: () => void;
+  /** Called with optional reason string ("too long", "too short", etc.) */
+  onRegenerate?: (reason?: string) => void;
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -490,8 +564,9 @@ const MessageBubble = memo(function MessageBubble({
             </div>
 
             {/* Assistant metrics */}
-            {!isUser && (message.input_tokens || message.output_tokens || message.cost_usd || message.latency_ms) && (
+            {!isUser && (message.model || message.input_tokens || message.output_tokens || message.cost_usd || message.latency_ms) && (
               <div className={s["bubble-meta"]}>
+                {message.model && <span className={s["bubble-meta-model"]}>{message.model}</span>}
                 {message.input_tokens != null && <span>{message.input_tokens}↑</span>}
                 {message.output_tokens != null && <span>{message.output_tokens}↓</span>}
                 {fmtCost(message.cost_usd) && <span>{fmtCost(message.cost_usd)}</span>}
@@ -512,10 +587,7 @@ const MessageBubble = memo(function MessageBubble({
                 </button>
               )}
               {!isUser && isLast && onRegenerate && !isStreaming && (
-                <button className={s["bubble-action-btn"]} onClick={onRegenerate}>
-                  <RegenerateIcon />
-                  Regenerate
-                </button>
+                <RegenerateButton onRegenerate={onRegenerate} />
               )}
             </div>
           </>
