@@ -1535,13 +1535,38 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
         LIMIT 50
     ]], tc, uc), from) or {}
 
+    -- Anthropic prompt-cache efficiency: aggregates cache_write, cache_read, and
+    -- uncached input tokens across all Anthropic requests in the window.
+    -- Joins model_price per row so costs reflect each model's actual pricing.
+    local cache_eff = query_one(db, string.format([[
+        SELECT
+            COALESCE(SUM(r.cache_creation_tokens), 0) AS cache_write_tokens,
+            COALESCE(SUM(r.cache_read_tokens),     0) AS cache_read_tokens,
+            COALESCE(SUM(r.input_tokens),          0) AS uncached_input_tokens,
+            ROUND(SUM(
+                r.cache_creation_tokens * COALESCE(mp.cache_write_per_1k, 0) / 1000 +
+                r.cache_read_tokens     * COALESCE(mp.cache_read_per_1k,  0) / 1000
+            ), 4) AS cached_cost_usd,
+            ROUND(SUM(
+                r.input_tokens * COALESCE(mp.input_per_1k, 0) / 1000
+            ), 4) AS uncached_cost_usd,
+            ROUND(
+                COALESCE(SUM(r.cache_read_tokens), 0) * 100.0 /
+                NULLIF(SUM(r.cache_creation_tokens + r.cache_read_tokens + r.input_tokens), 0),
+            1) AS cache_hit_pct
+        FROM request_log r
+        LEFT JOIN model_price mp ON mp.provider = r.provider AND mp.model = r.model
+        WHERE r.provider = 'anthropic' AND r.status = 200 AND r.ts >= ?%s%s
+    ]], tc, uc), from) or {}
+
     release(db)
     return {
-        percentiles = pct,
-        top_models  = top_models,
-        by_tenant   = by_tenant,
-        by_gateway  = by_gateway,
-        by_user     = by_user,
+        percentiles     = pct,
+        top_models      = top_models,
+        by_tenant       = by_tenant,
+        by_gateway      = by_gateway,
+        by_user         = by_user,
+        cache_efficiency = cache_eff,
     }
 end
 

@@ -479,12 +479,22 @@ export interface TopModelRow {
   avg_latency_ms: number;
 }
 
+export interface CacheEfficiency {
+  cache_write_tokens:    number;
+  cache_read_tokens:     number;
+  uncached_input_tokens: number;
+  cached_cost_usd:       number;   // cache write + cache read cost
+  uncached_cost_usd:     number;   // standard input token cost
+  cache_hit_pct:         number;   // cache_read / (write + read + input) × 100
+}
+
 export interface AnalyticsDepth {
-  percentiles: LatencyPercentiles;
-  top_models: TopModelRow[];
-  by_tenant: TenantStats[];
-  by_gateway: GatewayStats[];
-  by_user: UserStats[];
+  percentiles:      LatencyPercentiles;
+  top_models:       TopModelRow[];
+  by_tenant:        TenantStats[];
+  by_gateway:       GatewayStats[];
+  by_user:          UserStats[];
+  cache_efficiency: CacheEfficiency | null;
 }
 
 // ---------------------------------------------------------------------------
