@@ -2,14 +2,12 @@
  * chat-web-search.spec.ts — end-to-end tests for the chat web search feature.
  *
  * Exercises the gateway's two-leg agentic search loop:
- *   client sends x-aig-web-search: 1 → Leg 1 non-streaming call → Brave search
+ *   client always sends x-aig-web-search: 1 → Leg 1 non-streaming call → Brave search
  *   → optional page fetch → Leg 2 streaming call → assistant reply.
  *
- * Gateway: myratest / prod   Model: claude-sonnet-4-6 (Anthropic native path)
+ * Web search is always enabled — there is no toggle button.
  *
- * Root cause of "TypeError: Failed to fetch" was a missing CORS preflight
- * allowance for the x-aig-web-search header in nginx.docker.conf — fixed by
- * adding x-aig-web-search to Access-Control-Allow-Headers.
+ * Gateway: myratest / prod   Model: claude-sonnet-4-6 (Anthropic native path)
  */
 
 import { test, expect, Page } from "@playwright/test";
@@ -34,7 +32,6 @@ async function deleteAllConversations(page: Page, createdAfter?: number) {
 
 const TARGET_TENANT  = "myratest";
 const TARGET_GATEWAY = "prod";
-const TARGET_MODEL   = "claude-sonnet-4-6";
 const TARGET_PRESET  = "UNSAFE claude-sonnet-4-6";
 
 async function selectGatewayWithModel(page: Page): Promise<boolean> {
@@ -48,13 +45,6 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
   await presetBtn.click();
   await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
   return true;
-}
-async function enableWebSearch(page: Page) {
-  const btn = page.locator("button[title*='web search' i], button[title*='Enable web search' i]").first();
-  await btn.waitFor({ state: "visible", timeout: 5000 });
-  // Only click if not already ON
-  const title = await btn.getAttribute("title") ?? "";
-  if (!/ON/i.test(title)) await btn.click();
 }
 
 /** Wait for streaming to finish: stop button disappears, send button reappears. */
@@ -106,34 +96,15 @@ test.describe("Chat — web search with claude-sonnet-4-6", () => {
     expect(allowedHeaders.toLowerCase()).toContain("x-aig-web-search");
   });
 
-  // ── 2. UI: web search toggle is present and toggleable ────────────────────
+  // ── 2. Request: x-aig-web-search: 1 is always sent ───────────────────────
 
-  test("web search toggle button exists and can be enabled", async ({ page }) => {
-    const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
-
-    const btn = page.locator("button[title*='web search' i], button[title*='Enable web search' i]").first();
-    await expect(btn).toBeVisible({ timeout: 5000 });
-
-    // Enable it
-    const titleBefore = await btn.getAttribute("title") ?? "";
-    if (!/ON/i.test(titleBefore)) await btn.click();
-
-    const titleAfter = await btn.getAttribute("title") ?? "";
-    expect(titleAfter.toLowerCase()).toContain("on");
-  });
-
-  // ── 3. Request: x-aig-web-search header is sent when toggle is ON ─────────
-
-  test("sending a message with web search enabled includes x-aig-web-search header", async ({ page }) => {
+  test("every message includes x-aig-web-search: 1 header", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
     if (!ok) { test.skip(); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await enableWebSearch(page);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
-    // Intercept the compat request and capture headers
-    let capturedHeaders: Record<string, string> = {};
     const reqPromise = page.waitForRequest(
       (req) => req.method() === "POST" && req.url().includes("/compat/chat/completions"),
       { timeout: 15_000 },
@@ -143,40 +114,34 @@ test.describe("Chat — web search with claude-sonnet-4-6", () => {
     await page.locator("button[title='Send message']").click();
 
     const req = await reqPromise;
-    capturedHeaders = req.headers();
-
-    expect(capturedHeaders["x-aig-web-search"]).toBe("1");
+    expect(req.headers()["x-aig-web-search"]).toBe("1");
   });
 
-  // ── 4. End-to-end: reply arrives and contains content (no TypeError) ───────
+  // ── 3. End-to-end: reply arrives and contains content (no TypeError) ───────
 
   test("web search query returns a non-empty assistant reply without errors", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
     if (!ok) { test.skip(); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await enableWebSearch(page);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
-    // Ask a question that benefits from current web data
     await page.locator("[class*='chat-textarea']")
       .fill("What is the current price of Bitcoin in USD? Just give me the number.");
     await page.locator("button[title='Send message']").click();
 
-    // User bubble must appear — confirms fetch did NOT throw TypeError
     await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 10_000 });
 
-    // No error banner
-    const errorText = page.getByText(/TypeError|failed to fetch|error/i).first();
-    await expect(errorText).not.toBeVisible({ timeout: 3000 }).catch(() => {});
+    await expect(page.getByText(/TypeError|failed to fetch|error/i).first())
+      .not.toBeVisible({ timeout: 3000 }).catch(() => {});
 
     await waitForStreamingDone(page, 90_000);
 
-    // Assistant reply must contain a number (Bitcoin price)
     const assistantRow = page.locator("[class*='bubble-row']:not([class*='user-row'])").first();
     await expect(assistantRow).toBeVisible({ timeout: 5000 });
     const reply = (await assistantRow.textContent()) ?? "";
     expect(reply.trim().length).toBeGreaterThan(10);
-    expect(reply).toMatch(/\d/); // must contain at least one digit
+    expect(reply).toMatch(/\d/);
   });
 
 });

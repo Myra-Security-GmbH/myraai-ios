@@ -50,13 +50,6 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
   return true;
 }
 
-async function enableWebSearch(page: Page) {
-  const btn = page.locator("button[title*='web search' i], button[title*='Enable web search' i]").first();
-  await btn.waitFor({ state: "visible", timeout: 5000 });
-  const title = await btn.getAttribute("title") ?? "";
-  if (!/ON/i.test(title)) await btn.click();
-}
-
 async function waitForStreamingDone(page: Page, timeoutMs = 90_000) {
   await page.locator("button[title='Stop generating']")
     .waitFor({ state: "visible", timeout: 20_000 })
@@ -245,9 +238,6 @@ test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
-
-    // Enable web search
-    await enableWebSearch(page);
 
     await page.locator("[class*='chat-textarea']").fill(
       "What is the latest news about https://ai-docs.myra.eu?"

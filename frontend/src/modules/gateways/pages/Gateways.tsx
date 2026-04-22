@@ -129,6 +129,9 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
   const [siemPort, setSiemPort] = useState(String(cfg.siem?.port ?? "514"));
   const [siemProtocol, setSiemProtocol] = useState<"udp" | "tcp">(cfg.siem?.protocol ?? "udp");
   const [siemFormat, setSiemFormat] = useState<"cef" | "rfc5424">(cfg.siem?.format ?? "cef");
+  const [wsEnabled,    setWsEnabled]    = useState(cfg.web_search?.enabled ?? false);
+  const [wsApiKey,     setWsApiKey]     = useState(cfg.web_search?.api_key ?? "");
+  const [wsMaxResults, setWsMaxResults] = useState(cfg.web_search?.max_results ?? 5);
   const tracingCfg = (cfg as any).tracing;
   const [tracingEnabled, setTracingEnabled] = useState<boolean>(tracingCfg?.enabled ?? false);
   const [tracingBodies, setTracingBodies] = useState<boolean>(tracingCfg?.include_bodies ?? false);
@@ -195,6 +198,9 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
       } else {
         newConfig.siem = null;
       }
+      newConfig.web_search = (wsEnabled && wsApiKey.trim())
+        ? { enabled: true, api_key: wsApiKey.trim(), max_results: wsMaxResults }
+        : null;
       if (tracingEnabled) {
         newConfig.tracing = {
           enabled: true,
@@ -465,6 +471,42 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
                   </>
                 )}
               </>
+            )}
+          </div>
+          <hr className={s.divider} />
+          {/* Web Search */}
+          <div className={s["form-group"]}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={wsEnabled} onChange={(e) => setWsEnabled(e.target.checked)} />
+              <span className={s["form-label"]} style={{ margin: 0 }}>Web Search (Brave)</span>
+            </label>
+            <p className={s["form-hint"]} style={{ marginTop: 4 }}>
+              Enable server-side web search for all requests on this gateway via the Brave Search API.
+            </p>
+            {wsEnabled && (
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                <input
+                  className={s["form-input"]}
+                  type="password"
+                  placeholder="Brave Search API key"
+                  value={wsApiKey}
+                  onChange={(e) => setWsApiKey(e.target.value)}
+                  autoComplete="off"
+                />
+                <div className={s["form-row"]}>
+                  <div>
+                    <label className={s["form-label"]}>Max results</label>
+                    <input
+                      className={s["form-input"]}
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={wsMaxResults}
+                      onChange={(e) => setWsMaxResults(parseInt(e.target.value, 10) || 5)}
+                    />
+                  </div>
+                </div>
+              </div>
             )}
           </div>
           <hr className={s.divider} />
@@ -1137,6 +1179,14 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
             <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ fontSize: 11 }}>
               {(cfg as any).tracing?.enabled
                 ? <span style={{ color: "#10b981" }}>on{(cfg as any).tracing?.include_bodies ? " + bodies" : ""}</span>
+                : <span style={{ color: "var(--text-secondary)" }}>off</span>}
+            </div>
+          </div>
+          <div className={s["stat-card"]}>
+            <div className={s["stat-label"]}>Web Search</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ fontSize: 11 }}>
+              {cfg.web_search?.enabled
+                ? <span style={{ color: "#10b981" }}>on</span>
                 : <span style={{ color: "var(--text-secondary)" }}>off</span>}
             </div>
           </div>

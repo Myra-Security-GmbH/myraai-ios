@@ -185,6 +185,11 @@ export interface GatewayConfig {
   circuit_breaker?: CircuitBreakerConfig;
   webhooks?: WebhookConfig;
   siem?: SiemConfig;
+  web_search?: {
+    enabled: boolean;
+    api_key: string;
+    max_results?: number;
+  };
   guardrails?: DetectorConfig[];
   /** @deprecated Use `guardrails`. Accepted for backwards compatibility with configs saved before the rename. */
   detectors?: DetectorConfig[];

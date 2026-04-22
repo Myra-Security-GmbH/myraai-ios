@@ -14,7 +14,6 @@ export interface DrawerSettings {
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
-  webSearch: boolean;
   /** null = off; number = thinking budget in tokens (1000–32000) */
   thinkingBudget: number | null;
 }
@@ -98,17 +97,6 @@ export default function SettingsDrawer({
               max={200000}
               onChange={(e) => upd({ maxTokens: parseInt(e.target.value, 10) || 2048 })}
             />
-          </div>
-
-          <div className={s["settings-field"]}>
-            <label className={s["settings-label"]} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={settings.webSearch}
-                onChange={(e) => upd({ webSearch: e.target.checked })}
-              />
-              Web search (Anthropic models only)
-            </label>
           </div>
 
           {supportsThinking && (
