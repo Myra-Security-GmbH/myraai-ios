@@ -54,12 +54,19 @@ export default function MessageThread({
   const scrollRafRef = useRef<number | null>(null);
   // Track programmatic scrolls so the scroll listener ignores them
   const isProgrammaticScroll = useRef(false);
+  // Detect streaming → done transition to trigger scroll-to-question behavior
+  const prevIsStreaming = useRef(false);
 
   // Auto-scroll when new content arrives, unless user has scrolled up.
-  // During streaming: instant scroll, throttled to one rAF per frame to avoid
-  // queuing competing smooth-scroll animations (which causes the bouncing effect).
-  // After streaming: single smooth scroll on message commit.
+  // During streaming: instant scroll to bottom, throttled to one rAF per frame
+  // to avoid queuing competing animations (bouncing effect fixed in 235bfdd).
+  // After streaming completes: scroll to show the user's question at the top of
+  // the viewport so the reader sees context + beginning of response, not the end.
+  // On initial load / non-streaming messages: scroll to bottom as before.
   useEffect(() => {
+    const justFinished = prevIsStreaming.current && !isStreaming;
+    prevIsStreaming.current = isStreaming;
+
     if (isUserScrolled.current) return;
 
     if (isStreaming) {
@@ -77,8 +84,32 @@ export default function MessageThread({
           if (el) el.scrollTop = el.scrollHeight;
         }
       });
+    } else if (justFinished) {
+      // Streaming just completed — scroll to show the last user message near the
+      // top so the user sees their question and the beginning of the response.
+      isProgrammaticScroll.current = true;
+      const el = threadRef.current;
+      if (el) {
+        const userRows = el.querySelectorAll("[class*='user-row']");
+        const lastUserRow = userRows.length > 0
+          ? (userRows[userRows.length - 1] as HTMLElement)
+          : null;
+        if (lastUserRow) {
+          // getBoundingClientRect gives viewport-relative coords; adjust by
+          // current scrollTop to get scroll-container-relative target.
+          const elRect = el.getBoundingClientRect();
+          const rowRect = lastUserRow.getBoundingClientRect();
+          const target = el.scrollTop + rowRect.top - elRect.top - 16;
+          el.scrollTop = Math.min(
+            Math.max(0, target),
+            Math.max(0, el.scrollHeight - el.clientHeight),
+          );
+        } else {
+          el.scrollTop = el.scrollHeight;
+        }
+      }
     } else {
-      // Message just committed — scroll to bottom within the thread container.
+      // Initial conversation load or non-streaming message — scroll to bottom.
       isProgrammaticScroll.current = true;
       const el = threadRef.current;
       if (el) el.scrollTop = el.scrollHeight;
