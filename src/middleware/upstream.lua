@@ -463,8 +463,10 @@ local function handle_compat_streaming(ctx, res)
             .. " output_tokens=", output_tokens
             .. " first_chunk_seen=", tostring(first_chunk_seen))
     elseif not stream_errored then
-        local level = (stop_reason_seen == "tool_use" or stop_reason_seen == "tool_calls")
-            and ngx.INFO or ngx.ERR
+        -- Stream ended without receiving [DONE]. For tool_use this is intentional (tool_loop
+        -- takes over). For other stop reasons it means the provider closed the stream before
+        -- sending the sentinel — unexpected but not a crash; log at WARN, not ERR.
+        local level = stop_reason_seen and ngx.WARN or ngx.ERR
         ngx.log(level,
             "[stream_ok] compat stream completed"
             .. " | provider=", res.provider_name
@@ -545,7 +547,8 @@ local function handle_compat_streaming(ctx, res)
                 for _, tc in ipairs(pending_tool_calls) do names[#names+1] = tc.name end
                 return table.concat(names, ",")
             end)())
-        -- Don't send [DONE] — tool_loop will continue the stream
+        -- Return connection to pool before handing off to tool_loop
+        if res.httpc then res.httpc:set_keepalive() end
         return
     end
 

@@ -66,6 +66,7 @@ function M.request(opts)
     })
 
     if not res then
+        httpc:close()
         return nil, nil, nil, "request: " .. tostring(req_err)
     end
 
@@ -75,10 +76,11 @@ function M.request(opts)
     end
 
     local body, read_err = res:read_body()
-    httpc:set_keepalive()
     if not body then
+        httpc:close()
         return res.status, res.headers, nil, "read_body: " .. tostring(read_err)
     end
+    httpc:set_keepalive()
 
     return res.status, res.headers, body, nil
 end
