@@ -916,6 +916,54 @@ route("GET", "^/admin/v1/client%-errors$", function()
     send(200, storage.list_client_errors(tonumber(args.limit)))
 end)
 
+-- ---------------------------------------------------------------------------
+-- Application feedback (AGF-31) — bug reports, feature suggestions
+-- ---------------------------------------------------------------------------
+
+-- POST /admin/v1/app-feedback  — submit application feedback (any authenticated user)
+route("POST", "^/admin/v1/app%-feedback$", function()
+    local u    = ngx.ctx.admin_user
+    local b    = read_body()
+    if not b or not b.summary or tostring(b.summary):match("^%s*$") then
+        return send(400, { error = "summary required" })
+    end
+    local t = tostring(b.type or "other")
+    if t ~= "bug" and t ~= "feature" and t ~= "other" then t = "other" end
+    local entry = {
+        id          = require("utils.uuid").v4(),
+        user_id     = u.id,
+        type        = t,
+        summary     = tostring(b.summary):sub(1, 255),
+        description = b.description and tostring(b.description):sub(1, 4000) or nil,
+        url         = b.url and tostring(b.url):sub(1, 1024) or nil,
+    }
+    local id, err = storage.insert_app_feedback(entry)
+    if not id then return send(500, { error = err or "db error" }) end
+    send(201, { id = id })
+end)
+
+-- GET /admin/v1/app-feedback?limit=50&offset=0&type=bug  — admin-only list
+route("GET", "^/admin/v1/app%-feedback$", function()
+    local u = ngx.ctx.admin_user
+    if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
+    local args = ngx.req.get_uri_args()
+    send(200, storage.list_app_feedback(
+        tonumber(args.limit) or 50,
+        tonumber(args.offset) or 0,
+        args.type
+    ))
+end)
+
+-- PATCH /admin/v1/app-feedback/:id  — admin-only, mark as processed
+route("PATCH", "^/admin/v1/app%-feedback/([^/]+)$", function(id)
+    local u = ngx.ctx.admin_user
+    if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
+    local b   = read_body()
+    local err = storage.update_app_feedback(id, b.processed ~= false and b.processed ~= 0)
+    if err then return send(500, { error = err }) end
+    send(200, { ok = true })
+end)
+
 -- GET /admin/v1/audit-log?limit=100&offset=0
 route("GET", "^/admin/v1/audit%-log$", function()
     local u = ngx.ctx.admin_user

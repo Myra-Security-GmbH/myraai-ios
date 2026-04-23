@@ -499,6 +499,12 @@ table.table tbody tr.blocked td {
   max-height: 90vh;
   max-height: 90dvh;
   overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+
+  [data-theme="dark"] & {
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+    border-color: #2d4a6e;
+  }
 
   @media (max-width: 560px) {
     padding: tools.pixelToRem(20);

@@ -5,6 +5,7 @@ import { getCyDataId } from "@myraui/utils";
 import { useTheme } from "src/common/contexts/ThemeContext";
 import { useAuth } from "src/common/contexts/AuthContext";
 import { docsUrl } from "src/common/components/DocLink";
+import { AppFeedbackWidget } from "src/common/components/AppFeedbackWidget";
 import styles from "./Sidebar.module.scss";
 
 const cyId = getCyDataId("sidebar");
@@ -94,6 +95,12 @@ function LogoutIcon() {
 function DocsIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
 }
+function FeedbackInboxIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="13" y2="14"/></svg>;
+}
+function FlagIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>;
+}
 
 function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean }) {
   if (collapsed) return <div className={styles["section-divider"]} />;
@@ -133,6 +140,7 @@ export default function Sidebar() {
     () => localStorage.getItem("aig-sidebar-collapsed") === "true"
   );
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   function toggleCollapsed() {
     setCollapsed((v) => {
@@ -192,6 +200,30 @@ export default function Sidebar() {
           ) : (
             <img src="/logo.svg" alt="AI Gateway by Myra Security" className={styles["header-logo"]} />
           )}
+          <button
+            data-cy="app-feedback-btn"
+            onClick={() => setFeedbackOpen(true)}
+            title="Send feedback"
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              flexShrink: 0,
+              background: "none",
+              border: "none",
+              borderRadius: 6,
+              color: "rgba(255,255,255,0.65)",
+              cursor: "pointer",
+              padding: 0,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.65)")}
+          >
+            <FlagIcon />
+          </button>
           {/* Close button — visible only on mobile */}
           <button className={styles["mobile-close"]} onClick={closeMobile} aria-label="Close menu">
             <XIcon />
@@ -217,6 +249,9 @@ export default function Sidebar() {
             <NavItem to="/tenants" label="Tenants" icon={<TenantsIcon />} {...navProps} />
             <NavItem to="/gateways" label="Gateways" icon={<GatewayIcon />} {...navProps} />
             <NavItem to="/users" label="Users" icon={<UsersIcon />} {...navProps} />
+            {user?.role === "admin" && (
+              <NavItem to="/feedback" label="Feedback Inbox" icon={<FeedbackInboxIcon />} {...navProps} />
+            )}
           </>)}
 
           <SectionLabel label="CONFIG" collapsed={effectiveCollapsed} />
@@ -249,6 +284,8 @@ export default function Sidebar() {
           </button>
         </div>
       </nav>
+
+      <AppFeedbackWidget open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </>
   );
 }

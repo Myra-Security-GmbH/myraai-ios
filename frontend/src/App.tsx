@@ -26,6 +26,7 @@ import Commands from "src/modules/commands/pages/Commands";
 import MCPConnectors from "src/modules/mcp/pages/MCPConnectors";
 import Chat from "src/modules/chat/pages/Chat";
 import Projects from "src/modules/projects/pages/Projects";
+import AppFeedbackPage from "src/modules/feedback/pages/AppFeedbackPage";
 import LoginPage from "src/pages/LoginPage";
 import SharedConversation from "src/pages/SharedConversation";
 import DebugPage from "src/pages/DebugPage";
@@ -56,6 +57,7 @@ function AppShell() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/commands" element={<Commands />} />
           <Route path="/mcp" element={<MCPConnectors />} />
+          <Route path="/feedback" element={<AppFeedbackPage />} />
         </Routes>
       </div>
     </div>
