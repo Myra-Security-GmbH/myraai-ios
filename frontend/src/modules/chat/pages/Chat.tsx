@@ -1042,6 +1042,38 @@ export default function Chat() {
     let hasSkill: string | null = null; // reserved for future skill-based providers
     let attachmentWarning: string | null = null;
     if (pendingAttachments.length > 0) {
+      // Show message immediately with image thumbnails so user gets feedback during async processing
+      const optimisticBlocks: object[] = text ? [{ type: "text", text }] : [];
+      for (const att of pendingAttachments) {
+        if (att.mime_type.startsWith("image/")) {
+          optimisticBlocks.push({ type: "image_url", image_url: { url: `data:${att.mime_type};base64,${att.data}` } });
+        } else {
+          optimisticBlocks.push({ type: "text", text: `📎 ${att.filename}` });
+        }
+      }
+      const tempUserMsgOptimistic: ChatMessage = {
+        id: "__temp_user__",
+        conversation_id: convId,
+        parent_message_id: null,
+        role: "user",
+        content: JSON.stringify(optimisticBlocks),
+        input_tokens: null,
+        output_tokens: null,
+        cost_usd: null,
+        latency_ms: null,
+        created_at: Math.floor(Date.now() / 1000),
+      };
+      setMessages((prev) => [...prev, tempUserMsgOptimistic]);
+      setInputValue("");
+      focusInput();
+
+      // Restore input + remove optimistic message on any processing error
+      const undoOptimistic = () => {
+        setMessages((prev) => prev.filter((m) => m.id !== "__temp_user__"));
+        setInputValue(text);
+        setPendingAttachments(pendingAttachments);
+      };
+
       const blocks: object[] = [{ type: "text", text }];
       const unsupported: string[] = [];
       for (const att of pendingAttachments) {
@@ -1067,6 +1099,7 @@ export default function Chat() {
               description = res.text;
               if (res.warning) attachmentWarning = res.warning;
             } catch (e) {
+              undoOptimistic();
               setError("Failed to process image: " + String(e));
               return;
             }
@@ -1094,6 +1127,7 @@ export default function Chat() {
               });
               extractedText = res.text;
             } catch (e) {
+              undoOptimistic();
               setError("Failed to extract PDF: " + String(e));
               return;
             }
@@ -1118,6 +1152,7 @@ export default function Chat() {
             });
             extractedText = res.text;
           } catch (e) {
+            undoOptimistic();
             setError("Failed to extract text from .docx: " + String(e));
             return;
           }
@@ -1147,6 +1182,7 @@ export default function Chat() {
               });
               fileId = res.file_id;
             } catch (e) {
+              undoOptimistic();
               setError("Failed to upload file: " + String(e));
               return;
             }
@@ -1166,6 +1202,7 @@ export default function Chat() {
               });
               extractedText = res.text;
             } catch (e) {
+              undoOptimistic();
               setError("Failed to extract text from file: " + String(e));
               return;
             }
@@ -1176,6 +1213,7 @@ export default function Chat() {
         }
       }
       if (unsupported.length > 0) {
+        undoOptimistic();
         setError(
           `Unsupported file type(s): ${unsupported.join(", ")}. ` +
           `Supported: images (JPEG, PNG, GIF, WebP), PDF, plain text, Markdown (.md), Word (.docx), CSV, TSV, Excel (.xlsx, .xlsm), OpenDocument (.ods), PowerPoint (.pptx).`
@@ -1183,11 +1221,15 @@ export default function Chat() {
         return;
       }
       userContent = JSON.stringify(blocks);
+      // Replace optimistic thumbnail content with the real processed content
+      setMessages((prev) =>
+        prev.map((m) => m.id === "__temp_user__" ? { ...m, content: userContent } : m)
+      );
     } else {
       userContent = text;
     }
 
-    // Optimistically append user message to UI
+    // Optimistically append user message to UI (attachment path already did this above)
     const tempUserMsg: ChatMessage = {
       id: "__temp_user__",
       conversation_id: convId,
@@ -1200,12 +1242,14 @@ export default function Chat() {
       latency_ms: null,
       created_at: Math.floor(Date.now() / 1000),
     };
-    setMessages((prev) => [...prev, tempUserMsg]);
-    setInputValue("");
+    if (pendingAttachments.length === 0) {
+      setMessages((prev) => [...prev, tempUserMsg]);
+      setInputValue("");
+      focusInput();
+    }
     setPendingAttachments([]);
     setError(null);
     setWarning(attachmentWarning);
-    focusInput();
 
     // Persist user message (skip in ghost mode)
     let userMsgId: string | null = null;
@@ -1344,6 +1388,7 @@ export default function Chat() {
     let inputTokens: number | null = null;
     let outputTokens: number | null = null;
     let costUsd: number | null = null;
+    let piiMaskedInfo: import("src/api/types").PiiMaskedInfo | undefined;
 
     // Build MCP tools header for server-side tool_loop
     const mcpToolsHeader = mcpTools.length > 0
@@ -1573,6 +1618,13 @@ export default function Chat() {
                   if (fn) accumulated += `\n\n> ✅ File saved to project: \`${fn}\`\n`;
                 }
               }
+              // PII masking event — gateway masked PII in the user message
+              if (chunk?.aig_status === "pii_masked") {
+                piiMaskedInfo = {
+                  types: chunk.types as string | null | undefined,
+                  custom_count: chunk.custom_count as number | null | undefined,
+                };
+              }
               // Native Anthropic tool-use event (forwarded by on_compat_chunk in upstream.lua)
               if (chunk?.aig_tool_call) {
                 const toolLabels: Record<string, string> = {
@@ -1699,6 +1751,7 @@ export default function Chat() {
         model: model,
         created_at: Math.floor(Date.now() / 1000),
         attachments: [],
+        ...(piiMaskedInfo ? { pii_masked_info: piiMaskedInfo } : {}),
       };
       if (activeConvIdRef.current === convId) {
         setMessages((prev) => [...prev, assistantMsg]);
@@ -1729,6 +1782,7 @@ export default function Chat() {
           model: model,
           created_at: Math.floor(Date.now() / 1000),
           attachments: [],
+          ...(piiMaskedInfo ? { pii_masked_info: piiMaskedInfo } : {}),
         };
         if (activeConvIdRef.current === convId) {
           setMessages((prev) => [...prev, assistantMsg]);

@@ -131,7 +131,7 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!isStreaming && !disabled && value.trim()) onSend();
+      if (!isStreaming && !disabled && (value.trim() || pendingAttachments.length > 0)) onSend();
     }
   }
 
@@ -262,7 +262,7 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           <button
             className={[s["send-btn"], isStreaming ? s["stop-btn"] : ""].filter(Boolean).join(" ")}
             onClick={isStreaming ? onStop : () => onSend()}
-            disabled={!isStreaming && (disabled || !value.trim())}
+            disabled={!isStreaming && (disabled || (!value.trim() && pendingAttachments.length === 0))}
             title={isStreaming ? "Stop generation" : "Send message"}
             type="button"
           >
