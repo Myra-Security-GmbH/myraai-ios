@@ -502,6 +502,215 @@ describe("POST /admin/auth/otp/verify", function()
 end)
 
 -- ============================================================================
+-- Google OAuth — CSRF, id_token claim validation (Finding 9, 16)
+-- ============================================================================
+
+describe("Google OAuth: CSRF state and id_token claim validation", function()
+
+    -- Build a minimal base64url-encoded JWT payload (id_token body segment)
+    local function make_id_token_payload(claims)
+        local cjson = require("cjson.safe")
+        local payload_json = cjson.encode(claims)
+        local b64 = ngx.encode_base64(payload_json)
+        -- Convert to base64url (no padding)
+        b64 = b64:gsub("+","-"):gsub("/","_"):gsub("=+$","")
+        -- Return a fake three-part JWT: header.payload.sig
+        local fake_header = ngx.encode_base64('{"alg":"RS256"}'):gsub("=+$",""):gsub("+","-"):gsub("/","_")
+        return fake_header .. "." .. b64 .. ".fakesig"
+    end
+
+    -- Minimal resty.http stub that returns a successful token exchange response
+    local function install_http_stub(id_token)
+        package.loaded["resty.http"] = nil
+        package.preload["resty.http"] = function()
+            return {
+                new = function()
+                    return {
+                        set_timeout     = function() end,
+                        set_timeouts    = function() end,
+                        request_uri     = function(self, url, opts)
+                            return {
+                                status = 200,
+                                body   = require("cjson.safe").encode({
+                                    access_token = "fake-access",
+                                    id_token     = id_token,
+                                }),
+                            }, nil
+                        end,
+                    }
+                end,
+            }
+        end
+    end
+
+    local function setup_state(state_value)
+        ngx.shared.aig_ratelimit:set("google_state:" .. state_value, 1, 600)
+    end
+
+    local function set_state_cookie(state_value)
+        ngx.var.http_cookie = "aig_oauth_state=" .. state_value
+    end
+
+    -- Configure google_client_id for OAuth routes to be active
+    before_each(function()
+        _ngx_printed  = nil
+        _ngx_cookie   = ""
+        ngx.status    = 200
+        ngx.var.http_cookie = ""
+
+        -- Reset method stub — OTP tests override ngx.req.get_method permanently
+        ngx.req.get_method = function() return _ngx_method end
+
+        package.loaded["core.app_config"]  = nil
+        package.preload["core.app_config"] = function()
+            return {
+                auth = {
+                    jwt_secret        = "test-secret-for-auth-handlers",
+                    jwt_expiry_secs   = 3600,
+                    otp_expiry_secs   = 900,
+                    otp_from_email    = "noreply@test.local",
+                    google_client_id  = "test-client-id.apps.googleusercontent.com",
+                    google_client_secret = "test-client-secret",
+                    google_redirect_uri  = "https://admin.example.com/admin/auth/google/callback",
+                },
+            }
+        end
+
+        for _, m in ipairs({"admin.auth_handlers","utils.jwt","utils.crypto","admin.auth"}) do
+            package.loaded[m] = nil
+        end
+    end)
+
+    -- ── CSRF state validation ────────────────────────────────────────────────
+
+    it("callback without state in shared dict → 400 'invalid or expired state'", function()
+        reset_ngx("GET", "/admin/auth/google/callback")
+        ngx.req.get_uri_args = function() return { code="authcode", state="badstate" } end
+        -- No state stored in ratelimit dict
+        require("admin.auth_handlers").handle()
+        local body = require("cjson.safe").decode(_ngx_printed or "{}")
+        assert.equal(400, ngx.status)
+        assert(body.error and (body.error:find("state") or body.error:find("expired")),
+            "error must mention state: " .. tostring(body.error))
+    end)
+
+    it("callback with state dict hit but no cookie → 400 'CSRF state mismatch'", function()
+        reset_ngx("GET", "/admin/auth/google/callback")
+        local state = "valid-state-abc"
+        setup_state(state)
+        ngx.var.http_cookie = ""  -- no cookie
+        ngx.req.get_uri_args = function() return { code="authcode", state=state } end
+        require("admin.auth_handlers").handle()
+        local body = require("cjson.safe").decode(_ngx_printed or "{}")
+        assert.equal(400, ngx.status)
+        assert(body.error and (body.error:find("CSRF") or body.error:find("mismatch") or body.error:find("state")),
+            "error must mention CSRF mismatch: " .. tostring(body.error))
+    end)
+
+    it("callback with state dict hit but mismatched cookie → 400", function()
+        reset_ngx("GET", "/admin/auth/google/callback")
+        local state = "state-xyz"
+        setup_state(state)
+        ngx.var.http_cookie = "aig_oauth_state=different-state"
+        ngx.req.get_uri_args = function() return { code="authcode", state=state } end
+        require("admin.auth_handlers").handle()
+        assert.equal(400, ngx.status)
+    end)
+
+    -- ── id_token claim validation ────────────────────────────────────────────
+
+    it("invalid iss → 502 'invalid id_token issuer'", function()
+        reset_ngx("GET", "/admin/auth/google/callback")
+        local state = "state-iss"
+        setup_state(state)
+        set_state_cookie(state)
+        ngx.req.get_uri_args = function() return { code="authcode", state=state } end
+
+        local id_token = make_id_token_payload({
+            iss = "https://evil.example.com",
+            aud = "test-client-id.apps.googleusercontent.com",
+            exp = 9999999999,
+            email = "admin@example.com",
+            sub   = "12345",
+        })
+        install_http_stub(id_token)
+        for _, m in ipairs({"admin.auth_handlers","admin.auth"}) do package.loaded[m]=nil end
+
+        require("admin.auth_handlers").handle()
+        local body = require("cjson.safe").decode(_ngx_printed or "{}")
+        assert.equal(502, ngx.status)
+        assert(body.error:find("issuer"), "error must mention issuer: " .. tostring(body.error))
+    end)
+
+    it("wrong aud → 502 'invalid id_token audience'", function()
+        reset_ngx("GET", "/admin/auth/google/callback")
+        local state = "state-aud"
+        setup_state(state)
+        set_state_cookie(state)
+        ngx.req.get_uri_args = function() return { code="authcode", state=state } end
+
+        local id_token = make_id_token_payload({
+            iss = "https://accounts.google.com",
+            aud = "other-app.apps.googleusercontent.com",  -- wrong aud
+            exp = 9999999999,
+            email = "admin@example.com",
+            sub   = "12345",
+        })
+        install_http_stub(id_token)
+        for _, m in ipairs({"admin.auth_handlers","admin.auth"}) do package.loaded[m]=nil end
+
+        require("admin.auth_handlers").handle()
+        local body = require("cjson.safe").decode(_ngx_printed or "{}")
+        assert.equal(502, ngx.status)
+        assert(body.error:find("audience"), "error must mention audience: " .. tostring(body.error))
+    end)
+
+    it("expired id_token → 401 'id_token expired'", function()
+        reset_ngx("GET", "/admin/auth/google/callback")
+        local state = "state-exp"
+        setup_state(state)
+        set_state_cookie(state)
+        ngx.req.get_uri_args = function() return { code="authcode", state=state } end
+
+        local id_token = make_id_token_payload({
+            iss = "https://accounts.google.com",
+            aud = "test-client-id.apps.googleusercontent.com",
+            exp = 1000000,  -- long-expired UNIX timestamp
+            email = "admin@example.com",
+            sub   = "12345",
+        })
+        install_http_stub(id_token)
+        for _, m in ipairs({"admin.auth_handlers","admin.auth"}) do package.loaded[m]=nil end
+
+        require("admin.auth_handlers").handle()
+        local body = require("cjson.safe").decode(_ngx_printed or "{}")
+        assert.equal(401, ngx.status)
+        assert(body.error:find("expired"), "error must mention expired: " .. tostring(body.error))
+    end)
+
+    -- ── OAuth initiate: state cookie ─────────────────────────────────────────
+
+    it("GET /admin/auth/google sets aig_oauth_state cookie with SameSite=Lax", function()
+        reset_ngx("GET", "/admin/auth/google")
+        ngx.req.get_uri_args = function() return {} end
+        ngx.redirect = function(url, code) error("redirect:" .. url, 0) end
+
+        for _, m in ipairs({"admin.auth_handlers","admin.auth"}) do package.loaded[m]=nil end
+
+        pcall(require("admin.auth_handlers").handle)  -- redirect raises; that's expected
+
+        local cookie = _ngx_headers["Set-Cookie"] or ""
+        assert.is_true(cookie:find("aig_oauth_state=") ~= nil,
+            "must set aig_oauth_state cookie")
+        assert.is_true(cookie:lower():find("samesite=lax") ~= nil,
+            "state cookie must be SameSite=Lax (cross-site OAuth redirect): " .. cookie)
+        assert.is_true(cookie:lower():find("httponly") ~= nil,
+            "state cookie must be HttpOnly")
+    end)
+
+end)
+
+-- ============================================================================
 -- 404 for unknown route
 -- ============================================================================
 
