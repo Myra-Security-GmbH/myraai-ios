@@ -187,7 +187,10 @@ route("POST", "^/admin/auth/otp/verify$", function()
         -- Increment failure counter; TTL aligned to the OTP window so the
         -- lockout expires when the OTP itself expires.
         local new_count = attempts + 1
-        rl:set(rl_key, new_count, window)
+        local rl_ok, rl_err = rl:set(rl_key, new_count, window)
+        if not rl_ok then
+            ngx.log(ngx.ERR, "otp: rate-limit counter set failed addr=", addr, " err=", tostring(rl_err))
+        end
         return send(401, { error = "invalid or expired code" })
     end
 
@@ -218,7 +221,11 @@ route("GET", "^/admin/auth/google$", function()
     end
 
     local state = crypto.random_hex(16)
-    ngx.shared.aig_ratelimit:set("google_state:" .. state, 1, 600)
+    local state_ok, state_err = ngx.shared.aig_ratelimit:set("google_state:" .. state, 1, 600)
+    if not state_ok then
+        ngx.log(ngx.ERR, "google oauth: failed to store state err=", tostring(state_err))
+        return send(503, { error = "OAuth state storage failed, please retry" })
+    end
     -- Bind the state to the initiating browser session via a cookie so it
     -- cannot be completed by a different browser that observed the state value.
     ngx.header["Set-Cookie"] = "aig_oauth_state=" .. state ..

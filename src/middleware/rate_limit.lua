@@ -43,6 +43,7 @@ function M.run(ctx)
             errors.send("RATE_LIMITED",
                 "Rate limit: " .. count .. "/" .. limit ..
                 " requests per " .. window_sec .. "s")
+            return
         end
         ngx.header["X-RateLimit-Limit"]     = limit
         ngx.header["X-RateLimit-Remaining"] = math.max(0, limit - count)
@@ -70,6 +71,7 @@ function M.run(ctx)
                 errors.send("RATE_LIMITED",
                     "Token rate limit: " .. count .. "/" .. limit ..
                     " requests per " .. window_sec .. "s")
+                return
             end
             -- Token limit headers shadow gateway headers when stricter
             ngx.header["X-RateLimit-Limit"]     = limit

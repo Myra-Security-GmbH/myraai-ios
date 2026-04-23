@@ -34,25 +34,25 @@ function M.run(ctx)
 
     local token = extract_token()
     if not token then
-        errors.send("UNAUTHORIZED")
+        errors.send("UNAUTHORIZED"); return
     end
 
     local hash = crypto.sha256_hex(token)
     local row, err = storage.get_auth_token(ctx.gateway_id, hash)
 
     if err then
-        ngx.log(ngx.ERR, "auth lookup error: ", err)
-        errors.send("INTERNAL")
+        ngx.log(ngx.ERR, "auth lookup error gateway=", ctx.gateway_id, " err=", err)
+        errors.send("INTERNAL"); return
     end
 
     if not row then
-        errors.send("UNAUTHORIZED")
+        errors.send("UNAUTHORIZED"); return
     end
 
     -- Check expiry (expires_at is Unix seconds INTEGER or NULL)
     if row.expires_at then
         if ngx.time() > row.expires_at then
-            errors.send("UNAUTHORIZED", "Token expired")
+            errors.send("UNAUTHORIZED", "Token expired"); return
         end
     end
 
@@ -77,15 +77,16 @@ function M.run(ctx)
     if row.user_id and row.label ~= "playground" then
         local user, uerr = storage.get_user(row.user_id)
         if uerr then
-            ngx.log(ngx.ERR, "auth user lookup error: ", uerr)
-            errors.send("INTERNAL")
+            ngx.log(ngx.ERR, "auth user lookup error gateway=", ctx.gateway_id,
+                    " user_id=", row.user_id, " err=", uerr)
+            errors.send("INTERNAL"); return
         end
         if not user or user.deleted_at then
-            errors.send("UNAUTHORIZED", "User account disabled")
+            errors.send("UNAUTHORIZED", "User account disabled"); return
         end
         -- viewer role cannot make inference calls
         if user.role == "viewer" then
-            errors.send("FORBIDDEN", "Viewer role cannot make inference requests")
+            errors.send("FORBIDDEN", "Viewer role cannot make inference requests"); return
         end
         -- member role has access to all gateways in their org (no per-gateway check)
         ctx.user_id   = user.id

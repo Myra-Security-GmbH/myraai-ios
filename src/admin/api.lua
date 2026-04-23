@@ -132,6 +132,7 @@ end
 -- route that member/viewer must not reach.
 local function require_tenant_admin()
     local u = ngx.ctx.admin_user
+    if not u then send(401, { error = "unauthenticated" }); return false end
     if u.role ~= "admin" and u.role ~= "tenant_admin" then
         send(403, { error = "forbidden" })
         return false
@@ -147,6 +148,7 @@ end
 -- Returns tenant row, or sends 403/404 and returns nil.
 local function require_tenant_access(tenant_id)
     local u = ngx.ctx.admin_user
+    if not u then send(401, { error = "unauthenticated" }); return nil end
     local t = storage.get_tenant(tenant_id)
     if not t then send(404, { error = "not found" }); return nil end
     if u.role ~= "admin" and u.tenant_id ~= tenant_id then
@@ -158,6 +160,7 @@ end
 -- Verifies gateway's owning tenant is accessible. Returns gateway row or nil.
 local function require_gateway_access(gateway_id)
     local u = ngx.ctx.admin_user
+    if not u then send(401, { error = "unauthenticated" }); return nil end
     local gw = storage.get_gateway_by_id(gateway_id)
     if not gw then send(404, { error = "not found" }); return nil end
     if u.role ~= "admin" and u.tenant_id ~= gw.tenant_id then
@@ -169,6 +172,7 @@ end
 -- Verifies user belongs to the same tenant as the caller. Returns user row or nil.
 local function require_user_access(user_id)
     local u = ngx.ctx.admin_user
+    if not u then send(401, { error = "unauthenticated" }); return nil end
     local usr = storage.get_user(user_id)
     if not usr then send(404, { error = "not found" }); return nil end
     if u.role ~= "admin" and usr.tenant_id ~= u.tenant_id then
@@ -262,9 +266,17 @@ route("GET", "^/admin/v1/tenants$", function()
     for _, r in ipairs(rows) do
         r.siem = r.siem_config and json.decode(r.siem_config) or nil
         r.siem_config = nil
-        r.chat_presets = r.chat_presets_config and json.decode(r.chat_presets_config) or json.decode("[]")
+        local cp, cp_err = r.chat_presets_config and json.decode(r.chat_presets_config) or nil
+        if r.chat_presets_config and not cp then
+            ngx.log(ngx.WARN, "tenant: corrupt chat_presets_config id=", r.id, " err=", tostring(cp_err))
+        end
+        r.chat_presets = cp or {}
         r.chat_presets_config = nil
-        r.slash_commands = r.slash_commands_config and json.decode(r.slash_commands_config) or json.decode("[]")
+        local sc, sc_err = r.slash_commands_config and json.decode(r.slash_commands_config) or nil
+        if r.slash_commands_config and not sc then
+            ngx.log(ngx.WARN, "tenant: corrupt slash_commands_config id=", r.id, " err=", tostring(sc_err))
+        end
+        r.slash_commands = sc or {}
         r.slash_commands_config = nil
     end
     send(200, rows)
@@ -434,8 +446,13 @@ route("GET", "^/admin/v1/gateways/([^/]+)/circuit%-breaker$", function(gateway_i
     local providers_seen = {}
     local prefix = "cb:state:" .. gateway_id .. ":"
     -- Walk the config dict for state keys belonging to this gateway
-    local keys_list = cfg_dict:get_keys(0)  -- 0 = no limit
-    for _, k in ipairs(keys_list or {}) do
+    local keys_list, keys_err = cfg_dict:get_keys(0)  -- 0 = no limit
+    if not keys_list then
+        ngx.log(ngx.WARN, "circuit_breaker status: get_keys failed gw=", gateway_id,
+                " err=", tostring(keys_err))
+        keys_list = {}
+    end
+    for _, k in ipairs(keys_list) do
         local prov = k:match("^cb:state:" .. gateway_id .. ":(.+)$")
         if prov then providers_seen[prov] = true end
     end
@@ -726,16 +743,19 @@ route("POST", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
     local id, err = storage.insert_user(tenant_id, b.email, nullable(b.name), role)
     if err then return send(500, { error = tostring(err) }) end
 
-    -- Send invitation email asynchronously (non-blocking)
+    -- Snapshot fields before timer so the closure doesn't capture the request-scoped table
+    local inv_email = b.email
+    local inv_name  = b.name
+    local inv_role  = b.role or "member"
     ngx.timer.at(0, function()
-        local mail_err = email.send_template(b.email, "invitation", {
-            name      = b.name,
-            email     = b.email,
-            role      = b.role or "member",
+        local mail_err = email.send_template(inv_email, "invitation", {
+            name      = inv_name,
+            email     = inv_email,
+            role      = inv_role,
             login_url = os.getenv("AIG_FRONTEND_URL") or os.getenv("AIG_ADMIN_CORS_ORIGIN"),
         })
         if mail_err then
-            ngx.log(ngx.WARN, "invitation email failed for ", b.email, ": ", mail_err)
+            ngx.log(ngx.WARN, "invitation email failed for ", inv_email, ": ", mail_err)
         end
     end)
 
@@ -747,15 +767,19 @@ route("POST", "^/admin/v1/users/([^/]+)/resend%-invite$", function(user_id)
     if not require_user_access(user_id) then return end
     local user = storage.get_user(user_id)
     if not user then return send(404, { error = "user not found" }) end
+    -- Snapshot fields so the timer closure doesn't capture the request-scoped table
+    local u_email = user.email
+    local u_name  = user.name
+    local u_role  = user.role
     ngx.timer.at(0, function()
-        local mail_err = email.send_template(user.email, "invitation", {
-            name      = user.name,
-            email     = user.email,
-            role      = user.role,
+        local mail_err = email.send_template(u_email, "invitation", {
+            name      = u_name,
+            email     = u_email,
+            role      = u_role,
             login_url = os.getenv("AIG_FRONTEND_URL") or os.getenv("AIG_ADMIN_CORS_ORIGIN"),
         })
         if mail_err then
-            ngx.log(ngx.WARN, "resend-invite email failed for ", user.email, ": ", mail_err)
+            ngx.log(ngx.WARN, "resend-invite email failed for ", u_email, ": ", mail_err)
         end
     end)
     send(200, { ok = true })
@@ -983,7 +1007,7 @@ route("GET", "^/admin/v1/gateways/([^/]+)/spend$", function(gateway_id)
     local limit = tonumber(args.limit) or 12
     local rows  = storage.get_spend_history("gateway", gateway_id, limit)
     -- Enrich: convert amount_micro → amount_usd
-    for _, r in ipairs(rows) do r.amount_usd = r.amount_micro / 1e6 end
+    for _, r in ipairs(rows) do r.amount_usd = (r.amount_micro or 0) / 1e6 end
     send(200, rows)
 end)
 
@@ -1006,7 +1030,7 @@ route("GET", "^/admin/v1/tenants/([^/]+)/spend$", function(tenant_id)
     local args  = ngx.req.get_uri_args()
     local limit = tonumber(args.limit) or 12
     local rows  = storage.get_spend_history("tenant", tenant_id, limit)
-    for _, r in ipairs(rows) do r.amount_usd = r.amount_micro / 1e6 end
+    for _, r in ipairs(rows) do r.amount_usd = (r.amount_micro or 0) / 1e6 end
     send(200, rows)
 end)
 

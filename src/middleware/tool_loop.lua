@@ -360,6 +360,12 @@ local function execute_mcp_tool(ctx, tool_call)
         return "Error: MCP tool '" .. tool_call.name .. "' not found in any connector"
     end
 
+    -- Validate connector_id to prevent path traversal into arbitrary admin API routes
+    if not entry.connector_id:match("^[%w%-]+$") then
+        ngx.log(ngx.WARN, "tool_loop: invalid connector_id=", tostring(entry.connector_id))
+        return "Error: invalid MCP connector identifier"
+    end
+
     local httpc = require("resty.http").new()
     httpc:set_timeout(30000)
 
@@ -382,7 +388,7 @@ local function execute_mcp_tool(ctx, tool_call)
                 method  = "tools/call",
                 params  = { name = tool_call.name, arguments = tool_call.input },
             }),
-            ssl_verify = false,
+            ssl_verify = true,
         }
     )
 
