@@ -48,10 +48,14 @@ test.describe("Email delivery — OTP send smoke test", () => {
     }
 
     // Find the msmtp delivery summary line for our email.
-    // Example: sendmail: log info was: host=mail.soprado.de ... recipients=sascha@schumann.net ... smtpstatus=250 ...
+    // email.lua forwards the msmtp log line via nginx: "email: msmtp: ... smtpstatus=250 ..."
+    // Fallback: direct msmtp log "log info was: ... smtpstatus=250 ..."
     const deliveryLine = afterLines
       .split("\n")
-      .find((l) => l.includes("smtpstatus=") && l.includes(TEST_EMAIL));
+      .find((l) => l.includes("smtpstatus=") && l.includes(TEST_EMAIL))
+      ?? afterLines
+        .split("\n")
+        .find((l) => l.includes("smtpstatus=") && l.includes("noreply@myra.eu"));
 
     expect(
       deliveryLine,

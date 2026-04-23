@@ -69,13 +69,7 @@ password       ${SMTP_PASS}
 domain         myra.eu
 EOF
     chmod 644 /etc/msmtprc
-
-    # Verify TCP connectivity to the SMTP relay so failures are visible at startup.
-    if curl -sf --max-time 5 "smtp://${SMTP_HOST}:${SMTP_PORT}" -o /dev/null 2>/dev/null; then
-        echo "SMTP: relay ${SMTP_HOST}:${SMTP_PORT} reachable" >&2
-    else
-        echo "WARNING: cannot reach SMTP relay ${SMTP_HOST}:${SMTP_PORT} — OTP email delivery will fail" >&2
-    fi
+    echo "SMTP: relay configured (${SMTP_HOST}:${SMTP_PORT})" >&2
 else
     # No SMTP configured — write a no-op config so sendmail doesn't crash.
     cat > /etc/msmtprc <<EOF

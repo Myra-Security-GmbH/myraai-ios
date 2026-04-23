@@ -81,12 +81,20 @@ function M.send(to, subject, plain, html)
 
     ngx.log(ngx.NOTICE, "email: sending to=", to, " subject=", subject, " from=", from)
 
-    local _, status, err_msg = proc.run({"sendmail", "-t"}, msg, {timeout_ms = 10000})
+    local stdout, status, err_msg = proc.run({"/usr/sbin/sendmail", "-t"}, msg, {timeout_ms = 30000})
     if status ~= 0 then
         local errmsg = "sendmail process failed (exit " .. tostring(status) .. ")"
         if err_msg then errmsg = errmsg .. ": " .. tostring(err_msg) end
         ngx.log(ngx.ERR, "email: ", errmsg, " to=", to)
         return errmsg
+    end
+    -- Log the msmtp delivery summary (contains smtpstatus= for monitoring/tests)
+    if stdout and stdout ~= "" then
+        for line in stdout:gmatch("[^\n]+") do
+            if line:find("smtpstatus=", 1, true) or line:find("log info", 1, true) then
+                ngx.log(ngx.NOTICE, "email: msmtp: ", line)
+            end
+        end
     end
     ngx.log(ngx.NOTICE, "email: sent ok to=", to)
     return nil

@@ -5,7 +5,7 @@
 -- ngx.pipe API (verified from /usr/local/openresty/lualib/ngx/pipe.lua):
 --   pipe.spawn(args_table, opts)  -- opts: merge_stderr, buffer_size, environ
 --   proc:set_timeouts(write_ms, stdout_read_ms, stderr_read_ms, wait_ms)
---   proc:stdin_write(data)  proc:shutdown("stdin")   -- NOT stdin_close()
+--   proc:write(data)  proc:shutdown("stdin")   -- write, NOT stdin_write
 --   proc:stdout_read_all()
 --   proc:wait()  → ok (bool|nil), reason ("exit"|"signal"|err_msg), status
 --   proc:kill(signal)
@@ -34,7 +34,7 @@ function M.run(cmd, stdin_data, opts)
     proc:set_timeouts(ms, ms, ms, ms)
 
     if stdin_data ~= nil then
-        local ok_w, err_w = proc:stdin_write(stdin_data)
+        local ok_w, err_w = proc:write(stdin_data)
         if not ok_w then
             proc:kill(9)
             return "", -1, "stdin write failed: " .. tostring(err_w)
