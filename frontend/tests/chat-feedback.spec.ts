@@ -107,43 +107,48 @@ test.describe("Chat — session feedback", () => {
       // Wait for modal content
       await page.waitForSelector("text=Session Feedback", { timeout: 5000 });
 
-      // Rating buttons 1-5 should be visible
+      // Scope all rating-button interactions to inside the modal to avoid
+      // matching config-preset buttons (e.g. "PII qwen3") that contain digits.
+      const modalEl = page.locator("[class*='modal-overlay']").or(page.getByRole("dialog")).filter({ hasText: "Session Feedback" });
+      await modalEl.waitFor({ state: "visible", timeout: 5000 });
+
+      // Rating buttons 1-5 should be visible inside the modal
       for (const n of [1, 2, 3, 4, 5]) {
-        await expect(page.getByRole("button", { name: String(n) }).first()).toBeVisible();
+        await expect(modalEl.getByRole("button", { name: String(n), exact: true })).toBeVisible();
       }
 
       // Select rating 2
-      await page.getByRole("button", { name: "2" }).first().click();
+      await modalEl.getByRole("button", { name: "2", exact: true }).click();
 
       // Enter comment
-      const textarea = page.locator("textarea[placeholder*='could be better']");
+      const textarea = modalEl.locator("textarea[placeholder*='could be better']");
       await textarea.fill("The response was a bit slow.");
 
       // Save
-      const saveBtn = page.getByRole("button", { name: "Save feedback" });
+      const saveBtn = modalEl.getByRole("button", { name: "Save feedback" });
       await saveBtn.click();
 
       // "Saved ✓" flash should appear
-      await expect(page.getByText("Saved ✓")).toBeVisible({ timeout: 5000 });
+      await expect(modalEl.getByText("Saved ✓")).toBeVisible({ timeout: 5000 });
 
-      // Modal auto-closes after 800 ms
-      await page.waitForTimeout(1200);
-      await expect(page.locator("text=Session Feedback")).not.toBeVisible();
+      // Modal auto-closes after 800 ms — wait for the overlay to disappear
+      await expect(page.locator("[class*='modal-overlay']")).not.toBeVisible({ timeout: 5000 });
 
       // Re-open modal — form should be pre-filled
       await feedbackBtn.click();
-      await page.waitForSelector("text=Session Feedback", { timeout: 5000 });
+      const modalEl2 = page.locator("[class*='modal-overlay']").or(page.getByRole("dialog")).filter({ hasText: "Session Feedback" });
+      await modalEl2.waitFor({ state: "visible", timeout: 5000 });
 
       // Rating 2 should be highlighted (selected class)
-      const rating2Btn = page.getByRole("button", { name: "2" }).first();
+      const rating2Btn = modalEl2.getByRole("button", { name: "2", exact: true });
       await expect(rating2Btn).toHaveClass(/picker-btn--selected/);
 
       // Comment should be pre-filled
-      const ta = page.locator("textarea[placeholder*='could be better']");
+      const ta = modalEl2.locator("textarea[placeholder*='could be better']");
       await expect(ta).toHaveValue("The response was a bit slow.");
 
       // Close
-      await page.getByRole("button", { name: "Cancel" }).click();
+      await modalEl2.getByRole("button", { name: "Cancel" }).click();
 
       // Verify in DB via API
       const fbResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations/${convId}/feedback`);
@@ -176,8 +181,10 @@ test.describe("Chat — session feedback", () => {
       const saveBtn = page.getByRole("button", { name: "Save feedback" });
       await expect(saveBtn).toBeDisabled();
 
-      // Select a rating — button should become enabled
-      await page.getByRole("button", { name: "3" }).first().click();
+      // Select a rating — scope to modal to avoid hitting config-preset buttons
+      const ratingModal = page.locator("[class*='modal-overlay']").or(page.getByRole("dialog")).filter({ hasText: "Session Feedback" });
+      await ratingModal.waitFor({ state: "visible", timeout: 5000 });
+      await ratingModal.getByRole("button", { name: "3", exact: true }).click();
       await expect(saveBtn).toBeEnabled();
 
       await page.getByRole("button", { name: "Cancel" }).click();

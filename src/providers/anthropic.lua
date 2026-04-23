@@ -76,6 +76,13 @@ end
 
 local function overwrite_cache_ttl(body, ttl)
     local cc = cache_control_block(ttl)
+    -- Tools must be overwritten first: Claude Code places cache_control on tool
+    -- schemas with 5m TTL. Leaving them at 5m while system/messages get 1h
+    -- creates an invalid ordering (shorter before longer) that causes Anthropic
+    -- to silently drop all caching.
+    for _, tool in ipairs(body.tools or {}) do
+        if tool.cache_control then tool.cache_control = cc end
+    end
     overwrite_blocks(body.system, cc)
     for _, msg in ipairs(body.messages or {}) do
         overwrite_blocks(msg.content, cc)

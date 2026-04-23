@@ -24,8 +24,9 @@ import path from "path";
 const SESSION = path.resolve(__dirname, "tests/.auth/docker-session.json");
 
 // Make base URLs available to test files
-process.env.PLAYWRIGHT_ADMIN_URL = "https://ai-api-admin.myra.eu";
-process.env.PLAYWRIGHT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "https://ai.myra.eu";
+process.env.PLAYWRIGHT_ADMIN_URL   = "https://ai-api-admin.myra.eu";
+process.env.PLAYWRIGHT_BASE_URL    = process.env.PLAYWRIGHT_BASE_URL ?? "https://ai.myra.eu";
+process.env.PLAYWRIGHT_GATEWAY_URL = "https://ai-api.myra.eu";
 
 // These files use deleteAllConversations(page, timestamp) which bulk-deletes by
 // wall-clock time.  Running them concurrently causes cross-file fixture deletion.
@@ -36,6 +37,7 @@ export const SEQUENTIAL_TESTS = [
   "**/chat-autotitle-presets.spec.ts",
   "**/chat-docx.spec.ts",
   "**/chat-docx-qwen.spec.ts",
+  "**/chat-anthropic-caching.spec.ts",
   "**/chat-image-qwen.spec.ts",
   "**/chat-long-response.spec.ts",
   "**/chat-ods.spec.ts",

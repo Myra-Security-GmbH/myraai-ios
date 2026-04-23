@@ -263,10 +263,12 @@ function M.run(ctx)
                             finish_reason = "stop",
                         }},
                         usage = {
-                            prompt_tokens     = parsed.input_tokens,
-                            completion_tokens = parsed.output_tokens,
-                            total_tokens      = (parsed.input_tokens or 0) +
-                                                (parsed.output_tokens or 0),
+                            prompt_tokens         = parsed.input_tokens,
+                            completion_tokens     = parsed.output_tokens,
+                            total_tokens          = (parsed.input_tokens or 0) +
+                                                    (parsed.output_tokens or 0),
+                            cache_creation_tokens = parsed.cache_creation_tokens or 0,
+                            cache_read_tokens     = parsed.cache_read_tokens     or 0,
                         },
                     })
                 else

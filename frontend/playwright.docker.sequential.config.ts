@@ -17,8 +17,9 @@ import { SEQUENTIAL_TESTS } from "./playwright.docker.config";
 
 const SESSION = path.resolve(__dirname, "tests/.auth/docker-session.json");
 
-process.env.PLAYWRIGHT_ADMIN_URL = "https://ai-api-admin.myra.eu";
-process.env.PLAYWRIGHT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "https://ai.myra.eu";
+process.env.PLAYWRIGHT_ADMIN_URL   = "https://ai-api-admin.myra.eu";
+process.env.PLAYWRIGHT_BASE_URL    = process.env.PLAYWRIGHT_BASE_URL ?? "https://ai.myra.eu";
+process.env.PLAYWRIGHT_GATEWAY_URL = "https://ai-api.myra.eu";
 
 export default defineConfig({
   testDir: "./tests",
