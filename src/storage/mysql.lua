@@ -168,10 +168,13 @@ end
 
 -- Ordered list of all migrations. Append new entries here when adding a migration file.
 local MIGRATIONS = {
-    { version = "0001", file = "0001_initial_schema.sql",   description = "Initial schema" },
-    { version = "0002", file = "0002_permission_model.sql", description = "Missing columns and tables" },
+    { version = "0001", file = "0001_initial_schema.sql",          description = "Initial schema" },
+    { version = "0002", file = "0002_permission_model.sql",        description = "Missing columns and tables" },
     { version = "0003", file = "0003_add_rate_limited_to_request_log.sql", description = "Add rate_limited flag to request_log" },
     { version = "0004", file = "0004_add_compaction_triggered_to_request_log.sql", description = "Add compaction_triggered and compaction_tokens_before to request_log" },
+    { version = "0005", file = "0005_add_conversation_sharing.sql",  description = "Add conversation sharing columns" },
+    { version = "0006", file = "0006_add_conversation_summary.sql",   description = "Add conversation_summary table" },
+    { version = "0007", file = "0007_add_mcp_and_cache_deletion.sql", description = "Add mcp_connector table and cache_deletion_tokens column" },
 }
 
 -- Errors that mean "this change is already applied" — tolerated silently.
@@ -285,9 +288,9 @@ function M.migrate(cfg)
             end
 
             local ts = ngx.now and math.floor(ngx.now()) or os.time()
-            local mr, me = db:query(string.format(
-                "INSERT IGNORE INTO schema_migrations (version, applied_at, description) VALUES (%s, %d, %s)",
-                db:escape_literal(m.version), ts, db:escape_literal(m.description)
+            local mr, me = db:query(bind(db,
+                "INSERT IGNORE INTO schema_migrations (version, applied_at, description) VALUES (?, ?, ?)",
+                m.version, ts, m.description
             ))
             if not mr then
                 ngx.log(ngx.ERR, "storage/mysql: schema_migrations insert failed v=", m.version, " err=", tostring(me))
