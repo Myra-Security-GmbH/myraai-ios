@@ -261,7 +261,7 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
           <button
             className={[s["send-btn"], isStreaming ? s["stop-btn"] : ""].filter(Boolean).join(" ")}
-            onClick={isStreaming ? onStop : onSend}
+            onClick={isStreaming ? onStop : () => onSend()}
             disabled={!isStreaming && (disabled || !value.trim())}
             title={isStreaming ? "Stop generation" : "Send message"}
             type="button"
