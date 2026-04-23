@@ -74,6 +74,7 @@ function M.emit(ctx)
         -- Context compaction savings: tokens and cost saved vs uncompacted context
         compaction_tokens_saved = ctx.compaction_tokens_saved or 0,
         compaction_cost_saved   = ctx.compaction_cost_saved   or 0,
+        rate_limited            = ctx.rate_limited            or false,
     }
 
     -- Merge any extra log fields added by other middleware (e.g. blocked_by, block_reason)

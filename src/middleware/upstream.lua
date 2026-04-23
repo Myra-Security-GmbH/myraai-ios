@@ -548,6 +548,19 @@ local function handle_compat_streaming(ctx, res)
         return
     end
 
+    -- Emit pii_masked event so the frontend can show an indicator on the assistant message.
+    -- Sent just before [DONE] so the client can attach it to the completed message.
+    if not stream_errored
+       and (ctx.pii_detected_types or ctx.custom_pii_masked_count) then
+        local pii_event = json.encode({
+            aig_status    = "pii_masked",
+            types         = ctx.pii_detected_types,
+            custom_count  = ctx.custom_pii_masked_count,
+        })
+        ngx.print("data: " .. pii_event .. "\n\n")
+        ngx.flush(true)
+    end
+
     -- #8: only emit [DONE] when the stream completed without a read error
     if not stream_errored then
         ngx.print("data: [DONE]\n\n")
@@ -869,6 +882,7 @@ function M.run(ctx)
     end
 
     local last_err
+    local last_429_headers
     local total_attempts = 0
 
     for attempt_idx, attempt in ipairs(attempts) do
@@ -988,6 +1002,7 @@ function M.run(ctx)
             -- 429 Too Many Requests → retry with back-off instead of passing through
             if res.status == 429 then
                 last_err = "provider HTTP 429"
+                last_429_headers = res.headers
                 -- Buffer body (also drains it) so we can log rate-limit details
                 local resp_body_429 = read_body_str(res.body)
                 if res.httpc then res.httpc:set_keepalive() end
@@ -1278,6 +1293,23 @@ function M.run(ctx)
     end
 
     -- All attempts exhausted
+    if last_429_headers then
+        -- Final failure was a provider rate limit — tag the request and forward
+        -- the rate-limit headers so clients can back off with the correct delay.
+        ctx.rate_limited = true
+        local h = last_429_headers
+        local forward = {
+            ["retry-after"]                                = "Retry-After",
+            ["anthropic-ratelimit-input-tokens-remaining"] = "X-RateLimit-Input-Tokens-Remaining",
+            ["anthropic-ratelimit-input-tokens-reset"]     = "X-RateLimit-Input-Tokens-Reset",
+            ["anthropic-ratelimit-requests-remaining"]     = "X-RateLimit-Requests-Remaining",
+            ["anthropic-ratelimit-requests-reset"]         = "X-RateLimit-Requests-Reset",
+        }
+        for src, dst in pairs(forward) do
+            if h[src] then ngx.header[dst] = h[src] end
+        end
+        ngx.header["X-AIG-Rate-Limited"] = "true"
+    end
     ngx.log(ngx.ERR, "upstream: all providers failed. last_err=", last_err)
     trace.done(ctx, "error", last_err)
     errors.send("ALL_PROVIDERS_FAILED", last_err)

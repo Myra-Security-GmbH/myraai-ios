@@ -161,10 +161,26 @@ local function uuid()
     return uuid_lib.v4()
 end
 
-local function schema_path()
+local function migrations_dir()
     local src = debug.getinfo(1, "S").source:sub(2)
-    return src:match("^(.*/)") .. "schema_mysql.sql"
+    return src:match("^(.*/)") .. "migrations/"
 end
+
+-- Ordered list of all migrations. Append new entries here when adding a migration file.
+local MIGRATIONS = {
+    { version = "0001", file = "0001_initial_schema.sql",   description = "Initial schema" },
+    { version = "0002", file = "0002_permission_model.sql", description = "Missing columns and tables" },
+    { version = "0003", file = "0003_add_rate_limited_to_request_log.sql", description = "Add rate_limited flag to request_log" },
+}
+
+-- Errors that mean "this change is already applied" — tolerated silently.
+local IDEMPOTENT_ERRNOS = {
+    [1050] = true,  -- Table 'x' already exists
+    [1060] = true,  -- Duplicate column name
+    [1061] = true,  -- Duplicate key name
+    [1091] = true,  -- Can't DROP ...; check that column/key exists
+    [1826] = true,  -- Duplicate foreign key constraint name
+}
 
 local function decode_detectors(row)
     if row.detectors_fired and row.detectors_fired ~= "" then
@@ -192,47 +208,39 @@ function M.migrate(cfg)
     })
     if not ok then error("mysql migrate connect: " .. tostring(err2)) end
 
-    local fh = io.open(schema_path(), "r")
-    if not fh then
+    -- Create the migration tracking table (idempotent).
+    local res, e = db:query([[
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version     VARCHAR(16)  NOT NULL,
+            applied_at  BIGINT       NOT NULL,
+            description VARCHAR(255) NOT NULL DEFAULT '',
+            PRIMARY KEY (version)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ]])
+    if not res then
         db:close()
-        error("schema_mysql.sql not found at " .. schema_path())
+        error("schema_migrations create failed: " .. tostring(e))
     end
-    local ddl = fh:read("*a")
-    fh:close()
 
-    -- Split on ';' and execute each non-empty statement.
-    for stmt in ddl:gmatch("([^;]+)") do
-        stmt = stmt:gsub("%-%-[^\n]*", "")  -- strip inline/block comments
-        stmt = stmt:match("^%s*(.-)%s*$")   -- trim whitespace
-        if stmt ~= "" then
-            local res, e = db:query(stmt)
-            if not res then
-                -- Ignore "Table already exists" (1050) — idempotent
-                if not tostring(e):find("1050") then
-                    db:close()
-                    error("schema error: " .. tostring(e) .. "\nSQL: " .. stmt:sub(1, 200))
-                end
-            end
-        end
+    -- Fetch already-applied versions.
+    local rows, e2 = db:query("SELECT version FROM schema_migrations ORDER BY version")
+    if not rows then
+        db:close()
+        error("schema_migrations read failed: " .. tostring(e2))
     end
-    -- Flat permission model migration (idempotent: guard on organization_id column existence)
+    local applied = {}
+    for _, row in ipairs(rows) do applied[row.version] = true end
+
+    -- Run the pre-migration Lua compatibility step: organization_id → tenant_id.
+    -- This targets legacy installs only (guard: checks for the old column).
+    -- Kept in Lua because it requires conditional multi-step logic that cannot
+    -- be expressed as idempotent SQL without stored procedures.
     local check = db:query("SELECT COUNT(*) AS n FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user' AND column_name='organization_id'")
     if check and check[1] and check[1].n and tonumber(check[1].n) > 0 then
-        -- Map user.organization_id → user.tenant_id (best-effort: first matching tenant)
         db:query("SET foreign_key_checks=0")
-        db:query([[
-            ALTER TABLE `user`
-            ADD COLUMN IF NOT EXISTS tenant_id_new VARCHAR(36) NULL
-        ]])
-        db:query([[
-            UPDATE `user` u
-            JOIN tenant t ON t.organization_id = u.organization_id AND t.deleted_at IS NULL
-            SET u.tenant_id_new = t.id
-            WHERE u.organization_id IS NOT NULL
-        ]])
-        -- Map org_admin → tenant_admin
+        db:query("ALTER TABLE `user` ADD COLUMN IF NOT EXISTS tenant_id_new VARCHAR(36) NULL")
+        db:query("UPDATE `user` u JOIN tenant t ON t.organization_id = u.organization_id AND t.deleted_at IS NULL SET u.tenant_id_new = t.id WHERE u.organization_id IS NOT NULL")
         db:query("UPDATE `user` SET role='tenant_admin' WHERE role='org_admin'")
-        -- Drop old column, rename new; drop FKs first
         db:query("ALTER TABLE `user` DROP FOREIGN KEY IF EXISTS fk_user_org")
         db:query("ALTER TABLE `user` DROP COLUMN IF EXISTS organization_id")
         db:query("ALTER TABLE `user` DROP COLUMN IF EXISTS tenant_id")
@@ -240,157 +248,49 @@ function M.migrate(cfg)
         db:query("ALTER TABLE `user` ADD CONSTRAINT fk_user_tenant FOREIGN KEY (tenant_id) REFERENCES tenant(id) ON DELETE CASCADE")
         db:query("ALTER TABLE `user` DROP INDEX IF EXISTS uq_user_tenant_email")
         db:query("ALTER TABLE `user` ADD UNIQUE KEY uq_user_email (email)")
-        -- Drop organization_id from tenant
         db:query("ALTER TABLE tenant DROP FOREIGN KEY IF EXISTS fk_tenant_org")
         db:query("ALTER TABLE tenant DROP COLUMN IF EXISTS organization_id")
-        -- Drop organization table
         db:query("DROP TABLE IF EXISTS organization")
         db:query("SET foreign_key_checks=1")
         ngx.log(ngx.NOTICE, "storage/mysql: flat permission model migration complete")
     end
 
-    -- Add last_login_at column if not present (idempotent)
-    db:query("ALTER TABLE `user` ADD COLUMN IF NOT EXISTS last_login_at BIGINT")
-    -- Add chat_presets_config column if not present (idempotent)
-    db:query("ALTER TABLE tenant ADD COLUMN IF NOT EXISTS chat_presets_config TEXT")
-    -- Add gateway_id to chat_message if not present (idempotent)
-    db:query("ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS gateway_id VARCHAR(36)")
-    -- Add model to chat_message if not present (idempotent)
-    db:query("ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS model VARCHAR(255)")
-    -- Add project FK to chat_conversation (idempotent — silently fails if constraint exists)
-    db:query([[
-        ALTER TABLE chat_conversation
-        ADD CONSTRAINT fk_chat_conv_project FOREIGN KEY (project_id)
-            REFERENCES chat_project(id) ON DELETE SET NULL
-    ]])
-    -- Add slash_commands_config column to tenant if not present (idempotent)
-    db:query("ALTER TABLE tenant ADD COLUMN IF NOT EXISTS slash_commands_config TEXT")
-    -- Create chat_command table if not present (idempotent)
-    db:query([[
-        CREATE TABLE IF NOT EXISTS chat_command (
-            id          VARCHAR(36)  NOT NULL,
-            user_id     VARCHAR(36)  NOT NULL,
-            name        VARCHAR(64)  NOT NULL,
-            description VARCHAR(255) NOT NULL DEFAULT '',
-            template    TEXT         NOT NULL,
-            created_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            updated_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            PRIMARY KEY (id),
-            KEY idx_chat_command_user (user_id),
-            CONSTRAINT fk_chat_command_user FOREIGN KEY (user_id)
-                REFERENCES `user`(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ]])
-    -- Create chat_feedback table if not present (idempotent)
-    db:query([[
-        CREATE TABLE IF NOT EXISTS chat_feedback (
-            id              VARCHAR(36)  NOT NULL,
-            conversation_id VARCHAR(36)  NOT NULL,
-            user_id         VARCHAR(36)  NOT NULL,
-            rating          INT          NOT NULL,
-            comment         TEXT,
-            created_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            updated_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            PRIMARY KEY (id),
-            UNIQUE KEY uq_feedback_conv (conversation_id),
-            KEY idx_chat_feedback_user (user_id, created_at),
-            CONSTRAINT fk_chat_feedback_conv FOREIGN KEY (conversation_id)
-                REFERENCES chat_conversation(id) ON DELETE CASCADE,
-            CONSTRAINT fk_chat_feedback_user FOREIGN KEY (user_id)
-                REFERENCES `user`(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ]])
+    -- Apply pending migrations from the MIGRATIONS registry.
+    local dir = migrations_dir()
+    for _, m in ipairs(MIGRATIONS) do
+        if not applied[m.version] then
+            ngx.log(ngx.NOTICE, "storage/mysql: applying migration " .. m.version .. " (" .. m.description .. ")")
+            local fh = io.open(dir .. m.file, "r")
+            if not fh then
+                db:close()
+                error("migration file not found: " .. dir .. m.file)
+            end
+            local sql = fh:read("*a")
+            fh:close()
 
-    -- Application-level feedback (bug reports, feature suggestions) — AGF-31
-    db:query([[
-        CREATE TABLE IF NOT EXISTS app_feedback (
-            id          VARCHAR(36)   NOT NULL,
-            user_id     VARCHAR(36),
-            type        VARCHAR(32)   NOT NULL DEFAULT 'other',
-            summary     VARCHAR(255)  NOT NULL,
-            description TEXT,
-            url         VARCHAR(1024),
-            created_at  BIGINT        NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            processed   TINYINT       NOT NULL DEFAULT 0,
-            PRIMARY KEY (id),
-            KEY idx_app_feedback_created (created_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ]])
+            for stmt in sql:gmatch("([^;]+)") do
+                stmt = stmt:gsub("%-%-[^\n]*", "")  -- strip line comments
+                stmt = stmt:match("^%s*(.-)%s*$")   -- trim whitespace
+                if stmt ~= "" then
+                    local r, e3, errno = db:query(stmt)
+                    if not r then
+                        local en = tonumber(errno) or 0
+                        if not IDEMPOTENT_ERRNOS[en] then
+                            db:close()
+                            error("migration " .. m.version .. " error: " .. tostring(e3) .. "\nSQL: " .. stmt:sub(1, 200))
+                        end
+                    end
+                end
+            end
 
-    -- Create chat_share table if not present (idempotent)
-    db:query([[
-        CREATE TABLE IF NOT EXISTS chat_share (
-            id              VARCHAR(36)  NOT NULL,
-            conversation_id VARCHAR(36)  NOT NULL,
-            user_id         VARCHAR(36)  NOT NULL,
-            token           VARCHAR(64)  NOT NULL,
-            snapshot_json   LONGTEXT     NOT NULL,
-            created_at      BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            PRIMARY KEY (id),
-            UNIQUE KEY uq_share_conv  (conversation_id),
-            UNIQUE KEY uq_share_token (token),
-            CONSTRAINT fk_share_conv FOREIGN KEY (conversation_id)
-                REFERENCES chat_conversation(id) ON DELETE CASCADE,
-            CONSTRAINT fk_share_user FOREIGN KEY (user_id)
-                REFERENCES `user`(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ]])
-
-    -- Add memory_disabled to chat_conversation (idempotent)
-    db:query("ALTER TABLE chat_conversation ADD COLUMN IF NOT EXISTS memory_disabled TINYINT NOT NULL DEFAULT 0")
-
-    -- Add project_id to chat_memory for project-scoped memory silos (idempotent)
-    -- project_id IS NULL = user memory (per-user, shared across all standalone chats)
-    -- project_id = X    = project memory (isolated to that project)
-    -- No ON DELETE CASCADE: chat_project uses soft-delete (deleted_at), so the physical row is
-    -- never removed. Project memories are cleaned up explicitly in delete_project().
-    db:query([[
-        ALTER TABLE chat_memory
-            ADD COLUMN IF NOT EXISTS project_id VARCHAR(36) NULL DEFAULT NULL,
-            ADD KEY    IF NOT EXISTS idx_memory_project (project_id, created_at)
-    ]])
-    pcall(function()
-        db:query([[
-            ALTER TABLE chat_memory
-                ADD CONSTRAINT fk_memory_project
-                    FOREIGN KEY (project_id) REFERENCES chat_project(id)
-        ]])
-    end)
-
-    -- Add source column to chat_project_knowledge (idempotent)
-    -- 'text' = plain-text upload (no blob); 'upload' = binary file with blob stored
-    db:query("ALTER TABLE chat_project_knowledge ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'text'")
-
-    -- Create chat_memory table if not present (idempotent)
-    db:query([[
-        CREATE TABLE IF NOT EXISTS chat_memory (
-            id          VARCHAR(36)  NOT NULL,
-            user_id     VARCHAR(36)  NOT NULL,
-            content     TEXT         NOT NULL,
-            type        VARCHAR(16)  NOT NULL DEFAULT 'fact',
-            source      VARCHAR(16)  NOT NULL DEFAULT 'manual',
-            created_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            updated_at  BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            PRIMARY KEY (id),
-            KEY idx_memory_user (user_id, created_at),
-            CONSTRAINT fk_memory_user FOREIGN KEY (user_id)
-                REFERENCES `user`(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ]])
-
-    -- Conversation embeddings for semantic search (idempotent)
-    db:query([[
-        CREATE TABLE IF NOT EXISTS conversation_embeddings (
-            conversation_id  VARCHAR(36)  NOT NULL,
-            user_id          VARCHAR(36)  NOT NULL,
-            text             TEXT         NOT NULL,
-            embedding        MEDIUMTEXT   NOT NULL,
-            created_at       BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            updated_at       BIGINT       NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-            PRIMARY KEY (conversation_id),
-            KEY idx_conv_emb_user (user_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ]])
+            local ts = ngx.now and math.floor(ngx.now()) or os.time()
+            db:query(string.format(
+                "INSERT IGNORE INTO schema_migrations (version, applied_at, description) VALUES (%s, %d, %s)",
+                db:escape_literal(m.version), ts, db:escape_literal(m.description)
+            ))
+            ngx.log(ngx.NOTICE, "storage/mysql: migration " .. m.version .. " applied")
+        end
+    end
 
     db:set_keepalive(0, 5)
 end
@@ -518,8 +418,9 @@ function M.insert_log(f)
              request_size_bytes, quota_remaining, user_id, token_label,
              detectors_fired, scrub_applied, response_raw, prompt_scrubbed,
              token_quota_remaining, tenant_quota_remaining, trace_id,
-             compaction_tokens_saved, compaction_cost_saved)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             compaction_tokens_saved, compaction_cost_saved,
+             rate_limited)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
@@ -553,7 +454,8 @@ function M.insert_log(f)
         f.tenant_quota_remaining,
         f.trace_id,
         f.compaction_tokens_saved or 0,
-        f.compaction_cost_saved   or 0
+        f.compaction_cost_saved   or 0,
+        f.rate_limited and 1 or 0
     )
     release(db)
     return e
@@ -1238,7 +1140,8 @@ function M.list_logs(filters)
                cost_usd, latency_ms,
                upstream_latency_ms, guardrail_latency_ms, upstream_attempts,
                fallback_provider, fallback_model, saved_cost_usd, request_size_bytes,
-               detectors_fired, scrub_applied, prompt, response_raw, trace_id
+               detectors_fired, scrub_applied, prompt, response_raw, trace_id,
+               rate_limited
         FROM request_log WHERE %s ORDER BY ts DESC LIMIT %d OFFSET %d
     ]], table.concat(where, " AND "), limit, offset)
 
@@ -1306,9 +1209,10 @@ function M.get_usage_stats(tenant_id)
             ROUND(COALESCE(SUM(CASE WHEN %s THEN cost_usd END),0),6) AS %s_cost,
             ROUND(COALESCE(SUM(CASE WHEN %s THEN saved_cost_usd END),0),6) AS %s_saved,
             ROUND(COALESCE(AVG(CASE WHEN %s THEN latency_ms END),0)) AS %s_avg_lat,
-            ROUND(COALESCE(AVG(CASE WHEN %s THEN upstream_latency_ms END),0)) AS %s_avg_up]],
+            ROUND(COALESCE(AVG(CASE WHEN %s THEN upstream_latency_ms END),0)) AS %s_avg_up,
+            SUM(CASE WHEN %s AND rate_limited=1 THEN 1 ELSE 0 END) AS %s_rate_limited]],
             cond,p, cond,p, cond,p, cond,p, cond,p,
-            cond,p, cond,p, cond,p, cond,p, cond,p, cond,p)
+            cond,p, cond,p, cond,p, cond,p, cond,p, cond,p, cond,p)
     end
 
     local all_sql = string.format(
@@ -1324,17 +1228,18 @@ function M.get_usage_stats(tenant_id)
 
     local function extract(p)
         return {
-            requests                = r[p.."_req"]     or 0,
-            cached                  = r[p.."_cached"]  or 0,
-            blocked                 = r[p.."_blocked"] or 0,
-            scrubbed                = r[p.."_scrubbed"] or 0,
-            flagged                 = r[p.."_flagged"] or 0,
-            input_tokens            = r[p.."_in_tok"]  or 0,
-            output_tokens           = r[p.."_out_tok"] or 0,
-            cost_usd                = r[p.."_cost"]    or 0,
-            saved_cost_usd          = r[p.."_saved"]   or 0,
-            avg_latency_ms          = r[p.."_avg_lat"] or 0,
-            avg_upstream_latency_ms = r[p.."_avg_up"]  or 0,
+            requests                = r[p.."_req"]          or 0,
+            cached                  = r[p.."_cached"]       or 0,
+            blocked                 = r[p.."_blocked"]      or 0,
+            scrubbed                = r[p.."_scrubbed"]     or 0,
+            flagged                 = r[p.."_flagged"]      or 0,
+            input_tokens            = r[p.."_in_tok"]       or 0,
+            output_tokens           = r[p.."_out_tok"]      or 0,
+            cost_usd                = r[p.."_cost"]         or 0,
+            saved_cost_usd          = r[p.."_saved"]        or 0,
+            avg_latency_ms          = r[p.."_avg_lat"]      or 0,
+            avg_upstream_latency_ms = r[p.."_avg_up"]       or 0,
+            rate_limited            = r[p.."_rate_limited"] or 0,
         }
     end
 
@@ -1362,7 +1267,8 @@ function M.get_usage_stats(tenant_id)
                r.guardrail_verdict, r.guardrail_latency_ms,
                r.upstream_latency_ms, r.upstream_attempts,
                r.fallback_provider, r.fallback_model,
-               ROUND(r.saved_cost_usd,5) AS saved_cost_usd, r.request_size_bytes
+               ROUND(r.saved_cost_usd,5) AS saved_cost_usd, r.request_size_bytes,
+               r.rate_limited
         FROM request_log r
         LEFT JOIN tenant t ON t.id = r.tenant_id
         LEFT JOIN gateway g ON g.id = r.gateway_id
@@ -1424,6 +1330,7 @@ function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
         SELECT (ts DIV %d) * %d AS bucket_ts,
                COUNT(*) AS requests,
                SUM(CASE WHEN blocked=1 THEN 1 ELSE 0 END) AS blocked,
+               SUM(CASE WHEN rate_limited=1 THEN 1 ELSE 0 END) AS rate_limited,
                ROUND(COALESCE(SUM(cost_usd),0),6) AS cost_usd
         FROM request_log
         WHERE ts >= ?%s
@@ -1447,10 +1354,11 @@ function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
         local bts = (now_bucket_sec - (n - 1 - i) * bucket_sec) * 1000
         local r   = by_ts[bts] or {}
         result[#result + 1] = {
-            ts       = bts,
-            requests = r.requests or 0,
-            blocked  = r.blocked  or 0,
-            cost_usd = r.cost_usd or 0,
+            ts           = bts,
+            requests     = r.requests     or 0,
+            blocked      = r.blocked      or 0,
+            rate_limited = r.rate_limited or 0,
+            cost_usd     = r.cost_usd     or 0,
         }
     end
     return result
