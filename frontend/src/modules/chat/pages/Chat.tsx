@@ -1995,6 +1995,53 @@ export default function Chat() {
           </>
         )}
 
+        {/* Mobile model chip — touch only, replaces the selects above.
+            Uses a native <select> so iOS/Android show their system picker. */}
+        {(() => {
+          const byProvider: Record<string, typeof models> = {};
+          for (const m of models) (byProvider[m.provider] ??= []).push(m);
+          const chipValue = usePresetMode && selectedPresetId ? `p:${selectedPresetId}` : model;
+          return (
+            <select
+              className={`${s["form-select"]} ${chatS["config-model-chip"]}`}
+              value={chipValue}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val.startsWith("p:")) {
+                  const pid = val.slice(2);
+                  const preset = tenantPresets.find((p) => p.id === pid);
+                  if (preset) {
+                    setSelectedPresetId(preset.id);
+                    setGatewayId(preset.gateway_id);
+                    setModel(preset.model);
+                  }
+                } else {
+                  setModel(val);
+                  setSelectedPresetId("");
+                }
+              }}
+              data-cy="model-chip"
+            >
+              {tenantPresets.length > 0 && (
+                <optgroup label="Presets">
+                  {tenantPresets.map((p) => (
+                    <option key={p.id} value={`p:${p.id}`}>{p.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {Object.entries(byProvider).map(([provider, pModels]) => (
+                <optgroup key={provider} label={provider}>
+                  {pModels.map((m) => (
+                    <option key={m.model} value={m.model} disabled={!runnableProviders.has(m.provider)}>
+                      {m.model}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          );
+        })()}
+
         <div className={chatS["config-divider"]} />
 
         <button
@@ -2376,8 +2423,15 @@ export default function Chat() {
           onSavePreset={savePreset}
           onDeletePreset={deletePreset}
           supportsThinking={supportsThinking}
+          tenants={tenants}
+          tenantId={tenantId}
+          onTenantChange={setTenantId}
+          gateways={gateways}
+          gatewayId={gatewayId}
+          onGatewayChange={setGatewayId}
         />
       )}
+
 
       {/* Variable fill modal for slash commands */}
       {pendingCommand && (

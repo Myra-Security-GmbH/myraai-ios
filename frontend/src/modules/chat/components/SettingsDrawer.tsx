@@ -1,4 +1,4 @@
-import type { ChatPreset } from "src/api/types";
+import type { ChatPreset, Tenant, Gateway } from "src/api/types";
 import s from "../pages/Chat.module.scss";
 
 function XIcon() {
@@ -27,8 +27,14 @@ interface Props {
   onApplyPreset: (preset: ChatPreset) => void;
   onSavePreset: (name: string) => void;
   onDeletePreset: (id: string) => void;
-  /** Whether the currently selected model supports extended thinking */
   supportsThinking: boolean;
+  /** Tenant + gateway props — shown at top of drawer so mobile users can switch */
+  tenants: Tenant[];
+  tenantId: string;
+  onTenantChange: (id: string) => void;
+  gateways: Gateway[];
+  gatewayId: string;
+  onGatewayChange: (id: string) => void;
 }
 
 export default function SettingsDrawer({
@@ -41,6 +47,12 @@ export default function SettingsDrawer({
   onSavePreset,
   onDeletePreset,
   supportsThinking,
+  tenants,
+  tenantId,
+  onTenantChange,
+  gateways,
+  gatewayId,
+  onGatewayChange,
 }: Props) {
   function upd(partial: Partial<DrawerSettings>) {
     onChange({ ...settings, ...partial });
@@ -62,6 +74,39 @@ export default function SettingsDrawer({
         </div>
 
         <div className={s["settings-body"]}>
+          {/* Tenant + gateway — primary access point on mobile */}
+          {tenants.length > 1 && (
+            <div className={s["settings-field"]}>
+              <label className={s["settings-label"]}>Tenant</label>
+              <select
+                className={s["settings-input"]}
+                value={tenantId}
+                onChange={(e) => onTenantChange(e.target.value)}
+              >
+                <option value="">— select —</option>
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>{t.slug}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className={s["settings-field"]}>
+            <label className={s["settings-label"]}>Gateway</label>
+            <select
+              className={s["settings-input"]}
+              value={gatewayId}
+              onChange={(e) => onGatewayChange(e.target.value)}
+            >
+              <option value="">— select —</option>
+              {gateways.map((g) => (
+                <option key={g.id} value={g.id}>{g.slug ?? g.id}</option>
+              ))}
+            </select>
+          </div>
+
+          <hr style={{ border: "none", borderTop: "1px solid var(--card-border)", margin: "4px 0 8px" }} />
+
           <div className={s["settings-field"]}>
             <label className={s["settings-label"]}>System prompt</label>
             <textarea

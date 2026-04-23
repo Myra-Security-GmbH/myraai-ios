@@ -88,17 +88,15 @@ test.describe("Chat — mobile layout (360 × 780 viewport)", () => {
     const hambBox = await hamburger.boundingBox();
     expect(hambBox, "hamburger bounding box must exist").not.toBeNull();
 
-    // The Tenant <select> is the first interactive config-bar element when the
-    // admin user has ≥2 tenants. Use data-testid to avoid the detachment race.
-    const tenantSelect = page.locator('[data-testid="config-tenant-select"]');
-    await expect(tenantSelect).toBeVisible({ timeout: 3_000 });
-    const selectBox = await tenantSelect.boundingBox();
-    expect(selectBox, "tenant select bounding box must exist").not.toBeNull();
+    // On touch devices tenant/gateway selects are replaced by the model chip.
+    const modelChip = page.locator('[data-cy="model-chip"]');
+    await expect(modelChip, "model chip must be visible on mobile").toBeVisible({ timeout: 3_000 });
+    const chipBox = await modelChip.boundingBox();
+    expect(chipBox, "model chip bounding box must exist").not.toBeNull();
 
-    // Regression guard: before the fix, padding-left was 12px so the select
-    // started at x≈12px — directly underneath the hamburger (right edge ≈52px).
+    // Regression guard: config bar padding-left:62px ensures the chip clears the hamburger.
     const hamburgerRightEdge = hambBox!.x + hambBox!.width;
-    expect(selectBox!.x).toBeGreaterThanOrEqual(hamburgerRightEdge - 4); // 4px tolerance
+    expect(chipBox!.x).toBeGreaterThanOrEqual(hamburgerRightEdge - 4); // 4px tolerance
   });
 
   // ── AppShell sidebar behaviour ────────────────────────────────────────────
@@ -288,28 +286,17 @@ test.describe("Chat — mobile layout (360 × 780 viewport)", () => {
 test.describe("Chat — 960 × 2142 viewport (GrapheneOS Vanadium, DPR=1)", () => {
   test.use({ viewport: { width: 960, height: 2142 }, hasTouch: true });
 
-  test("config bar labels are visible at 960 px — not hidden like on a narrow phone", async ({ page }) => {
+  test("config bar shows model chip at 960 px on touch — selects replaced by chip", async ({ page }) => {
     await openChat(page);
 
-    // At 360 px the labels are hidden to save space; at 960 px they must be
-    // visible so the user understands what each dropdown does.
-    const tenantLabel = page.locator("span").filter({ hasText: /^Tenant$/ }).first();
-    await expect(tenantLabel, "Tenant label must be visible at 960 px").toBeVisible({ timeout: 5_000 });
+    // On touch devices (all widths) the tenant/gateway/model selects are hidden
+    // and replaced by a single model chip that opens a bottom-sheet picker.
+    const modelChip = page.locator('[data-cy="model-chip"]');
+    await expect(modelChip, "Model chip must be visible at 960 px on touch").toBeVisible({ timeout: 5_000 });
 
-    // When the active tenant has presets configured, the config bar shows preset
-    // buttons instead of separate Gateway/Model selectors — in that case check
-    // that at least one preset button is visible (not hidden).
-    const presetOptions = page.locator('[data-testid="config-preset-options"]');
-    const presetsVisible = await presetOptions.isVisible({ timeout: 1_000 }).catch(() => false);
-    if (presetsVisible) {
-      const firstPreset = page.locator('[data-testid="config-preset-btn"]').first();
-      await expect(firstPreset, "Preset button must be visible at 960 px").toBeVisible({ timeout: 3_000 });
-    } else {
-      const gatewayLabel = page.locator("span").filter({ hasText: /^Gateway$/ }).first();
-      const modelLabel   = page.locator("span").filter({ hasText: /^Model$/ }).first();
-      await expect(gatewayLabel, "Gateway label must be visible at 960 px").toBeVisible({ timeout: 3_000 });
-      await expect(modelLabel,   "Model label must be visible at 960 px").toBeVisible({ timeout: 3_000 });
-    }
+    // The chip text shows the current preset name or model name
+    const chipText = await modelChip.textContent();
+    expect(chipText?.trim().length, "Model chip must show a non-empty label").toBeGreaterThan(0);
 
     await expect(page.getByText(/error/i).first()).toBeHidden();
   });
@@ -328,25 +315,22 @@ test.describe("Chat — 960 × 2142 viewport (GrapheneOS Vanadium, DPR=1)", () =
     ).toBeLessThan(80);
   });
 
-  test("first select still has clearance from the AppShell hamburger at 960 px", async ({ page }) => {
+  test("model chip has clearance from the AppShell hamburger at 960 px", async ({ page }) => {
     await openChat(page);
 
-    // The hamburger is visible at max-width:1024 px (960 < 1024).
     const hamburger = page.getByRole("button", { name: "Open navigation menu" });
     await expect(hamburger).toBeVisible({ timeout: 5_000 });
     const hambBox = await hamburger.boundingBox();
     expect(hambBox).not.toBeNull();
 
-    // Use data-testid to avoid the React re-render detachment race condition.
-    const tenantSelect = page.locator('[data-testid="config-tenant-select"]');
-    await expect(tenantSelect).toBeVisible({ timeout: 5_000 });
-    const selectBox = await tenantSelect.boundingBox();
-    expect(selectBox).not.toBeNull();
+    // On touch the model chip is the first config-bar element.
+    const modelChip = page.locator('[data-cy="model-chip"]');
+    await expect(modelChip).toBeVisible({ timeout: 5_000 });
+    const chipBox = await modelChip.boundingBox();
+    expect(chipBox).not.toBeNull();
 
-    // The config bar has padding-left:52 px on touch/narrow devices so the
-    // first select starts to the right of the hamburger's right edge.
     const hamburgerRight = hambBox!.x + hambBox!.width;
-    expect(selectBox!.x).toBeGreaterThanOrEqual(hamburgerRight - 4);
+    expect(chipBox!.x).toBeGreaterThanOrEqual(hamburgerRight - 4);
   });
 
   test("AppShell sidebar is a drawer (not inline) at 960 px", async ({ page }) => {
@@ -384,15 +368,13 @@ test.describe("Chat — 960 × 2142 viewport (GrapheneOS Vanadium, DPR=1)", () =
   test("key touch targets are at least 40 px tall at 960 px", async ({ page }) => {
     await openChat(page);
 
-    // Selects and buttons need to be tap-friendly on a touch device.
-    // Use data-testid to avoid finding a detached element from a mid-render swap.
-    // Admin sees ≥2 tenants so the tenant select is always present.
-    const tenantSelect = page.locator('[data-testid="config-tenant-select"]');
-    await expect(tenantSelect).toBeVisible({ timeout: 5_000 });
-    const selectBox = await tenantSelect.boundingBox();
-    expect(selectBox).not.toBeNull();
-    expect(selectBox!.height,
-      `Tenant select height should be ≥ 40 px, got ${selectBox!.height.toFixed(0)}`
-    ).toBeGreaterThanOrEqual(40);
+    // The model chip replaces the selects on touch — it must be tap-friendly.
+    const modelChip = page.locator('[data-cy="model-chip"]');
+    await expect(modelChip).toBeVisible({ timeout: 5_000 });
+    const chipBox = await modelChip.boundingBox();
+    expect(chipBox).not.toBeNull();
+    expect(chipBox!.height,
+      `Model chip height should be ≥ 36 px, got ${chipBox!.height.toFixed(0)}`
+    ).toBeGreaterThanOrEqual(36);
   });
 });

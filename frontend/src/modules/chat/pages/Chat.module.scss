@@ -153,10 +153,19 @@
 // All touch devices get mobile CSS regardless of viewport width.
 // On touch devices the AppShell hamburger is position:fixed; left:12px; width:40px.
 // Add left padding to keep config bar content clear of it.
+// Tenant/gateway selects are hidden on touch — use the ⚙ Settings drawer instead.
+// The model chip + bottom sheet replace the inline selects.
 @media (pointer: coarse) {
   .config-bar {
     padding-left: 62px; // 12px edge + 40px button + 10px gap
     gap: 6px;
+  }
+
+  // Selects replaced by the model chip on touch devices
+  .config-select,
+  .config-model,
+  .preset-options {
+    display: none;
   }
 }
 
@@ -192,6 +201,19 @@
   // Users can still switch presets via Settings.
   .preset-options {
     display: none;
+  }
+}
+
+// ── Mobile model chip — native <select> replacing inline selects on touch ────
+// form-select (Layout.module.scss) provides border, bg, 16px font (no iOS zoom),
+// 44px touch target. This class just handles visibility + flex sizing.
+.config-model-chip {
+  display: none; // desktop uses the normal inline selects
+
+  @media (pointer: coarse) {
+    display: block;
+    flex: 1;
+    min-width: 0;
   }
 }
 
