@@ -238,7 +238,7 @@ local function handle_compat_streaming(ctx, res)
     local buf          = ""
     local chat_id      = "chatcmpl-" .. (ctx.request_id or "aig")
     local model        = ctx.model
-    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = 0, 0, 0, 0
+    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens = 0, 0, 0, 0, 0
     local first_chunk_seen = false
     local done_sent        = false
     local stream_errored   = false  -- #8: track mid-stream read failures
@@ -277,6 +277,7 @@ local function handle_compat_streaming(ctx, res)
         if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
         if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
         if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
+        if parsed.cache_deletion_tokens then cache_deletion_tokens = parsed.cache_deletion_tokens end
 
         -- Accumulate stop_reason from message_delta — it arrives in an earlier
         -- chunk than message_stop (parsed.done), so we must capture it here.
@@ -500,6 +501,7 @@ local function handle_compat_streaming(ctx, res)
         }
         if cache_creation_tokens > 0 then usage_obj.cache_creation_tokens = cache_creation_tokens end
         if cache_read_tokens     > 0 then usage_obj.cache_read_tokens     = cache_read_tokens     end
+        if cache_deletion_tokens > 0 then usage_obj.cache_deletion_tokens = cache_deletion_tokens end
         local usage_line = "data: " .. json.encode({
             id     = chat_id,
             object = "chat.completion.chunk",
@@ -567,6 +569,7 @@ local function handle_compat_streaming(ctx, res)
     ctx.output_tokens         = output_tokens
     ctx.cache_creation_tokens = cache_creation_tokens
     ctx.cache_read_tokens     = cache_read_tokens
+    ctx.cache_deletion_tokens = cache_deletion_tokens
     ctx.is_streaming          = true
     ctx.provider_status       = 200
 
@@ -593,7 +596,7 @@ local function handle_streaming(ctx, res)
     local provider_mod = res.provider_mod
     local buf          = ""
     local parse_state  = {}     -- per-stream state for parse_sse_chunk
-    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = 0, 0, 0, 0
+    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens = 0, 0, 0, 0, 0
     local first_chunk_seen = false
     -- #1: table accumulator; only allocated when pii_protector is active
     local acc_parts = ctx.pii_token_map and {} or nil
@@ -610,6 +613,7 @@ local function handle_streaming(ctx, res)
         if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
         if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
         if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
+        if parsed.cache_deletion_tokens then cache_deletion_tokens = parsed.cache_deletion_tokens end
         if acc_parts and parsed.delta and parsed.delta ~= "" then
             acc_parts[#acc_parts + 1] = parsed.delta  -- #1
         end
@@ -686,6 +690,7 @@ local function handle_streaming(ctx, res)
     ctx.output_tokens         = output_tokens
     ctx.cache_creation_tokens = cache_creation_tokens
     ctx.cache_read_tokens     = cache_read_tokens
+    ctx.cache_deletion_tokens = cache_deletion_tokens
     ctx.is_streaming          = true
     ctx.provider_status       = 200
 
@@ -736,6 +741,7 @@ local function handle_buffered(ctx, res)
                 total_tokens              = (parsed.input_tokens or 0) + (parsed.output_tokens or 0),
                 cache_creation_tokens     = parsed.cache_creation_tokens or 0,
                 cache_read_tokens         = parsed.cache_read_tokens     or 0,
+                cache_deletion_tokens     = parsed.cache_deletion_tokens or 0,
             },
         })
     end
@@ -745,6 +751,7 @@ local function handle_buffered(ctx, res)
     ctx.output_tokens         = parsed.output_tokens
     ctx.cache_creation_tokens = parsed.cache_creation_tokens or 0
     ctx.cache_read_tokens     = parsed.cache_read_tokens     or 0
+    ctx.cache_deletion_tokens = parsed.cache_deletion_tokens or 0
     ctx.provider_status       = res.status
     ctx.is_streaming    = false
     return true
@@ -842,6 +849,10 @@ function M.run(ctx)
     local is_streaming = ctx.request_body and ctx.request_body.stream == true
                          and not ctx.pii_force_buffered
     local retry_count  = ctx.gateway_config.retry_count or 2
+    -- Claude Code manages its own retries (up to 10). Don't retry at the gateway
+    -- level too — combined that's up to retry_count × 10 attempts per request.
+    local beta_hdr = ngx.req.get_headers()["anthropic-beta"] or ""
+    if beta_hdr:find("claude-code-", 1, true) then retry_count = 0 end
     local cb           = require("core.circuit_breaker")
     local cb_cfg       = ctx.gateway_config.circuit_breaker
 

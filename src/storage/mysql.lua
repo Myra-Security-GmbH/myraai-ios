@@ -508,7 +508,7 @@ function M.insert_log(f)
     local e = exec_one(db, [[
         INSERT INTO request_log
             (id, tenant_id, gateway_id, provider, model, status, cached,
-             input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+             input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens,
              cost_usd, latency_ms, ts,
              prompt, response, meta, blocked, blocked_by, block_reason,
              guardrail_latency_ms, guardrail_verdict,
@@ -519,12 +519,12 @@ function M.insert_log(f)
              detectors_fired, scrub_applied, response_raw, prompt_scrubbed,
              token_quota_remaining, tenant_quota_remaining, trace_id,
              compaction_tokens_saved, compaction_cost_saved)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
         f.input_tokens, f.output_tokens,
-        f.cache_creation_tokens or 0, f.cache_read_tokens or 0,
+        f.cache_creation_tokens or 0, f.cache_read_tokens or 0, f.cache_deletion_tokens or 0,
         f.cost_usd, f.latency_ms, f.ts,
         f.prompt, f.response,
         json.encode(f.meta or {}),
@@ -1227,7 +1227,7 @@ function M.list_logs(filters)
                tenant_id, gateway_id,
                provider, model, status, cached, blocked,
                blocked_by, block_reason, guardrail_verdict,
-               input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+               input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens,
                cost_usd, latency_ms,
                upstream_latency_ms, guardrail_latency_ms, upstream_attempts,
                fallback_provider, fallback_model, saved_cost_usd, request_size_bytes,
@@ -1251,7 +1251,7 @@ function M.get_log(id)
                ROUND(ts / 1000) AS ts,
                tenant_id, gateway_id, provider, model, status, cached, blocked,
                blocked_by, block_reason, guardrail_verdict,
-               input_tokens, output_tokens, cost_usd, latency_ms,
+               input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens, cost_usd, latency_ms,
                upstream_latency_ms, guardrail_latency_ms, upstream_attempts,
                fallback_provider, fallback_model, saved_cost_usd, request_size_bytes,
                detectors_fired, scrub_applied,

@@ -177,15 +177,16 @@ end
 
 -- Calculate cost in USD given token counts.
 -- Returns nil when pricing is unknown (distinguishes "free" from "untracked").
--- cache_creation and cache_read are optional (Anthropic prompt-caching tokens).
+-- cache_creation, cache_read, and cache_deletion are optional (Anthropic prompt-caching tokens).
 function M.calculate(provider, model, input_tokens, output_tokens,
-                     cache_creation_tokens, cache_read_tokens)
+                     cache_creation_tokens, cache_read_tokens, cache_deletion_tokens)
     local pricing = M.get(provider, model)
     if not pricing then return nil end
     return (input_tokens          / 1000 * pricing.input_per_1k)
          + (output_tokens         / 1000 * pricing.output_per_1k)
          + ((cache_creation_tokens or 0) / 1000 * (pricing.cache_write_per_1k or pricing.input_per_1k))
          + ((cache_read_tokens     or 0) / 1000 * (pricing.cache_read_per_1k  or 0))
+         + ((cache_deletion_tokens or 0) / 1000 * (pricing.cache_delete_per_1k or 0))
 end
 
 return M

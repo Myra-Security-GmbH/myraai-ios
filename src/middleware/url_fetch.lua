@@ -277,6 +277,7 @@ function M.run(ctx)
                 ctx.output_tokens         = parsed.output_tokens   or 0
                 ctx.cache_creation_tokens = parsed.cache_creation_tokens or 0
                 ctx.cache_read_tokens     = parsed.cache_read_tokens     or 0
+                ctx.cache_deletion_tokens = parsed.cache_deletion_tokens or 0
                 ctx.provider_status       = status
                 ctx.is_streaming          = false
                 ngx.status                   = status

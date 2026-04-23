@@ -476,6 +476,7 @@ function M.parse_response(body_str)
         output_tokens         = usage.output_tokens         or 0,
         cache_creation_tokens = usage.cache_creation_input_tokens or 0,
         cache_read_tokens     = usage.cache_read_input_tokens     or 0,
+        cache_deletion_tokens = usage.cache_deletion_input_tokens or 0,
         raw                   = body,
     }
 end
@@ -556,7 +557,7 @@ function M.parse_sse_chunk(line, st)
     local done = (chunk.type == "message_stop")
 
     local stop_reason
-    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
+    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens
     if chunk.type == "message_delta" then
         if chunk.delta then stop_reason = chunk.delta.stop_reason end
         if chunk.usage then output_tokens = chunk.usage.output_tokens end
@@ -566,6 +567,7 @@ function M.parse_sse_chunk(line, st)
         input_tokens          = u.input_tokens
         cache_creation_tokens = u.cache_creation_input_tokens
         cache_read_tokens     = u.cache_read_input_tokens
+        cache_deletion_tokens = u.cache_deletion_input_tokens
     end
 
     return {
@@ -579,6 +581,7 @@ function M.parse_sse_chunk(line, st)
         output_tokens         = output_tokens,
         cache_creation_tokens = cache_creation_tokens,
         cache_read_tokens     = cache_read_tokens,
+        cache_deletion_tokens = cache_deletion_tokens,
         compaction_summary    = compaction_summary,  -- set when compaction block arrives
     }
 end
