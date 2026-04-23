@@ -25,7 +25,7 @@ function M.run(ctx)
 
     if not cost or cost <= 0 then return end
 
-    local micro = math.floor(cost * 1e6)
+    local micro = math.max(1, math.floor(cost * 1e6))
 
     -- ── Per-gateway ──────────────────────────────────────────────────────────
     local gw_period = budget_lib.current_period(

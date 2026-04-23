@@ -141,7 +141,7 @@ end
 local function query_all(db, sql, ...)
     local res, err = db:query(bind(db, sql, ...))
     if not res then return setmetatable({}, cjson.array_mt), err end
-    for i = 1, #res do coerce_numbers(nullify(res[i])) end
+    for i = 1, #res do res[i] = coerce_numbers(nullify(res[i])) end
     return setmetatable(res, cjson.array_mt)
 end
 
@@ -284,10 +284,13 @@ function M.migrate(cfg)
             end
 
             local ts = ngx.now and math.floor(ngx.now()) or os.time()
-            db:query(string.format(
+            local mr, me = db:query(string.format(
                 "INSERT IGNORE INTO schema_migrations (version, applied_at, description) VALUES (%s, %d, %s)",
                 db:escape_literal(m.version), ts, db:escape_literal(m.description)
             ))
+            if not mr then
+                ngx.log(ngx.ERR, "storage/mysql: schema_migrations insert failed v=", m.version, " err=", tostring(me))
+            end
             ngx.log(ngx.NOTICE, "storage/mysql: migration " .. m.version .. " applied")
         end
     end
@@ -468,11 +471,15 @@ end
 function M.upsert_tenant(slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config)
     local id = uuid()
     local db, err = get_conn()
-    if not db then return nil end
-    exec_one(db, [[
+    if not db then return nil, err end
+    local e = exec_one(db, [[
         INSERT IGNORE INTO tenant (id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config)
         VALUES (?,?,?,?,?,?,?,?)
     ]], id, slug, plan or "free", budget_usd, budget_period or "monthly", siem_config, chat_presets_config, slash_commands_config)
+    if e then
+        release(db)
+        return nil, e
+    end
     local row = query_one(db, "SELECT id FROM tenant WHERE slug = ?", slug)
     release(db)
     return row and row.id
@@ -508,11 +515,15 @@ end
 function M.upsert_gateway(tenant_id, slug, config_table)
     local id = uuid()
     local db, err = get_conn()
-    if not db then return nil end
-    exec_one(db, [[
+    if not db then return nil, err end
+    local e = exec_one(db, [[
         INSERT INTO gateway (id, tenant_id, slug, config) VALUES (?,?,?,?)
         ON DUPLICATE KEY UPDATE config = VALUES(config)
     ]], id, tenant_id, slug, json.encode(config_table or {}))
+    if e then
+        release(db)
+        return nil, e
+    end
     local row = query_one(db, [[
         SELECT id FROM gateway WHERE tenant_id = ? AND slug = ?
     ]], tenant_id, slug)
