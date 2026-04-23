@@ -301,6 +301,22 @@ function M.migrate(cfg)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ]])
 
+    -- Application-level feedback (bug reports, feature suggestions) — AGF-31
+    db:query([[
+        CREATE TABLE IF NOT EXISTS app_feedback (
+            id          VARCHAR(36)   NOT NULL,
+            user_id     VARCHAR(36),
+            type        VARCHAR(32)   NOT NULL DEFAULT 'other',
+            summary     VARCHAR(255)  NOT NULL,
+            description TEXT,
+            url         VARCHAR(1024),
+            created_at  BIGINT        NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            processed   TINYINT       NOT NULL DEFAULT 0,
+            PRIMARY KEY (id),
+            KEY idx_app_feedback_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ]])
+
     -- Create chat_share table if not present (idempotent)
     db:query([[
         CREATE TABLE IF NOT EXISTS chat_share (
@@ -2900,6 +2916,65 @@ function M.search_conversations_by_title(user_id, q, limit)
     ]], limit), user_id, "%" .. q .. "%") or {}
     release(db)
     return rows
+end
+
+-- ---------------------------------------------------------------------------
+-- App feedback (AGF-31)
+-- ---------------------------------------------------------------------------
+
+function M.insert_app_feedback(entry)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local e = exec_one(db, [[
+        INSERT INTO app_feedback (id, user_id, type, summary, description, url, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ]], entry.id, entry.user_id, entry.type or "other",
+        entry.summary, entry.description, entry.url,
+        math.floor(ngx.now()))
+    release(db)
+    if e then return nil, e end
+    return entry.id
+end
+
+function M.list_app_feedback(limit, offset, type_filter)
+    limit  = math.min(limit or 50, 200)
+    offset = offset or 0
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows
+    if type_filter and type_filter ~= "" then
+        rows = query_all(db, string.format([[
+            SELECT f.id, f.user_id, f.type, f.summary, f.description, f.url,
+                   DATE_FORMAT(FROM_UNIXTIME(f.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   f.processed,
+                   u.email AS user_email
+            FROM app_feedback f LEFT JOIN `user` u ON u.id = f.user_id
+            WHERE f.type = ?
+            ORDER BY f.created_at DESC
+            LIMIT %d OFFSET %d
+        ]], limit, offset), type_filter) or {}
+    else
+        rows = query_all(db, string.format([[
+            SELECT f.id, f.user_id, f.type, f.summary, f.description, f.url,
+                   DATE_FORMAT(FROM_UNIXTIME(f.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   f.processed,
+                   u.email AS user_email
+            FROM app_feedback f LEFT JOIN `user` u ON u.id = f.user_id
+            ORDER BY f.created_at DESC
+            LIMIT %d OFFSET %d
+        ]], limit, offset)) or {}
+    end
+    release(db)
+    return rows
+end
+
+function M.update_app_feedback(id, processed)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, "UPDATE app_feedback SET processed = ? WHERE id = ?",
+        processed and 1 or 0, id)
+    release(db)
+    return e
 end
 
 -- List conversations for a project (most recent 50)
