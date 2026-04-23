@@ -33,7 +33,12 @@ The config is **merged at the top level** on each PATCH — only the fields you 
   "vertex_region": "us-central1",
   "provider_base_urls": {},
   "tracing": null,
-  "web_search": null
+  "web_search": null,
+  "context_compaction": {
+    "enabled": true,
+    "threshold_tokens": 200000,
+    "keep_last_turns": 10
+  }
 }
 ```
 
@@ -97,7 +102,7 @@ Each guardrail object has a common set of fields plus type-specific fields:
 
 | **Field** | **Type** | **Description** |
 |---|---|---|
-| `type` | string | Guardrail type: `regex`, `keyword`, `jailbreak`, `json_schema`, `contains_code`, `gibberish`, `language`, `presidio`, `prompt_guard`, `pii_protector`. |
+| `type` | string | Guardrail type: `regex`, `keyword`, `jailbreak`, `json_schema`, `contains_code`, `gibberish`, `language`, `custom_pii`, `presidio`, `prompt_guard`, `pii_protector`. |
 | `name` | string | Human-readable name used in block messages and logs. |
 | `action` | string | One of `block`, `scrub`, or `flag`. |
 | `target` | string | One of `request`, `response`, or `both`. |
@@ -225,6 +230,23 @@ See [Request Tracing](../observability/tracing.md) for the full pipeline step re
 | `web_search.mode` | string | `"opt-in"` | `"opt-in"` — only triggered when the client sends `X-Web-Search: 1`. `"always"` — attempted on every request. |
 
 See [Web Search](../features/web-search.md) for provider support details and usage examples.
+
+---
+
+## Context compaction
+
+Context compaction automatically summarises older conversation turns when the estimated input token count exceeds a configured threshold. This keeps long conversations within model context limits while reducing the cost of each subsequent turn.
+
+Context compaction is available for Anthropic models only. For other providers, the setting is present in the config but has no effect.
+
+| **Field** | **Type** | **Default** | **Description** |
+|---|---|---|---|
+| `context_compaction` | object | `{enabled: true, threshold_tokens: 200000, keep_last_turns: 10}` | Context compaction settings. Set `enabled: false` to disable. |
+| `context_compaction.enabled` | boolean | `true` | Activate automatic context compaction for this gateway. |
+| `context_compaction.threshold_tokens` | integer | `200000` | Trigger compaction when the estimated input token count reaches this value. Minimum: `50000` (Anthropic API requirement). |
+| `context_compaction.keep_last_turns` | integer | `10` | Number of the most recent user turns to keep verbatim. Older turns are summarised. |
+
+See [Context compaction](../providers/anthropic.md#context-compaction) on the Anthropic provider page for background and behavioural details.
 
 ---
 

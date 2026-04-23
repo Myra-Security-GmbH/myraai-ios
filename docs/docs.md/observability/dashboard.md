@@ -28,16 +28,27 @@ The top-right of the hero section contains the **Timeframe** drop-down list. Sel
 
 ## Hero cards
 
-Six cards summarise the selected timeframe at a glance. Each card includes a sparkline chart of the underlying timeseries.
+Three cards summarise the selected timeframe at a glance. Each card includes a sparkline chart of the underlying timeseries.
 
 | Card | Primary metric | Sub-metric |
 |------|----------------|------------|
-| Total Spend | Cumulative cost in USD | Cache savings in USD |
-| Cache Savings | Cost avoided by serving cached responses | — |
-| Total Requests | Total request count | Cache hit rate (%) |
-| Error Rate | Percentage of requests with a 4xx/5xx upstream response | — |
-| Top Spender | Tenant with the highest spend in the period | — |
-| Budget Warnings | Number of tenants at or above 80 % of their configured budget | — |
+| Requests | Total request count | Cache hit rate (%) |
+| Cost | Cumulative cost in USD | Cost saved via cached responses (USD) |
+| Guardrail Hits | Total guardrail activations | Breakdown: blocked · scrubbed · flagged |
+
+---
+
+## Anthropic Input Token Caching Efficiency
+
+This card is shown below the main hero cards when the selected timeframe contains Anthropic requests with prompt caching activity. It is hidden when no cache data exists.
+
+| Section | Description |
+|---------|-------------|
+| Hit rate bar | Percentage of input tokens served from cache, colour-coded: green (≥ 60 %), amber (≥ 30 %), red (< 30 %) |
+| Served from cache (reads) | Token count, percentage of total input tokens, and cost at the 0.1× cache-read rate |
+| Processed fresh (cache writes) | Token count, percentage of total input tokens, and cost at the 1.25× cache-write rate |
+| New tokens (not cached) | Token count, percentage of total input tokens, and cost at the standard 1× input rate |
+| Cost summary | Total cached input cost · total uncached input cost · compaction savings (if any) |
 
 ---
 

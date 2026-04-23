@@ -42,7 +42,7 @@ curl https://<your-gateway-host>/admin/v1/tenants
       "plan": "starter",
       "budget_usd": null,
       "budget_period": "monthly",
-      "created_at": "2025-03-21T10:00:00Z"
+      "created_at": 1742551200
     }
   ]
 }
@@ -105,7 +105,7 @@ curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/gateways
       "tenant_id": "ten_abc123",
       "slug": "production",
       "config": { "auth_required": true, "cache_ttl": 300 },
-      "created_at": "2025-03-21T10:00:00Z"
+      "created_at": 1742551200
     }
   ]
 }

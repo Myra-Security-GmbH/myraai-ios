@@ -524,16 +524,17 @@ test("guardrails-builder-add", async ({ page }) => {
 // ---------------------------------------------------------------------------
 
 const GUARDRAIL_TYPES: Array<{ label: string; slug: string }> = [
-  { label: "Regex",         slug: "regex" },
-  { label: "Keyword",       slug: "keyword" },
-  { label: "Jailbreak",     slug: "jailbreak" },
-  { label: "JSON Schema",   slug: "json-schema" },
-  { label: "Contains Code", slug: "contains-code" },
-  { label: "Gibberish",     slug: "gibberish" },
-  { label: "Language",      slug: "language" },
-  { label: "Presidio",      slug: "presidio" },
-  { label: "Prompt Guard",  slug: "prompt_guard" },
-  { label: "PII Protector", slug: "pii_protector" },
+  { label: "Regex",             slug: "regex" },
+  { label: "Keyword",           slug: "keyword" },
+  { label: "Jailbreak",         slug: "jailbreak" },
+  { label: "JSON Schema",       slug: "json-schema" },
+  { label: "Contains Code",     slug: "contains-code" },
+  { label: "Gibberish",         slug: "gibberish" },
+  { label: "Language",          slug: "language" },
+  { label: "Custom PII Blacklist", slug: "custom_pii" },
+  { label: "Presidio",          slug: "presidio" },
+  { label: "Prompt Guard",      slug: "prompt_guard" },
+  { label: "PII Protector",     slug: "pii_protector" },
 ];
 
 for (const { label, slug } of GUARDRAIL_TYPES) {

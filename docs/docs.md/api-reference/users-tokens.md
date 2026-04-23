@@ -56,7 +56,7 @@ curl https://<your-gateway-host>/admin/v1/tenants/{tenant_id}/users
     "email": "alice@example.com",
     "name": "Alice",
     "role": "member",
-    "created_at": "2025-03-21T10:00:00Z"
+    "created_at": 1742551200
   }
 ]
 ```
@@ -116,7 +116,7 @@ curl -X DELETE https://<your-gateway-host>/admin/v1/users/{id}/budget
 | `label` | string | — | Human-readable name shown in the admin UI and logs. |
 | `user_id` | string \| null | `null` | Associates the token with a user for audit trail and per-user budget tracking. |
 | `scopes` | array | `[]` | Permission scopes. `["inference"]` grants inference access. Reserved for future use. |
-| `expires_at` | string \| null | `null` | ISO-8601 expiry timestamp. `null` means the token never expires. |
+| `expires_at` | integer \| null | `null` | Unix expiry timestamp (seconds since epoch). `null` means the token never expires. |
 | `rate_limit` | object \| null | `null` | Per-token sliding-window limit: `{"requests": N, "window_sec": S}`. Applied independently of the gateway-level rate limit — a request can be blocked by either. |
 | `budget_usd` | number \| null | `null` | Per-token spend cap in USD. `null` means no cap. |
 
@@ -161,7 +161,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/gateways/{gateway_id}/tokens \
     "label": "production-client",
     "user_id": "usr_abc123",
     "scopes": ["inference"],
-    "expires_at": "2027-01-01T00:00:00Z",
+    "expires_at": 1798761600,
     "rate_limit": {"requests": 60, "window_sec": 60},
     "budget_usd": 100.00
   }'
@@ -226,7 +226,7 @@ curl -X POST https://<your-gateway-host>/admin/v1/me/tokens \
 |---|---|---|---|
 | `gateway_id` | string | Yes | Gateway the token grants access to. Must be accessible to the tenant of the caller. |
 | `label` | string | No | Human-readable name. |
-| `expires_at` | string \| null | No | ISO-8601 expiry timestamp. `null` = never. |
+| `expires_at` | integer \| null | No | Unix expiry timestamp (seconds since epoch). `null` = never. |
 | `budget_usd` | number \| null | No | Per-token spend cap in USD. |
 | `rate_limit` | object \| null | No | `{"requests": N, "window_sec": S}` |
 

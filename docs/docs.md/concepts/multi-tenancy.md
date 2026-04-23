@@ -80,7 +80,7 @@ Tokens are scoped to a single gateway and carry optional per-token overrides:
 | **Field** | **Description** |
 |-----------|-----------------|
 | `label` | Human-readable name, e.g. `"ci-pipeline"` |
-| `expiration` | ISO-8601 timestamp; requests after this date return `401` |
+| `expiration` | Unix timestamp (seconds since epoch); requests after this date return `401` |
 | `rate_limit` | `{"requests": N, "window_sec": S}` — overrides gateway-level rate limit |
 | `budget_usd` | Per-token spending cap; takes precedence over gateway-level budget |
 | `user_id` | Optional binding to a user; recorded in request logs |

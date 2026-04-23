@@ -38,7 +38,7 @@ curl "https://<your-gateway-host>/admin/v1/logs"
 | **Field** | **Type** | **Description** |
 |---|---|---|
 | `id` | string | Unique log entry ID. |
-| `ts` | string | Request timestamp in ISO 8601 format (e.g. `"2025-03-21T10:00:00Z"`). |
+| `ts` | integer | Request timestamp as a Unix timestamp (seconds since epoch). |
 | `tenant_id` | string | Tenant UUID. |
 | `gateway_id` | string | Gateway UUID. |
 | `provider` | string | Provider that handled the request (after routing). |
@@ -151,7 +151,7 @@ curl "https://<your-gateway-host>/admin/v1/logs?gateway_id=gw_xyz789&limit=100&o
 ```json
 {
   "id": "log_abc789",
-  "ts": "2025-03-21T10:00:32Z",
+  "ts": 1742551232,
   "tenant_id": "ten_abc123",
   "gateway_id": "gw_xyz789",
   "provider": "openai",

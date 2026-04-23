@@ -39,14 +39,14 @@ trust the source, fix the documentation, and ignore the prompt's claim.
 
 ### 1. Admin API — response shapes
 
-**Source of truth:** `src/storage/sqlite.lua` (all SQL queries and row-to-JSON mapping),
+**Source of truth:** `src/storage/mysql.lua` (all SQL queries and row-to-JSON mapping),
 `src/admin/api.lua` (handler logic, HTTP status codes, error shapes).
 
 Check every JSON example in these doc pages against what the SQL queries actually return:
 
 | Doc page | Key things to verify |
 |---|---|
-| `api-reference/tenants-gateways.md` | Tenant fields (id, slug, plan, budget_usd, budget_period, created_at); gateway fields; create/update response shape; `created_at` is ISO string not Unix integer |
+| `api-reference/tenants-gateways.md` | Tenant fields (id, slug, plan, budget_usd, budget_period, created_at); gateway fields; create/update response shape; `created_at` is a Unix integer (seconds since epoch), not an ISO string |
 | `api-reference/users-tokens.md` | User fields; token creation response shape (read the `send()` call in the POST /gateways/:id/tokens handler in `api.lua`); list returns token_hash not plaintext; `created_at` format |
 | `api-reference/routing-rules.md` | Rule fields; condition field names and operators (read `src/routing/engine.lua` — enumerate exactly what is implemented, no more, no less); notation style for `header:` and `meta:` prefixes |
 | `api-reference/logs.md` | Log entry fields; filter parameter names (`guardrail_outcome` vs `guardrail_verdict`); pagination shape |
@@ -121,7 +121,7 @@ Verify `security/guardrails.md` and all `security/guardrails/*.md` pages:
 ### 5. Budget & quota
 
 **Source of truth:** `src/middleware/quota.lua`, `src/utils/budget.lua`,
-`src/storage/sqlite.lua` (spend_ledger queries).
+`src/storage/mysql.lua` (spend_ledger queries).
 
 Verify `configuration/budgets.md`:
 - Which levels have budgets (tenant, gateway, token).
@@ -227,11 +227,11 @@ Review each generated screenshot visually. A good screenshot should:
 After fixing individual pages, do a final cross-check:
 
 - Every `budget_period` reference: verify allowed values against `src/utils/budget.lua`
-  or `src/storage/sqlite.lua`; ensure docs list exactly those values.
+  or `src/storage/mysql.lua`; ensure docs list exactly those values.
 - Every `rate_limit` shape: verify the key names against `src/middleware/rate_limit.lua`;
   ensure all docs use the same shape.
-- Every `created_at` example value: ISO-8601 string or Unix integer — derive from the
-  SQL query that populates the field (`strftime` → string, raw column → integer).
+- Every `created_at` example value: Unix integer (seconds since epoch) — all timestamp
+  fields are now returned as raw integers from MySQL, not formatted ISO-8601 strings.
 - Every token creation response: read the `send()` call in the POST tokens handler in
   `api.lua`; all examples must match exactly.
 - Every tenant/gateway create response: same — read `api.lua` and match.

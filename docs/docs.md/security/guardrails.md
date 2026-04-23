@@ -16,7 +16,7 @@ Guardrails are grouped into two tiers based on where they execute and how fast t
 
 | Tier | Guardrail types | Execution | Latency |
 |---|---|---|---|
-| Tier 1 | `regex`, `keyword`, `jailbreak`, `json_schema`, `contains_code`, `gibberish`, `language` | In-process | Sub-millisecond |
+| Tier 1 | `regex`, `keyword`, `jailbreak`, `json_schema`, `contains_code`, `gibberish`, `language`, `custom_pii` | In-process | Sub-millisecond |
 | Tier 2 | `presidio`, `prompt_guard`, `pii_protector` | Sidecar HTTP call | Milliseconds |
 
 All Tier 1 guardrails run before any Tier 2 guardrail. Within the same tier, guardrails run in the order they appear in the `guardrails` array of the gateway configuration.
@@ -112,10 +112,13 @@ Proceed as follows to create a guardrail:
    - **+ Presidio (NLP)** — NLP-based PII detection
    - **+ Prompt Guard** — semantic safety classification (Llama Guard 3, locally hosted)
    - **+ PII Protector** — reversible PII tokenisation
+   - **+ Custom PII Blacklist** — reversible masking of admin-defined keywords (client names, codenames, surnames)
    - A collapsed guardrail card appears at the bottom of the list.
 3. Click on the guardrail card to expand it.
 4. Enter a name in the **Name** text field.
 5. Select the action from the **Action** drop-down list: `block`, `scrub` (not available on Keyword, Jailbreak, or Prompt Guard), or `flag`.
+
+> 💡 **Note:** The **Custom PII Blacklist** guardrail type has no action selector. Masking is always active and cannot be configured to block or flag.
 6. Select the target from the **Target** drop-down list: `request` (default), `response`, or `both`.
 7. Configure any type-specific fields (patterns, keywords, entities, etc.). See the relevant guardrail type page for field details.
 8. If required, use the **▲▼** arrows on the left side of each guardrail card to reorder guardrails within the list. Order matters within a tier — Tier 1 always runs before Tier 2, but within the same tier execution follows list order.
@@ -171,6 +174,7 @@ Guardrails are configurable via the Admin API as the `guardrails` array in the g
 | [`contains_code`](guardrails/contains-code.md) | 1 | Detects source code in requests or responses |
 | [`gibberish`](guardrails/gibberish.md) | 1 | Detects low-quality or incoherent model responses using entropy and vocabulary heuristics |
 | [`language`](guardrails/language.md) | 1 | Detects the dominant writing system of request or response text — permits or blocks by script |
+| [`custom_pii`](guardrails/custom-pii.md) | 1 | Reversible masking of admin-defined keywords — client names, codenames, and surnames masked before reaching the model |
 | [`presidio`](guardrails/presidio.md) | 2 | NLP-based PII detection — locally hosted within Myra's certified infrastructure |
 | [`prompt_guard`](guardrails/prompt-guard.md) | 2 | Safety classification via Llama Guard 3 — locally hosted within Myra's certified infrastructure |
 | [`pii_protector`](guardrails/pii-protector.md) | 2 | Reversible PII tokenisation — real values restored in response |
@@ -189,5 +193,6 @@ Guardrails are configurable via the Admin API as the `guardrails` array in the g
 - [NLP PII detector](guardrails/presidio.md)
 - [Prompt Guard](guardrails/prompt-guard.md)
 - [PII Protector](guardrails/pii-protector.md)
+- [Custom PII Blacklist](guardrails/custom-pii.md)
 - [Logs API](../api-reference/logs.md) — `blocked_by`, `block_reason`, `guardrail_verdict` fields
 - [Gateway Configuration Reference](../reference/config-reference.md) — `guardrails` array

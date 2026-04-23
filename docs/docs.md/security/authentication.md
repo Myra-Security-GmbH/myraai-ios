@@ -69,7 +69,7 @@ Use user tokens when you need to attribute usage, enforce per-user budgets, or m
 | `label` | string | Human-readable name for the token |
 | `user_id` | string | Associates the token with a user identity for audit logs and budget tracking |
 | `scopes` | array of strings | Permissions granted by this token (e.g. `["inference"]`) |
-| `expires_at` | string \| null | ISO-8601 expiration timestamp. `null` = no expiry |
+| `expires_at` | integer \| null | Unix expiry timestamp (seconds since epoch). `null` = no expiry |
 | `rate_limit` | object \| null | Per-token rate limit: `{"requests": N, "window_sec": S}` |
 | `budget_usd` | number \| null | Per-token spend cap in USD. `null` = no cap |
 

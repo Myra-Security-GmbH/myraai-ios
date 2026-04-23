@@ -119,6 +119,7 @@ Proceed as follows to delete a gateway:
 | `provider_base_urls` | object | `{}` | Map of `provider → base URL` for overriding default provider endpoints. |
 | `tracing` | object \| null | `null` | Request tracing configuration. See [Distributed tracing](../observability/tracing.md). |
 | `web_search` | object \| null | `null` | Web search augmentation settings. See [Web search](../features/web-search.md). |
+| `context_compaction` | object | `{enabled: true, threshold_tokens: 200000, keep_last_turns: 10}` | Anthropic context compaction settings. Automatically summarises long conversations when input tokens exceed the threshold. See [Context compaction](../providers/anthropic.md#context-compaction). |
 
 ### Default configuration
 
@@ -141,7 +142,12 @@ Proceed as follows to delete a gateway:
   "vertex_region": "us-central1",
   "provider_base_urls": {},
   "tracing": null,
-  "web_search": null
+  "web_search": null,
+  "context_compaction": {
+    "enabled": true,
+    "threshold_tokens": 200000,
+    "keep_last_turns": 10
+  }
 }
 ```
 
