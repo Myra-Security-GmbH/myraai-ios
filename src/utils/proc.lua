@@ -55,7 +55,9 @@ function M.run(cmd, stdin_data, opts)
     end
 
     local code = tonumber(status) or (ok_w and 0 or -1)
-    return stdout, code, (ok_w and nil or reason)
+    -- `ok_w and nil or reason` is a Lua ternary pitfall: `nil or reason` always
+    -- evaluates to `reason`.  Use explicit conditional instead.
+    return stdout, code, (not ok_w and reason or nil)
 end
 
 return M
