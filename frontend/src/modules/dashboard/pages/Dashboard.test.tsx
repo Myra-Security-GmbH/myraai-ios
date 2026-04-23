@@ -17,7 +17,7 @@ const mockGet = api.get as ReturnType<typeof vi.fn>;
 // ---------------------------------------------------------------------------
 
 const emptyPeriod = {
-  requests: 0, cached: 0, blocked: 0, scrubbed: 0, flagged: 0,
+  requests: 0, cached: 0, blocked: 0, scrubbed: 0, flagged: 0, rate_limited: 0,
   input_tokens: 0, output_tokens: 0, cost_usd: 0, saved_cost_usd: 0,
   avg_latency_ms: 0, avg_upstream_latency_ms: 0,
 };
@@ -46,8 +46,8 @@ const STATS: UsageStats = {
 };
 
 const TIMESERIES: TimeseriesPoint[] = [
-  { ts: Date.now() - 3600000, requests: 5, blocked: 0, cost_usd: 0.01 },
-  { ts: Date.now(),           requests: 8, blocked: 1, cost_usd: 0.02 },
+  { ts: Date.now() - 3600000, requests: 5, blocked: 0, rate_limited: 0, cost_usd: 0.01 },
+  { ts: Date.now(),           requests: 8, blocked: 1, rate_limited: 0, cost_usd: 0.02 },
 ];
 
 const ANALYTICS: AnalyticsDepth = {

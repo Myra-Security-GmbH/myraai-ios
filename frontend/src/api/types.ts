@@ -271,6 +271,7 @@ export interface LogEntry {
   request_size_bytes: number;
   detectors_fired: string[];
   scrub_applied: number;
+  rate_limited?: number;
   response_raw?: string | null;
   prompt?: string | null;
   response?: string | null;
@@ -306,6 +307,7 @@ export interface PeriodStats {
   blocked: number;
   scrubbed: number;
   flagged: number;
+  rate_limited: number;
   input_tokens: number;
   output_tokens: number;
   cost_usd: number;
@@ -403,6 +405,7 @@ export interface TimeseriesPoint {
   ts: number;        // Unix ms, start of bucket
   requests: number;
   blocked: number;
+  rate_limited: number;
   cost_usd: number;
 }
 
@@ -576,6 +579,13 @@ export interface ConversationSummary {
   created_at: number;
 }
 
+export interface PiiMaskedInfo {
+  /** Comma-separated Presidio entity types, e.g. "PERSON,EMAIL_ADDRESS". */
+  types?: string | null;
+  /** Number of distinct custom keyword blacklist terms matched. */
+  custom_count?: number | null;
+}
+
 export interface ChatMessage {
   id: string;
   conversation_id?: string;
@@ -591,6 +601,8 @@ export interface ChatMessage {
   model?: string | null;
   created_at: number;
   attachments?: ChatAttachment[];
+  /** Set when PII was masked in the request that produced this message (live session only; not persisted). */
+  pii_masked_info?: PiiMaskedInfo;
 }
 
 export interface ChatAttachment {

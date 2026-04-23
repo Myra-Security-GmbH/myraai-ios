@@ -118,6 +118,9 @@ function HeroCards({ data, series }: { data: PeriodStats; series: TimeseriesPoin
           {cacheRate != null
             ? <><span className={s["hero-sub-highlight"]}>{cacheRate}%</span> cache hit rate</>
             : "No requests yet"}
+          {(data.rate_limited ?? 0) > 0 && (
+            <> · <span style={{ color: "#f59e0b" }}>{fmtNumber(data.rate_limited)}</span> rate limited</>
+          )}
         </div>
         {requestsSeries && <Sparkline values={requestsSeries} />}
       </div>
@@ -300,7 +303,7 @@ export default function Dashboard() {
 
   if (loading) return <div className={s.page}><p className={s.empty}>Loading…</p></div>;
 
-  const emptyPeriod: PeriodStats = { requests: 0, cached: 0, blocked: 0, scrubbed: 0, flagged: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, saved_cost_usd: 0, avg_latency_ms: 0, avg_upstream_latency_ms: 0 };
+  const emptyPeriod: PeriodStats = { requests: 0, cached: 0, blocked: 0, scrubbed: 0, flagged: 0, rate_limited: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, saved_cost_usd: 0, avg_latency_ms: 0, avg_upstream_latency_ms: 0 };
   const periodData: Record<Timeframe, PeriodStats> = {
     today:     stats?.today     ?? emptyPeriod,
     yesterday: stats?.yesterday ?? emptyPeriod,
@@ -496,6 +499,7 @@ export default function Dashboard() {
                     <td style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       {row.cached === 1 && <StatusBadge value="cached" variant="neutral" />}
                       {row.blocked === 1 && <StatusBadge value="blocked" variant="error" />}
+                      {row.rate_limited === 1 && <StatusBadge value="rate limited" variant="warning" />}
                     </td>
                   </tr>
                 ))}

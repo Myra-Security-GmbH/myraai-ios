@@ -39,10 +39,11 @@ const TENANT2: Tenant = {
 };
 
 const GLOBAL_TS: TimeseriesPoint[] = Array.from({ length: 30 }, (_, i) => ({
-  ts:       Date.now() - (29 - i) * 86400000,
-  requests: (i + 1) * 10,
-  blocked:  0,
-  cost_usd: (i + 1) * 0.20,
+  ts:          Date.now() - (29 - i) * 86400000,
+  requests:    (i + 1) * 10,
+  blocked:     0,
+  rate_limited: 0,
+  cost_usd:    (i + 1) * 0.20,
 }));
 
 const ANALYTICS: AnalyticsDepth = {
@@ -118,10 +119,11 @@ const EMPTY_ANALYTICS: AnalyticsDepth = {
 
 const DETAIL: TenantAnalyticsDetail = {
   timeseries: Array.from({ length: 30 }, (_, i) => ({
-    ts:       Date.now() - (29 - i) * 86400000,
-    requests: (i + 1) * 5,
-    blocked:  0,
-    cost_usd: (i + 1) * 0.10,
+    ts:           Date.now() - (29 - i) * 86400000,
+    requests:     (i + 1) * 5,
+    blocked:      0,
+    rate_limited: 0,
+    cost_usd:     (i + 1) * 0.10,
   })),
   top_models: [
     { model: "gpt-4o", provider: "openai", requests: 400, cost_usd: 6.80, avg_latency_ms: 600 },
