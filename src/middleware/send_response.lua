@@ -78,6 +78,16 @@ local function reemit_as_sse(ctx)
     }) .. "\n\n")
     ngx.flush(true)
 
+    -- Emit pii_masked event when PII was detected and masked in this request.
+    if ctx.pii_detected_types or ctx.custom_pii_masked_count then
+        ngx.print("data: " .. json.encode({
+            aig_status   = "pii_masked",
+            types        = ctx.pii_detected_types,
+            custom_count = ctx.custom_pii_masked_count,
+        }) .. "\n\n")
+        ngx.flush(true)
+    end
+
     ngx.print("data: [DONE]\n\n")
     ngx.flush(true)
 end

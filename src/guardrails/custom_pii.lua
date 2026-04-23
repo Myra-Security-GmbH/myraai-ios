@@ -266,6 +266,11 @@ function M.run(ctx, detector, phase)
     ngx.log(ngx.INFO, "custom_pii: masked keywords=[", summary, "]",
             " name=", detector.name or "?")
 
+    -- Expose keyword count for the SSE pii_masked event (upstream.lua).
+    -- Count only the distinct keywords matched in this run.
+    local kw_count = #kw_list
+    ctx.custom_pii_masked_count = (ctx.custom_pii_masked_count or 0) + kw_count
+
     return { verdict = "scrubbed", pattern = summary }
 end
 

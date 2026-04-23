@@ -593,6 +593,17 @@ function M.run(ctx, detector, phase)
             " unique PII value(s) types=", entity_types,
             " name=", detector.name or "?")
 
+    -- Expose entity types for the SSE pii_masked event (upstream.lua).
+    -- Uses a comma-separated list of Presidio entity type names, e.g. "PERSON,EMAIL_ADDRESS".
+    -- Append to any types already set by a previous pii_protector detector in the same request.
+    if entity_types ~= "" then
+        if ctx.pii_detected_types and ctx.pii_detected_types ~= "" then
+            ctx.pii_detected_types = ctx.pii_detected_types .. "," .. entity_types
+        else
+            ctx.pii_detected_types = entity_types
+        end
+    end
+
     return { verdict = "scrubbed", pattern = entity_types }
 end
 

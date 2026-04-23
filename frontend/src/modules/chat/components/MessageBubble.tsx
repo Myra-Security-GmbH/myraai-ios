@@ -9,7 +9,7 @@ import rehypeHighlight from "rehype-highlight";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/github-dark-dimmed.css";
 import type { Components } from "react-markdown";
-import type { ChatMessage } from "src/api/types";
+import type { ChatMessage, PiiMaskedInfo } from "src/api/types";
 import AttachmentChip from "./AttachmentChip";
 import ThinkingBlock from "./ThinkingBlock";
 import { SaveAllCard, type FileEntry } from "./SaveToProjectCard";
@@ -342,6 +342,34 @@ function parseContent(content: string): ContentBlock[] {
   return [{ type: "text", text: content }];
 }
 
+/** Format a PiiMaskedInfo into a human-readable label, e.g. "person name, email address". */
+function formatPiiTypes(info: PiiMaskedInfo): string {
+  const parts: string[] = [];
+  if (info.types) {
+    const labels: Record<string, string> = {
+      PERSON: "person name",
+      EMAIL_ADDRESS: "email address",
+      PHONE_NUMBER: "phone number",
+      LOCATION: "location",
+      ORG: "organisation",
+      DATE_TIME: "date / time",
+      IP_ADDRESS: "IP address",
+      CREDIT_CARD: "credit card",
+      IBAN_CODE: "IBAN",
+      US_SSN: "SSN",
+      NRP: "nationality / religion / politics",
+    };
+    for (const raw of info.types.split(",")) {
+      const t = raw.trim();
+      if (t) parts.push(labels[t] ?? t.toLowerCase().replace(/_/g, " "));
+    }
+  }
+  if (info.custom_count && info.custom_count > 0) {
+    parts.push(`${info.custom_count} custom term${info.custom_count !== 1 ? "s" : ""}`);
+  }
+  return parts.join(", ");
+}
+
 interface Props {
   message: ChatMessage;
   isLast: boolean;
@@ -377,6 +405,7 @@ const MessageBubble = memo(function MessageBubble({
   const [editValue, setEditValue] = useState("");
   const [copied, setCopied] = useState(false);
   const [useIndividual, setUseIndividual] = useState(false);
+  const [piiChipDismissed, setPiiChipDismissed] = useState(false);
 
   const blocks = parseContent(message.content);
   const docxBlocks = blocks.filter(
@@ -586,6 +615,48 @@ const MessageBubble = memo(function MessageBubble({
               )}
               {isStreaming && isLast && <span className={s["streaming-cursor"]} />}
             </div>
+
+            {/* PII masked indicator — shown only when PII was detected in the user message */}
+            {!isUser && !piiChipDismissed && message.pii_masked_info && (
+              <div
+                data-cy="pii-masked-chip"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  marginTop: 6,
+                  padding: "2px 7px",
+                  borderRadius: 4,
+                  fontSize: 11,
+                  background: "var(--badge-warning-bg)",
+                  color: "var(--badge-warning-text)",
+                  border: "1px solid color-mix(in srgb, var(--badge-warning-text) 30%, transparent)",
+                }}
+              >
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0 }}>
+                  <path d="M8 1a5 5 0 1 0 0 10A5 5 0 0 0 8 1ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
+                  <path d="M8 4a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0V5a1 1 0 0 1 1-1ZM8 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" fill="currentColor"/>
+                </svg>
+                PII masked: {formatPiiTypes(message.pii_masked_info)}
+                <button
+                  onClick={() => setPiiChipDismissed(true)}
+                  title="Dismiss"
+                  style={{
+                    marginLeft: 3,
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    color: "inherit",
+                    fontSize: 12,
+                    lineHeight: 1,
+                    opacity: 0.7,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
 
             {/* Assistant metrics */}
             {!isUser && (message.model || message.input_tokens || message.output_tokens || message.cost_usd || message.latency_ms) && (
