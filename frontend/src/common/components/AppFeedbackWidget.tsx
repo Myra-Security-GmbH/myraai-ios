@@ -85,12 +85,12 @@ export function AppFeedbackWidget({ open, onClose }: Props) {
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 16 }}>
           <div className={s["form-group"]}>
             <label className={s["form-label"]}>Type</label>
-            <div className={s["picker-options"]} style={{ gap: 6 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {(Object.keys(TYPE_LABELS) as FeedbackType[]).map((t) => (
                 <button
                   key={t}
                   type="button"
-                  className={`${s["picker-btn"]} ${type === t ? s["picker-btn--selected"] : ""}`}
+                  className={`${s.btn} ${s["btn--sm"]} ${type === t ? s["btn--primary"] : s["btn--secondary"]}`}
                   onClick={() => setType(t)}
                 >
                   {TYPE_LABELS[t]}
@@ -134,7 +134,7 @@ export function AppFeedbackWidget({ open, onClose }: Props) {
             />
           </div>
 
-          <div className={s["form-actions"]}>
+          <div className={s["form-actions"]} style={{ marginTop: 4 }}>
             <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={handleClose} disabled={saving}>
               Cancel
             </button>

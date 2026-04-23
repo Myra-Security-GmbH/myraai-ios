@@ -3,6 +3,7 @@
 
 :root,
 [data-theme="light"] {
+  color-scheme: light;
   --sidebar-bg: #f0f2f5;
   --sidebar-header-bg: #002b4a;
   --sidebar-text: #374151;
@@ -46,6 +47,7 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --sidebar-bg: #0d1b2a;
   --sidebar-header-bg: #002b4a;
   --sidebar-text: #e5e7eb;
