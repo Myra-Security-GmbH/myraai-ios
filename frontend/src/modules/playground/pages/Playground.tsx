@@ -909,7 +909,7 @@ export default function Playground() {
               toolUseBlocks.map(async (block) => {
                 const q = block.input?.query ?? "";
                 const searchRes = await fetch(
-                  `/admin/v1/playground/search?q=${encodeURIComponent(q)}`,
+                  `/admin/v1/playground/search?q=${encodeURIComponent(q)}&gateway_id=${encodeURIComponent(selectedGatewayId)}`,
                   { headers: commonHeaders }
                 );
                 const searchData = searchRes.ok

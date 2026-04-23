@@ -578,17 +578,31 @@ route("POST", "^/admin/v1/playground/token$", function()
     })
 end)
 
--- GET /admin/v1/playground/search?q=...
+-- GET /admin/v1/playground/search?q=...&gateway_id=...
 -- Proxies a web search to Brave Search API and returns top organic results.
+-- The Brave API key is read from the gateway's web_search.api_key configuration.
 route("GET", "^/admin/v1/playground/search$", function()
     local args = ngx.req.get_uri_args()
-    local q = args.q
+    local q          = args.q
+    local gateway_id = args.gateway_id
     if not q or q == "" then return send(400, { error = "q required" }) end
-
-    local brave_key = os.getenv("AIG_BRAVE_API_KEY")
-    if not brave_key or brave_key == "" then
-        return send(503, { error = "web search is not configured (AIG_BRAVE_API_KEY not set)" })
+    if not gateway_id or gateway_id == "" then
+        return send(400, { error = "gateway_id required" })
     end
+
+    local gw = require_gateway_access(gateway_id)
+    if not gw then return end  -- require_gateway_access already sent 403/404
+
+    local gw_config  = json.decode(gw.config or "{}") or {}
+    local ws_config  = gw_config.web_search
+    local brave_key  = type(ws_config) == "table" and ws_config.api_key or nil
+    if not brave_key or brave_key == "" then
+        return send(503, {
+            error = "web search not configured for this gateway "
+                 .. "(set web_search.api_key in the gateway configuration)"
+        })
+    end
+
     local http = require("utils.http")
     local status, _, body, err = http.request({
         method  = "GET",
