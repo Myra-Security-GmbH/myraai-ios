@@ -270,13 +270,13 @@ route("GET", "^/admin/v1/tenants$", function()
         if r.chat_presets_config and not cp then
             ngx.log(ngx.WARN, "tenant: corrupt chat_presets_config id=", r.id, " err=", tostring(cp_err))
         end
-        r.chat_presets = cp or {}
+        r.chat_presets = cp or json.decode("[]")
         r.chat_presets_config = nil
         local sc, sc_err = r.slash_commands_config and json.decode(r.slash_commands_config) or nil
         if r.slash_commands_config and not sc then
             ngx.log(ngx.WARN, "tenant: corrupt slash_commands_config id=", r.id, " err=", tostring(sc_err))
         end
-        r.slash_commands = sc or {}
+        r.slash_commands = sc or json.decode("[]")
         r.slash_commands_config = nil
     end
     send(200, rows)
