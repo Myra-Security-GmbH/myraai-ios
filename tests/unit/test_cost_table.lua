@@ -231,3 +231,86 @@ describe("cost_table — unknown model", function()
         assert.is_nil(cost, "unknown model should return nil (untracked, not free)")
     end)
 end)
+
+-- =========================================================================
+-- Test group 5: cache_deletion_tokens (Finding — cache_delete_per_1k)
+-- =========================================================================
+describe("cost_table — cache_deletion_tokens (cache_delete_per_1k)", function()
+    clear({"observability.cost_table","storage","state","utils.json"})
+
+    local PRICING_WITH_DELETE = {
+        input_per_1k        = 0.003,
+        output_per_1k       = 0.015,
+        cache_write_per_1k  = 0.00375,
+        cache_read_per_1k   = 0.0003,
+        cache_delete_per_1k = 0.001,
+    }
+
+    package.preload["state"]      = function() return make_state_mock() end
+    package.preload["utils.json"] = make_json_mock
+    package.preload["storage"]    = function()
+        return {
+            get_model_pricing = function(provider, model)
+                if provider == "anthropic" and model == "claude-sonnet-4-6" then
+                    return PRICING_WITH_DELETE
+                end
+                return nil
+            end,
+        }
+    end
+
+    local ct = require("observability.cost_table")
+
+    it("calculate() accepts a 5th cache_deletion_tokens argument without raising", function()
+        local ok, result = pcall(ct.calculate,
+            "anthropic", "claude-sonnet-4-6", 100, 100, 0, 0, 1000)
+        assert.is_true(ok,
+            "calculate() must accept cache_deletion_tokens: " .. tostring(result))
+    end)
+
+    it("1000 cache_deletion_tokens at $0.001/1k costs $0.001", function()
+        local cost = ct.calculate("anthropic", "claude-sonnet-4-6", 0, 0, 0, 0, 1000)
+        assert.is_true(math.abs(cost - 0.001) < 1e-9,
+            string.format("expected $0.001 for 1000 cache_deletion_tokens, got %s", tostring(cost)))
+    end)
+
+    it("cache_deletion_tokens adds to a combined cost correctly", function()
+        -- input=$0.003 + output=$0.015 + deletion=$0.001 = $0.019
+        local cost = ct.calculate("anthropic", "claude-sonnet-4-6", 1000, 1000, 0, 0, 1000)
+        assert.is_true(math.abs(cost - 0.019) < 1e-9,
+            string.format("expected $0.019, got %s", tostring(cost)))
+    end)
+
+    it("nil cache_deletion_tokens is treated as zero (no extra cost)", function()
+        local cost_nil  = ct.calculate("anthropic", "claude-sonnet-4-6", 1000, 1000, 0, 0, nil)
+        local cost_zero = ct.calculate("anthropic", "claude-sonnet-4-6", 1000, 1000, 0, 0, 0)
+        assert.equal(cost_zero, cost_nil,
+            "nil cache_deletion_tokens must behave identically to 0")
+    end)
+end)
+
+describe("cost_table — cache_deletion_tokens with FALLBACK pricing", function()
+    clear({"observability.cost_table","storage","state","utils.json"})
+
+    package.preload["state"]      = function() return make_state_mock() end
+    package.preload["utils.json"] = make_json_mock
+    package.preload["storage"]    = function()
+        return { get_model_pricing = function() return nil end }
+    end
+
+    local ct = require("observability.cost_table")
+
+    it("calculate() with cache_deletion_tokens does not raise for FALLBACK model", function()
+        local ok, result = pcall(ct.calculate,
+            "anthropic", "claude-sonnet-4-6", 100, 100, 0, 0, 500)
+        assert.is_true(ok,
+            "must not raise with cache_deletion_tokens on FALLBACK: " .. tostring(result))
+    end)
+
+    it("FALLBACK: cost with cache_deletion_tokens >= cost without", function()
+        local cost_no_del   = ct.calculate("anthropic", "claude-sonnet-4-6", 1000, 1000, 0, 0, 0)
+        local cost_with_del = ct.calculate("anthropic", "claude-sonnet-4-6", 1000, 1000, 0, 0, 1000)
+        assert.is_true(cost_with_del >= cost_no_del,
+            "deletion tokens should add zero or positive cost, never negative")
+    end)
+end)

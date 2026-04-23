@@ -946,7 +946,7 @@ describe("orchestrator error-path and entities", function()
         local result = orch.run_phase(ctx, "request")
         assert.equal("block", result)
         assert.equal("strict-det", ctx.log_fields.blocked_by)
-        assert.equal("detector_error", ctx.log_fields.block_reason)
+        assert.equal("guardrail_unavailable:strict-det", ctx.log_fields.block_reason)
     end)
 
     it("block result with entities field sets block_entities on log_fields", function()

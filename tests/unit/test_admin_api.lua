@@ -58,7 +58,8 @@ end
 
 local gateways_db = {
     ["gw-1"] = { id = "gw-1", slug = "main", tenant_id = "tn-1",
-                 config = cjson.encode({ log_payloads = false }) },
+                 config = cjson.encode({ log_payloads = false,
+                     web_search = { enabled = true, api_key = "test-brave-key" } }) },
 }
 local tenants_db = {
     ["tn-1"] = { id = "tn-1", slug = "acme", plan = "pro", siem_config = nil },
@@ -93,7 +94,11 @@ local storage_stub = {
     end,
     get_gateway_by_id         = function(id)
         track("get_gateway_by_id", id)
-        return gateways_db[id]
+        local r = gateways_db[id]
+        if not r then return nil end
+        -- Return a shallow copy so route handlers that mutate row.config
+        -- (e.g. GET /gateways/:id decodes config in-place) don't affect the fixture.
+        return { id = r.id, slug = r.slug, tenant_id = r.tenant_id, config = r.config }
     end,
     delete_gateway            = function(id)          track("delete_gateway", id); return nil end,
     list_provider_configs     = function(gw_id)       track("list_provider_configs", gw_id); return {} end,
@@ -456,7 +461,7 @@ ok("POST /playground/token no gateway_id → 400", ngx.status == 400)
 s, b = call("POST", "/admin/v1/playground/token", { gateway_id = "gw-notfound" })
 ok("POST /playground/token gateway not found → 404", ngx.status == 404, ngx.status)
 
-s, b = call("GET", "/admin/v1/playground/search", nil, { q = "lua programming" })
+s, b = call("GET", "/admin/v1/playground/search", nil, { q = "lua programming", gateway_id = "gw-1" })
 ok("GET /playground/search valid → 200", ngx.status == 200, ngx.status)
 ok("GET /playground/search → results array", type(b.results) == "table")
 ok("GET /playground/search → query echoed", b.query == "lua programming")
@@ -467,13 +472,13 @@ ok("GET /playground/search no q → 400", ngx.status == 400)
 -- HTTP error from search API
 local saved = http_stub.request
 http_stub.request = function(opts) return 200, {}, nil, "connection refused" end
-s, b = call("GET", "/admin/v1/playground/search", nil, { q = "test" })
+s, b = call("GET", "/admin/v1/playground/search", nil, { q = "test", gateway_id = "gw-1" })
 ok("GET /playground/search http error → 502", ngx.status == 502)
 http_stub.request = saved
 
 -- HTTP non-200 from search API
 http_stub.request = function(opts) return 503, {}, nil, nil end
-s, b = call("GET", "/admin/v1/playground/search", nil, { q = "test" })
+s, b = call("GET", "/admin/v1/playground/search", nil, { q = "test", gateway_id = "gw-1" })
 ok("GET /playground/search non-200 → 502", ngx.status == 502)
 http_stub.request = saved
 

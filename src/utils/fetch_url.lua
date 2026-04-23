@@ -57,7 +57,10 @@ local function is_safe_host(host)
 end
 
 local function is_safe_url(url)
-    local host = url:match("https?://([^/:?#]+)")
+    -- IPv6 literal addresses use bracket notation: http://[::ffff:1.2.3.4]/
+    -- Extract the content inside brackets first; fall back to the normal host pattern.
+    local host = url:match("https?://%[([^%]]+)%]")
+                 or url:match("https?://([^/:?#]+)")
     return host and is_safe_host(host)
 end
 

@@ -54,6 +54,8 @@ _G.ngx = {
         end)(),
     },
     ERR = 0, WARN = 1, INFO = 2,
+    -- Execute timer callbacks synchronously so email sends are captured in tests.
+    timer = { at = function(_, fn, ...) pcall(fn, nil, ...) end },
 }
 
 package.path  = "/home/sas/work/ai-gateway/src/?.lua;" ..
@@ -107,27 +109,70 @@ package.preload["resty.random"] = function()
 end
 
 -- ---------------------------------------------------------------------------
--- SQLite storage (real, with temp DB)
+-- In-memory storage (replaces storage.sqlite — no lsqlite3 dependency)
 -- ---------------------------------------------------------------------------
 
-rawset(_G, "sqlite3", {})
-local lsqlite3 = require("lsqlite3")  -- real C lib
+local _users_db   = {}
+local _otps_db    = {}
+local _user_id_n  = 0
 
-local CFG_PATH = "/tmp/test_auth_handlers_cfg.db"
-local LOG_PATH = "/tmp/test_auth_handlers_log.db"
-os.remove(CFG_PATH)
-os.remove(LOG_PATH)
+local storage = {}
+
+function storage.insert_user(tenant_id, email, name, role)
+    for _, u in ipairs(_users_db) do
+        if u.email == email and not u.deleted_at then
+            return nil, "email already registered"
+        end
+    end
+    _user_id_n = _user_id_n + 1
+    local id = string.format("user-%04d", _user_id_n)
+    _users_db[#_users_db + 1] = {
+        id = id, tenant_id = tenant_id, email = email,
+        name = name, role = role or "admin", deleted_at = nil,
+    }
+    return id, nil
+end
+
+function storage.find_admin_user_by_email(email)
+    for _, u in ipairs(_users_db) do
+        if u.email == email and not u.deleted_at then return u end
+    end
+    return nil
+end
+
+function storage.insert_email_otp(id, email, code_hash, expires_at, ip_addr)
+    local fresh = {}
+    for _, o in ipairs(_otps_db) do
+        if o.email ~= email or (not o.used_at and o.expires_at >= ngx.time()) then
+            fresh[#fresh + 1] = o
+        end
+    end
+    _otps_db = fresh
+    _otps_db[#_otps_db + 1] = {
+        id=id, email=email, code_hash=code_hash,
+        expires_at=expires_at, ip_addr=ip_addr, used_at=nil,
+    }
+    return nil
+end
+
+function storage.consume_email_otp(email, code_hash)
+    local now = os.time()
+    for _, o in ipairs(_otps_db) do
+        if o.email == email and o.code_hash == code_hash
+           and not o.used_at and o.expires_at > now then
+            o.used_at = now
+            return nil
+        end
+    end
+    return "invalid or expired code"
+end
+
+function storage.touch_last_login()  end
+function storage.upsert_oauth_link() end
 
 package.loaded["storage"]        = nil
 package.loaded["storage.sqlite"] = nil
-
-local storage = require("storage.sqlite")
-local cfg     = { sqlite = { config_db = CFG_PATH, logs_db = LOG_PATH } }
-storage.migrate(cfg)
-storage.init(cfg)
-
--- Stub "storage" alias used by auth_handlers.lua
-package.loaded["storage"] = storage
+package.loaded["storage"]        = storage
 
 -- ---------------------------------------------------------------------------
 -- email.lua stub (capture sent emails)
@@ -197,21 +242,24 @@ local function insert_admin_user(email, role)
     return id
 end
 
--- Direct DB access for test cleanup (open a second connection to CFG_PATH)
 local function cleanup_user(email)
-    local db = lsqlite3.open(CFG_PATH)
-    db:exec(string.format("DELETE FROM user WHERE email = %q", email))
-    db:close()
+    local new = {}
+    for _, u in ipairs(_users_db) do
+        if u.email ~= email then new[#new + 1] = u end
+    end
+    _users_db = new
 end
 
 local function cleanup_otps(email)
-    local db = lsqlite3.open(CFG_PATH)
     if email then
-        db:exec(string.format("DELETE FROM email_otp WHERE email = %q", email))
+        local new = {}
+        for _, o in ipairs(_otps_db) do
+            if o.email ~= email then new[#new + 1] = o end
+        end
+        _otps_db = new
     else
-        db:exec("DELETE FROM email_otp")
+        _otps_db = {}
     end
-    db:close()
 end
 
 -- Compute expected OTP code from the fixed random bytes stub:

@@ -20,7 +20,8 @@ _G.ngx = {
     header       = {},
     headers_sent = false,
     ERR = 0, WARN = 1, INFO = 2,
-    req = { read_body = function() end, get_uri_args = function() return {} end },
+    req = { read_body = function() end, get_uri_args = function() return {} end,
+            get_headers = function() return {} end },
     var = {},
     ctx = {},
 }

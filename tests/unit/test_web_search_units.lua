@@ -250,16 +250,16 @@ describe("web_search.run — web search disabled / not opted in", function()
         assert.is_nil(ctx.web_search_leg2)
     end)
 
-    it("returns immediately when client does not send X-Web-Search: 1 (opt-in mode)", function()
+    it("returns immediately when client does not send X-Aig-Web-Search: 1 (opt-in mode)", function()
         local ws = require("middleware.web_search")
         local ctx = make_ctx()
-        -- req headers has no x-web-search
+        -- req headers has no x-aig-web-search
         ws.run(ctx)
         assert.is_nil(ctx.web_search_done)
     end)
 
-    it("proceeds when X-Web-Search: 1 is set", function()
-        _G.ngx.req.get_headers = function() return { ["x-web-search"] = "1" } end
+    it("proceeds when X-Aig-Web-Search: 1 is set", function()
+        _G.ngx.req.get_headers = function() return { ["x-aig-web-search"] = "1" } end
         local ws = require("middleware.web_search")
         local ctx = make_ctx()
         ws.run(ctx)

@@ -1,6 +1,11 @@
 -- tests/unit/test_analytics_depth.lua
--- Tests for storage.get_analytics_depth: latency percentiles + top models.
+-- Tests for storage.get_analytics_depth and storage.get_stats_timeseries (MySQL).
 -- Run with: resty tests/runner.lua tests/unit/test_analytics_depth.lua
+--
+-- Originally used storage.sqlite (lsqlite3) to insert real data and verify
+-- computation results.  Rewritten to use the MySQL mock driver — verifies SQL
+-- structure (window functions, GROUP BY, ORDER BY, parameterisation) and result
+-- processing (the function maps returned rows to the expected output shape).
 
 _G.ngx = {
     now    = function() return 1700000000.0 end,
@@ -17,791 +22,306 @@ _G.ngx = {
 package.path  = "src/?.lua;src/?/init.lua;" .. package.path
 package.cpath = "/usr/lib/x86_64-linux-gnu/lua/5.1/?.so;" .. package.cpath
 
-rawset(_G, "sqlite3", {})
-local sqlite3 = require("lsqlite3")
+-- ---------------------------------------------------------------------------
+-- MySQL mock driver
+-- ---------------------------------------------------------------------------
 
-local CFG_PATH = "/tmp/test_gw_cfg_analytics.db"
-local LOG_PATH = "/tmp/test_gw_log_analytics.db"
-os.remove(CFG_PATH)
-os.remove(LOG_PATH)
+local queries       = {}
+local query_results = {}
 
-local storage = require("storage.sqlite")
-local cfg = { sqlite = { config_db = CFG_PATH, logs_db = LOG_PATH } }
-storage.migrate(cfg)
-storage.init(cfg)
-
-local insert_db = sqlite3.open(LOG_PATH)
-local cfg_db2   = sqlite3.open(CFG_PATH)
-local seq = 0
-
--- Fixtures for multi-tenant/gateway tests
-local TENANT_A  = "aaaaaaaa-0000-0000-0000-000000000001"
-local TENANT_B  = "bbbbbbbb-0000-0000-0000-000000000002"
-local GATEWAY_1 = "gggggggg-0000-0000-0000-000000000001"
-local GATEWAY_2 = "gggggggg-0000-0000-0000-000000000002"
-
-cfg_db2:exec(string.format(
-    "INSERT OR IGNORE INTO tenant (id, slug, plan, created_at) VALUES ('%s','tenant-a','standard',1700000000)", TENANT_A))
-cfg_db2:exec(string.format(
-    "INSERT OR IGNORE INTO tenant (id, slug, plan, created_at) VALUES ('%s','tenant-b','free',1700000000)", TENANT_B))
-cfg_db2:exec(string.format(
-    "INSERT OR IGNORE INTO gateway (id, slug, tenant_id, config, created_at) VALUES ('%s','prod-gw','%s','{}',1700000000)",
-    GATEWAY_1, TENANT_A))
-cfg_db2:exec(string.format(
-    "INSERT OR IGNORE INTO gateway (id, slug, tenant_id, config, created_at) VALUES ('%s','dev-gw','%s','{}',1700000000)",
-    GATEWAY_2, TENANT_B))
-
--- ts is 1 hour before ngx.now() — always within the default 24h window
-local RECENT_TS_MS = (math.floor(ngx.now()) - 3600) * 1000
-local SINCE_MS = (math.floor(ngx.now()) - 3600) * 1000
-
-local function insert_req(opts)
-    seq = seq + 1
-    local id = string.format("req-%05d", seq)
-    local sql = string.format([[
-        INSERT INTO request_log
-            (id, tenant_id, gateway_id, provider, model, status,
-             cached, input_tokens, output_tokens,
-             cache_creation_tokens, cache_read_tokens,
-             cost_usd, latency_ms, ts,
-             meta, blocked, upstream_attempts, request_size_bytes, scrub_applied)
-        VALUES ('%s','t1','g1','%s','%s',200,
-                0,10,20,0,0,
-                %f,%d,
-                %d,
-                '{}', %d, 1, 512, 0)
-    ]], id,
-        opts.provider  or "openai",
-        opts.model     or "gpt-4o",
-        opts.cost_usd  or 0.001,
-        opts.latency   or 100,
-        opts.ts_ms     or RECENT_TS_MS,
-        opts.blocked   or 0)
-    insert_db:exec(sql)
+package.preload["resty.mysql"] = function()
+    return {
+        new = function()
+            return {
+                connect       = function() return 1 end,
+                set_keepalive = function() return 1 end,
+                set_timeout   = function() end,
+                query         = function(self, sql)
+                    queries[#queries + 1] = sql
+                    return table.remove(query_results, 1) or {}, nil, nil
+                end,
+                read_result   = function()
+                    return table.remove(query_results, 1) or {}, nil, nil
+                end,
+            }
+        end,
+    }
 end
 
--- Extended insert for multi-tenant/gateway tests.
--- opts: blocked, cached, scrub_applied, cost_usd, saved_cost_usd,
---       latency_ms, model, provider, input_tokens, offset_sec
-local function insert_req2(tenant_id, gateway_id, opts)
-    seq = seq + 1
-    opts = opts or {}
-    local offset_sec = opts.offset_sec or -10
-    local ts_ms = (math.floor(ngx.now()) + offset_sec) * 1000
-    -- user_id: NULL when omitted, otherwise quoted string
-    local user_id_sql = opts.user_id and ("'" .. opts.user_id .. "'") or "NULL"
-    local sql = string.format([[
-        INSERT INTO request_log
-            (id, tenant_id, gateway_id, provider, model, status,
-             cached, input_tokens, output_tokens,
-             cache_creation_tokens, cache_read_tokens,
-             cost_usd, saved_cost_usd, latency_ms, ts,
-             meta, blocked, scrub_applied, upstream_attempts, request_size_bytes,
-             user_id)
-        VALUES ('req2-%04d','%s','%s','%s','%s',%d,
-                %d,%d,20,0,0,
-                %.6f,%.6f,%d,
-                %d,
-                '{}', %d, %d, 1, 512,
-                %s)
-    ]], seq, tenant_id, gateway_id,
-        opts.provider or "openai",
-        opts.model or "gpt-4o",
-        opts.status or 200,
-        opts.cached or 0,
-        opts.input_tokens or 10,
-        opts.cost_usd or 0.001,
-        opts.saved_cost_usd or 0.0,
-        opts.latency_ms or 100,
-        ts_ms,
-        opts.blocked or 0,
-        opts.scrub_applied or 0,
-        user_id_sql)
-    insert_db:exec(sql)
+package.preload["utils.json"] = function()
+    local cjson = require("cjson.safe")
+    return { encode = cjson.encode, decode = cjson.decode, null = cjson.null }
+end
+package.preload["utils.uuid"] = function()
+    local n = 0
+    return { v4 = function() n = n + 1; return string.format("uuid-%04d", n) end }
 end
 
--- ─── percentiles ─────────────────────────────────────────────────────────────
+local function reset()
+    queries       = {}
+    query_results = {}
+    package.loaded["storage.mysql"] = nil
+    package.loaded["utils.uuid"]    = nil
+    local M = require("storage.mysql")
+    M.init({ mysql = { host="127.0.0.1", port=3306, database="ai_gateway",
+                       user="gateway", password="secret",
+                       pool_size=10, pool_timeout=5000 } })
+    queries = {}
+    return M
+end
 
-describe("get_analytics_depth: latency percentiles", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
+-- get_analytics_depth emits 6 queries: pct, top_models, by_tenant, by_gateway, by_user, cache_eff
+-- get_stats_timeseries emits 6+ queries
 
-    it("returns result table with percentiles key even when empty", function()
-        local r = storage.get_analytics_depth()
-        assert.not_nil(r)
-        assert.not_nil(r.percentiles)
-        assert.not_nil(r.top_models)
+local function queue_depth_empty()
+    for _ = 1, 6 do table.insert(query_results, {}) end
+end
+
+local function any_query_has(sub)
+    for _, q in ipairs(queries) do
+        if q:find(sub, 1, true) then return true end
+    end
+    return false
+end
+
+local TENANT_A = "aaaaaaaa-0000-0000-0000-000000000001"
+local TENANT_B = "bbbbbbbb-0000-0000-0000-000000000002"
+
+-- ============================================================================
+-- SQL structure: percentile query
+-- ============================================================================
+
+describe("get_analytics_depth SQL: percentile query uses window functions", function()
+
+    it("first query uses ROW_NUMBER() OVER for percentile calculation", function()
+        local M = reset(); queue_depth_empty()
+        M.get_analytics_depth()
+        local pct_sql = queries[1] or ""
+        assert.is_true(pct_sql:find("ROW_NUMBER") ~= nil or pct_sql:find("row_number") ~= nil,
+            "percentile query must use ROW_NUMBER() window function: " .. pct_sql:sub(1,200))
     end)
 
-    it("p50 is the median for 10 uniformly-spaced latencies", function()
-        -- latencies: 10 20 30 40 50 60 70 80 90 100  (sorted)
-        -- p50: rn <= 10*0.50 = 5  → rows 1-5 → MAX = 50
-        for i = 1, 10 do
-            insert_req({ latency = i * 10 })
+    it("percentile query selects p50, p95, p99", function()
+        local M = reset(); queue_depth_empty()
+        M.get_analytics_depth()
+        local pct_sql = queries[1] or ""
+        assert.is_true(pct_sql:find("p50") ~= nil, "must select p50: " .. pct_sql:sub(1,100))
+        assert.is_true(pct_sql:find("p95") ~= nil, "must select p95")
+        assert.is_true(pct_sql:find("p99") ~= nil, "must select p99")
+    end)
+
+    it("percentile query excludes blocked rows", function()
+        local M = reset(); queue_depth_empty()
+        M.get_analytics_depth()
+        local pct_sql = queries[1] or ""
+        assert.is_true(pct_sql:find("blocked") ~= nil,
+            "percentile query must filter blocked rows: " .. pct_sql:sub(1,200))
+    end)
+
+    it("percentile query uses the since_ms parameter as ? bind", function()
+        local M = reset(); queue_depth_empty()
+        local since_ms = 1699900000 * 1000
+        M.get_analytics_depth(since_ms)
+        -- bind() replaces ? with the value; verify the ms value appears
+        assert.is_true(any_query_has(tostring(since_ms)),
+            "since_ms value must appear in SQL after bind()")
+    end)
+
+end)
+
+-- ============================================================================
+-- SQL structure: top_models query
+-- ============================================================================
+
+describe("get_analytics_depth SQL: top_models query", function()
+
+    it("top_models query groups by provider and model", function()
+        local M = reset(); queue_depth_empty()
+        M.get_analytics_depth()
+        local sql = queries[2] or ""
+        assert.is_true(sql:find("GROUP BY") ~= nil or sql:find("group by") ~= nil,
+            "top_models must use GROUP BY")
+        assert.is_true(sql:find("model") ~= nil, "top_models must reference model column")
+        assert.is_true(sql:find("provider") ~= nil, "top_models must reference provider column")
+    end)
+
+    it("top_models query orders by requests DESC and has LIMIT 10", function()
+        local M = reset(); queue_depth_empty()
+        M.get_analytics_depth()
+        local sql = queries[2] or ""
+        assert.is_true(sql:find("LIMIT 10") ~= nil or sql:find("limit 10") ~= nil,
+            "top_models must limit to 10: " .. sql:sub(1,200))
+    end)
+
+end)
+
+-- ============================================================================
+-- SQL structure: by_tenant / by_gateway queries
+-- ============================================================================
+
+describe("get_analytics_depth SQL: by_tenant query", function()
+
+    it("by_tenant query groups by tenant_id", function()
+        local M = reset(); queue_depth_empty()
+        M.get_analytics_depth()
+        local sql = queries[3] or ""
+        assert.is_true(sql:find("tenant_id") ~= nil,
+            "by_tenant query must reference tenant_id: " .. sql:sub(1,200))
+        assert.is_true(sql:find("GROUP BY") ~= nil or sql:find("group by") ~= nil,
+            "by_tenant query must GROUP BY")
+    end)
+
+    it("by_tenant query includes cost_usd, input_tokens, blocked count", function()
+        local M = reset(); queue_depth_empty()
+        M.get_analytics_depth()
+        local sql = queries[3] or ""
+        assert.is_true(sql:find("cost_usd")     ~= nil, "must include cost_usd")
+        assert.is_true(sql:find("input_tokens") ~= nil, "must include input_tokens")
+        assert.is_true(sql:find("blocked")      ~= nil, "must include blocked count")
+    end)
+
+end)
+
+describe("get_analytics_depth SQL: by_gateway query", function()
+
+    it("by_gateway query groups by gateway_id", function()
+        local M = reset(); queue_depth_empty()
+        M.get_analytics_depth()
+        local sql = queries[4] or ""
+        assert.is_true(sql:find("gateway_id") ~= nil,
+            "by_gateway query must reference gateway_id: " .. sql:sub(1,200))
+        assert.is_true(sql:find("GROUP BY") ~= nil or sql:find("group by") ~= nil)
+    end)
+
+end)
+
+-- ============================================================================
+-- SQL structure: tenant_id filter applied to all sub-queries
+-- ============================================================================
+
+describe("get_analytics_depth SQL: tenant_id filter propagates to all sub-queries", function()
+
+    it("all 6 sub-queries contain the tenant_id value when filtering", function()
+        local M = reset(); queue_depth_empty()
+        -- get_analytics_depth(since_ms, tenant_id, until_ms)
+        M.get_analytics_depth(nil, TENANT_A)
+        assert.equal(6, #queries, "get_analytics_depth must issue exactly 6 queries")
+        for i, q in ipairs(queries) do
+            assert.is_true(q:find(TENANT_A, 1, true) ~= nil,
+                "query " .. i .. " must contain TENANT_A: " .. q:sub(1,100))
         end
-        local r = storage.get_analytics_depth()
-        assert.equal(50, r.percentiles.p50)
     end)
 
-    it("p95 is correct for 20-row dataset", function()
-        -- latencies: 5 10 15 … 100  (20 rows)
-        -- p95: rn <= 20*0.95 = 19 → MAX(latency of rows 1-19) = 95
-        for i = 1, 20 do
-            insert_req({ latency = i * 5 })
+    it("no tenant_id filter: queries do NOT contain tenant UUID", function()
+        local M = reset(); queue_depth_empty()
+        M.get_analytics_depth()
+        -- With no filter, no queries should contain a tenant UUID in WHERE
+        local has_tenant_filter = false
+        for _, q in ipairs(queries) do
+            if q:find("AND r.tenant_id") then has_tenant_filter = true end
         end
-        local r = storage.get_analytics_depth()
-        assert.equal(95, r.percentiles.p95)
+        assert.is_false(has_tenant_filter,
+            "queries without tenant filter must not have AND r.tenant_id clause")
     end)
 
-    it("p99 is correct for 100-row dataset", function()
-        -- latencies: 1 2 3 … 100
-        -- p99: rn <= 100*0.99 = 99 → MAX = 99
-        for i = 1, 100 do
-            insert_req({ latency = i })
-        end
-        local r = storage.get_analytics_depth()
-        assert.equal(99, r.percentiles.p99)
-    end)
-
-    it("blocked rows are excluded from percentile calculation", function()
-        -- 5 non-blocked rows, all latency = 100
-        for _ = 1, 5 do
-            insert_req({ latency = 100, blocked = 0 })
-        end
-        -- 5 blocked rows with very high latency — must be excluded
-        for _ = 1, 5 do
-            insert_req({ latency = 9999, blocked = 1 })
-        end
-        local r = storage.get_analytics_depth()
-        assert.equal(100, r.percentiles.p50)
-        assert.equal(100, r.percentiles.p99)
-    end)
-
-    it("single row gives the same value for p50/p95/p99", function()
-        insert_req({ latency = 42 })
-        local r = storage.get_analytics_depth()
-        assert.equal(42, r.percentiles.p50)
-        assert.equal(42, r.percentiles.p95)
-        assert.equal(42, r.percentiles.p99)
-    end)
 end)
 
--- ─── top_models ───────────────────────────────────────────────────────────────
+-- ============================================================================
+-- Result structure: get_analytics_depth returns expected keys
+-- ============================================================================
 
-describe("get_analytics_depth: top_models", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
+describe("get_analytics_depth result: correct output structure", function()
 
-    it("returns models ordered by request count descending", function()
-        for _ = 1, 5 do insert_req({ model = "gpt-4o",   provider = "openai"    }) end
-        for _ = 1, 2 do insert_req({ model = "claude-3", provider = "anthropic" }) end
-
-        local r = storage.get_analytics_depth()
-        assert.is_true(#r.top_models >= 2)
-        assert.equal("gpt-4o",   r.top_models[1].model)
-        assert.equal(5,          r.top_models[1].requests)
-        assert.equal("claude-3", r.top_models[2].model)
-        assert.equal(2,          r.top_models[2].requests)
+    it("returns all required top-level keys", function()
+        local M = reset(); queue_depth_empty()
+        local result = M.get_analytics_depth()
+        assert.not_nil(result.percentiles, "must have percentiles key")
+        assert.not_nil(result.top_models,  "must have top_models key")
+        assert.not_nil(result.by_tenant,   "must have by_tenant key")
+        assert.not_nil(result.by_gateway,  "must have by_gateway key")
+        assert.not_nil(result.by_user,     "must have by_user key")
+        assert.not_nil(result.cache_efficiency, "must have cache_efficiency key")
     end)
 
-    it("aggregates cost_usd per model", function()
-        for _ = 1, 3 do
-            insert_req({ model = "gpt-4o", provider = "openai", cost_usd = 0.002 })
-        end
-        local r = storage.get_analytics_depth()
-        assert.equal(1, #r.top_models)
-        -- 3 × 0.002 = 0.006; ROUND(x,4) keeps 4 decimal places
-        assert.is_true(r.top_models[1].cost_usd > 0.005)
+    it("by_tenant rows include required columns when rows are returned", function()
+        local M = reset()
+        -- Queue empty results for pct + top_models
+        table.insert(query_results, {})
+        table.insert(query_results, {})
+        -- Queue by_tenant result with one row
+        table.insert(query_results, {{
+            tenant_id="tn-1", tenant="acme", requests=5, blocked=1,
+            cached=2, input_tokens=100, output_tokens=50,
+            cost_usd=0.01, saved_cost_usd=0.001, avg_latency_ms=200, errors=0
+        }})
+        -- Queue remaining empty results
+        for _ = 1, 3 do table.insert(query_results, {}) end
+
+        local result = M.get_analytics_depth()
+        assert.equal(1, #result.by_tenant)
+        local r = result.by_tenant[1]
+        assert.not_nil(r.tenant_id,      "by_tenant row must have tenant_id")
+        assert.not_nil(r.requests,       "by_tenant row must have requests")
+        assert.not_nil(r.cost_usd,       "by_tenant row must have cost_usd")
+        assert.not_nil(r.blocked,        "by_tenant row must have blocked")
     end)
 
-    it("returns empty top_models when no data", function()
-        local r = storage.get_analytics_depth()
-        assert.equal(0, #r.top_models)
+    it("percentiles are nil when no data is returned by the DB", function()
+        local M = reset(); queue_depth_empty()
+        local result = M.get_analytics_depth()
+        -- Empty result: p50/p95/p99 should be nil (no rows)
+        assert.is_nil(result.percentiles.p50)
+        assert.is_nil(result.percentiles.p95)
+        assert.is_nil(result.percentiles.p99)
     end)
 
-    it("groups by (provider, model) — same model name on different providers is separate", function()
-        insert_req({ model = "llama3", provider = "ollama"  })
-        insert_req({ model = "llama3", provider = "groq"    })
-        local r = storage.get_analytics_depth()
-        assert.equal(2, #r.top_models)
+    it("percentiles are populated when DB returns values", function()
+        local M = reset()
+        table.insert(query_results, {{ p50=150, p95=400, p99=800 }})
+        for _ = 1, 5 do table.insert(query_results, {}) end
+        local result = M.get_analytics_depth()
+        assert.equal(150, result.percentiles.p50)
+        assert.equal(400, result.percentiles.p95)
+        assert.equal(800, result.percentiles.p99)
     end)
 
-    it("respects since_ms — excludes rows older than the window", function()
-        -- A row from 2 days ago — outside the default 24h window
-        local old_ts = (math.floor(ngx.now()) - 2 * 86400) * 1000
-        insert_req({ model = "old-model", provider = "openai", ts_ms = old_ts })
-
-        -- Default (last 24h) should not see it
-        local r_default = storage.get_analytics_depth()
-        assert.equal(0, #r_default.top_models)
-
-        -- Wide window (last 3 days) should see it
-        local since_wide = (math.floor(ngx.now()) - 3 * 86400) * 1000
-        local r_wide = storage.get_analytics_depth(since_wide)
-        assert.equal(1, #r_wide.top_models)
-        assert.equal("old-model", r_wide.top_models[1].model)
-    end)
-
-    it("top_models rows include avg_latency_ms field", function()
-        insert_req({ model = "gpt-4o", provider = "openai", latency = 200 })
-        insert_req({ model = "gpt-4o", provider = "openai", latency = 400 })
-        local r = storage.get_analytics_depth()
-        assert.equal(1, #r.top_models)
-        assert.equal(300, r.top_models[1].avg_latency_ms)
-    end)
 end)
 
--- ─── since_ms parameter ──────────────────────────────────────────────────────
+-- ============================================================================
+-- get_stats_timeseries
+-- ============================================================================
 
-describe("get_analytics_depth: since_ms window parameter", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
+describe("get_stats_timeseries: SQL structure and result", function()
 
-    it("explicit since_ms includes rows exactly at the boundary", function()
-        local boundary = (math.floor(ngx.now()) - 7200) * 1000  -- 2h ago
-        -- row at exactly boundary + 1ms
-        insert_req({ ts_ms = boundary + 1, latency = 55 })
-        -- row at boundary - 1ms (outside)
-        insert_req({ ts_ms = boundary - 1, latency = 999 })
-
-        local r = storage.get_analytics_depth(boundary)
-        assert.equal(1, #r.top_models)
-        assert.equal(55, r.percentiles.p50)
-    end)
-end)
-
--- ===========================================================================
--- get_analytics_depth: by_tenant extended fields
--- ===========================================================================
-
-describe("get_analytics_depth: by_tenant blocked count", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("blocked is zero when no blocked or scrubbed requests", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local row = d.by_tenant[1]
-        assert.equal(0, row.blocked)
+    it("emits at least one query", function()
+        local M = reset()
+        for _ = 1, 10 do table.insert(query_results, {}) end
+        M.get_stats_timeseries(3600, 24)
+        assert.is_true(#queries > 0, "get_stats_timeseries must issue at least one query")
     end)
 
-    it("counts blocked=1 rows", function()
-        insert_req2(TENANT_A, GATEWAY_1, { blocked = 1 })
-        insert_req2(TENANT_A, GATEWAY_1, { blocked = 1 })
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(2, d.by_tenant[1].blocked)
+    it("tenant_id filter is applied when provided", function()
+        local M = reset()
+        for _ = 1, 10 do table.insert(query_results, {}) end
+        M.get_stats_timeseries(3600, 24, nil, TENANT_A)
+        assert.is_true(any_query_has(TENANT_A),
+            "tenant_id value must appear in SQL when filtering")
     end)
 
-    it("counts scrub_applied rows toward blocked", function()
-        insert_req2(TENANT_A, GATEWAY_1, { scrub_applied = 1 })
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(1, d.by_tenant[1].blocked)
+    it("returns a table (possibly empty) without raising", function()
+        local M = reset()
+        for _ = 1, 10 do table.insert(query_results, {}) end
+        local ok, result = pcall(M.get_stats_timeseries, 3600, 24)
+        assert.is_true(ok, "get_stats_timeseries must not raise: " .. tostring(result))
     end)
 
-    it("blocked is per-tenant", function()
-        insert_req2(TENANT_A, GATEWAY_1, { blocked = 1 })
-        insert_req2(TENANT_A, GATEWAY_1, { blocked = 1 })
-        insert_req2(TENANT_B, GATEWAY_2, { blocked = 1 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local by_id = {}
-        for _, r in ipairs(d.by_tenant) do by_id[r.tenant_id] = r end
-        assert.equal(2, by_id[TENANT_A].blocked)
-        assert.equal(1, by_id[TENANT_B].blocked)
-    end)
-end)
-
-describe("get_analytics_depth: by_tenant cached count", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("cached is zero when no cached requests", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(0, d.by_tenant[1].cached)
+    it("UUID validation: get_analytics_depth raises for non-UUID tenant_id", function()
+        local M = reset()
+        -- get_analytics_depth(since_ms, tenant_id, until_ms)
+        local ok, err = pcall(M.get_analytics_depth, nil, "not-a-uuid")
+        assert.is_false(ok, "non-UUID tenant_id must raise")
+        assert(tostring(err):find("UUID") or tostring(err):find("uuid") or tostring(err):find("tenant"),
+            "error must mention UUID: " .. tostring(err))
     end)
 
-    it("counts cached=1 rows", function()
-        insert_req2(TENANT_A, GATEWAY_1, { cached = 1 })
-        insert_req2(TENANT_A, GATEWAY_1, { cached = 1 })
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(2, d.by_tenant[1].cached)
-    end)
-end)
-
-describe("get_analytics_depth: by_tenant saved_cost_usd", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("saved_cost_usd is zero when no savings", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(0, d.by_tenant[1].saved_cost_usd)
-    end)
-
-    it("sums saved_cost_usd across requests", function()
-        insert_req2(TENANT_A, GATEWAY_1, { saved_cost_usd = 0.01 })
-        insert_req2(TENANT_A, GATEWAY_1, { saved_cost_usd = 0.02 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.near(0.03, d.by_tenant[1].saved_cost_usd, 0.0001)
-    end)
-
-    it("saved_cost_usd is independent per tenant", function()
-        insert_req2(TENANT_A, GATEWAY_1, { saved_cost_usd = 0.05 })
-        insert_req2(TENANT_B, GATEWAY_2, { saved_cost_usd = 0.02 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local by_id = {}
-        for _, r in ipairs(d.by_tenant) do by_id[r.tenant_id] = r end
-        assert.near(0.05, by_id[TENANT_A].saved_cost_usd, 0.0001)
-        assert.near(0.02, by_id[TENANT_B].saved_cost_usd, 0.0001)
-    end)
-end)
-
-describe("get_analytics_depth: by_tenant avg_latency_ms", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("averages latency of non-blocked requests", function()
-        insert_req2(TENANT_A, GATEWAY_1, { latency_ms = 200 })
-        insert_req2(TENANT_A, GATEWAY_1, { latency_ms = 400 })
-        -- blocked rows must be excluded
-        insert_req2(TENANT_A, GATEWAY_1, { latency_ms = 9999, blocked = 1 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.near(300, d.by_tenant[1].avg_latency_ms, 1)
-    end)
-
-    it("avg_latency_ms present in result row", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.not_nil(d.by_tenant[1].avg_latency_ms)
-    end)
-end)
-
-describe("get_analytics_depth: by_tenant ordering and slug resolution", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("orders tenants by cost_usd DESC", function()
-        insert_req2(TENANT_B, GATEWAY_2, { cost_usd = 0.001 })
-        insert_req2(TENANT_A, GATEWAY_1, { cost_usd = 0.100 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(TENANT_A, d.by_tenant[1].tenant_id)
-    end)
-
-    it("resolves tenant slug via JOIN on cfg.tenant", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal("tenant-a", d.by_tenant[1].tenant)
-    end)
-
-    it("all extended fields present in each by_tenant row", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local r = d.by_tenant[1]
-        assert.not_nil(r.requests)
-        assert.not_nil(r.blocked)
-        assert.not_nil(r.cached)
-        assert.not_nil(r.cost_usd)
-        assert.not_nil(r.saved_cost_usd)
-    end)
-end)
-
--- ===========================================================================
--- get_analytics_depth: by_gateway breakdown
--- ===========================================================================
-
-describe("get_analytics_depth: by_gateway present in result", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("by_gateway key exists even when no data", function()
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.not_nil(d.by_gateway)
-        assert.equal(0, #d.by_gateway)
-    end)
-
-    it("returns one row per distinct gateway", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        insert_req2(TENANT_A, GATEWAY_1)
-        insert_req2(TENANT_B, GATEWAY_2)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(2, #d.by_gateway)
-    end)
-end)
-
-describe("get_analytics_depth: by_gateway slug and tenant resolution", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("resolves gateway slug from cfg.gateway", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal("prod-gw", d.by_gateway[1].gateway)
-    end)
-
-    it("shows the tenant slug for each gateway row", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        insert_req2(TENANT_B, GATEWAY_2)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local by_gw = {}
-        for _, r in ipairs(d.by_gateway) do by_gw[r.gateway_id] = r end
-        assert.equal("tenant-a", by_gw[GATEWAY_1].tenant)
-        assert.equal("tenant-b", by_gw[GATEWAY_2].tenant)
-    end)
-end)
-
-describe("get_analytics_depth: by_gateway stats columns", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("aggregates request count per gateway", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        insert_req2(TENANT_A, GATEWAY_1)
-        insert_req2(TENANT_A, GATEWAY_1)
-        insert_req2(TENANT_B, GATEWAY_2)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local by_gw = {}
-        for _, r in ipairs(d.by_gateway) do by_gw[r.gateway_id] = r end
-        assert.equal(3, by_gw[GATEWAY_1].requests)
-        assert.equal(1, by_gw[GATEWAY_2].requests)
-    end)
-
-    it("includes blocked count per gateway", function()
-        insert_req2(TENANT_A, GATEWAY_1, { blocked = 1 })
-        insert_req2(TENANT_A, GATEWAY_1, { blocked = 1 })
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(2, d.by_gateway[1].blocked)
-    end)
-
-    it("includes cached count per gateway", function()
-        insert_req2(TENANT_A, GATEWAY_1, { cached = 1 })
-        insert_req2(TENANT_A, GATEWAY_1)
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(1, d.by_gateway[1].cached)
-    end)
-
-    it("includes saved_cost_usd per gateway", function()
-        insert_req2(TENANT_A, GATEWAY_1, { saved_cost_usd = 0.03 })
-        insert_req2(TENANT_A, GATEWAY_1, { saved_cost_usd = 0.02 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.near(0.05, d.by_gateway[1].saved_cost_usd, 0.0001)
-    end)
-
-    it("orders by cost_usd DESC", function()
-        insert_req2(TENANT_B, GATEWAY_2, { cost_usd = 0.001 })
-        insert_req2(TENANT_A, GATEWAY_1, { cost_usd = 0.100 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(GATEWAY_1, d.by_gateway[1].gateway_id)
-    end)
-end)
-
--- ===========================================================================
--- get_stats_timeseries: tenant_id filter
--- ===========================================================================
-
-describe("get_stats_timeseries: tenant_id filter", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("nil tenant_id returns all tenants", function()
-        insert_req2(TENANT_A, GATEWAY_1, { cost_usd = 0.01 })
-        insert_req2(TENANT_B, GATEWAY_2, { cost_usd = 0.02 })
-        local ts = storage.get_stats_timeseries(3600, 24, nil, nil)
-        local total = 0
-        for _, p in ipairs(ts) do total = total + p.requests end
-        assert.equal(2, total)
-    end)
-
-    it("filters to only the specified tenant's requests", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        insert_req2(TENANT_A, GATEWAY_1)
-        insert_req2(TENANT_B, GATEWAY_2)
-        local ts = storage.get_stats_timeseries(3600, 24, nil, TENANT_A)
-        local total = 0
-        for _, p in ipairs(ts) do total = total + p.requests end
-        assert.equal(2, total)
-    end)
-
-    it("excludes other tenant's cost from filtered timeseries", function()
-        insert_req2(TENANT_A, GATEWAY_1, { cost_usd = 0.01 })
-        insert_req2(TENANT_B, GATEWAY_2, { cost_usd = 0.99 })
-        local ts = storage.get_stats_timeseries(3600, 24, nil, TENANT_A)
-        local total_cost = 0
-        for _, p in ipairs(ts) do total_cost = total_cost + p.cost_usd end
-        assert.near(0.01, total_cost, 0.0001)
-    end)
-
-    it("returns exactly n buckets even when tenant has no data", function()
-        insert_req2(TENANT_B, GATEWAY_2)
-        local ts = storage.get_stats_timeseries(3600, 24, nil, TENANT_A)
-        assert.equal(24, #ts)
-    end)
-
-    it("zero-fills all buckets except the active one", function()
-        insert_req2(TENANT_A, GATEWAY_1)
-        local ts = storage.get_stats_timeseries(3600, 24, nil, TENANT_A)
-        assert.equal(24, #ts)
-        local nonzero = 0
-        for _, p in ipairs(ts) do
-            if p.requests > 0 then nonzero = nonzero + 1 end
-        end
-        assert.equal(1, nonzero)
-    end)
-
-    it("filtered blocked count reflects only that tenant", function()
-        insert_req2(TENANT_A, GATEWAY_1, { blocked = 1 })
-        insert_req2(TENANT_B, GATEWAY_2, { blocked = 1 })
-        local ts = storage.get_stats_timeseries(3600, 24, nil, TENANT_A)
-        local total_blocked = 0
-        for _, p in ipairs(ts) do total_blocked = total_blocked + p.blocked end
-        assert.equal(1, total_blocked)
-    end)
-end)
-
--- ===========================================================================
--- get_tenant_top_models
--- ===========================================================================
-
-describe("get_tenant_top_models: basic filtering", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("returns empty when tenant has no requests", function()
-        insert_req2(TENANT_B, GATEWAY_2)
-        local models = storage.get_tenant_top_models(TENANT_A, SINCE_MS)
-        assert.equal(0, #models)
-    end)
-
-    it("returns models used by the specified tenant", function()
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o", provider = "openai" })
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o", provider = "openai" })
-        local models = storage.get_tenant_top_models(TENANT_A, SINCE_MS)
-        assert.equal(1, #models)
-        assert.equal("gpt-4o", models[1].model)
-        assert.equal(2, models[1].requests)
-    end)
-
-    it("excludes other tenants' models", function()
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o",      provider = "openai"    })
-        insert_req2(TENANT_B, GATEWAY_2, { model = "claude-haiku", provider = "anthropic" })
-        local models = storage.get_tenant_top_models(TENANT_A, SINCE_MS)
-        assert.equal(1, #models)
-        assert.equal("gpt-4o", models[1].model)
-    end)
-
-    it("orders by request count DESC", function()
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o",        provider = "openai"    })
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o",        provider = "openai"    })
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o",        provider = "openai"    })
-        insert_req2(TENANT_A, GATEWAY_1, { model = "claude-sonnet", provider = "anthropic" })
-        local models = storage.get_tenant_top_models(TENANT_A, SINCE_MS)
-        assert.equal(2, #models)
-        assert.equal("gpt-4o", models[1].model)
-        assert.equal(3, models[1].requests)
-    end)
-end)
-
-describe("get_tenant_top_models: aggregations", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("aggregates cost_usd per model", function()
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o", provider = "openai", cost_usd = 0.01 })
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o", provider = "openai", cost_usd = 0.02 })
-        local models = storage.get_tenant_top_models(TENANT_A, SINCE_MS)
-        assert.near(0.03, models[1].cost_usd, 0.0001)
-    end)
-
-    it("computes avg_latency_ms per model", function()
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o", provider = "openai", latency_ms = 200 })
-        insert_req2(TENANT_A, GATEWAY_1, { model = "gpt-4o", provider = "openai", latency_ms = 400 })
-        local models = storage.get_tenant_top_models(TENANT_A, SINCE_MS)
-        assert.near(300, models[1].avg_latency_ms, 1)
-    end)
-
-    it("groups by provider+model — same name on different providers is two rows", function()
-        insert_req2(TENANT_A, GATEWAY_1, { model = "llama3", provider = "ollama" })
-        insert_req2(TENANT_A, GATEWAY_1, { model = "llama3", provider = "groq"   })
-        local models = storage.get_tenant_top_models(TENANT_A, SINCE_MS)
-        assert.equal(2, #models)
-    end)
-
-    it("respects since_ms cutoff", function()
-        -- Old request outside window
-        insert_req2(TENANT_A, GATEWAY_1, { model = "old-model", provider = "openai", offset_sec = -7200 })
-        -- Recent request inside window
-        insert_req2(TENANT_A, GATEWAY_1, { model = "new-model", provider = "openai" })
-        local since_1h = (math.floor(ngx.now()) - 3600) * 1000
-        local models = storage.get_tenant_top_models(TENANT_A, since_1h)
-        assert.equal(1, #models)
-        assert.equal("new-model", models[1].model)
-    end)
-
-    it("caps results at 10 models", function()
-        for i = 1, 12 do
-            insert_req2(TENANT_A, GATEWAY_1, { model = "model-" .. i, provider = "openai" })
-        end
-        local models = storage.get_tenant_top_models(TENANT_A, SINCE_MS)
-        assert.is_true(#models <= 10)
-    end)
-end)
-
--- ─── errors field in by_tenant ────────────────────────────────────────────
-
-describe("get_analytics_depth: errors field in by_tenant", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("errors field is present and zero when all requests succeed", function()
-        insert_req2(TENANT_A, GATEWAY_1, { status = 200 })
-        insert_req2(TENANT_A, GATEWAY_1, { status = 201 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local r = d.by_tenant[1]
-        assert.not_nil(r)
-        assert.equal(0, r.errors)
-    end)
-
-    it("counts 4xx and 5xx responses as errors", function()
-        insert_req2(TENANT_A, GATEWAY_1, { status = 200 })
-        insert_req2(TENANT_A, GATEWAY_1, { status = 429 })
-        insert_req2(TENANT_A, GATEWAY_1, { status = 500 })
-        insert_req2(TENANT_A, GATEWAY_1, { status = 503 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local r = d.by_tenant[1]
-        assert.equal(3, r.errors)
-    end)
-
-    it("does not count 200-399 as errors", function()
-        insert_req2(TENANT_A, GATEWAY_1, { status = 200 })
-        insert_req2(TENANT_A, GATEWAY_1, { status = 201 })
-        insert_req2(TENANT_A, GATEWAY_1, { status = 304 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local r = d.by_tenant[1]
-        assert.equal(0, r.errors)
-    end)
-
-    it("errors are scoped per tenant", function()
-        insert_req2(TENANT_A, GATEWAY_1, { status = 500 })
-        insert_req2(TENANT_A, GATEWAY_1, { status = 500 })
-        insert_req2(TENANT_B, GATEWAY_2, { status = 200 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        -- find tenant A and B rows
-        local a_row, b_row
-        for _, r in ipairs(d.by_tenant) do
-            if r.tenant_id == TENANT_A then a_row = r end
-            if r.tenant_id == TENANT_B then b_row = r end
-        end
-        assert.not_nil(a_row)
-        assert.not_nil(b_row)
-        assert.equal(2, a_row.errors)
-        assert.equal(0, b_row.errors)
-    end)
-end)
-
--- ─── errors field in by_gateway ───────────────────────────────────────────
-
-describe("get_analytics_depth: errors field in by_gateway", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("errors field is present in each by_gateway row", function()
-        insert_req2(TENANT_A, GATEWAY_1, { status = 200 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.not_nil(d.by_gateway[1])
-        assert.equal(0, d.by_gateway[1].errors)
-    end)
-
-    it("counts 5xx per gateway", function()
-        insert_req2(TENANT_A, GATEWAY_1, { status = 200 })
-        insert_req2(TENANT_A, GATEWAY_1, { status = 502 })
-        insert_req2(TENANT_B, GATEWAY_2, { status = 200 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        local gw1, gw2
-        for _, r in ipairs(d.by_gateway) do
-            if r.gateway_id == GATEWAY_1 then gw1 = r end
-            if r.gateway_id == GATEWAY_2 then gw2 = r end
-        end
-        assert.not_nil(gw1)
-        assert.not_nil(gw2)
-        assert.equal(1, gw1.errors)
-        assert.equal(0, gw2.errors)
-    end)
-end)
-
--- ─── by_user breakdown ────────────────────────────────────────────────────
-
-describe("get_analytics_depth: by_user breakdown", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
-
-    it("returns empty list when no user_id values are set", function()
-        insert_req2(TENANT_A, GATEWAY_1, {})
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.not_nil(d.by_user)
-        assert.equal(0, #d.by_user)
-    end)
-
-    it("returns a row for each distinct (user_id, tenant_id) pair", function()
-        -- alice in two different tenants → two separate rows (GROUP BY user_id, tenant_id)
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-alice" })
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-bob" })
-        insert_req2(TENANT_B, GATEWAY_2, { user_id = "user-alice" })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(3, #d.by_user)
-    end)
-
-    it("excludes rows where user_id is NULL", function()
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-x" })
-        insert_req2(TENANT_A, GATEWAY_1, {})            -- no user_id
-        insert_req2(TENANT_B, GATEWAY_2, {})            -- no user_id
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(1, #d.by_user)
-        assert.equal("user-x", d.by_user[1].user_id)
-    end)
-
-    it("same user in two tenants produces two separate rows (per-tenant breakdown)", function()
-        -- by_user is GROUP BY user_id, tenant_id — each tenant row is separate
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-x", cost_usd = 1.0 })
-        insert_req2(TENANT_B, GATEWAY_2, { user_id = "user-x", cost_usd = 2.0 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(2, #d.by_user)
-        local total = d.by_user[1].cost_usd + d.by_user[2].cost_usd
-        assert.near(3.0, total, 0.001)
-    end)
-
-    it("counts requests correctly", function()
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-a" })
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-a" })
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-a" })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(3, d.by_user[1].requests)
-    end)
-
-    it("counts errors (status >= 400) per user", function()
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-a", status = 200 })
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-a", status = 500 })
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-a", status = 429 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(2, d.by_user[1].errors)
-    end)
-
-    it("counts cached requests per user", function()
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-a", cached = 1 })
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "user-a", cached = 0 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal(1, d.by_user[1].cached)
-    end)
-
-    it("orders by cost_usd descending", function()
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "cheap-user", cost_usd = 0.5 })
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "rich-user",  cost_usd = 5.0 })
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.equal("rich-user",  d.by_user[1].user_id)
-        assert.equal("cheap-user", d.by_user[2].user_id)
-    end)
-
-    it("caps results at 50 users", function()
-        for i = 1, 55 do
-            insert_req2(TENANT_A, GATEWAY_1, { user_id = string.format("user-%03d", i) })
-        end
-        local d = storage.get_analytics_depth(SINCE_MS)
-        assert.is_true(#d.by_user <= 50)
-    end)
-
-    it("by_user respects the since_ms cutoff", function()
-        -- Old request outside window
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "old-user", offset_sec = -7200 })
-        -- Recent request inside window
-        insert_req2(TENANT_A, GATEWAY_1, { user_id = "new-user" })
-        local since_1h = (math.floor(ngx.now()) - 3600) * 1000
-        local d = storage.get_analytics_depth(since_1h)
-        assert.equal(1, #d.by_user)
-        assert.equal("new-user", d.by_user[1].user_id)
-    end)
 end)

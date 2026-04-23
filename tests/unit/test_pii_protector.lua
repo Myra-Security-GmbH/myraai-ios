@@ -21,7 +21,9 @@ _G.ngx = {
         for i = 1, #s do v = (v * 31 + s:byte(i)) % 0x1000000 end
         return string.format("%06x%026x", v, 0)
     end,
-    req  = { set_body_data = function() end },
+    req  = { set_body_data = function() end, read_body = function() end,
+             get_body_data = function() return nil end,
+             get_body_file = function() return nil end },
 }
 
 local function clear(names)
@@ -309,29 +311,31 @@ describe("pii_protector request phase — Presidio errors", function()
 
     local BODY = '{"messages":[{"role":"user","content":"some text"}]}'
 
-    it("fail_open=true returns pass on analyzer error", function()
+    it("analyzer error returns {verdict='error'} — fail_open handled by orchestrator", function()
         install_http_mock(nil, "connection refused")
         local d   = reload()
         local ctx = req_ctx(BODY)
         local r   = d.run(ctx, { name = "t", fail_open = true }, "request")
-        assert.equal("pass", r.verdict)
-        assert.is_nil(ctx.pii_token_map)
+        -- pii_protector.run() returns the raw error verdict; the orchestrator
+        -- interprets fail_open and converts it to pass/block as appropriate.
+        assert.equal("error", r.verdict)
+        assert.not_nil(r.message, "error verdict should include a message")
     end)
 
-    it("fail_open=false returns block on analyzer error", function()
+    it("analyzer error with fail_open=false also returns {verdict='error'}", function()
         install_http_mock(nil, "connection refused")
         local d   = reload()
         local ctx = req_ctx(BODY)
         local r   = d.run(ctx, { name = "t", fail_open = false }, "request")
-        assert.equal("block", r.verdict)
+        assert.equal("error", r.verdict)
     end)
 
-    it("fail_open defaults to true when not set", function()
+    it("analyzer error with no fail_open setting also returns {verdict='error'}", function()
         install_http_mock(nil, "timeout")
         local d   = reload()
         local ctx = req_ctx(BODY)
         local r   = d.run(ctx, { name = "t" }, "request")
-        assert.equal("pass", r.verdict)
+        assert.equal("error", r.verdict)
     end)
 
 end)

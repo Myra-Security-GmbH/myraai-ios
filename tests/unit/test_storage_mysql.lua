@@ -227,31 +227,35 @@ M.set_user_gateway_access("u-1", "gw-1")
 ok("10. set_user_gateway_access uses INSERT IGNORE", queries[1]:find("INSERT IGNORE"), queries[1])
 
 -- ---------------------------------------------------------------------------
--- 11. list_tenants — timestamp uses FROM_UNIXTIME
+-- 11. list_tenants — selects created_at (raw Unix BIGINT, no FROM_UNIXTIME)
 -- ---------------------------------------------------------------------------
 reset_storage()
 M = require("storage.mysql")
 table.insert(query_results, {})
 M.list_tenants()
-ok("11. list_tenants uses FROM_UNIXTIME", queries[1]:find("FROM_UNIXTIME"), queries[1])
+ok("11. list_tenants selects created_at", queries[1]:find("created_at") ~= nil, queries[1])
+ok("11b. list_tenants filters deleted_at IS NULL",
+    queries[1]:find("deleted_at IS NULL") ~= nil, queries[1])
 
 -- ---------------------------------------------------------------------------
--- 12. list_gateways — timestamp uses FROM_UNIXTIME
+-- 12. list_gateways — selects created_at (raw Unix BIGINT, no FROM_UNIXTIME)
 -- ---------------------------------------------------------------------------
 reset_storage()
 M = require("storage.mysql")
 table.insert(query_results, {})
 M.list_gateways("tn-1")
-ok("12. list_gateways uses FROM_UNIXTIME", queries[1]:find("FROM_UNIXTIME"), queries[1])
+ok("12. list_gateways selects created_at", queries[1]:find("created_at") ~= nil, queries[1])
+ok("12b. list_gateways filters by tenant_id", queries[1]:find("tenant_id") ~= nil, queries[1])
 
 -- ---------------------------------------------------------------------------
--- 13. list_auth_tokens — FROM_UNIXTIME on expires_at
+-- 13. list_auth_tokens — selects expires_at (raw Unix BIGINT, no FROM_UNIXTIME)
 -- ---------------------------------------------------------------------------
 reset_storage()
 M = require("storage.mysql")
 table.insert(query_results, {})
 M.list_auth_tokens("gw-1")
-ok("13. list_auth_tokens uses FROM_UNIXTIME", queries[1]:find("FROM_UNIXTIME"), queries[1])
+ok("13. list_auth_tokens selects expires_at", queries[1]:find("expires_at") ~= nil, queries[1])
+ok("13b. list_auth_tokens filters by gateway_id", queries[1]:find("gateway_id") ~= nil, queries[1])
 
 -- ---------------------------------------------------------------------------
 -- 14. upsert_routing_rule — INSERT path generates a UUID
@@ -585,7 +589,7 @@ reset_storage()
 M = require("storage.mysql")
 -- stats query + by_tenant + recent + recent_blocked
 for _ = 1, 4 do table.insert(query_results, {}) end
-M.get_usage_stats("tn-stats")
+M.get_usage_stats("aabbccdd-0000-0000-0000-000000000001")
 local found_org_subq = false
 for _, q in ipairs(queries) do
     if q:find("organization_id") then found_org_subq = true end
@@ -599,10 +603,44 @@ ok("41. get_usage_stats(tenant_id) does NOT use organization_id subquery", not f
 reset_storage()
 M = require("storage.mysql")
 table.insert(query_results, {})
-M.get_stats_timeseries(3600, 24, nil, "tn-ts")
+M.get_stats_timeseries(3600, 24, nil, "aabbccdd-0000-0000-0000-000000000002")
 local ts_sql = queries[1] or ""
 ok("42. get_stats_timeseries(tenant_id) does NOT use organization_id subquery",
     ts_sql:find("organization_id") == nil, ts_sql)
+
+-- ---------------------------------------------------------------------------
+-- 43. delete_auth_token — gateway_id filter (Finding 4 IDOR fix)
+-- ---------------------------------------------------------------------------
+
+-- 43a: with gateway_id → DELETE WHERE id = ? AND gateway_id = ?
+reset_storage()
+M = require("storage.mysql")
+table.insert(query_results, {})
+M.delete_auth_token("token-uuid-1", "gateway-uuid-1")
+local del_gw_sql = queries[1] or ""
+ok("43a. delete_auth_token(id, gateway_id) adds AND gateway_id = ? filter",
+    del_gw_sql:find("gateway_id") ~= nil,
+    "SQL should contain gateway_id: " .. del_gw_sql)
+ok("43b. delete_auth_token(id, gateway_id) still deletes by id",
+    del_gw_sql:find("id") ~= nil,
+    "SQL should still contain id: " .. del_gw_sql)
+-- bind() substitutes ? with quoted values; check both values appear in the SQL
+ok("43c. delete_auth_token(id, gateway_id) embeds both token_id and gateway_id values",
+    del_gw_sql:find("token%-uuid%-1") ~= nil and del_gw_sql:find("gateway%-uuid%-1") ~= nil,
+    "SQL should embed both ids: " .. del_gw_sql)
+
+-- 43d: without gateway_id → DELETE WHERE id = ? (backward compat for /me/tokens)
+reset_storage()
+M = require("storage.mysql")
+table.insert(query_results, {})
+M.delete_auth_token("token-uuid-2")
+local del_no_gw_sql = queries[1] or ""
+ok("43d. delete_auth_token(id) without gateway_id uses simple WHERE id = ?",
+    del_no_gw_sql:find("gateway_id") == nil,
+    "SQL without gateway_id arg should NOT contain gateway_id: " .. del_no_gw_sql)
+ok("43e. delete_auth_token(id) without gateway_id only embeds token_id value",
+    del_no_gw_sql:find("token%-uuid%-2") ~= nil,
+    "SQL should embed the token_id: " .. del_no_gw_sql)
 
 -- ---------------------------------------------------------------------------
 -- Summary

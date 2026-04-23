@@ -151,10 +151,11 @@ function M.get(provider, model)
     local row = storage.get_model_pricing(provider, model)
     if row then
         local pricing = {
-            input_per_1k       = tonumber(row.input_per_1k),
-            output_per_1k      = tonumber(row.output_per_1k),
-            cache_write_per_1k = tonumber(row.cache_write_per_1k),
-            cache_read_per_1k  = tonumber(row.cache_read_per_1k),
+            input_per_1k        = tonumber(row.input_per_1k),
+            output_per_1k       = tonumber(row.output_per_1k),
+            cache_write_per_1k  = tonumber(row.cache_write_per_1k),
+            cache_read_per_1k   = tonumber(row.cache_read_per_1k),
+            cache_delete_per_1k = tonumber(row.cache_delete_per_1k),
         }
         state.config_set(key, json.encode(pricing), 3600)
         return pricing
@@ -169,6 +170,7 @@ function M.get(provider, model)
             output_per_1k       = p[2],
             cache_write_per_1k  = p[3] or p[1],
             cache_read_per_1k   = p[4] or 0,
+            cache_delete_per_1k = p[5] or 0,
         }
     end
 

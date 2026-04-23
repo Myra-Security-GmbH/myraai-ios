@@ -237,3 +237,58 @@ describe("jwt.verify: malformed input", function()
     end)
 
 end)
+
+-- ============================================================================
+-- Finding 18 — missing AIG_JWT_SECRET must raise, not fall back
+-- ============================================================================
+
+describe("jwt: missing AIG_JWT_SECRET raises an error (Finding 18)", function()
+
+    it("sign() raises when AIG_JWT_SECRET is nil", function()
+        -- Unset the secret and force module reload so get_secret() runs fresh.
+        os.getenv = function(k)
+            if k == "AIG_JWT_SECRET" then return nil end
+            return _orig_getenv(k)
+        end
+        package.loaded["utils.jwt"] = nil
+        package.preload["core.app_config"] = function() return {} end  -- no jwt_secret
+
+        local jwt_no_secret = require("utils.jwt")
+        local ok, err = pcall(jwt_no_secret.sign, make_payload())
+        assert.is_false(ok, "sign() should raise when secret is missing")
+        assert.not_nil(err)
+        -- Error message must mention the missing secret, not produce a token
+        assert(tostring(err):find("AIG_JWT_SECRET") or tostring(err):find("not configured"),
+            "error should mention AIG_JWT_SECRET, got: " .. tostring(err))
+
+        -- Restore for subsequent tests
+        os.getenv = function(k)
+            if k == "AIG_JWT_SECRET" then return _test_secret end
+            return _orig_getenv(k)
+        end
+        package.loaded["utils.jwt"] = nil
+        jwt = require("utils.jwt")
+    end)
+
+    it("sign() raises when AIG_JWT_SECRET is an empty string", function()
+        os.getenv = function(k)
+            if k == "AIG_JWT_SECRET" then return "" end
+            return _orig_getenv(k)
+        end
+        package.loaded["utils.jwt"] = nil
+        package.preload["core.app_config"] = function() return {} end
+
+        local jwt_empty = require("utils.jwt")
+        local ok, err = pcall(jwt_empty.sign, make_payload())
+        assert.is_false(ok, "sign() should raise when secret is empty string")
+
+        -- Restore
+        os.getenv = function(k)
+            if k == "AIG_JWT_SECRET" then return _test_secret end
+            return _orig_getenv(k)
+        end
+        package.loaded["utils.jwt"] = nil
+        jwt = require("utils.jwt")
+    end)
+
+end)

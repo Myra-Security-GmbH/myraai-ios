@@ -271,3 +271,122 @@ describe("fetch_url.parallel", function()
         assert(#killed >= 1, "should kill thread[2] after thread[1] fails")
     end)
 end)
+
+-- ── SSRF guard — new bypass vectors (Finding 6) ───────────────────────────────
+
+describe("fetch_url: SSRF guard — IPv4-mapped IPv6 bypass (Finding 6)", function()
+    local blocked_ipv6 = {
+        "http://[::ffff:169.254.169.254]/",   -- AWS metadata via IPv4-mapped IPv6
+        "http://[::ffff:127.0.0.1]/",          -- loopback
+        "http://[::ffff:10.0.0.1]/",           -- RFC1918
+        "http://[::ffff:192.168.1.1]/",        -- RFC1918
+        "http://[::ffff:172.16.0.1]/",         -- RFC1918
+        "http://::ffff:169.254.169.254/",      -- without brackets
+        "http://::ffff:10.0.0.1/",
+    }
+    for _, url in ipairs(blocked_ipv6) do
+        local u = url
+        it("blocks IPv4-mapped IPv6: " .. u, function()
+            clear()
+            local called = false
+            mock_http(setmetatable({}, { __index = function() called = true; return nil end }))
+            local fu = require("utils.fetch_url")
+            local result = fu.fetch(u)
+            assert.is_nil(result)
+            assert.is_false(called, "HTTP must not be called for " .. u)
+        end)
+    end
+end)
+
+describe("fetch_url: SSRF guard — IPv6 ULA and link-local (Finding 6)", function()
+    local blocked_ipv6_ula = {
+        "http://[fd00::1]/",        -- IPv6 ULA
+        "http://[fd12:3456::1]/",   -- IPv6 ULA
+        "http://[fc00::1]/",        -- IPv6 ULA fc00::/8
+        "http://[fe80::1]/",        -- IPv6 link-local
+        "http://[fe89::1]/",        -- IPv6 link-local fe80::/10
+        "http://[feab::1]/",        -- IPv6 link-local
+    }
+    for _, url in ipairs(blocked_ipv6_ula) do
+        local u = url
+        it("blocks IPv6 ULA/link-local: " .. u, function()
+            clear()
+            local called = false
+            mock_http(setmetatable({}, { __index = function() called = true; return nil end }))
+            local fu = require("utils.fetch_url")
+            local result = fu.fetch(u)
+            assert.is_nil(result)
+            assert.is_false(called, "HTTP must not be called for " .. u)
+        end)
+    end
+end)
+
+describe("fetch_url: SSRF guard — decimal-encoded IP (Finding 6)", function()
+    it("blocks 2852039166 (decimal for 169.254.169.254)", function()
+        clear()
+        local called = false
+        mock_http(setmetatable({}, { __index = function() called = true; return nil end }))
+        local fu = require("utils.fetch_url")
+        -- 169*256^3 + 254*256^2 + 169*256 + 254 = 2852039166
+        local result = fu.fetch("http://2852039166/latest/meta-data/")
+        assert.is_nil(result)
+        assert.is_false(called, "decimal 169.254.169.254 must be blocked")
+    end)
+
+    it("blocks 2130706433 (decimal for 127.0.0.1)", function()
+        clear()
+        local called = false
+        mock_http(setmetatable({}, { __index = function() called = true; return nil end }))
+        local fu = require("utils.fetch_url")
+        local result = fu.fetch("http://2130706433/")
+        assert.is_nil(result)
+        assert.is_false(called, "decimal 127.0.0.1 must be blocked")
+    end)
+
+    it("allows a decimal-encoded public IP (8.8.8.8 = 134744072)", function()
+        clear()
+        mock_http(html_resp("<body>ok</body>"))
+        local fu = require("utils.fetch_url")
+        -- 8*256^3 + 8*256^2 + 8*256 + 8 = 134744072
+        local result = fu.fetch("http://134744072/")
+        assert.not_nil(result, "public IP in decimal form should be allowed")
+    end)
+end)
+
+describe("fetch_url: M.is_safe_url exported function (Finding 6)", function()
+    it("M.is_safe_url is exported on the module table", function()
+        clear()
+        mock_http(html_resp("<body>x</body>"))
+        local fu = require("utils.fetch_url")
+        assert.not_nil(fu.is_safe_url, "is_safe_url must be exported")
+        assert.equal("function", type(fu.is_safe_url))
+    end)
+
+    it("is_safe_url returns false for a private IP URL", function()
+        clear()
+        mock_http(html_resp("<body>x</body>"))
+        local fu = require("utils.fetch_url")
+        assert.is_false(fu.is_safe_url("http://192.168.1.1/"))
+    end)
+
+    it("is_safe_url returns false for IPv4-mapped IPv6", function()
+        clear()
+        mock_http(html_resp("<body>x</body>"))
+        local fu = require("utils.fetch_url")
+        assert.is_false(fu.is_safe_url("http://[::ffff:10.0.0.1]/"))
+    end)
+
+    it("is_safe_url returns true for a public IP URL", function()
+        clear()
+        mock_http(html_resp("<body>x</body>"))
+        local fu = require("utils.fetch_url")
+        assert.is_true(fu.is_safe_url("http://1.1.1.1/"))
+    end)
+
+    it("is_safe_url returns true for a public hostname URL", function()
+        clear()
+        mock_http(html_resp("<body>x</body>"))
+        local fu = require("utils.fetch_url")
+        assert.is_true(fu.is_safe_url("https://api.example.com/v1/chat"))
+    end)
+end)

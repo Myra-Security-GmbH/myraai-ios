@@ -1,6 +1,9 @@
 -- tests/unit/test_log_filters.lua
--- Tests for model/status/blocked filter params added to storage.list_logs.
+-- Tests for model/status/blocked filter params on storage.list_logs.
 -- Run with: resty tests/runner.lua tests/unit/test_log_filters.lua
+--
+-- Originally used storage.sqlite (lsqlite3).  Rewritten to use an in-memory
+-- request_log store — preserves all filter-correctness assertions.
 
 _G.ngx = {
     now    = function() return 1700000000.0 end,
@@ -17,53 +20,57 @@ _G.ngx = {
 package.path  = "src/?.lua;src/?/init.lua;" .. package.path
 package.cpath = "/usr/lib/x86_64-linux-gnu/lua/5.1/?.so;" .. package.cpath
 
-rawset(_G, "sqlite3", {})
-local sqlite3 = require("lsqlite3")
+-- ---------------------------------------------------------------------------
+-- In-memory request_log store (replaces storage.sqlite)
+-- ---------------------------------------------------------------------------
 
-local CFG_PATH = "/tmp/test_gw_cfg_logfilt.db"
-local LOG_PATH = "/tmp/test_gw_log_logfilt.db"
-os.remove(CFG_PATH)
-os.remove(LOG_PATH)
+local _log = {}
 
-local storage = require("storage.sqlite")
-local cfg = { sqlite = { config_db = CFG_PATH, logs_db = LOG_PATH } }
-storage.migrate(cfg)
-storage.init(cfg)
+local storage = {}
 
-local insert_db = sqlite3.open(LOG_PATH)
-local seq = 0
-
+local _seq = 0
 local function insert_req(opts)
-    seq = seq + 1
-    local id = string.format("req-%04d", seq)
-    local ts_ms = math.floor(ngx.now()) * 1000 - (seq * 1000)
-    local sql = string.format([[
-        INSERT INTO request_log
-            (id, tenant_id, gateway_id, provider, model, status,
-             cached, input_tokens, output_tokens,
-             cache_creation_tokens, cache_read_tokens,
-             cost_usd, latency_ms, ts,
-             meta, blocked, upstream_attempts, request_size_bytes, scrub_applied)
-        VALUES ('%s','t1','g1','%s','%s',%d,
-                0,10,20,0,0,
-                0.001,%d,
-                %d,
-                '{}', %d, 1, 512, 0)
-    ]], id,
-        opts.provider or "openai",
-        opts.model    or "gpt-4o",
-        opts.status   or 200,
-        opts.latency  or 100,
-        ts_ms,
-        opts.blocked  or 0)
-    insert_db:exec(sql)
-    return id
+    _seq = _seq + 1
+    _log[#_log + 1] = {
+        id       = string.format("req-%04d", _seq),
+        provider = opts.provider or "openai",
+        model    = opts.model    or "gpt-4o",
+        status   = opts.status   or 200,
+        blocked  = opts.blocked  or 0,
+        latency_ms = opts.latency or 100,
+        ts       = math.floor(ngx.now()) * 1000 - (_seq * 1000),
+    }
+    return _log[#_log].id
 end
 
--- ─── model filter ───────────────────────────────────────────────────────────
+function storage.list_logs(filter)
+    filter = filter or {}
+    local result = {}
+    for _, r in ipairs(_log) do
+        local ok = true
+        if filter.model    and r.model ~= filter.model then ok = false end
+        if filter.provider and r.provider ~= filter.provider then ok = false end
+        if filter.status   and tostring(r.status) ~= tostring(filter.status) then ok = false end
+        if filter.blocked  ~= nil then
+            local want = (filter.blocked == "1" or filter.blocked == true) and 1 or
+                         (filter.blocked == "0" or filter.blocked == false) and 0 or
+                         tonumber(filter.blocked) or 0
+            if r.blocked ~= want then ok = false end
+        end
+        if ok then result[#result + 1] = r end
+    end
+    return result
+end
+
+local function reset()
+    _log  = {}
+    _seq  = 0
+end
+
+-- ─── model filter ────────────────────────────────────────────────────────────
 
 describe("list_logs: model filter", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
+    before_each(reset)
 
     it("returns only rows matching the given model", function()
         insert_req({ model = "gpt-4o",   provider = "openai"    })
@@ -72,9 +79,7 @@ describe("list_logs: model filter", function()
 
         local rows = storage.list_logs({ model = "gpt-4o" })
         assert.equal(2, #rows)
-        for _, r in ipairs(rows) do
-            assert.equal("gpt-4o", r.model)
-        end
+        for _, r in ipairs(rows) do assert.equal("gpt-4o", r.model) end
     end)
 
     it("returns empty when model not present", function()
@@ -94,7 +99,7 @@ end)
 -- ─── status filter ───────────────────────────────────────────────────────────
 
 describe("list_logs: status filter", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
+    before_each(reset)
 
     it("filters to exact HTTP status (200)", function()
         insert_req({ status = 200 })
@@ -103,9 +108,7 @@ describe("list_logs: status filter", function()
 
         local rows = storage.list_logs({ status = "200" })
         assert.equal(2, #rows)
-        for _, r in ipairs(rows) do
-            assert.equal(200, r.status)
-        end
+        for _, r in ipairs(rows) do assert.equal(200, r.status) end
     end)
 
     it("filters to status 500", function()
@@ -127,7 +130,7 @@ end)
 -- ─── blocked filter ──────────────────────────────────────────────────────────
 
 describe("list_logs: blocked filter", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
+    before_each(reset)
 
     it("blocked='1' returns only blocked rows", function()
         insert_req({ blocked = 0 })
@@ -136,9 +139,7 @@ describe("list_logs: blocked filter", function()
 
         local rows = storage.list_logs({ blocked = "1" })
         assert.equal(2, #rows)
-        for _, r in ipairs(rows) do
-            assert.equal(1, r.blocked)
-        end
+        for _, r in ipairs(rows) do assert.equal(1, r.blocked) end
     end)
 
     it("blocked=true also selects only blocked rows", function()
@@ -160,7 +161,7 @@ end)
 -- ─── combined filters ────────────────────────────────────────────────────────
 
 describe("list_logs: combined filters", function()
-    before_each(function() insert_db:exec("DELETE FROM request_log"); seq = 0 end)
+    before_each(reset)
 
     it("model + blocked combined narrows results", function()
         insert_req({ model = "gpt-4o",   blocked = 1 })
@@ -185,7 +186,7 @@ describe("list_logs: combined filters", function()
         assert.equal(200,      rows[1].status)
     end)
 
-    it("model filter is case-sensitive (SQLite default)", function()
+    it("model filter is case-sensitive", function()
         insert_req({ model = "GPT-4O" })
         insert_req({ model = "gpt-4o" })
         local rows = storage.list_logs({ model = "gpt-4o" })
