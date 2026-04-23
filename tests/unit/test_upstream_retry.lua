@@ -466,3 +466,169 @@ describe("upstream.run: SSRF guard on provider_base_urls override", function()
     end)
 
 end)
+
+-- ─── cache_deletion_tokens + all-providers-failed + fallback (self-contained) ──
+
+describe("upstream: cache_deletion_tokens, all-providers-failed, fallback", function()
+
+    -- Each test manages its own module isolation: no shared upstream variable.
+    -- This avoids cross-test contamination from before_each/after_each.
+
+    local function make_isolated_upstream(overrides)
+        -- Builds a fresh upstream module with custom provider parse_response
+        local prv = overrides and overrides.parse_response
+        local err_cb = overrides and overrides.on_errors_send
+        local custom_http = overrides and overrides.http_responses
+
+        local http_q = custom_http or {}
+        local http_calls = 0
+
+        package.loaded["middleware.upstream"] = nil
+        package.loaded["providers"]           = nil
+        package.loaded["core.errors"]         = nil
+
+        package.preload["providers"] = function()
+            local mod = {
+                base_url      = function() return "http://mock/v1" end,
+                build_headers = function() return {} end,
+                build_request = function() return "{}" end,
+                parse_response = prv or function()
+                    return {content="ok",input_tokens=10,output_tokens=5}, nil
+                end,
+                parse_sse_chunk = function() return nil end,
+            }
+            return { get = function() return mod, nil end }
+        end
+
+        package.preload["core.errors"] = function()
+            return {
+                codes = {},
+                send = function(code, msg)
+                    if err_cb then err_cb(code, msg) end
+                    error("errors.send:" .. tostring(code), 0)
+                end,
+            }
+        end
+
+        -- Temporarily replace http stub to use local queue
+        local saved_http = package.loaded["utils.http"]
+        package.loaded["utils.http"] = nil
+        package.preload["utils.http"] = function()
+            return {
+                request = function()
+                    http_calls = http_calls + 1
+                    local r = table.remove(http_q, 1)
+                    if not r then return nil,nil,nil,"no more responses",nil end
+                    return r.status, r.headers, r.body, nil,
+                           {set_keepalive=function() end}
+                end,
+            }
+        end
+
+        local mod = require("middleware.upstream")
+
+        -- Restore the shared http stub for other tests
+        package.loaded["utils.http"]  = saved_http
+        package.preload["utils.http"] = nil
+
+        return mod, function() return http_calls end
+    end
+
+    -- ── cache_deletion_tokens ────────────────────────────────────────────────
+
+    it("cache_deletion_tokens from parse_response flows to ctx", function()
+        local mod, _ = make_isolated_upstream({
+            parse_response = function()
+                return {
+                    content               = "hello",
+                    input_tokens          = 100,
+                    output_tokens         = 50,
+                    cache_creation_tokens = 10,
+                    cache_read_tokens     = 5,
+                    cache_deletion_tokens = 3,
+                }, nil
+            end,
+            http_responses = {{status=200,headers={},body="{}"}},
+        })
+        local ctx = make_ctx({is_compat=false,gateway_config={timeout_ms=5000,retry_count=0}})
+        mod.run(ctx)
+        assert.equal(3, ctx.cache_deletion_tokens,
+            "cache_deletion_tokens must be threaded to ctx from parse_response")
+    end)
+
+    it("cache_deletion_tokens defaults to 0 when absent", function()
+        local mod, _ = make_isolated_upstream({
+            parse_response = function()
+                return { content="ok", input_tokens=5, output_tokens=3 }, nil
+            end,
+            http_responses = {{status=200,headers={},body="{}"}},
+        })
+        local ctx = make_ctx({is_compat=false,gateway_config={timeout_ms=5000,retry_count=0}})
+        mod.run(ctx)
+        assert.equal(0, ctx.cache_deletion_tokens or 0)
+    end)
+
+    -- ── all-providers-failed ─────────────────────────────────────────────────
+
+    it("all 500 responses with retry_count=0 → ALL_PROVIDERS_FAILED error", function()
+        local sent_code = nil
+        local mod, _ = make_isolated_upstream({
+            on_errors_send  = function(code) sent_code = code end,
+            http_responses  = {{status=500,headers={},body='{"error":"fail"}'}},
+        })
+        local ctx = make_ctx({gateway_config={timeout_ms=5000,retry_count=0}})
+        local ok, err = pcall(mod.run, ctx)
+        assert.is_false(ok, "must raise when all providers fail: " .. tostring(err))
+        assert.equal("ALL_PROVIDERS_FAILED", sent_code,
+            "ALL_PROVIDERS_FAILED must be sent, got: " .. tostring(sent_code))
+    end)
+
+    it("connection error → ALL_PROVIDERS_FAILED (no responses queued)", function()
+        local sent_code = nil
+        local mod, _ = make_isolated_upstream({
+            on_errors_send = function(code) sent_code = code end,
+            http_responses = {},  -- empty → http stub returns "no more responses"
+        })
+        local ctx = make_ctx({gateway_config={timeout_ms=5000,retry_count=0}})
+        local ok = pcall(mod.run, ctx)
+        assert.is_false(ok, "must raise on connection error")
+        assert.equal("ALL_PROVIDERS_FAILED", sent_code)
+    end)
+
+    -- ── fallback chain ───────────────────────────────────────────────────────
+
+    it("tries fallback provider when primary returns 500", function()
+        local mod, get_calls = make_isolated_upstream({
+            http_responses = {
+                {status=500,headers={},body='{"error":"fail"}'},
+                {status=200,headers={},body='{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}'},
+            },
+        })
+        local ctx = make_ctx({
+            gateway_config = {timeout_ms=5000,retry_count=0},
+            fallback_chain = {{provider="openai",model="gpt-3.5-turbo"}},
+        })
+        mod.run(ctx)
+        assert.not_nil(ctx.fallback_provider,
+            "fallback_provider must be set when fallback was used")
+        assert.equal(2, get_calls(),
+            "both primary and fallback must be called")
+    end)
+
+    it("upstream_attempts reflects total call count", function()
+        local mod, _ = make_isolated_upstream({
+            http_responses = {
+                {status=500,headers={},body='{"error":"fail"}'},
+                {status=200,headers={},body='{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}'},
+            },
+        })
+        local ctx = make_ctx({
+            gateway_config = {timeout_ms=5000,retry_count=0},
+            fallback_chain = {{provider="openai",model="gpt-3.5-turbo"}},
+        })
+        mod.run(ctx)
+        assert.not_nil(ctx.upstream_attempts)
+        assert.is_true(ctx.upstream_attempts >= 1)
+    end)
+
+end)
