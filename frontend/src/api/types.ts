@@ -139,13 +139,27 @@ export interface PiiProtectorDetector {
   fail_open?: boolean;
 }
 
+/** AGF-2: admin-defined keyword list that is masked (tokenized + restored) rather
+ *  than blocked. Use for client names, project codenames, employee surnames, etc.
+ *  that Presidio's generic NER does not catch. No sidecar required — Tier 1. */
+export interface CustomPiiDetector {
+  type: "custom_pii";
+  name: string;
+  /** Always runs on both request (mask) and response (restore) phases. */
+  target?: DetectorTarget;
+  keywords: string[];
+  case_sensitive?: boolean;
+  whole_word?: boolean;
+}
+
 export type DetectorConfig =
   | RegexDetector
   | KeywordDetector
   | JailbreakDetector
   | PresidioDetector
   | PromptGuardDetector
-  | PiiProtectorDetector;
+  | PiiProtectorDetector
+  | CustomPiiDetector;
 
 // ---------------------------------------------------------------------------
 // Gateway config

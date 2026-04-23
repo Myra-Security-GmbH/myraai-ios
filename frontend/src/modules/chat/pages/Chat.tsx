@@ -2126,82 +2126,28 @@ export default function Chat() {
       </div>
 
       {error && (
-        <div
-          style={{
-            padding: "6px 16px",
-            background: "#fff0f0",
-            color: "#c62828",
-            fontSize: 13,
-            borderBottom: "1px solid #ffcdd2",
-            flexShrink: 0,
-          }}
-        >
+        <div className={chatS["top-banner"]} data-variant="error">
           {error}
-          <button
-            onClick={() => { setError(null); focusInput(); }}
-            style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#c62828" }}
-          >
-            ✕
-          </button>
+          <button onClick={() => { setError(null); focusInput(); }} className={chatS["top-banner-close"]}>✕</button>
         </div>
       )}
 
       {warning && (
-        <div
-          style={{
-            padding: "6px 16px",
-            background: "#fffde7",
-            color: "#795548",
-            fontSize: 13,
-            borderBottom: "1px solid #fff9c4",
-            flexShrink: 0,
-          }}
-        >
+        <div className={chatS["top-banner"]} data-variant="warning">
           ⚠ {warning}
-          <button
-            onClick={() => { setWarning(null); focusInput(); }}
-            style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#795548" }}
-          >
-            ✕
-          </button>
+          <button onClick={() => { setWarning(null); focusInput(); }} className={chatS["top-banner-close"]}>✕</button>
         </div>
       )}
 
       {guardrailWarning && (
-        <div
-          data-cy="guardrail-warning"
-          style={{
-            padding: "6px 16px",
-            background: "#fef9c3",
-            color: "#854d0e",
-            fontSize: 13,
-            borderBottom: "1px solid #ca8a04",
-            flexShrink: 0,
-          }}
-        >
+        <div className={chatS["top-banner"]} data-variant="warning" data-cy="guardrail-warning">
           ⚠ {guardrailWarning}
-          <button
-            onClick={() => { setGuardrailWarning(null); focusInput(); }}
-            style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#854d0e" }}
-          >
-            ✕
-          </button>
+          <button onClick={() => { setGuardrailWarning(null); focusInput(); }} className={chatS["top-banner-close"]}>✕</button>
         </div>
       )}
 
       {ghostMode && (
-        <div
-          style={{
-            padding: "4px 0",
-            background: "#1a1a2e",
-            color: "#8888aa",
-            fontSize: 12,
-            textAlign: "center",
-            letterSpacing: "0.03em",
-            flexShrink: 0,
-          }}
-          data-cy="ghost-banner"
-        >
+        <div className={chatS["ghost-banner"]} data-cy="ghost-banner">
           👻 Ghost mode — this conversation is not saved and will not be logged
         </div>
       )}
@@ -2451,7 +2397,8 @@ export default function Chat() {
         >
           <div className={s["form-group"]}>
             <label className={s["form-label"]}>
-              How would you rate this session? <em>(1 = best, 5 = worst)</em>
+              How would you rate this session?{" "}
+              <em style={{ color: "var(--text-secondary)", fontStyle: "normal", fontSize: "0.9em" }}>(1 = best, 5 = worst)</em>
             </label>
             <div className={s["picker-options"]}>
               {[1, 2, 3, 4, 5].map((n) => (

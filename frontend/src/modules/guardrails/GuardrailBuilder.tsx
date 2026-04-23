@@ -11,6 +11,7 @@ import {
   PresidioDetector,
   PromptGuardDetector,
   PiiProtectorDetector,
+  CustomPiiDetector,
   DetectorAction,
   DetectorTarget,
   PatternName,
@@ -166,10 +167,14 @@ function emptyPiiProtector(): PiiProtectorDetector {
   return { type: "pii_protector", name: "pii-protect", target: "both", analyzer_url: "http://127.0.0.1:5002", entities: [...PII_FOCUSED_ENTITIES], score_threshold: 0.7, fail_open: true };
 }
 
+function emptyCustomPii(): CustomPiiDetector {
+  return { type: "custom_pii", name: "custom-pii", target: "both", keywords: [], case_sensitive: false, whole_word: false };
+}
+
 // Type guard: guardrails that carry an action field
 type ActionableDetector = RegexDetector | KeywordDetector | PresidioDetector | PromptGuardDetector;
 function hasAction(det: DetectorConfig): det is ActionableDetector {
-  return det.type !== "pii_protector";
+  return det.type !== "pii_protector" && det.type !== "custom_pii";
 }
 
 // ---------------------------------------------------------------------------
@@ -709,9 +714,9 @@ function PresidioEditor({ det, onChange }: { det: PresidioDetector; onChange: (d
 }
 
 const FP_RISK_BADGE: Record<"low" | "medium" | "high", { label: string; bg: string; color: string }> = {
-  low:    { label: "low FP",    bg: "#dcfce7", color: "#166534" },
-  medium: { label: "medium FP", bg: "#fef9c3", color: "#854d0e" },
-  high:   { label: "high FP",   bg: "#fee2e2", color: "#991b1b" },
+  low:    { label: "low FP",    bg: "var(--badge-success-bg)", color: "var(--badge-success-text)" },
+  medium: { label: "medium FP", bg: "var(--badge-warning-bg)", color: "var(--badge-warning-text)" },
+  high:   { label: "high FP",   bg: "var(--badge-error-bg)",   color: "var(--badge-error-text)" },
 };
 
 function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChange: (d: PromptGuardDetector) => void }) {
@@ -852,6 +857,90 @@ function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChan
   );
 }
 
+function CustomPiiEditor({ det, onChange }: { det: CustomPiiDetector; onChange: (d: CustomPiiDetector) => void }) {
+  const [kwInput, setKwInput] = useState("");
+
+  function addKeyword() {
+    const trimmed = kwInput.trim();
+    if (!trimmed || det.keywords.includes(trimmed)) return;
+    onChange({ ...det, keywords: [...det.keywords, trimmed] });
+    setKwInput("");
+  }
+
+  function removeKeyword(i: number) {
+    const kws = [...det.keywords];
+    kws.splice(i, 1);
+    onChange({ ...det, keywords: kws });
+  }
+
+  return (
+    <>
+      <div style={{ fontSize: 12, color: "var(--text-muted, #888)", padding: "6px 0 10px", lineHeight: 1.5 }}>
+        Masks custom sensitive terms (client names, project codenames, employee surnames) before
+        they reach the model, then restores them in the response — so the LLM never processes
+        the real value while the user sees the original answer.
+        No sidecar required — runs entirely in the gateway (Tier&nbsp;1).
+      </div>
+      <div className={s["form-group"]}>
+        <label className={s["form-label"]}>Sensitive terms</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            className={s["form-input"]}
+            value={kwInput}
+            onChange={(e) => setKwInput(e.target.value)}
+            placeholder="e.g. Müller GmbH, Project Orion, Thomas Huber"
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKeyword())}
+          />
+          <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addKeyword}>Add</button>
+        </div>
+        <p className={s["form-hint"]}>
+          Each term is replaced with an opaque token in the prompt and restored in the response.
+          For non-ASCII names (umlauts, accents) enter the exact case or enable case-sensitive matching.
+        </p>
+        {det.keywords.length > 0 && (
+          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {det.keywords.map((kw, i) => (
+              <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface-2, #f4f4f5)", borderRadius: 4, padding: "2px 8px", fontSize: 12 }}>
+                {kw}
+                <button type="button" onClick={() => removeKeyword(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--text-muted, #888)" }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <div className={s["form-group"]} style={{ margin: 0 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={det.case_sensitive ?? false}
+              onChange={(e) => onChange({ ...det, case_sensitive: e.target.checked })}
+            />
+            <span className={s["form-label"]} style={{ margin: 0 }}>Case sensitive</span>
+          </label>
+          <p className={s["form-hint"]} style={{ marginLeft: 24 }}>
+            Off by default (ASCII case-fold). Enable for non-ASCII names where case folding is unreliable.
+          </p>
+        </div>
+        <div className={s["form-group"]} style={{ margin: 0 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={det.whole_word ?? false}
+              onChange={(e) => onChange({ ...det, whole_word: e.target.checked })}
+            />
+            <span className={s["form-label"]} style={{ margin: 0 }}>Whole-word matching</span>
+          </label>
+          <p className={s["form-hint"]} style={{ marginLeft: 24 }}>
+            Off by default — masks the term wherever it appears, including inside longer strings.
+            Enable to avoid masking e.g. "Myra" in "Myrasecurity".
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function PiiProtectorEditor({ det, onChange }: { det: PiiProtectorDetector; onChange: (d: PiiProtectorDetector) => void }) {
   const allowListRaw = (det.allow_list ?? []).join(", ");
   function onAllowListChange(raw: string) {
@@ -953,6 +1042,7 @@ const TYPE_LABELS: Record<DetectorConfig["type"], string> = {
   presidio: "Presidio (NLP)",
   prompt_guard: "Prompt Guard",
   pii_protector: "PII Protector",
+  custom_pii: "Custom PII Blacklist",
 };
 
 const TYPE_BADGE_COLORS: Record<DetectorConfig["type"], string> = {
@@ -962,6 +1052,7 @@ const TYPE_BADGE_COLORS: Record<DetectorConfig["type"], string> = {
   presidio: "#10b981",
   prompt_guard: "#f59e0b",
   pii_protector: "#06b6d4",
+  custom_pii: "#0284c7",
 };
 
 // Tier assignment mirrors src/guardrails/orchestrator.lua
@@ -972,6 +1063,7 @@ const DETECTOR_TIER: Record<DetectorConfig["type"], number> = {
   presidio: 2,
   prompt_guard: 2,
   pii_protector: 2,
+  custom_pii: 1,
 };
 
 function DetectorCard({
@@ -998,6 +1090,7 @@ function DetectorCard({
     if (det.type === "presidio") return <PresidioEditor det={det} onChange={onUpdate} />;
     if (det.type === "prompt_guard") return <PromptGuardEditor det={det} onChange={onUpdate} />;
     if (det.type === "pii_protector") return <PiiProtectorEditor det={det} onChange={onUpdate} />;
+    if (det.type === "custom_pii") return <CustomPiiEditor det={det} onChange={onUpdate} />;
     return null;
   }
 
@@ -1061,7 +1154,7 @@ function DetectorCard({
           {det.name}
         </span>
         <span style={{ fontSize: 11, color: "var(--text-muted, #888)", whiteSpace: "nowrap" }}>
-          {det.type === "pii_protector" ? "⟳ protect" : det.action} · {det.target ?? (det.type === "pii_protector" ? "both" : "request")}
+          {(det.type === "pii_protector" || det.type === "custom_pii") ? "⟳ protect" : det.action} · {det.target ?? (det.type === "pii_protector" || det.type === "custom_pii" ? "both" : "request")}
         </span>
 
         {/* Expand toggle */}
@@ -1112,12 +1205,12 @@ function DetectorPhaseSummary({ detectors }: { detectors: DetectorConfig[] }) {
   }
 
   function phaseLabel(det: DetectorConfig) {
-    const target = det.target ?? (det.type === "pii_protector" ? "both" : "request");
+    const target = det.target ?? (det.type === "pii_protector" || det.type === "custom_pii" ? "both" : "request");
     return target;
   }
 
   function modeLabel(det: DetectorConfig) {
-    if (det.type === "pii_protector") return "⟳ reversible";
+    if (det.type === "pii_protector" || det.type === "custom_pii") return "⟳ reversible";
     return det.action;
   }
 
@@ -1176,6 +1269,7 @@ export function GuardrailBuilder({ value, onChange }: GuardrailBuilderProps) {
     else if (type === "jailbreak") d = emptyJailbreak();
     else if (type === "presidio") d = emptyPresidio();
     else if (type === "pii_protector") d = emptyPiiProtector();
+    else if (type === "custom_pii") d = emptyCustomPii();
     else d = emptyPromptGuard();
     onChange([...value, d]);
   }
@@ -1205,7 +1299,7 @@ export function GuardrailBuilder({ value, onChange }: GuardrailBuilderProps) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span className={s["form-label"]} style={{ margin: 0 }}>Guardrails ({value.length})</span>
         <div style={{ display: "flex", gap: 6 }}>
-          {(["regex", "keyword", "jailbreak", "presidio", "prompt_guard", "pii_protector"] as const).map((type) => (
+          {(["regex", "keyword", "jailbreak", "presidio", "prompt_guard", "pii_protector", "custom_pii"] as const).map((type) => (
             <button
               key={type}
               type="button"

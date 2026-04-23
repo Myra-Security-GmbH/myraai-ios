@@ -546,7 +546,7 @@ table.table tbody tr.blocked td {
 
   &--success { background: var(--badge-success-bg); color: var(--badge-success-text); border: 1px solid currentColor; }
   &--error   { background: var(--badge-error-bg);   color: var(--badge-error-text);   border: 1px solid currentColor; }
-  &--warning { background: #fef9c3;                 color: #854d0e;                   border: 1px solid #ca8a04; }
+  &--warning { background: var(--badge-warning-bg); color: var(--badge-warning-text); border: 1px solid currentColor; }
 }
 
 // Empty state
@@ -730,17 +730,26 @@ table.table tbody tr.blocked td {
 
 .picker-btn {
   font-size: tools.pixelToRem(20);
-  padding: tools.pixelToRem(4) tools.pixelToRem(8);
+  padding: tools.pixelToRem(4) tools.pixelToRem(10);
   border-radius: tools.pixelToRem(6);
   cursor: pointer;
   border: 1px solid var(--card-border);
-  background: transparent;
+  background: var(--input-bg, var(--card-bg));
+  color: var(--text-primary);
   line-height: 1;
-  transition: border-color 0.1s;
+  min-width: tools.pixelToRem(36);
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover {
+    border-color: var(--accent, #002b4a);
+    background: color-mix(in srgb, var(--accent, #002b4a) 6%, var(--input-bg, var(--card-bg)));
+  }
 
   &--selected {
     border: 2px solid var(--accent, #002b4a);
-    background: color-mix(in srgb, var(--accent, #002b4a) 10%, transparent);
+    background: color-mix(in srgb, var(--accent, #002b4a) 12%, var(--input-bg, var(--card-bg)));
+    color: var(--accent, #002b4a);
+    font-weight: 600;
   }
 }
 
