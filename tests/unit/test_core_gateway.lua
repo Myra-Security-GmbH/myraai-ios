@@ -265,3 +265,75 @@ describe("core.config: get_gateway()", function()
     end)
 
 end)
+
+-- ============================================================================
+-- core/context.lua: M.init() field initialization
+-- ============================================================================
+
+describe("core.context: M.init() initialises all required fields", function()
+
+    local ctx_mod
+
+    before_each(function()
+        package.loaded["core.context"] = nil
+        package.preload["core.context"] = nil
+        ctx_mod = require("core.context")
+        _G.ngx.ctx = {}
+    end)
+
+    it("sets is_compat=false, is_streaming=false, cache_hit=false", function()
+        ctx_mod.init()
+        local ctx = _G.ngx.ctx
+        assert.is_false(ctx.is_compat)
+        assert.is_false(ctx.is_streaming)
+        assert.is_false(ctx.cache_hit)
+        assert.is_false(ctx.skip_log)
+        assert.is_false(ctx.skip_log_payload)
+    end)
+
+    it("sets token counters to 0", function()
+        ctx_mod.init()
+        local ctx = _G.ngx.ctx
+        assert.equal(0, ctx.input_tokens)
+        assert.equal(0, ctx.output_tokens)
+        assert.equal(0, ctx.cache_creation_tokens)
+        assert.equal(0, ctx.cache_read_tokens)
+        assert.equal(0, ctx.cache_deletion_tokens)
+    end)
+
+    it("sets tenant/gateway/provider fields to nil", function()
+        ctx_mod.init()
+        local ctx = _G.ngx.ctx
+        assert.is_nil(ctx.tenant_id)
+        assert.is_nil(ctx.gateway_id)
+        assert.is_nil(ctx.provider)
+        assert.is_nil(ctx.model)
+        assert.is_nil(ctx.provider_api_key)
+    end)
+
+    it("initialises fallback_chain as empty table", function()
+        ctx_mod.init()
+        assert.not_nil(_G.ngx.ctx.fallback_chain)
+        assert.equal(0, #_G.ngx.ctx.fallback_chain)
+    end)
+
+    it("initialises token_scopes as empty table", function()
+        ctx_mod.init()
+        assert.not_nil(_G.ngx.ctx.token_scopes)
+        assert.equal(0, #_G.ngx.ctx.token_scopes)
+    end)
+
+    it("initialises log_fields as an empty table", function()
+        ctx_mod.init()
+        local lf = _G.ngx.ctx.log_fields
+        assert.not_nil(lf, "log_fields must be initialized")
+        assert.equal("table", type(lf), "log_fields must be a table")
+    end)
+
+    it("sets start_ms to current time in ms", function()
+        ctx_mod.init()
+        local expected = 1700000000.0 * 1000
+        assert.equal(expected, _G.ngx.ctx.start_ms)
+    end)
+
+end)

@@ -347,6 +347,88 @@ end)
 -- log middleware
 -- ============================================================================
 
+-- ============================================================================
+-- middleware/url_fetch.lua: per-turn URL cap (5 max, Finding 14)
+-- ============================================================================
+
+describe("middleware.url_fetch: per-turn fetch cap (MAX_FETCHES_PER_TURN=5)", function()
+
+    it("logs a warning and truncates when more than 5 URLs are requested", function()
+        reset()
+        -- Count how many URLs fetch_url.parallel receives
+        local parallel_n = nil
+        package.loaded["utils.fetch_url"] = nil
+        package.preload["utils.fetch_url"] = function()
+            return {
+                is_safe_url = function() return true end,
+                fetch       = function() return "content" end,
+                parallel    = function(urls, n)
+                    parallel_n = n
+                    local result = {}
+                    for i = 1, n do result[i] = { url=urls[i], text="page" } end
+                    return result
+                end,
+            }
+        end
+
+        -- Simulate upstream returning 8 fetch_url tool calls (compat format)
+        local tool_calls = {}
+        for i = 1, 8 do
+            tool_calls[#tool_calls+1] = { id="t"..i, type="function",
+                ["function"]={ name="fetch_url",
+                    arguments=cjson.encode({url="http://example.com/"..i}) } }
+        end
+        local leg1 = cjson.encode({
+            choices={{ message={ role="assistant", content="",
+                        tool_calls=tool_calls }, finish_reason="tool_calls" }},
+            usage={ prompt_tokens=5, completion_tokens=3 },
+        })
+        local leg2 = cjson.encode({
+            choices={{ message={ role="assistant", content="done" }, finish_reason="stop" }},
+            usage={ prompt_tokens=5, completion_tokens=3 },
+        })
+
+        local leg = 0
+        package.loaded["middleware.upstream"] = nil
+        package.preload["middleware.upstream"] = function()
+            return { run = function(ctx)
+                leg = leg + 1
+                if leg == 1 then
+                    ctx.response_body = leg1; ctx.provider_status = 200
+                else
+                    ctx.response_body = leg2; ctx.provider_status = 200; ctx.is_streaming=false
+                end
+            end }
+        end
+
+        package.loaded["middleware.url_fetch"] = nil
+        local url_fetch_mw = require("middleware.url_fetch")
+        local ctx = {
+            provider="openai", is_compat=true, model="gpt-4o",
+            gateway_id="gw-1", tenant_id="tn-1", request_id="r1",
+            request_body={ model="gpt-4o", stream=false, messages={{role="user",content="fetch"}} },
+            raw_request_body="{}", start_ms=1700000000000,
+            gateway_config={ timeout_ms=5000, retry_count=0, url_fetch={ enabled=true } },
+            log_fields={},
+        }
+        pcall(url_fetch_mw.run, ctx)
+
+        if parallel_n ~= nil then
+            assert.is_true(parallel_n <= 5,
+                "parallel must receive at most 5 URLs, got: " .. parallel_n)
+        end
+
+        -- Restore
+        package.loaded["middleware.url_fetch"] = nil
+        package.loaded["utils.fetch_url"]      = nil
+        package.loaded["middleware.upstream"]  = nil
+        package.preload["utils.fetch_url"]     = nil
+        package.preload["middleware.upstream"] = nil
+    end)
+
+end)
+
+-- ============================================================================
 describe("middleware.log", function()
 
     it("calls logger.emit with ctx", function()

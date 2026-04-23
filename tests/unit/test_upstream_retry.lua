@@ -377,3 +377,92 @@ describe("upstream.run: per-rule timeout_ms overrides gateway timeout", function
         assert.equal(45000, captured_opts[1].timeout_ms)
     end)
 end)
+
+-- ─── SSRF guard on provider_base_urls (Finding 7) ─────────────────────────────
+
+describe("upstream.run: SSRF guard on provider_base_urls override", function()
+
+    it("blocks private IP in provider_base_urls and sends CONFIGURATION_ERROR", function()
+        reset()
+        -- Override utils.fetch_url to use real SSRF guard
+        package.loaded["utils.fetch_url"] = nil
+        package.preload["utils.fetch_url"] = function()
+            return {
+                is_safe_url = function(url)
+                    -- Simulate the guard rejecting private IPs
+                    return not (url:find("172%.17%.") or url:find("127%.") or
+                               url:find("10%.") or url:find("192%.168%.") or
+                               url:find("169%.254%."))
+                end,
+                fetch    = function() return nil end,
+                parallel = function() return {} end,
+            }
+        end
+
+        local errors_sent = {}
+        package.loaded["core.errors"] = nil
+        package.preload["core.errors"] = function()
+            return {
+                send = function(code, msg) errors_sent[#errors_sent+1] = code; error(code, 0) end,
+                codes = {},
+            }
+        end
+
+        local ctx = make_ctx({
+            gateway_config = {
+                timeout_ms  = 5000,
+                retry_count = 0,
+                provider_base_urls = { openai = "http://172.17.0.1:3306/" },
+            },
+        })
+        upstream = reload_upstream()
+
+        -- queue_response not needed: SSRF guard aborts before HTTP call
+        local ok, err = pcall(upstream.run, ctx)
+        assert.is_false(ok, "upstream.run must abort when base URL is blocked")
+        assert.equal(1, #errors_sent, "CONFIGURATION_ERROR must be sent")
+        assert.equal("CONFIGURATION_ERROR", errors_sent[1])
+        assert.equal(0, _http_calls, "HTTP must NOT be called for blocked URL")
+
+        -- Restore
+        package.loaded["utils.fetch_url"] = nil
+        package.loaded["core.errors"]     = nil
+        package.preload["utils.fetch_url"] = nil
+        package.preload["core.errors"]     = nil
+        upstream = reload_upstream()
+    end)
+
+    it("allows a public URL in provider_base_urls", function()
+        reset()
+        package.loaded["utils.fetch_url"] = nil
+        package.preload["utils.fetch_url"] = function()
+            return {
+                is_safe_url = function(url)
+                    return url:find("https://my%-vllm%-server%.example%.com") ~= nil
+                       or not (url:find("172%.") or url:find("127%."))
+                end,
+                fetch    = function() return nil end,
+                parallel = function() return {} end,
+            }
+        end
+
+        push_resp(200, {}, '{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}')
+        local ctx = make_ctx({
+            gateway_config = {
+                timeout_ms  = 5000,
+                retry_count = 0,
+                provider_base_urls = { openai = "https://my-vllm-server.example.com" },
+            },
+        })
+        upstream = reload_upstream()
+        local ok = pcall(upstream.run, ctx)
+        assert.is_true(ok, "public URL must be allowed through")
+        assert.equal(1, _http_calls, "HTTP must be called for allowed URL")
+
+        -- Restore
+        package.loaded["utils.fetch_url"] = nil
+        package.preload["utils.fetch_url"] = nil
+        upstream = reload_upstream()
+    end)
+
+end)
