@@ -139,8 +139,14 @@ local function call_provider(ctx, provider_name, model, is_streaming)
     -- Allow per-gateway base URL override (used by tests to point at mock provider)
     local overrides = ctx.gateway_config.provider_base_urls
     if overrides and overrides[provider_name] then
+        local override_url = overrides[provider_name]
+        if not require("utils.fetch_url").is_safe_url(override_url) then
+            require("core.errors").send("CONFIGURATION_ERROR",
+                "provider_base_urls override blocked: URL resolves to a private/internal address")
+            return
+        end
         local path = url:match("https?://[^/]+(/.*)") or "/"
-        url = overrides[provider_name] .. path
+        url = override_url .. path
     end
     local headers = provider_mod.build_headers(ctx, ctx.provider_api_key)
     -- Forward W3C traceparent to upstream provider for end-to-end trace correlation

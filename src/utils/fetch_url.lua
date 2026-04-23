@@ -24,13 +24,34 @@ local BLOCKED_PATTERNS = {
     "^169%.254%.",    -- link-local / AWS metadata
     "^0%.",           -- "this" network
     "^::1$",          -- IPv6 loopback
+    "^::ffff:",       -- IPv4-mapped IPv6 (e.g. ::ffff:169.254.169.254)
+    "^%[::ffff:",     -- bracketed IPv4-mapped IPv6
+    "^fd[0-9a-f][0-9a-f]", -- IPv6 ULA fc00::/7 (fd00::/8)
+    "^fc[0-9a-f][0-9a-f]", -- IPv6 ULA fc00::/8
+    "^fe[89ab][0-9a-f]",   -- IPv6 link-local fe80::/10
+    "^0x",            -- hex-encoded IP (e.g. 0xac10)
     "^localhost$",
 }
 
+local function is_private_dotted(host)
+    for _, pat in ipairs(BLOCKED_PATTERNS) do
+        if host:match(pat) then return true end
+    end
+    return false
+end
+
 local function is_safe_host(host)
     host = host:lower()
-    for _, pat in ipairs(BLOCKED_PATTERNS) do
-        if host:match(pat) then return false end
+    if is_private_dotted(host) then return false end
+    -- Reject decimal-encoded IPv4 (e.g. http://2852039166/ == 169.254.169.254)
+    local n = tonumber(host)
+    if n and n >= 0 and n <= 4294967295 then
+        local dotted = string.format("%d.%d.%d.%d",
+            math.floor(n / 16777216) % 256,
+            math.floor(n / 65536)   % 256,
+            math.floor(n / 256)     % 256,
+            n % 256)
+        if is_private_dotted(dotted) then return false end
     end
     return true
 end
@@ -145,5 +166,8 @@ function M.parallel(urls, n)
     end
     return out
 end
+
+-- Exported for use by other modules (e.g. upstream.lua provider_base_urls check).
+M.is_safe_url = is_safe_url
 
 return M

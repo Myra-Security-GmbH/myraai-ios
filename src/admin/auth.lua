@@ -1,7 +1,10 @@
 -- admin/auth.lua — JWT session middleware for the admin API
 -- Called from access_by_lua_block in nginx config.
 
-local jwt = require("utils.jwt")
+local jwt     = require("utils.jwt")
+local storage = require("storage")
+
+local CORS_ORIGIN = os.getenv("AIG_ADMIN_CORS_ORIGIN")
 
 local M = {}
 
@@ -13,7 +16,7 @@ function M.require_session()
     if not token then
         ngx.status = 401
         ngx.header["Content-Type"] = "application/json"
-        ngx.header["Access-Control-Allow-Origin"]      = ngx.var.http_origin or "*"
+        ngx.header["Access-Control-Allow-Origin"]      = CORS_ORIGIN
         ngx.header["Access-Control-Allow-Credentials"] = "true"
         ngx.print('{"error":"unauthenticated"}')
         ngx.exit(401)
@@ -24,18 +27,28 @@ function M.require_session()
     if not payload then
         ngx.status = 401
         ngx.header["Content-Type"] = "application/json"
-        ngx.header["Access-Control-Allow-Origin"]      = ngx.var.http_origin or "*"
+        ngx.header["Access-Control-Allow-Origin"]      = CORS_ORIGIN
         ngx.header["Access-Control-Allow-Credentials"] = "true"
         ngx.print('{"error":"' .. (err or "invalid token") .. '"}')
         ngx.exit(401)
         return
     end
 
+    -- Re-validate against the DB to pick up role changes and catch soft-deleted users.
+    local user = storage.get_user(payload.sub)
+    if not user or user.deleted_at then
+        ngx.status = 401
+        ngx.header["Content-Type"] = "application/json"
+        ngx.print('{"error":"account not found or deleted"}')
+        ngx.exit(401)
+        return
+    end
+
     ngx.ctx.admin_user = {
-        id        = payload.sub,
-        email     = payload.email,
-        role      = payload.role,
-        tenant_id = payload.tenant,
+        id        = user.id,
+        email     = user.email,
+        role      = user.role,
+        tenant_id = user.tenant_id,
     }
 end
 

@@ -429,7 +429,7 @@ function M.register(route)
         if ext == "pptx" then mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation" end
 
         local extracted_text = nil
-        local rand_sfx = math.floor(ngx.now() * 1000) .. "_" .. math.random(100000)
+        local rand_sfx = require("utils.crypto").random_hex(16)
 
         -- ── DOCX ─────────────────────────────────────────────────────────────
         if mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" then

@@ -673,10 +673,16 @@ function M.insert_auth_token(gateway_id, token_hash, scopes, expires_at, user_id
     return id
 end
 
-function M.delete_auth_token(token_id)
+function M.delete_auth_token(token_id, gateway_id)
     local db, err = get_conn()
     if not db then return err end
-    local e = exec_one(db, "DELETE FROM auth_token WHERE id = ?", token_id)
+    local e
+    if gateway_id then
+        e = exec_one(db, "DELETE FROM auth_token WHERE id = ? AND gateway_id = ?",
+                     token_id, gateway_id)
+    else
+        e = exec_one(db, "DELETE FROM auth_token WHERE id = ?", token_id)
+    end
     release(db)
     return e
 end
@@ -1060,6 +1066,7 @@ function M.list_users(tenant_id, opts)
     opts = opts or {}
     local col = USER_SORT_COLS[opts.sort] or "u.email"
     local dir = (opts.dir == "desc") and "DESC" or "ASC"
+    assert(dir == "ASC" or dir == "DESC", "invalid sort direction")
     local order = col .. " " .. dir
     local rows
     if tenant_id then
@@ -1280,10 +1287,11 @@ function M.get_usage_stats(tenant_id)
     local last_min_ms  = (now - 60) * 1000
 
     local tenant_clause = ""
+    local tenant_param  = nil
     if tenant_id and tenant_id ~= "" then
-        if tenant_id:match("^[0-9a-fA-F%-]+$") then
-            tenant_clause = " AND tenant_id = " .. escape_string(tenant_id)
-        end
+        assert(tenant_id:match("^[0-9a-fA-F%-]+$"), "tenant_id must be UUID format")
+        tenant_clause = " AND tenant_id = ?"
+        tenant_param  = tenant_id
     end
 
     local function pcols(p, cond)
@@ -1312,7 +1320,7 @@ function M.get_usage_stats(tenant_id)
         pcols("l7", "1=1"),
         last_7d_ms, tenant_clause)
 
-    local r = query_one(db, all_sql) or {}
+    local r = query_one(db, all_sql, table.unpack(tenant_param and {tenant_param} or {})) or {}
 
     local function extract(p)
         return {
@@ -1341,7 +1349,7 @@ function M.get_usage_stats(tenant_id)
         WHERE r.ts >= %d%s
         GROUP BY r.tenant_id ORDER BY cost_usd DESC
     ]], today_ms, tenant_clause)
-    local by_tenant = query_all(db, by_tenant_sql) or {}
+    local by_tenant = query_all(db, by_tenant_sql, table.unpack(tenant_param and {tenant_param} or {})) or {}
 
     local recent_sql = string.format([[
         SELECT ROUND(r.ts / 1000) AS ts,
@@ -1361,7 +1369,7 @@ function M.get_usage_stats(tenant_id)
         %s
         ORDER BY r.ts DESC LIMIT 10
     ]], tenant_clause ~= "" and ("WHERE 1=1" .. tenant_clause) or "")
-    local recent = query_all(db, recent_sql) or {}
+    local recent = query_all(db, recent_sql, table.unpack(tenant_param and {tenant_param} or {})) or {}
 
     local recent_blocked_sql = string.format([[
         SELECT ROUND(r.ts / 1000) AS ts,
@@ -1379,7 +1387,7 @@ function M.get_usage_stats(tenant_id)
            OR (r.detectors_fired IS NOT NULL AND r.detectors_fired != '[]'))%s
         ORDER BY r.ts DESC LIMIT 20
     ]], tenant_clause)
-    local recent_blocked = query_all(db, recent_blocked_sql) or {}
+    local recent_blocked = query_all(db, recent_blocked_sql, table.unpack(tenant_param and {tenant_param} or {})) or {}
     for _, row in ipairs(recent_blocked) do decode_detectors(row) end
 
     release(db)
@@ -1467,10 +1475,16 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
         uc = string.format(" AND r.ts < %d", math.floor(until_ms))
     end
 
-    local tc = ""
-    if tenant_id and tenant_id ~= "" and tenant_id:match("^[0-9a-fA-F%-]+$") then
-        tc = " AND r.tenant_id = " .. escape_string(tenant_id)
+    local tc          = ""
+    local tc_param    = nil
+    if tenant_id and tenant_id ~= "" then
+        assert(tenant_id:match("^[0-9a-fA-F%-]+$"), "tenant_id must be UUID format")
+        tc       = " AND r.tenant_id = ?"
+        tc_param = tenant_id
     end
+
+    -- Base bind params: `from` always; `tc_param` added when tenant filter is active.
+    local bind_params = tc_param and {from, tc_param} or {from}
 
     -- Window functions: ROW_NUMBER() and COUNT(*) OVER () — MySQL 8.0+
     local pct = query_one(db, string.format([[
@@ -1485,7 +1499,7 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
             FROM request_log r
             WHERE r.ts >= ? AND r.latency_ms IS NOT NULL AND r.blocked = 0%s%s
         ) sub
-    ]], tc, uc), from) or {}
+    ]], tc, uc), table.unpack(bind_params)) or {}
 
     local top_models = query_all(db, string.format([[
         SELECT r.model, r.provider,
@@ -1497,7 +1511,7 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
         GROUP BY r.provider, r.model
         ORDER BY requests DESC
         LIMIT 10
-    ]], tc, uc), from) or {}
+    ]], tc, uc), table.unpack(bind_params)) or {}
 
     local by_tenant = query_all(db, string.format([[
         SELECT r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
@@ -1514,7 +1528,7 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
         LEFT JOIN tenant t ON t.id = r.tenant_id
         WHERE r.ts >= ?%s%s
         GROUP BY r.tenant_id ORDER BY cost_usd DESC
-    ]], tc, uc), from) or {}
+    ]], tc, uc), table.unpack(bind_params)) or {}
 
     local by_gateway = query_all(db, string.format([[
         SELECT r.gateway_id, COALESCE(g.slug, r.gateway_id) AS gateway,
@@ -1533,7 +1547,7 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
         LEFT JOIN tenant  t ON t.id = r.tenant_id
         WHERE r.ts >= ?%s%s
         GROUP BY r.gateway_id ORDER BY cost_usd DESC
-    ]], tc, uc), from) or {}
+    ]], tc, uc), table.unpack(bind_params)) or {}
 
     local by_user = query_all(db, string.format([[
         SELECT r.user_id, r.tenant_id,
@@ -1552,7 +1566,7 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
         WHERE r.ts >= ? AND r.user_id IS NOT NULL%s%s
         GROUP BY r.user_id, r.tenant_id ORDER BY cost_usd DESC
         LIMIT 50
-    ]], tc, uc), from) or {}
+    ]], tc, uc), table.unpack(bind_params)) or {}
 
     -- Anthropic prompt-cache efficiency.
     -- "Uncached" = cache_creation_tokens + input_tokens (processed fresh, not served from cache).
@@ -1579,7 +1593,7 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
         FROM request_log r
         LEFT JOIN model_price mp ON mp.provider = r.provider AND mp.model = r.model
         WHERE r.provider = 'anthropic' AND r.status = 200 AND r.ts >= ?%s%s
-    ]], tc, uc), from) or {}
+    ]], tc, uc), table.unpack(bind_params)) or {}
 
     release(db)
     return {

@@ -67,9 +67,8 @@ local function get_secret()
         local ok, cfg = pcall(require, "core.app_config")
         _secret = (ok and cfg.auth and cfg.auth.jwt_secret)
                   or os.getenv("AIG_JWT_SECRET")
-                  or "dev-change-me"
-        if _secret == "dev-change-me" then
-            ngx.log(ngx.WARN, "jwt: using insecure default secret — set AIG_JWT_SECRET in production")
+        if not _secret or _secret == "" then
+            error("AIG_JWT_SECRET not configured — refusing to start")
         end
     end
     return _secret

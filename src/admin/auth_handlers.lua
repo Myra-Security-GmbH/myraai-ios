@@ -9,6 +9,8 @@ local storage  = require("storage")
 local uuid_lib = require("utils.uuid")
 local random   = require("resty.random")
 
+local CORS_ORIGIN = os.getenv("AIG_ADMIN_CORS_ORIGIN")
+
 local M = {}
 
 -- ---------------------------------------------------------------------------
@@ -23,7 +25,7 @@ end
 local function send(status, body)
     ngx.status = status
     ngx.header["Content-Type"] = "application/json"
-    ngx.header["Access-Control-Allow-Origin"]      = ngx.var.http_origin or "*"
+    ngx.header["Access-Control-Allow-Origin"]      = CORS_ORIGIN
     ngx.header["Access-Control-Allow-Credentials"] = "true"
     ngx.print(json.encode(body))
 end
@@ -43,11 +45,11 @@ end
 
 local function set_session_cookie(token, max_age)
     ngx.header["Set-Cookie"] = "aig_admin=" .. token ..
-        "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" .. max_age
+        "; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=" .. max_age
 end
 
 local function clear_session_cookie()
-    ngx.header["Set-Cookie"] = "aig_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+    ngx.header["Set-Cookie"] = "aig_admin=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0"
 end
 
 local function issue_jwt_for(user, remember_me)
@@ -217,6 +219,10 @@ route("GET", "^/admin/auth/google$", function()
 
     local state = crypto.random_hex(16)
     ngx.shared.aig_ratelimit:set("google_state:" .. state, 1, 600)
+    -- Bind the state to the initiating browser session via a cookie so it
+    -- cannot be completed by a different browser that observed the state value.
+    ngx.header["Set-Cookie"] = "aig_oauth_state=" .. state ..
+        "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600"
 
     local params = {
         "client_id="    .. ngx.escape_uri(auth.google_client_id),
@@ -243,12 +249,19 @@ route("GET", "^/admin/auth/google/callback$", function()
         return send(400, { error = "missing code" })
     end
 
-    -- Validate CSRF state
+    -- Validate CSRF state: check both the shared dict AND the session-bound cookie.
     local state_key = "google_state:" .. (state or "")
     if not ngx.shared.aig_ratelimit:get(state_key) then
         return send(400, { error = "invalid or expired state" })
     end
+    local cookie       = ngx.var.http_cookie or ""
+    local cookie_state = cookie:match("aig_oauth_state=([^;%s]+)")
+    if not cookie_state or cookie_state ~= state then
+        return send(400, { error = "OAuth CSRF state mismatch" })
+    end
     ngx.shared.aig_ratelimit:delete(state_key)
+    -- Clear the state cookie.
+    ngx.header["Set-Cookie"] = "aig_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
 
     local auth  = cfg_auth()
     local httpc = require("resty.http").new()
@@ -279,7 +292,9 @@ route("GET", "^/admin/auth/google/callback$", function()
         return send(502, { error = "no id_token in response" })
     end
 
-    -- Decode id_token payload (skip sig verify — we trust Google HTTPS)
+    -- Decode and validate id_token claims.
+    -- Full RS256 signature verification requires JWKS fetching; instead we rely on
+    -- Google's HTTPS TLS for transport integrity and validate all critical claims.
     local id_parts = {}
     for p in token_data.id_token:gmatch("[^%.]+") do id_parts[#id_parts + 1] = p end
     if #id_parts < 2 then return send(502, { error = "invalid id_token format" }) end
@@ -290,6 +305,17 @@ route("GET", "^/admin/auth/google/callback$", function()
     local claims = json.decode(ngx.decode_base64(raw) or "")
     if not claims or not claims.email then
         return send(502, { error = "could not decode id_token claims" })
+    end
+
+    -- Validate issuer, audience, and expiry to prevent token substitution attacks.
+    if claims.iss ~= "https://accounts.google.com" and claims.iss ~= "accounts.google.com" then
+        return send(502, { error = "invalid id_token issuer" })
+    end
+    if claims.aud ~= auth.google_client_id then
+        return send(502, { error = "invalid id_token audience" })
+    end
+    if not claims.exp or claims.exp < ngx.time() then
+        return send(401, { error = "id_token expired" })
     end
 
     -- Resolve user — must be a pre-provisioned admin
@@ -310,7 +336,7 @@ end)
 -- CORS preflight for /admin/auth/*
 -- ---------------------------------------------------------------------------
 route("OPTIONS", "^/admin/auth/", function()
-    ngx.header["Access-Control-Allow-Origin"]      = ngx.var.http_origin or "*"
+    ngx.header["Access-Control-Allow-Origin"]      = CORS_ORIGIN
     ngx.header["Access-Control-Allow-Credentials"] = "true"
     ngx.header["Access-Control-Allow-Methods"]     = "GET, POST, OPTIONS"
     ngx.header["Access-Control-Allow-Headers"]     = "Content-Type"
@@ -326,7 +352,7 @@ function M.handle()
     local path   = ngx.var.uri
 
     if method == "OPTIONS" then
-        ngx.header["Access-Control-Allow-Origin"]      = ngx.var.http_origin or "*"
+        ngx.header["Access-Control-Allow-Origin"]      = CORS_ORIGIN
         ngx.header["Access-Control-Allow-Credentials"] = "true"
         ngx.header["Access-Control-Allow-Methods"]     = "GET, POST, OPTIONS"
         ngx.header["Access-Control-Allow-Headers"]     = "Content-Type"

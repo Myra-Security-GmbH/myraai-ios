@@ -100,6 +100,7 @@ function M.register(route)
             if not new_id then return send(500, { error = tostring(err) }) end
             local base_time = math.floor(ngx.now())
             for i, m in ipairs(snapshot.messages or {}) do
+                if m.role ~= "user" and m.role ~= "assistant" then goto continue end
                 storage.append_message({
                     conversation_id  = new_id,
                     role             = m.role,
@@ -108,6 +109,7 @@ function M.register(route)
                     model            = m.model,
                     created_at       = base_time + i,
                 })
+                ::continue::
             end
             local conv, e2 = storage.get_conversation(new_id, u.id)
             if not conv then return send(500, { error = tostring(e2) }) end
@@ -326,7 +328,7 @@ function M.register(route)
             title    = conv.title,
             messages = snapshot_msgs,
         })
-        local token = ngx.md5(id .. u.id .. tostring(ngx.now())):lower()
+        local token = require("utils.crypto").random_hex(32)
         local ok, e2 = storage.upsert_share(id, u.id, token, snapshot)
         if not ok then return send(500, { error = tostring(e2) }) end
         local base = os.getenv("AIG_SHARE_BASE_URL") or (ngx.var.scheme .. "://" .. (ngx.var.http_host or "localhost"))

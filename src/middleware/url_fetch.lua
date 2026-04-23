@@ -326,6 +326,11 @@ function M.run(ctx)
 
     trace.step(ctx, "url_fetch_attempt", { urls = urls })
 
+    local MAX_FETCHES_PER_TURN = 5
+    if #urls > MAX_FETCHES_PER_TURN then
+        ngx.log(ngx.WARN, "url_fetch: capping ", #urls, " requested URLs to ", MAX_FETCHES_PER_TURN)
+        urls = {table.unpack(urls, 1, MAX_FETCHES_PER_TURN)}
+    end
     local fetched = fetch_url.parallel(urls, #urls)
 
     trace.step(ctx, "url_fetch_result", {

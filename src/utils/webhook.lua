@@ -15,27 +15,34 @@
 local json    = require("utils.json")
 local sha256  = require("resty.sha256")
 local rstr    = require("resty.string")
+local bit     = require("bit")
 
 local M = {}
 
--- Compute a keyed SHA-256 digest used as a simple webhook signature.
--- Not a proper RFC 2104 HMAC, but provides message authentication when
--- the secret is kept private.  Compatible with standard HMAC-SHA256
--- when resty.hmac is available.
-local function sign(secret, body)
-    local ok, hmac_lib = pcall(require, "resty.hmac")
-    if ok and hmac_lib.ALGOS then
-        local h = hmac_lib:new(secret, hmac_lib.ALGOS.SHA256)
-        if h then
-            h:update(body)
-            return rstr.to_hex(h:final())
-        end
+-- HMAC-SHA256 (RFC 2104) using resty.sha256.
+local BLOCK_SIZE = 64
+local function hmac_sha256(key, message)
+    if #key > BLOCK_SIZE then
+        local kh = sha256:new(); kh:update(key); key = kh:final()
     end
-    -- Fallback: keyed hash H(secret || body) — weaker but self-consistent
-    local h = sha256:new()
-    h:update(secret)
-    h:update(body)
-    return rstr.to_hex(h:final())
+    local ipad, opad = {}, {}
+    for i = 1, BLOCK_SIZE do
+        local kb = i <= #key and key:byte(i) or 0
+        ipad[i] = string.char(bit.bxor(kb, 0x36))
+        opad[i] = string.char(bit.bxor(kb, 0x5c))
+    end
+    local inner = sha256:new()
+    inner:update(table.concat(ipad))
+    inner:update(message)
+    local inner_hash = inner:final()
+    local outer = sha256:new()
+    outer:update(table.concat(opad))
+    outer:update(inner_hash)
+    return rstr.to_hex(outer:final())
+end
+
+local function sign(secret, body)
+    return hmac_sha256(secret, body)
 end
 
 -- Deliver one webhook.  Called inside ngx.timer.at — no return value used.

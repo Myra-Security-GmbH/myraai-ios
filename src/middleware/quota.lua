@@ -1,7 +1,9 @@
 -- middleware/quota.lua — hard-stop when budget_usd is exceeded for the current period
 -- Three scopes checked in order: per-token → per-tenant → per-gateway.
--- Spend is read from the persistent spend_ledger via a 30-second shared-dict cache.
+-- Spend is read from the persistent spend_ledger via a 5-second shared-dict cache.
 -- Cache is invalidated by cost.lua immediately after each spend write.
+-- A 5-second TTL limits the maximum over-spend window for concurrent bursts;
+-- a full atomic in-flight counter would require pre-estimating request cost.
 
 local storage    = require("storage")
 local budget_lib = require("utils.budget")
@@ -9,7 +11,7 @@ local state      = require("state")
 local errors     = require("core.errors")
 local webhook    = require("utils.webhook")
 
-local CACHE_TTL = 30  -- seconds
+local CACHE_TTL = 5  -- seconds
 
 local M = {}
 

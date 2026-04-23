@@ -58,11 +58,11 @@ local email        = require("utils.email")
 local M = {}
 
 local CORS_ORIGIN = os.getenv("AIG_ADMIN_CORS_ORIGIN")
--- When no explicit origin is configured, echo the request's Origin header.
--- Sending "Access-Control-Allow-Origin: *" with "Allow-Credentials: true" is
--- forbidden by the CORS spec; browsers reject it for credentialed requests.
+-- Only emit CORS headers for explicitly configured origins.
+-- Echoing the request Origin with Allow-Credentials: true would allow any
+-- origin to make credentialed cross-origin requests.
 local function cors_origin()
-    return CORS_ORIGIN or ngx.var.http_origin or "*"
+    return CORS_ORIGIN
 end
 
 -- Error format note: the admin API uses a flat {"error": "message"} shape,
@@ -585,6 +585,10 @@ route("GET", "^/admin/v1/playground/search$", function()
     local q = args.q
     if not q or q == "" then return send(400, { error = "q required" }) end
 
+    local brave_key = os.getenv("AIG_BRAVE_API_KEY")
+    if not brave_key or brave_key == "" then
+        return send(503, { error = "web search is not configured (AIG_BRAVE_API_KEY not set)" })
+    end
     local http = require("utils.http")
     local status, _, body, err = http.request({
         method  = "GET",
@@ -592,7 +596,7 @@ route("GET", "^/admin/v1/playground/search$", function()
                   .. ngx.escape_uri(q) .. "&count=5",
         headers = {
             ["Accept"]               = "application/json",
-            ["X-Subscription-Token"] = "BSAaVsak7B8d0-0I_stOlzBal6EEncV",
+            ["X-Subscription-Token"] = brave_key,
         },
         timeout_ms = 8000,
     })
@@ -674,7 +678,7 @@ end)
 route("DELETE", "^/admin/v1/gateways/([^/]+)/tokens/([^/]+)$", function(gateway_id, token_id)
     if not require_tenant_admin() then return end
     if not require_gateway_access(gateway_id) then return end
-    local err = storage.delete_auth_token(token_id)
+    local err = storage.delete_auth_token(token_id, gateway_id)
     if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)

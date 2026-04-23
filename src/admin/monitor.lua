@@ -305,6 +305,7 @@ end
 -- Router
 -- ---------------------------------------------------------------------------
 function M.handle()
+    require("admin.auth").require_session()
     local uri = ngx.var.uri
     if uri == "/monitor/stats" then
         M.stats()
