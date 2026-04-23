@@ -71,7 +71,10 @@ function M.emit(ctx)
         scrub_applied          = ctx.log_fields and ctx.log_fields.scrub_applied or false,
         -- Request trace link
         trace_id               = ctx.trace_id,
-        -- Context compaction savings: tokens and cost saved vs uncompacted context
+        -- Context compaction: was compaction actually triggered this request, and how big was the context
+        compaction_triggered    = ctx.compaction_triggered    or false,
+        compaction_tokens_before = ctx.compaction_tokens_before or 0,
+        -- Savings on next request (when client sends x-aig-compaction-baseline header)
         compaction_tokens_saved = ctx.compaction_tokens_saved or 0,
         compaction_cost_saved   = ctx.compaction_cost_saved   or 0,
         rate_limited            = ctx.rate_limited            or false,

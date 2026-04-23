@@ -171,6 +171,7 @@ local MIGRATIONS = {
     { version = "0001", file = "0001_initial_schema.sql",   description = "Initial schema" },
     { version = "0002", file = "0002_permission_model.sql", description = "Missing columns and tables" },
     { version = "0003", file = "0003_add_rate_limited_to_request_log.sql", description = "Add rate_limited flag to request_log" },
+    { version = "0004", file = "0004_add_compaction_triggered_to_request_log.sql", description = "Add compaction_triggered and compaction_tokens_before to request_log" },
 }
 
 -- Errors that mean "this change is already applied" — tolerated silently.
@@ -422,8 +423,9 @@ function M.insert_log(f)
              detectors_fired, scrub_applied, response_raw, prompt_scrubbed,
              token_quota_remaining, tenant_quota_remaining, trace_id,
              compaction_tokens_saved, compaction_cost_saved,
+             compaction_triggered, compaction_tokens_before,
              rate_limited)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
@@ -458,6 +460,8 @@ function M.insert_log(f)
         f.trace_id,
         f.compaction_tokens_saved or 0,
         f.compaction_cost_saved   or 0,
+        f.compaction_triggered    and 1 or 0,
+        f.compaction_tokens_before or 0,
         f.rate_limited and 1 or 0
     )
     release(db)

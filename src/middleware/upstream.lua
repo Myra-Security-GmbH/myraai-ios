@@ -308,6 +308,7 @@ local function handle_compat_streaming(ctx, res)
         -- Include tokens_before so the frontend can calculate per-turn savings
         -- by passing X-AIG-Compaction-Baseline on subsequent requests.
         if parsed.compaction_summary then
+            ctx.compaction_triggered = true  -- Anthropic confirmed compaction occurred
             local compact_evt = "data: " .. json.encode({
                 aig_status          = "compacted",
                 compaction_summary  = parsed.compaction_summary,
