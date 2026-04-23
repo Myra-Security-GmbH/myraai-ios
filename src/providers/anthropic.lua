@@ -21,8 +21,10 @@ local M = {}
 local function cache_control_block(ttl)
     if ttl == "1h" then
         return { type = "ephemeral", ttl = "1h" }
+    elseif ttl == "5m" then
+        return { type = "ephemeral" }
     end
-    return { type = "ephemeral" }   -- default 5-minute TTL
+    return { type = "ephemeral" }   -- nil/unset → no ttl field, Anthropic defaults to 5m
 end
 
 -- Wrap a plain string system prompt into a content-block array with cache_control.
@@ -75,6 +77,7 @@ local function overwrite_blocks(blocks, cc)
 end
 
 local function overwrite_cache_ttl(body, ttl)
+    if not ttl then return end  -- nil = pass client TTL through unchanged
     local cc = cache_control_block(ttl)
     -- Tools must be overwritten first: Claude Code places cache_control on tool
     -- schemas with 5m TTL. Leaving them at 5m while system/messages get 1h
@@ -288,7 +291,7 @@ function M.build_request(ctx)
             -- Prompt caching: inject cache_control on native path too
             local pc = ctx.gateway_config and ctx.gateway_config.prompt_caching
             if pc and pc.enabled then
-                local ttl = pc.ttl or "5m"
+                local ttl = pc.ttl
                 -- Normalise any cache_control blocks the client already placed
                 -- (e.g. Claude Code always sends ttl='5m') to the gateway TTL so
                 -- the request uses a single consistent TTL throughout.
@@ -363,7 +366,7 @@ function M.build_request(ctx)
     -- Prompt caching: inject cache_control breakpoints when enabled on this gateway
     local pc = ctx.gateway_config and ctx.gateway_config.prompt_caching
     if pc and pc.enabled then
-        local ttl = pc.ttl or "5m"
+        local ttl = pc.ttl
         -- 1. Cache the system prompt
         if body.system then
             body.system = inject_system_cache(body.system, ttl)
