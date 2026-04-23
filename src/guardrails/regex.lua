@@ -67,21 +67,33 @@ function M.run(ctx, detector, phase)
             local name = p.name
 
             if name == "cc" or name == "routing_number" then
-                local new_text = scrubbed:gsub(pat, function(match)
-                    if checksum_ok(name, match) then
+                local ok_gsub, new_text = pcall(function()
+                    return scrubbed:gsub(pat, function(match)
+                        if checksum_ok(name, match) then
+                            if not first_match then first_match = name end
+                            any_scrubbed = true
+                            return placeholder
+                        end
+                        return match
+                    end)
+                end)
+                if ok_gsub then
+                    scrubbed = new_text
+                else
+                    ngx.log(ngx.WARN, "regex guardrail: invalid pattern name=", name,
+                            " pattern=", tostring(pat))
+                end
+            else
+                local ok_gsub, new_text, count = pcall(string.gsub, scrubbed, pat, placeholder)
+                if ok_gsub then
+                    if count and count > 0 then
                         if not first_match then first_match = name end
                         any_scrubbed = true
-                        return placeholder
+                        scrubbed = new_text
                     end
-                    return match
-                end)
-                scrubbed = new_text
-            else
-                local new_text, count = scrubbed:gsub(pat, placeholder)
-                if count and count > 0 then
-                    if not first_match then first_match = name end
-                    any_scrubbed = true
-                    scrubbed = new_text
+                else
+                    ngx.log(ngx.WARN, "regex guardrail: invalid pattern name=", name,
+                            " pattern=", tostring(pat))
                 end
             end
         end
@@ -98,8 +110,11 @@ function M.run(ctx, detector, phase)
             local name = p.name
 
             if name == "cc" or name == "routing_number" then
-                local found = text:match(pat)
-                if found and checksum_ok(name, found) then
+                local ok_match, found = pcall(string.match, text, pat)
+                if not ok_match then
+                    ngx.log(ngx.WARN, "regex guardrail: invalid pattern name=", name,
+                            " pattern=", tostring(pat))
+                elseif found and checksum_ok(name, found) then
                     if action == "block" then
                         return { verdict = "block", pattern = name }
                     else
@@ -107,7 +122,11 @@ function M.run(ctx, detector, phase)
                     end
                 end
             else
-                if text:match(pat) then
+                local ok_match, matched = pcall(string.match, text, pat)
+                if not ok_match then
+                    ngx.log(ngx.WARN, "regex guardrail: invalid pattern name=", name,
+                            " pattern=", tostring(pat))
+                elseif matched then
                     if action == "block" then
                         return { verdict = "block", pattern = name }
                     else

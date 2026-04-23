@@ -313,7 +313,12 @@ function M.build_request(ctx)
                     end
                 end
             end
-            return json.sanitize_surrogates(json.encode(body))
+            local encoded = json.encode(body)
+            if not encoded then
+                ngx.log(ngx.ERR, "anthropic: json.encode failed, falling back to raw body")
+                return json.sanitize_surrogates(raw)
+            end
+            return json.sanitize_surrogates(encoded)
         end
         return json.sanitize_surrogates(raw)
     end
@@ -454,7 +459,12 @@ function M.build_request(ctx)
     -- Context compaction
     maybe_inject_compaction(body, ctx)
 
-    return json.sanitize_surrogates(json.encode(body))
+    local encoded = json.encode(body)
+    if not encoded then
+        ngx.log(ngx.ERR, "anthropic: json.encode failed for compat request body")
+        return nil
+    end
+    return json.sanitize_surrogates(encoded)
 end
 
 function M.parse_response(body_str)

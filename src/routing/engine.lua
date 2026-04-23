@@ -37,7 +37,11 @@ local function eval_condition(ctx, cond)
     if op == "neq"      then return val ~= ref end
     if op == "prefix"   then return type(val) == "string" and val:sub(1, #ref) == ref end
     if op == "contains" then return type(val) == "string" and val:find(ref, 1, true) ~= nil end
-    if op == "regex"    then return type(val) == "string" and val:find(ref) ~= nil end
+    if op == "regex"    then
+        if type(val) ~= "string" then return false end
+        local ok, m = pcall(string.find, val, ref)
+        return ok and m ~= nil
+    end
     return false
 end
 

@@ -125,8 +125,14 @@ function M.record_failure(gw_id, provider, cfg, status_code, webhook_cfg)
 
     -- Closed state: increment failure counter with sliding window TTL
     -- incr(key, delta, init_value, exptime) — sets TTL on first creation
-    local count = rl_dict():incr(k_fail(gw_id, provider), 1, 0, window_sec * 2)
-    if count and count >= threshold then
+    local count, incr_err = rl_dict():incr(k_fail(gw_id, provider), 1, 0, window_sec * 2)
+    if not count then
+        ngx.log(ngx.ERR, "circuit_breaker: incr failed (dict full?) gw=", gw_id,
+                " provider=", provider, " err=", tostring(incr_err))
+        -- Treat as threshold reached so a full dict doesn't keep a broken provider open
+        count = threshold
+    end
+    if count >= threshold then
         cfg_dict():set(k_state(gw_id, provider),  "open",            state_ttl)
         cfg_dict():set(k_opened(gw_id, provider), tostring(ngx.now()), state_ttl)
         ngx.log(ngx.WARN, "circuit_breaker: opened gw=", gw_id,

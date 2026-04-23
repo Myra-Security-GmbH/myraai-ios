@@ -159,8 +159,7 @@ function M.parallel(urls, n)
     for i = 1, n do
         local ok, text = ngx.thread.wait(threads[i])
         out[i] = { url = urls[i], text = ok and text or nil }
-        -- Kill any threads we haven't waited on yet if the wait errored
-        if not ok and type(text) == "string" and text ~= "" then
+        if not ok then
             for j = i + 1, n do
                 ngx.thread.kill(threads[j])
             end

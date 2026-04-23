@@ -78,7 +78,7 @@ local function log_provider_error(req_ctx, res, fields)
         -- full request context
         url            = req_ctx and req_ctx.url,
         req_headers    = req_ctx and req_ctx.req_headers,
-        req_body       = req_ctx and req_ctx.req_body,
+        req_body       = req_ctx and req_ctx.req_body and req_ctx.req_body:sub(1, 500),
         -- full response context
         resp_status    = res and res.status,
         resp_headers   = res and res.headers,
@@ -463,7 +463,7 @@ local function handle_compat_streaming(ctx, res)
             .. " first_chunk_seen=", tostring(first_chunk_seen))
     elseif not stream_errored then
         local level = (stop_reason_seen == "tool_use" or stop_reason_seen == "tool_calls")
-            and ngx.WARN or ngx.ERR
+            and ngx.INFO or ngx.ERR
         ngx.log(level,
             "[stream_ok] compat stream completed"
             .. " | provider=", res.provider_name
@@ -1187,6 +1187,9 @@ function M.run(ctx)
                             if not next_res or next_res.status >= 400 then
                                 ngx.log(ngx.WARN, "[tool_loop_stream] leg ", round,
                                     " failed: ", tostring(next_err or next_res and next_res.status))
+                                if next_res and next_res.httpc then
+                                    next_res.httpc:set_keepalive()
+                                end
                                 break
                             end
 
