@@ -35,15 +35,17 @@
   --table-row-hover: #f9fafb;
   --blocked-row-bg: #fee2e2;
   /* Aliases — modules that use shorter variable names */
-  --accent:     #0052cc;
-  --primary:    #002b4a;
-  --border:     var(--card-border);
-  --surface-1:  var(--card-bg);
-  --surface-2:  var(--section-bg);
-  --bg:         var(--content-bg);
-  --bg-subtle:  var(--section-bg);
-  --text-muted: var(--text-secondary);
-  --text:       var(--text-primary);
+  --accent:            #0052cc;
+  --primary:           #002b4a;
+  --border:            var(--card-border);
+  --surface-1:         var(--card-bg);
+  --surface-2:         var(--section-bg);
+  --bg:                var(--content-bg);
+  --bg-subtle:         var(--section-bg);
+  --bg-highlight:      rgba(253, 246, 178, 0.6);
+  --text-muted:        var(--text-secondary);
+  --text:              var(--text-primary);
+  --btn-primary-text:  #ffffff;
 }
 
 [data-theme="dark"] {
@@ -83,6 +85,7 @@
   --primary:            #29d9ff;
   /* Primary button: use dark text on the light cyan background */
   --btn-primary-text:   #071929;
+  --bg-highlight:       rgba(255, 220, 0, 0.08);
 }
 
 .sidebar {

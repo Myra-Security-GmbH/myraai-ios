@@ -481,7 +481,7 @@ const MessageBubble = memo(function MessageBubble({
                   borderRadius: 5,
                   border: "none",
                   background: "var(--accent, #0052cc)",
-                  color: "#fff",
+                  color: "var(--btn-primary-text, #fff)",
                   cursor: "pointer",
                 }}
               >

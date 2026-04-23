@@ -345,12 +345,12 @@ export default function Logs() {
                       if (w === 0 && r === 0) return "—";
                       const total = w + r + (row.input_tokens ?? 0);
                       const hitPct = total > 0 ? Math.round(r * 100 / total) : 0;
-                      const color = hitPct >= 80 ? "#10b981" : hitPct >= 40 ? "#f59e0b" : "#ef4444";
+                      const color = hitPct >= 80 ? "var(--badge-success-text)" : hitPct >= 40 ? "var(--badge-warning-text)" : "var(--badge-error-text)";
                       return (
                         <span title={`Cache write: ${fmtNumber(w)} · Cache read: ${fmtNumber(r)}`}>
                           {r > 0 && <span style={{ color, fontWeight: 600 }}>{hitPct}% hit</span>}
                           {r > 0 && w > 0 && " · "}
-                          {w > 0 && <span style={{ color: "#94a3b8" }}>↑{fmtNumber(Math.round(w/1000))}k</span>}
+                          {w > 0 && <span style={{ color: "var(--text-secondary)" }}>↑{fmtNumber(Math.round(w/1000))}k</span>}
                         </span>
                       );
                     })()}

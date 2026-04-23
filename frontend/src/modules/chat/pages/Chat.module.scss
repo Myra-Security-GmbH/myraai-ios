@@ -373,7 +373,7 @@
   font-size: 13px;
   font-weight: 500;
   background: var(--accent, #0052cc);
-  color: #fff;
+  color: var(--btn-primary-text, #fff);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -1182,12 +1182,13 @@
   cursor: pointer;
   transition: opacity 0.15s, background 0.15s;
   background: var(--accent, #0052cc);
-  color: #fff;
+  color: var(--btn-primary-text, #fff);
 
   &:disabled { opacity: 0.45; cursor: not-allowed; }
 
   &.stop-btn {
     background: #d32f2f;
+    color: #fff;
   }
 }
 

@@ -330,7 +330,7 @@
   border: none;
   border-radius: 5px;
   background: var(--accent, #0052cc);
-  color: #fff;
+  color: var(--btn-primary-text, #fff);
   cursor: pointer;
 
   &:hover { opacity: 0.9; }

@@ -119,7 +119,7 @@ function HeroCards({ data, series }: { data: PeriodStats; series: TimeseriesPoin
             ? <><span className={s["hero-sub-highlight"]}>{cacheRate}%</span> cache hit rate</>
             : "No requests yet"}
           {(data.rate_limited ?? 0) > 0 && (
-            <> · <span style={{ color: "#f59e0b" }}>{fmtNumber(data.rate_limited)}</span> rate limited</>
+            <> · <span style={{ color: "var(--badge-warning-text)" }}>{fmtNumber(data.rate_limited)}</span> rate limited</>
           )}
         </div>
         {requestsSeries && <Sparkline values={requestsSeries} />}
@@ -161,7 +161,7 @@ function fmtTokens(n: number): string {
 function CacheEfficiencyCard({ data }: { data: CacheEfficiency }) {
   const totalTokens    = data.cache_write_tokens + data.cache_read_tokens + data.standard_input_tokens;
   const hitPct         = data.cache_hit_pct ?? 0;
-  const hitColor       = hitPct >= 60 ? "#10b981" : hitPct >= 30 ? "#f59e0b" : "#ef4444";
+  const hitColor       = hitPct >= 60 ? "var(--badge-success-text)" : hitPct >= 30 ? "var(--badge-warning-text)" : "var(--badge-error-text)";
   const cachedCost     = data.cached_cost_usd   ?? 0;   // reads only
   const uncachedCost   = data.uncached_cost_usd ?? 0;   // writes + standard input
   const totalCost      = cachedCost + uncachedCost;
@@ -196,11 +196,11 @@ function CacheEfficiencyCard({ data }: { data: CacheEfficiency }) {
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>
             Served from cache (reads)
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#10b981" }}>{fmtTokens(data.cache_read_tokens)}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--badge-success-text)" }}>{fmtTokens(data.cache_read_tokens)}</div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
             {totalTokens > 0 ? ((data.cache_read_tokens / totalTokens) * 100).toFixed(1) : 0}% of total
           </div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#10b981", marginTop: 4 }}>{fmtCost(cachedCost)}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--badge-success-text)", marginTop: 4 }}>{fmtCost(cachedCost)}</div>
         </div>
 
         {/* Cache writes — processed fresh, written to cache */}
@@ -208,11 +208,11 @@ function CacheEfficiencyCard({ data }: { data: CacheEfficiency }) {
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 3 }}>
             Processed fresh (cache writes)
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#f59e0b" }}>{fmtTokens(data.cache_write_tokens)}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--badge-warning-text)" }}>{fmtTokens(data.cache_write_tokens)}</div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
             {totalTokens > 0 ? ((data.cache_write_tokens / totalTokens) * 100).toFixed(1) : 0}% of total
           </div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#f59e0b", marginTop: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--badge-warning-text)", marginTop: 4 }}>
             {fmtCost(uncachedCost * (data.cache_write_tokens / Math.max(data.cache_write_tokens + data.standard_input_tokens, 1)))}
           </div>
         </div>
@@ -235,18 +235,18 @@ function CacheEfficiencyCard({ data }: { data: CacheEfficiency }) {
       {/* Cost summary footer */}
       <div style={{ display: "flex", gap: 24, fontSize: 12, color: "var(--text-secondary)", borderTop: "1px solid var(--card-border)", paddingTop: 8, flexWrap: "wrap" }}>
         <span>
-          Cached input cost: <strong style={{ color: "#10b981" }}>{fmtCost(cachedCost)}</strong>
+          Cached input cost: <strong style={{ color: "var(--badge-success-text)" }}>{fmtCost(cachedCost)}</strong>
           <span style={{ marginLeft: 4, opacity: 0.7 }}>(reads at 0.1× rate)</span>
         </span>
         <span>
-          Uncached input cost: <strong style={{ color: "#f59e0b" }}>{fmtCost(uncachedCost)}</strong>
+          Uncached input cost: <strong style={{ color: "var(--badge-warning-text)" }}>{fmtCost(uncachedCost)}</strong>
           <span style={{ marginLeft: 4, opacity: 0.7 }}>(writes + new tokens)</span>
         </span>
         {(data.compaction_tokens_saved ?? 0) > 0 && (
           <span style={{ marginLeft: "auto" }}>
-            🗜️ Compaction saved: <strong style={{ color: "#10b981" }}>{fmtTokens(data.compaction_tokens_saved)}</strong> tokens
+            🗜️ Compaction saved: <strong style={{ color: "var(--badge-success-text)" }}>{fmtTokens(data.compaction_tokens_saved)}</strong> tokens
             {(data.compaction_cost_saved ?? 0) > 0 && (
-              <> · <strong style={{ color: "#10b981" }}>{fmtCost(data.compaction_cost_saved)}</strong></>
+              <> · <strong style={{ color: "var(--badge-success-text)" }}>{fmtCost(data.compaction_cost_saved)}</strong></>
             )}
           </span>
         )}

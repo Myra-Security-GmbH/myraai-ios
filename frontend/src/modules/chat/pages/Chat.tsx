@@ -2169,7 +2169,7 @@ export default function Chat() {
         >
           <MemoryIcon />
           {memories.length > 0 && (
-            <span style={{ fontSize: "9px", position: "absolute", top: 2, right: 2, background: "var(--accent, #7c3aed)", color: "#fff", borderRadius: "50%", width: 12, height: 12, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>
+            <span style={{ fontSize: "9px", position: "absolute", top: 2, right: 2, background: "var(--accent, #7c3aed)", color: "var(--btn-primary-text, #fff)", borderRadius: "50%", width: 12, height: 12, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>
               {memories.length > 9 ? "9+" : memories.length}
             </span>
           )}

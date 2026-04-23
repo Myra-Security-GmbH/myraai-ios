@@ -809,7 +809,7 @@ function PromptGuardEditor({ det, onChange }: { det: PromptGuardDetector; onChan
                 <span style={{ flex: 1 }}>
                   {label}
                   {in_recommended && (
-                    <span style={{ marginLeft: 5, fontSize: 10, background: "#dcfce7", color: "#166534", borderRadius: 3, padding: "1px 4px", fontWeight: 600 }}>rec</span>
+                    <span style={{ marginLeft: 5, fontSize: 10, background: "var(--badge-success-bg)", color: "var(--badge-success-text)", borderRadius: 3, padding: "1px 4px", fontWeight: 600 }}>rec</span>
                   )}
                 </span>
                 <span style={{ fontSize: 10, background: badge.bg, color: badge.color, borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap", flexShrink: 0, fontWeight: 600 }}>

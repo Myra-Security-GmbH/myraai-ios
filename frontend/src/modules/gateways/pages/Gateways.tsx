@@ -1261,7 +1261,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
             <div className={s["stat-label"]}>Tracing</div>
             <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ fontSize: 11 }}>
               {(cfg as any).tracing?.enabled
-                ? <span style={{ color: "#10b981" }}>on{(cfg as any).tracing?.include_bodies ? " + bodies" : ""}</span>
+                ? <span style={{ color: "var(--badge-success-text)" }}>on{(cfg as any).tracing?.include_bodies ? " + bodies" : ""}</span>
                 : <span style={{ color: "var(--text-secondary)" }}>off</span>}
             </div>
           </div>
@@ -1269,7 +1269,7 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
             <div className={s["stat-label"]}>Web Search</div>
             <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ fontSize: 11 }}>
               {cfg.web_search?.enabled
-                ? <span style={{ color: "#10b981" }}>on</span>
+                ? <span style={{ color: "var(--badge-success-text)" }}>on</span>
                 : <span style={{ color: "var(--text-secondary)" }}>off</span>}
             </div>
           </div>

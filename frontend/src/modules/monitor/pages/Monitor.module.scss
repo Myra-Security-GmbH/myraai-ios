@@ -40,7 +40,7 @@
   font-family: $primary-font-family;
   font-size: tools.pixelToRem(13);
   font-weight: 600;
-  color: #3edcfe;
+  color: var(--accent);
   white-space: nowrap;
 }
 

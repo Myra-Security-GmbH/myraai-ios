@@ -1,0 +1,118 @@
+// TracePanel.module.scss — slide-over drawer for request trace detail
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 480px;
+  background: var(--bg);
+  border-left: 1px solid var(--card-border);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.10);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.header-title { font-weight: 600; font-size: 0.875rem; color: var(--text-primary); }
+.header-id    { font-size: 0.6875rem; color: var(--text-muted); font-family: monospace; }
+
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+.close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.125rem;
+  color: var(--text-muted);
+  line-height: 1;
+  padding: 0;
+
+  &:hover { color: var(--text-primary); }
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 20px;
+}
+
+.muted   { color: var(--text-muted); font-size: 0.8125rem; padding: 16px; }
+.error   { color: var(--badge-error-text); font-size: 0.8125rem; padding: 16px; }
+.empty   { color: var(--text-muted); font-size: 0.8125rem; padding: 8px; }
+
+// Individual step
+.step { margin-bottom: 8px; }
+
+.step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  transition: background 0.1s;
+
+  &:hover, &--open { background: var(--bg-subtle, #f6f8fa); }
+}
+
+.step-dot-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 3px;
+}
+
+.step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  // background is set inline (per-step color from STEP_META)
+}
+
+.step-content { flex: 1; min-width: 0; }
+
+.step-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+// step-label color is set inline (per-step color)
+.step-label  { font-weight: 600; font-size: 0.75rem; }
+.step-time   { font-size: 0.6875rem; color: var(--text-muted); flex-shrink: 0; }
+.step-name   { font-size: 0.6875rem; color: var(--text-muted); font-family: monospace; margin-top: 2px; }
+.step-summary { font-size: 0.6875rem; color: var(--text-muted); margin-top: 2px; }
+.step-summary--ok  { color: var(--badge-success-text); }
+.step-summary--err { color: var(--badge-error-text); }
+
+.step-chevron { font-size: 0.6875rem; color: var(--text-muted); flex-shrink: 0; padding-top: 2px; }
+
+.step-detail {
+  margin-left: 20px;
+  margin-top: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-subtle, #f6f8fa);
+  border: 1px solid var(--card-border);
+
+  pre {
+    margin: 0;
+    font-size: 0.6875rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+}

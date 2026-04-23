@@ -59,7 +59,7 @@ function OverviewChart({ data }: { data: TimeseriesPoint[] }) {
             Cost
           </span>
           <span className={ta["legend-item"]}>
-            <span className={ta["legend-line"]} style={{ background: "#3b82f6" }} />
+            <span className={ta["legend-line"]} style={{ background: "var(--accent)" }} />
             Requests
           </span>
         </div>
@@ -70,7 +70,7 @@ function OverviewChart({ data }: { data: TimeseriesPoint[] }) {
           return <rect key={i} x={i * (barW + gap)} y={H - bh} width={barW} height={bh}
                         fill="var(--badge-success-text, #16a34a)" opacity={0.55} rx={1} />;
         })}
-        <polyline points={pts} fill="none" stroke="#3b82f6" strokeWidth="1.5" opacity={0.8} />
+        <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="1.5" opacity={0.8} />
       </svg>
     </div>
   );
@@ -110,7 +110,7 @@ function ProportionBar({ value, max }: { value: number; max: number }) {
 
 function BudgetBar({ used, total, fmtFn = fmtCost }: { used: number; total: number; fmtFn?: (n: number) => string }) {
   const pct   = total > 0 ? Math.min((used / total) * 100, 100) : 0;
-  const color = pct >= 100 ? "#dc2626" : pct >= 80 ? "#d97706" : "var(--badge-success-text, #16a34a)";
+  const color = pct >= 100 ? "var(--badge-error-text)" : pct >= 80 ? "var(--badge-warning-text)" : "var(--badge-success-text)";
   return (
     <div>
       <div className={ta["budget-label-row"]}>
@@ -446,7 +446,7 @@ export default function TenantAnalytics() {
         </div>
         <div className={s["hero-card"]}>
           <div className={s["hero-label"]}>Error Rate</div>
-          <div className={s["hero-value"]} style={{ color: totalErrors > 0 ? "#d97706" : undefined }}>
+          <div className={s["hero-value"]} style={{ color: totalErrors > 0 ? "var(--badge-warning-text)" : undefined }}>
             {fmtRate(totalErrors, totalRequests)}
           </div>
           <div className={s["hero-sub"]}>{totalErrors} error{totalErrors !== 1 ? "s" : ""}</div>
@@ -464,7 +464,7 @@ export default function TenantAnalytics() {
         </div>
         <div className={s["hero-card"]}>
           <div className={s["hero-label"]}>Budget Warnings</div>
-          <div className={s["hero-value"]} style={{ color: overBudgetCount > 0 ? "#d97706" : undefined }}>
+          <div className={s["hero-value"]} style={{ color: overBudgetCount > 0 ? "var(--badge-warning-text)" : undefined }}>
             {overBudgetCount}
           </div>
           <div className={s["hero-sub"]}>tenants ≥ 80% of budget</div>

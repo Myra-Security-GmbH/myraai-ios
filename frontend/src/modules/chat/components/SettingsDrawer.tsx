@@ -257,7 +257,7 @@ export default function SettingsDrawer({
               border: "none",
               borderRadius: 6,
               background: "var(--accent, #0052cc)",
-              color: "#fff",
+              color: "var(--btn-primary-text, #fff)",
               cursor: "pointer",
             }}
           >
