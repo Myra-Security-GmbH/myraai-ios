@@ -32,8 +32,10 @@ COPY vendor/resty/ /usr/local/openresty/lualib/resty/
 # Lua source (no build step — interpreted at runtime)
 COPY src/        /opt/ai-gateway/src/
 COPY templates/  /opt/ai-gateway/templates/
-COPY config/gateway.docker.lua    /opt/ai-gateway/config/gateway.lua
-COPY config/nginx.docker.conf     /etc/openresty/nginx.conf
+ARG NGINX_CONF=config/nginx.docker.conf
+ARG GATEWAY_LUA=config/gateway.docker.lua
+COPY ${NGINX_CONF}  /etc/openresty/nginx.conf
+COPY ${GATEWAY_LUA} /opt/ai-gateway/config/gateway.lua
 COPY config/docker-entrypoint.sh  /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 

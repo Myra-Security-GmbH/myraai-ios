@@ -1,0 +1,64 @@
+name: ai-gateway-int
+
+services:
+  gateway:
+    build:
+      context: .
+      args:
+        NGINX_CONF: config/nginx.int.conf
+        GATEWAY_LUA: config/gateway.int.lua
+        VITE_ADMIN_URL: "https://ai-api-admin-int.myra.eu/admin/v1"
+        VITE_AUTH_URL:  "https://ai-api-admin-int.myra.eu/admin/auth"
+    ports:
+      - "172.17.0.1:4443:443"
+    environment:
+      # --- launch guard (set by run_docker_integration.sh) ---
+      AIG_LAUNCHED_BY_SCRIPT:    "${AIG_LAUNCHED_BY_SCRIPT}"
+      # --- secrets (from .env.integration) ---
+      AIG_MASTER_KEY:            "${AIG_MASTER_KEY_INT}"
+      AIG_JWT_SECRET:            "${AIG_JWT_SECRET_INT}"
+      AIG_MYSQL_PASS:            "${AIG_MYSQL_PASS_INT}"
+      # --- routing ---
+      AIG_ADMIN_CORS_ORIGIN:     "https://ai-int.myra.eu"
+      AIG_FRONTEND_URL:          "https://ai-int.myra.eu"
+      # --- storage ---
+      AIG_STORAGE:               "mysql"
+      AIG_MYSQL_HOST:            "172.17.0.1"
+      AIG_MYSQL_PORT:            "3306"
+      AIG_MYSQL_DB:              "ai_gateway_int"
+      AIG_MYSQL_USER:            "gateway_int"
+      # --- email OTP ---
+      AIG_OTP_FROM_EMAIL:        "${AIG_OTP_FROM_EMAIL}"
+      # --- bootstrap (first start only; ignored once an admin exists) ---
+      AIG_BOOTSTRAP_ADMIN_EMAIL: "${AIG_BOOTSTRAP_ADMIN_EMAIL}"
+      # --- SMTP relay for OTP emails ---
+      AIG_SMTP_HOST:             "${AIG_SMTP_HOST}"
+      AIG_SMTP_PORT:             "${AIG_SMTP_PORT:-25}"
+      AIG_SMTP_USER:             "${AIG_SMTP_USER}"
+      AIG_SMTP_PASS:             "${AIG_SMTP_PASS}"
+      # --- optional: guardrail sidecars ---
+      PRESIDIO_ANALYZER_URL:     "http://presidio:3000"
+      PRESIDIO_ANONYMIZER_URL:   "http://presidio-anonymizer:3000"
+      PROMPT_GUARD_URL:          "http://prompt-guard:8083"
+    volumes:
+      - gateway-int-data:/data
+      - /etc/letsencrypt/live/myra.eu.crt:/certs/fullchain.pem:ro
+      - /etc/letsencrypt/live/myra.eu.key:/certs/privkey.pem:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "-H", "Host: ai-api-int.myra.eu", "https://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  gateway-int-data:
+
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+        - subnet: fd00:dead:beef:4::/64

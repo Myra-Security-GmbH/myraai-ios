@@ -294,6 +294,7 @@ async def run_batch(
                 # visible output. 2048 gives enough room to finish reasoning + answer.
                 "max_tokens": 2048,
                 "stream": True,
+                "stream_options": {"include_usage": True},
                 "temperature": 0.7,
             }
             # Strip private field before sending

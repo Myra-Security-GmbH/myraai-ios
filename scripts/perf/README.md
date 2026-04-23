@@ -115,10 +115,13 @@ python3 scripts/perf/analyse.py results/perf_20260422_123456.jsonl --format mark
 | Component | Value |
 |---|---|
 | Model | qwen3-30b-a3b (MoE, 3B active / 30B total params, AWQ quantized) |
-| GPU (qwen3) | NVIDIA RTX PRO 6000 Blackwell, 97 GB VRAM |
+| GPU (qwen3) | NVIDIA H200 NVL, 144 GB VRAM (dedicated — no GPU sharing) |
 | vLLM max-num-seqs | **32** (hard concurrency ceiling) |
+| vLLM max-num-batched-tokens | **65,536** |
+| vLLM gpu-memory-utilization | **0.84** (~97 GiB KV cache, 2,128,096 tokens) |
 | vLLM chunked prefill | enabled |
-| KV cache dtype | fp8 (memory efficient) |
+| KV cache dtype | fp8 |
+| Attention backend | FLASH_ATTN (FlashAttention-3, Hopper-optimised) |
 | Gateway workers | 16 nginx workers |
 | Rate limit | 500 req/min per token (per-worker shared dict, not global) |
 

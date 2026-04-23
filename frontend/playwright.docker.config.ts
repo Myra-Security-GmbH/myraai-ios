@@ -129,5 +129,19 @@ export default defineConfig({
         deviceScaleFactor: 2,
       },
     },
+
+    // UI review — dark + light mode capture
+    {
+      name: "ui-review",
+      dependencies: ["docker-setup"],
+      testMatch: "**/ui-review.spec.ts",
+      timeout: 180_000,
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: SESSION,
+        viewport: { width: 1440, height: 900 },
+        deviceScaleFactor: 2,
+      },
+    },
   ],
 });

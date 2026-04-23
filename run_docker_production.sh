@@ -61,6 +61,20 @@ log_cmd bash -c "cd '$(dirname "$0")/frontend' && \
   VITE_BUILD_DATE=\"$(date -u +"%Y-%m-%d %H:%M UTC")\" \
   npm run build"
 
+# ── Install systemd unit files ────────────────────────────────────────────────
+SCRIPT_DIR="$(dirname "$0")"
+for svc in presidio; do
+  src="$SCRIPT_DIR/config/${svc}.service"
+  dst="/etc/systemd/system/${svc}.service"
+  if ! cmp -s "$src" "$dst" 2>/dev/null; then
+    echo "▶ Installing $dst"
+    sudo cp "$src" "$dst"
+    sudo systemctl daemon-reload
+    sudo systemctl enable "${svc}.service"
+  fi
+done
+done_stage "Systemd unit files up to date"
+
 # ── Run ───────────────────────────────────────────────────────────────────────
 done_next "Frontend built" "[5/5] Building Docker image and starting container"
 exec docker compose up -d --build "${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"}"

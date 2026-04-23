@@ -19,24 +19,40 @@ These instructions apply to every session in this repository. Follow them exactl
 After writing any frontend or backend code, you MUST complete these steps in order before
 considering the task done. Skipping any step is not acceptable.
 
-1. **Rebuild the Docker image** — run `bash run_docker_production.sh` from
-   `/home/sas/work/ai-gateway/`. Never use `bash build_frontend.sh` alone as the final
-   step — it hot-deploys only and does not bake the change into the image.
-   - Exception: if only a config file or container environment changed (no source files),
-     `sudo systemctl restart myra-ai-gateway` is sufficient for a fast bounce.
+1. **If the feature requires database changes**, create a migration file first:
+   ```bash
+   cd /home/sas/work/ai-gateway && ./scripts/db.sh new <description>
+   ```
+   Then add the SQL to the generated file and add an entry to the `MIGRATIONS` registry
+   in `src/storage/mysql.lua`. The migration auto-applies when the container restarts.
+
+2. **Rebuild the integration Docker image** — run `bash run_docker_integration.sh` from
+   `/home/sas/work/ai-gateway/`. This builds and deploys to the **int** environment, not production.
    - **Always show the full stdout output** — never pipe through `tail`, `head`, or any
-     filter. Redirect stderr to /dev/null if needed: `bash run_docker_production.sh 2>/dev/null`
-2. **Run the relevant E2E tests** — start the Vite dev server (`cd frontend && npm run dev`)
-   if it is not already running, then execute the test file for the feature you changed:
+     filter. Redirect stderr to /dev/null if needed: `bash run_docker_integration.sh 2>/dev/null`
+
+3. **Verify migrations applied** (if any DB changes):
    ```bash
-   cd frontend && ./run-e2e.sh tests/<feature>.spec.ts --reporter=list
+   cd /home/sas/work/ai-gateway && ./scripts/db.sh status int
    ```
-3. **If any test fails**, fix the code, repeat step 1, and re-run. Do not mark the task
+
+4. **Run the relevant E2E tests against int**:
+   ```bash
+   cd frontend && ./run-e2e.sh tests/<feature>.spec.ts --config playwright.int.config.ts
+   ```
+
+5. **If any test fails**, fix the code, repeat step 2, and re-run. Do not mark the task
    complete while a test is failing.
-4. **Run the full suite** when the change is broad or touches shared code:
+
+6. **Run the full suite** when the change is broad or touches shared code:
    ```bash
-   cd frontend && ./run-e2e.sh --reporter=list
+   cd frontend && ./run-e2e.sh --config playwright.int.config.ts
    ```
+
+7. **After human approval** (reply "OK" on the YouTrack ticket):
+   - Commit and push to master
+   - Run `bash run_docker_production.sh 2>/dev/null` to deploy to production
+   - Verify: `./scripts/db.sh status prod` (confirms migration applied to production DB)
 
 ---
 
@@ -335,7 +351,7 @@ Never build a custom modal overlay — always use `<Modal>`.
 
 ## Restarting the gateway
 
-Two commands exist — use the right one:
+### Production
 
 | Situation | Command |
 |---|---|
@@ -343,34 +359,22 @@ Two commands exist — use the right one:
 | Code changed (Lua, frontend, docs) | `bash run_docker_production.sh` |
 | Documentation changed + PDF needs updating | `bash run_docker_production.sh --pdf` |
 
-`sudo systemctl restart myra-ai-gateway` restarts the container instantly without rebuilding anything.
-It is safe to use any time the image is already up-to-date.
+### Integration
 
-`run_docker_production.sh` does a full rebuild: docs → PDF → frontend → Docker image → container restart.
-Use it whenever any source file changed.
+| Situation | Command |
+|---|---|
+| Container crashed / needs a bounce | `sudo systemctl restart myra-ai-gateway-int` |
+| Code changed (Lua, frontend, docs) | `bash run_docker_integration.sh` |
 
-The service unit is at `/etc/systemd/system/myra-ai-gateway.service` and is enabled on boot.
-
----
-
-## Lua / backend changes
-
-```bash
-bash run_docker_production.sh
-```
-
-PDF generation is skipped by default (it is slow). Pass `--pdf` to include it:
-
-```bash
-bash run_docker_production.sh --pdf
-```
+`run_docker_production.sh` / `run_docker_integration.sh` do a full rebuild: docs → frontend → Docker image → container restart.
+Use them whenever any source file changed.
 
 Lua files are **baked into the Docker image** — they are NOT volume-mounted.
 `sudo openresty -s reload` only works for a locally-running openresty; it has no effect on Docker.
-`docker compose up -d` alone will crash-loop — the entrypoint requires `AIG_LAUNCHED_BY_SCRIPT=1`
-and the secrets injected by `run_docker_production.sh`. Never call `docker compose up` directly.
+Never call `docker compose up` directly — the entrypoint requires `AIG_LAUNCHED_BY_SCRIPT=1`
+and the secrets injected by the run scripts.
 
-If a clean rebuild is needed: `docker compose build --no-cache` first, then `bash run_docker_production.sh`.
+If a clean rebuild is needed: `docker compose build --no-cache` first, then the appropriate run script.
 
 ---
 
@@ -426,28 +430,111 @@ Steps 1–3 are only needed when their respective outputs changed.
 
 - **Only MySQL/MariaDB** — there is NO SQLite in production or Docker
 - MariaDB runs on the host at `172.17.0.1:3306`
-- Production DB: `ai_gateway` | Dev DB: `gateway_dev`
-- MySQL user: `gateway` / `gateway`
+- Production DB: `ai_gateway` | Integration DB: `ai_gateway_int` | Dev DB: `gateway_dev`
+- Production MySQL user: `gateway` / (see `.env.production`)
+- Integration MySQL user: `gateway_int` / (see `.env.integration`)
 
 Connect for debugging:
 ```bash
-mysql -h 172.17.0.1 -u gateway -pgateway ai_gateway
+# Production
+mysql -h 172.17.0.1 -u gateway -p<PASS> ai_gateway
+# Integration
+mysql -h 172.17.0.1 -u gateway_int -p<INT_PASS> ai_gateway_int
 ```
+
+### Database migrations
+
+Migrations live in `src/storage/migrations/` as numbered SQL files (`NNNN_description.sql`).
+Applied versions are tracked in the `schema_migrations` table in each database.
+Migrations run automatically on container startup (worker 0 only).
+
+**Create a new migration:**
+```bash
+./scripts/db.sh new <short_description>
+# → creates src/storage/migrations/NNNN_<description>.sql
+# → also add the entry to MIGRATIONS registry in src/storage/mysql.lua
+```
+
+**Check migration status:**
+```bash
+./scripts/db.sh status int    # integration environment
+./scripts/db.sh status prod   # production environment
+```
+
+**Apply pending migrations manually** (without container restart):
+```bash
+./scripts/db.sh migrate int
+./scripts/db.sh migrate prod
+```
+
+Every migration file must be idempotent (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`).
+
+---
+
+## Integration environment
+
+The integration environment (`int`) is a full copy of the production stack used for
+validating changes before they reach production. It runs on the same machine on the
+public IPv4 address `80.90.15.137:443` (production uses IPv6 only).
+
+### Hostnames
+
+| Purpose | Production | Integration |
+|---|---|---|
+| SPA frontend | `ai.myra.eu` | `ai-int.myra.eu` |
+| Inference API | `ai-api.myra.eu` | `ai-api-int.myra.eu` |
+| Admin API | `ai-api-admin.myra.eu` | `ai-api-admin-int.myra.eu` |
+| Documentation | `ai-docs.myra.eu` | `ai-docs-int.myra.eu` |
+
+### Build and deploy
+
+```bash
+# Full image rebuild + container restart (use after any code change)
+bash run_docker_integration.sh 2>/dev/null
+
+# Hot-deploy frontend only (no image rebuild — fast iteration)
+bash build_frontend_int.sh
+
+# Restart container without rebuilding (config/env change only)
+sudo systemctl restart myra-ai-gateway-int
+```
+
+### E2E tests against int
+
+```bash
+# Run a specific spec against int
+cd frontend && ./run-e2e.sh tests/<feature>.spec.ts --config playwright.int.config.ts
+
+# Run full suite against int
+cd frontend && ./run-e2e.sh --config playwright.int.config.ts
+```
+
+### Config files
+
+- `config/nginx.int.conf` → nginx config with int hostnames
+- `config/gateway.int.lua` → Lua config with int URL defaults
+- `docker-compose.int.yml` → compose file for int service
+- `run_docker_integration.sh` → build + deploy script (not committed)
+- `.env.integration` → secrets (not committed)
 
 ---
 
 ## Infrastructure overview
 
-| Vhost | Purpose |
-|---|---|
-| `ai.myra.eu:443` | React SPA frontend |
-| `ai-api-admin.myra.eu:443` | Admin API (`/admin/`) |
-| `ai-api.myra.eu:443` | Inference API (`/v1/`) |
-| `ai-docs.myra.eu:443` | Documentation |
+| Vhost | Environment | Purpose |
+|---|---|---|
+| `ai.myra.eu:443` | Production (IPv6) | React SPA frontend |
+| `ai-api-admin.myra.eu:443` | Production (IPv6) | Admin API (`/admin/`) |
+| `ai-api.myra.eu:443` | Production (IPv6) | Inference API (`/v1/`) |
+| `ai-docs.myra.eu:443` | Production (IPv6) | Documentation |
+| `ai-int.myra.eu:443` | Integration (IPv4) | React SPA frontend |
+| `ai-api-admin-int.myra.eu:443` | Integration (IPv4) | Admin API |
+| `ai-api-int.myra.eu:443` | Integration (IPv4) | Inference API |
+| `ai-docs-int.myra.eu:443` | Integration (IPv4) | Documentation |
 
-Config files used in Docker:
-- `config/nginx.docker.conf` → `/etc/openresty/nginx.conf`
-- `config/gateway.docker.lua` → `/opt/ai-gateway/config/gateway.lua`
+Config files used in Docker (selectable via build args):
+- `config/nginx.docker.conf` / `config/nginx.int.conf` → `/etc/openresty/nginx.conf`
+- `config/gateway.docker.lua` / `config/gateway.int.lua` → `/opt/ai-gateway/config/gateway.lua`
 - `config/docker-entrypoint.sh` → validates env vars, starts openresty
 
 ---
