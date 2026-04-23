@@ -3,16 +3,16 @@ import type { ChatConversation } from "src/api/types";
 import { api } from "src/api/client";
 import s from "../pages/Chat.module.scss";
 
-function diffDays(iso: string): number {
-  const d = new Date(iso);
+function diffDays(ts: number): number {
+  const d = new Date(ts * 1000);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   return Math.floor(diffMs / 86400000);
 }
 
-function fmtDate(iso: string) {
-  const d = new Date(iso);
-  const days = diffDays(iso);
+function fmtDate(ts: number) {
+  const d = new Date(ts * 1000);
+  const days = diffDays(ts);
   if (days === 0) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (days === 1) return "Yesterday";
   if (days < 7) return d.toLocaleDateString([], { weekday: "short" });

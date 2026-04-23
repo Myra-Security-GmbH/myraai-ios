@@ -47,7 +47,7 @@ export interface Tenant {
   siem?: SiemConfig;
   chat_presets?: TenantPreset[];
   slash_commands?: SlashCommand[];
-  created_at: string;
+  created_at: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +215,7 @@ export interface Gateway {
   slug: string;
   tenant_id: string;
   config: GatewayConfig;
-  created_at: string;
+  created_at: number;
 }
 
 export interface User {
@@ -224,8 +224,8 @@ export interface User {
   email: string;
   name: string | null;
   role: "admin" | "tenant_admin" | "member" | "viewer";
-  created_at: string;
-  last_login_at: string | null;
+  created_at: number;
+  last_login_at: number | null;
 }
 
 export interface AuthToken {
@@ -233,8 +233,8 @@ export interface AuthToken {
   gateway_id: string;
   token_hash: string;
   scopes: string[];
-  expires_at: string | null;
-  created_at: string;
+  expires_at: number | null;
+  created_at: number;
   user_id: string | null;
   label: string | null;
   rate_limit: { requests: number; window_sec: number } | null;
@@ -243,7 +243,7 @@ export interface AuthToken {
 
 export interface LogEntry {
   id: string;
-  ts: string;
+  ts: number;
   tenant: string;
   tenant_id: string;
   gateway?: string;
@@ -331,7 +331,7 @@ export interface GatewayGuardrailStats {
 }
 
 export interface GuardrailEvent {
-  ts: string;
+  ts: number;
   blocked: number;
   scrub_applied: number;
   detectors_fired: string[];
@@ -421,7 +421,7 @@ export interface ProviderConfig {
   id: string;
   provider: string;
   alias: string;
-  created_at: string;
+  created_at: number;
 }
 
 export interface RoutingRule {
@@ -444,7 +444,7 @@ export interface ModelPrice {
   output_per_1k: number;
   cache_write_per_1k: number | null;
   cache_read_per_1k: number | null;
-  updated_at: string;
+  updated_at: number;
   /** True for Anthropic claude-3-7-sonnet and all claude-4-series models */
   supports_thinking: boolean;
 }
@@ -455,7 +455,7 @@ export interface ModelPrice {
 
 export interface PlaygroundToken {
   token: string;
-  expires_at: string;
+  expires_at: number;
   tenant_slug: string;
   gateway_slug: string;
 }
@@ -523,8 +523,8 @@ export interface ChatMemory {
   type:        "fact" | "preference" | "instruction";
   source:      "manual" | "auto";
   project_id?: string;   // absent = user scope (per-user pool); present = project scope
-  created_at:  string;
-  updated_at:  string;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface ChatConversation {
@@ -541,10 +541,10 @@ export interface ChatConversation {
   archived_at?: number | null; // unix seconds
   memory_disabled?: number;  // 0 | 1
   shared_in_project?: number; // 0 | 1
-  shared_at?: string | null;
+  shared_at?: number | null;
   shared_by?: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at: number;
+  updated_at: number;
   messages?: ChatMessage[];
 }
 
@@ -554,10 +554,10 @@ export interface ProjectFeedEntry {
   model: string;
   user_id: string;
   project_id: string;
-  shared_at: string;
+  shared_at: number;
   shared_by: string;
   shared_by_email: string | null;
-  created_at: string;
+  created_at: number;
 }
 
 export interface ConversationShare {
@@ -573,7 +573,7 @@ export interface ConversationSummary {
   last_message_id: string;
   message_count: number;
   model_used: string;
-  created_at: string;
+  created_at: number;
 }
 
 export interface ChatMessage {
@@ -589,7 +589,7 @@ export interface ChatMessage {
   latency_ms: number | null;
   gateway_id?: string | null;
   model?: string | null;
-  created_at: string;
+  created_at: number;
   attachments?: ChatAttachment[];
 }
 
@@ -599,7 +599,7 @@ export interface ChatAttachment {
   filename: string;
   mime_type: string;
   size_bytes: number;
-  created_at: string;
+  created_at: number;
   /** Only present when fetched via GET /attachments/:id */
   data?: string;
 }
@@ -611,8 +611,8 @@ export interface ChatPreset {
   system_prompt: string | null;
   temperature: number | null;
   max_tokens: number | null;
-  created_at: string;
-  updated_at: string;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface SlashCommand {
@@ -620,8 +620,8 @@ export interface SlashCommand {
   name: string;
   description: string;
   template: string;
-  created_at: string;
-  updated_at: string;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface ChatFeedback {
@@ -630,8 +630,8 @@ export interface ChatFeedback {
   user_id: string;
   rating: number;
   comment: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at: number;
+  updated_at: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -649,8 +649,8 @@ export interface McpConnector {
   auth_type: McpAuthType;
   /** Only present when fetched via GET /mcp/:id */
   auth_value?: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface McpTool {
@@ -670,7 +670,7 @@ export interface ProjectMember {
   role: ProjectRole;
   email: string;
   name: string | null;
-  joined_at: string;
+  joined_at: number;
 }
 
 export interface ProjectKnowledge {
@@ -681,7 +681,7 @@ export interface ProjectKnowledge {
   token_count: number;
   source: "text" | "upload";
   created_by?: string;
-  created_at: string;
+  created_at: number;
 }
 
 export interface ProjectKnowledgeText extends ProjectKnowledge {
@@ -700,8 +700,8 @@ export interface ChatProject {
   default_model: string | null;
   created_by: string;
   my_role?: ProjectRole;
-  created_at: string;
-  updated_at: string;
+  created_at: number;
+  updated_at: number;
   last_conversation_at?: string | null;
   member_count?: number;
   knowledge_count?: number;

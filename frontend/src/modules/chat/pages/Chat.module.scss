@@ -299,11 +299,16 @@
     width: 280px;
     z-index: 300;
     transform: translateX(-100%);
-    transition: transform 0.25s ease;
+    /* visibility:hidden after the slide-out finishes so children are truly
+       hidden to Playwright (transform alone is not enough for isHidden()) */
+    visibility: hidden;
+    transition: transform 0.25s ease, visibility 0s 0.25s;
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
 
     &--open {
       transform: translateX(0);
+      visibility: visible;
+      transition: transform 0.25s ease, visibility 0s;
     }
   }
 }

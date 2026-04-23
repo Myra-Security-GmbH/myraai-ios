@@ -26,24 +26,24 @@ const mockApi = api as unknown as {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const TENANT1: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: "2024-01-01T00:00:00Z" };
-const TENANT2: Tenant = { id: "t2", slug: "globex", plan: "free", budget_usd: null, budget_period: "monthly", created_at: "2024-01-02T00:00:00Z" };
+const TENANT1: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: 1704067200 };
+const TENANT2: Tenant = { id: "t2", slug: "globex", plan: "free", budget_usd: null, budget_period: "monthly", created_at: 1704067200 };
 
-const GW1: Gateway = { id: "gw1", slug: "main-gw", tenant_id: "t1", config: {}, created_at: "2024-01-05T00:00:00Z" };
-const GW2: Gateway = { id: "gw2", slug: "dev-gw", tenant_id: "t1", config: {}, created_at: "2024-01-06T00:00:00Z" };
+const GW1: Gateway = { id: "gw1", slug: "main-gw", tenant_id: "t1", config: {}, created_at: 1704067200 };
+const GW2: Gateway = { id: "gw2", slug: "dev-gw", tenant_id: "t1", config: {}, created_at: 1704067200 };
 
 const PLAY_TOKEN: PlaygroundToken = {
   token: "tok-abc123",
-  expires_at: new Date(Date.now() + 600_000).toISOString(),
+  expires_at: Math.floor((Date.now() + 600_000) / 1000),
   tenant_slug: "acme",
   gateway_slug: "main-gw",
 };
 
 const MODELS: ModelPrice[] = [
-  { provider: "openai",      model: "gpt-4o",              input_per_1k: 0.005,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z", supports_thinking: false },
-  { provider: "anthropic",   model: "claude-sonnet-4-6",   input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z", supports_thinking: true  },
-  { provider: "gemini",      model: "gemini-2.0-flash",    input_per_1k: 0.00015, output_per_1k: 0.0006, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z", supports_thinking: false },
-  { provider: "perplexity",  model: "sonar-pro",           input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z", supports_thinking: false },
+  { provider: "openai",      model: "gpt-4o",              input_per_1k: 0.005,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
+  { provider: "anthropic",   model: "claude-sonnet-4-6",   input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: true  },
+  { provider: "gemini",      model: "gemini-2.0-flash",    input_per_1k: 0.00015, output_per_1k: 0.0006, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
+  { provider: "perplexity",  model: "sonar-pro",           input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
 ];
 
 const PROVIDER_META: ProviderMeta[] = [
@@ -55,10 +55,10 @@ const PROVIDER_META: ProviderMeta[] = [
 ];
 
 const GW_KEYS: ProviderConfig[] = [
-  { id: "k1", provider: "anthropic", alias: "default", created_at: "2024-01-01T00:00:00Z" },
-  { id: "k2", provider: "openai",    alias: "default", created_at: "2024-01-01T00:00:00Z" },
-  { id: "k3", provider: "gemini",    alias: "default", created_at: "2024-01-01T00:00:00Z" },
-  { id: "k4", provider: "perplexity",alias: "default", created_at: "2024-01-01T00:00:00Z" },
+  { id: "k1", provider: "anthropic", alias: "default", created_at: 1704067200 },
+  { id: "k2", provider: "openai",    alias: "default", created_at: 1704067200 },
+  { id: "k3", provider: "gemini",    alias: "default", created_at: 1704067200 },
+  { id: "k4", provider: "perplexity",alias: "default", created_at: 1704067200 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -382,7 +382,7 @@ describe("Playground — ModelPicker", () => {
     // Add an ollama model to MODELS to have something to filter
     const modelsWithOllama = [
       ...MODELS,
-      { provider: "ollama", model: "llama3", input_per_1k: 0, output_per_1k: 0, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: "2024-01-01T00:00:00Z", supports_thinking: false },
+      { provider: "ollama", model: "llama3", input_per_1k: 0, output_per_1k: 0, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
     ];
     // ollama requires_key=false so it IS runnable; use a provider with no key instead
     // Simulate perplexity having no key configured
@@ -1142,7 +1142,7 @@ const CLAUDE_MODEL: ModelPrice = {
   output_per_1k: 0.004,
   cache_write_per_1k: null,
   cache_read_per_1k: null,
-  updated_at: "2024-01-01T00:00:00Z",
+  updated_at: 1704067200,
   supports_thinking: false,
 };
 
@@ -1796,7 +1796,7 @@ const CLAUDE_OPUS_45: ModelPrice = {
   output_per_1k: 0.075,
   cache_write_per_1k: null,
   cache_read_per_1k: null,
-  updated_at: "2024-01-01T00:00:00Z",
+  updated_at: 1704067200,
   supports_thinking: true,
 };
 

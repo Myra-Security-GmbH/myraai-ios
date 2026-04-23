@@ -31,11 +31,11 @@ const mockApi = api as unknown as {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const T1: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: 50, budget_period: "monthly", created_at: "2024-01-01T00:00:00Z" };
-const T2: Tenant = { id: "t2", slug: "globex", plan: "enterprise", budget_usd: null, budget_period: "monthly", created_at: "2024-02-01T00:00:00Z" };
-const T3: Tenant = { id: "t3", slug: "initech", plan: "free", budget_usd: null, budget_period: "monthly", created_at: "2024-03-01T00:00:00Z" };
+const T1: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: 50, budget_period: "monthly", created_at: 1704067200 };
+const T2: Tenant = { id: "t2", slug: "globex", plan: "enterprise", budget_usd: null, budget_period: "monthly", created_at: 1706745600 };
+const T3: Tenant = { id: "t3", slug: "initech", plan: "free", budget_usd: null, budget_period: "monthly", created_at: 1709251200 };
 
-const GW: Gateway = { id: "gw1", slug: "main", tenant_id: "t1", config: { auth_required: true, cache_ttl: 300 }, created_at: "2024-01-05T00:00:00Z" };
+const GW: Gateway = { id: "gw1", slug: "main", tenant_id: "t1", config: { auth_required: true, cache_ttl: 300 }, created_at: 1704067200 };
 
 function setupDefaultMocks(tenants = [T1, T2, T3]) {
   mockApi.get.mockImplementation((path: string) => {
@@ -167,7 +167,7 @@ describe("Tenants — create modal", () => {
 
   it("submits POST to /tenants with correct payload", async () => {
     const user = userEvent.setup();
-    mockApi.post.mockResolvedValue({ id: "t99", slug: "newco", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: "2024-03-01T00:00:00Z" });
+    mockApi.post.mockResolvedValue({ id: "t99", slug: "newco", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: 1709251200 });
     mockApi.get.mockImplementation((path: string) => {
       if (path === "/tenants") return Promise.resolve([T1]);
       return Promise.resolve([]);

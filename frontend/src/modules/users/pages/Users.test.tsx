@@ -31,16 +31,16 @@ const mockUseAuth = useAuth as ReturnType<typeof vi.fn>;
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const TN1: Tenant = { id: "o1", slug: "acme", plan: "free", budget_usd: null, budget_period: "monthly", created_at: "2024-01-01T00:00:00Z" };
-const TN2: Tenant = { id: "o2", slug: "globex", plan: "free", budget_usd: null, budget_period: "monthly", created_at: "2024-01-02T00:00:00Z" };
+const TN1: Tenant = { id: "o1", slug: "acme", plan: "free", budget_usd: null, budget_period: "monthly", created_at: 1704067200 };
+const TN2: Tenant = { id: "o2", slug: "globex", plan: "free", budget_usd: null, budget_period: "monthly", created_at: 1704067200 };
 
-const USER1: User = { id: "u1", tenant_id: "o1", email: "alice@example.com", name: "Alice", role: "admin", created_at: "2024-01-10T00:00:00Z", last_login_at: "2024-03-01T10:00:00Z" };
-const USER2: User = { id: "u2", tenant_id: "o1", email: "bob@example.com", name: null, role: "member", created_at: "2024-01-11T00:00:00Z", last_login_at: null };
-const USER3: User = { id: "u3", tenant_id: "o2", email: "carol@example.com", name: "Carol", role: "viewer", created_at: "2024-01-12T00:00:00Z", last_login_at: null };
+const USER1: User = { id: "u1", tenant_id: "o1", email: "alice@example.com", name: "Alice", role: "admin", created_at: 1704067200, last_login_at: 1709251200 };
+const USER2: User = { id: "u2", tenant_id: "o1", email: "bob@example.com", name: null, role: "member", created_at: 1704067200, last_login_at: null };
+const USER3: User = { id: "u3", tenant_id: "o2", email: "carol@example.com", name: "Carol", role: "viewer", created_at: 1704067200, last_login_at: null };
 
-const GW: Gateway = { id: "gw1", slug: "main-gw", tenant_id: "t1", config: {}, created_at: "2024-01-05T00:00:00Z" };
+const GW: Gateway = { id: "gw1", slug: "main-gw", tenant_id: "t1", config: {}, created_at: 1704067200 };
 
-const TOKEN: AuthToken = { id: "tok1", gateway_id: "gw1", token_hash: "abc", scopes: ["inference"], expires_at: null, created_at: "2024-02-01T00:00:00Z", user_id: "u1", label: "dev", rate_limit: null, budget_usd: null };
+const TOKEN: AuthToken = { id: "tok1", gateway_id: "gw1", token_hash: "abc", scopes: ["inference"], expires_at: null, created_at: 1706745600, user_id: "u1", label: "dev", rate_limit: null, budget_usd: null };
 
 // Default admin logged-in user (platform admin)
 const ADMIN_ME = { id: "me", email: "admin@example.com", role: "admin" as const, tenant_id: null };

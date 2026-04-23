@@ -35,7 +35,7 @@ export default function MembersDrawer({ projectId, onClose, onMemberAdded }: Pro
         return;
       }
       await api.post(`/projects/${projectId}/members`, { user_id: found.id, role });
-      onMemberAdded({ user_id: found.id, role, email: found.email, name: found.name, joined_at: new Date().toISOString() });
+      onMemberAdded({ user_id: found.id, role, email: found.email, name: found.name, joined_at: Math.floor(Date.now() / 1000) });
       setSuccess(`${found.email} added as ${role}.`);
       setEmail("");
     } catch (e) {

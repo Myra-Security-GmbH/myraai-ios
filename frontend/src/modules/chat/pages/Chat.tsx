@@ -1198,7 +1198,7 @@ export default function Chat() {
       output_tokens: null,
       cost_usd: null,
       latency_ms: null,
-      created_at: new Date().toISOString(),
+      created_at: Math.floor(Date.now() / 1000),
     };
     setMessages((prev) => [...prev, tempUserMsg]);
     setInputValue("");
@@ -1697,7 +1697,7 @@ export default function Chat() {
         latency_ms: latencyMs,
         gateway_id: gatewayId,
         model: model,
-        created_at: new Date().toISOString(),
+        created_at: Math.floor(Date.now() / 1000),
         attachments: [],
       };
       if (activeConvIdRef.current === convId) {
@@ -1727,7 +1727,7 @@ export default function Chat() {
           latency_ms: latencyMs,
           gateway_id: gatewayId,
           model: model,
-          created_at: new Date().toISOString(),
+          created_at: Math.floor(Date.now() / 1000),
           attachments: [],
         };
         if (activeConvIdRef.current === convId) {
@@ -1736,7 +1736,7 @@ export default function Chat() {
         // Update conversation updated_at in list
         setConversations((prev) =>
           prev.map((c) =>
-            c.id === convId ? { ...c, updated_at: new Date().toISOString() } : c
+            c.id === convId ? { ...c, updated_at: Math.floor(Date.now() / 1000) } : c
           )
         );
       } catch (e) {
@@ -1869,8 +1869,8 @@ export default function Chat() {
         system_prompt: drawerSettings.systemPrompt || null,
         temperature: drawerSettings.temperature,
         max_tokens: drawerSettings.maxTokens,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: Math.floor(Date.now() / 1000),
+        updated_at: Math.floor(Date.now() / 1000),
       };
       setPresets((prev) => [...prev, preset]);
     } catch (e) {
@@ -1917,7 +1917,7 @@ export default function Chat() {
         output_tokens: null,
         cost_usd: null,
         latency_ms: null,
-        created_at: new Date().toISOString(),
+        created_at: Math.floor(Date.now() / 1000),
       };
       setMessages((prev) => [...prev, injected]);
     } catch {
@@ -2077,7 +2077,7 @@ export default function Chat() {
 
         {supportsThinking && (
           <button
-            className={chatS["icon-btn"]}
+            className={`${chatS["icon-btn"]} ${chatS["icon-btn--mobile-hidden"]}`}
             title={drawerSettings.thinkingBudget !== null
               ? `Extended thinking ON (${(drawerSettings.thinkingBudget / 1000).toFixed(0)}k tokens) — click to disable`
               : "Enable extended thinking"}

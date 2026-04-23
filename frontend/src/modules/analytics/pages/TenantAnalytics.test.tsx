@@ -30,12 +30,12 @@ const mockApi = api as unknown as { get: ReturnType<typeof vi.fn> };
 const TENANT1: Tenant = {
   id: "t1", slug: "acme", plan: "enterprise",
   budget_usd: 100, budget_period: "monthly",
-  created_at: "2024-01-01T00:00:00Z",
+  created_at: 1704067200,
 };
 const TENANT2: Tenant = {
   id: "t2", slug: "devteam", plan: "standard",
   budget_usd: null, budget_period: "monthly",
-  created_at: "2024-01-02T00:00:00Z",
+  created_at: 1704067200,
 };
 
 const GLOBAL_TS: TimeseriesPoint[] = Array.from({ length: 30 }, (_, i) => ({

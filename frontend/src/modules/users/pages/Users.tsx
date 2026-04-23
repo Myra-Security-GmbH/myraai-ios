@@ -446,8 +446,8 @@ function userSortComparator(a: User, b: User, field: UserSortField, tenants: Ten
       const sb = tenants.find((t) => t.id === b.tenant_id)?.slug ?? "";
       return sa.localeCompare(sb);
     }
-    case "last_login_at": return (a.last_login_at ?? "").localeCompare(b.last_login_at ?? "");
-    case "created_at":   return a.created_at.localeCompare(b.created_at);
+    case "last_login_at": return (a.last_login_at ?? 0) - (b.last_login_at ?? 0);
+    case "created_at":   return a.created_at - b.created_at;
   }
 }
 

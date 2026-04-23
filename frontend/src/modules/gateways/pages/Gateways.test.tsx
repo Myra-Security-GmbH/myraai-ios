@@ -30,18 +30,18 @@ const mockApi = api as unknown as {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const TENANT: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: "2024-01-01T00:00:00Z" };
-const TENANT2: Tenant = { id: "t2", slug: "globex", plan: "free", budget_usd: null, budget_period: "monthly", created_at: "2024-01-02T00:00:00Z" };
+const TENANT: Tenant = { id: "t1", slug: "acme", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: 1704067200 };
+const TENANT2: Tenant = { id: "t2", slug: "globex", plan: "free", budget_usd: null, budget_period: "monthly", created_at: 1704067200 };
 
 const GW1: Gateway = {
   id: "gw1", slug: "prod", tenant_id: "t1",
   config: { auth_required: true, cache_ttl: 300, retry_count: 2, timeout_ms: 120000, budget_usd: 50, rate_limit: { requests: 100, window_sec: 60 } },
-  created_at: "2024-02-01T00:00:00Z",
+  created_at: 1706745600,
 };
 const GW2: Gateway = {
   id: "gw2", slug: "staging", tenant_id: "t1",
   config: { auth_required: false, cache_ttl: 0, retry_count: 0, timeout_ms: 30000 },
-  created_at: "2024-02-02T00:00:00Z",
+  created_at: 1704067200,
 };
 
 const GW_WITH_DETECTORS: Gateway = {
@@ -50,7 +50,7 @@ const GW_WITH_DETECTORS: Gateway = {
     auth_required: true,
     guardrails: [{ type: "keyword", name: "kw-check", action: "flag", keywords: ["secret"] }],
   },
-  created_at: "2024-02-04T00:00:00Z",
+  created_at: 1704067200,
 };
 
 // Legacy schema: guardrails is a {enabled:false} object; detectors is the real array.
@@ -61,7 +61,7 @@ const GW_LEGACY_SCHEMA: Gateway = {
     guardrails: { enabled: false } as any,
     detectors: [{ type: "keyword", name: "legacy-kw", action: "flag", keywords: ["foo"] }] as any,
   },
-  created_at: "2024-02-05T00:00:00Z",
+  created_at: 1704067200,
 };
 
 // Legacy schema: guardrails is object, no detectors key at all.
@@ -71,7 +71,7 @@ const GW_LEGACY_NO_DETECTORS: Gateway = {
     auth_required: true,
     guardrails: { enabled: false } as any,
   },
-  created_at: "2024-02-06T00:00:00Z",
+  created_at: 1704067200,
 };
 
 // ---------------------------------------------------------------------------

@@ -216,7 +216,7 @@ export default function MessageThread({
         output_tokens: null,
         cost_usd: null,
         latency_ms: null,
-        created_at: new Date().toISOString(),
+        created_at: Math.floor(Date.now() / 1000),
       }
     : null;
 

@@ -35,7 +35,7 @@ const STATS: UsageStats = {
   ],
   recent: [
     {
-      id: "l1", ts: "2024-03-15T12:00:00Z", tenant: "acme", tenant_id: "t1",
+      id: "l1", ts: 1710460800, tenant: "acme", tenant_id: "t1",
       gateway_id: "gw1", provider: "anthropic", model: "claude-3-haiku", status: 200,
       cached: 0, blocked: 0, blocked_by: null, block_reason: null,
       guardrail_verdict: null, input_tokens: 80, output_tokens: 40,
@@ -50,7 +50,7 @@ const STATS: UsageStats = {
 };
 
 const TENANTS: Tenant[] = [
-  { id: "t1", slug: "acme", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: "2024-01-01T00:00:00Z" },
+  { id: "t1", slug: "acme", plan: "standard", budget_usd: null, budget_period: "monthly", created_at: 1704067200 },
 ];
 
 function setupMocks(statsOverride?: Partial<UsageStats>) {

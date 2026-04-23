@@ -901,7 +901,7 @@ function M.get_tenant(id)
     if not db then return nil end
     local row = query_one(db, [[
         SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               created_at
         FROM tenant WHERE id = ? AND deleted_at IS NULL
     ]], id)
     release(db)
@@ -915,14 +915,14 @@ function M.list_tenants(tenant_id_filter)
     if tenant_id_filter then
         rows = query_all(db, [[
             SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+                   created_at
             FROM tenant WHERE deleted_at IS NULL AND id = ?
             ORDER BY created_at DESC
         ]], tenant_id_filter) or {}
     else
         rows = query_all(db, [[
             SELECT id, slug, plan, budget_usd, budget_period, siem_config, chat_presets_config, slash_commands_config,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+                   created_at
             FROM tenant WHERE deleted_at IS NULL ORDER BY created_at DESC
         ]]) or {}
     end
@@ -935,7 +935,7 @@ function M.list_gateways(tenant_id)
     if not db then return {} end
     local rows = query_all(db, [[
         SELECT g.id, g.slug, g.tenant_id, g.config,
-               DATE_FORMAT(FROM_UNIXTIME(g.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               g.created_at
         FROM gateway g WHERE g.tenant_id = ? ORDER BY g.created_at DESC
     ]], tenant_id) or {}
     release(db)
@@ -957,7 +957,7 @@ function M.get_gateway_by_id(gateway_id)
     if not db then return nil end
     local row = query_one(db, [[
         SELECT g.id, g.slug, g.config, g.tenant_id,
-               DATE_FORMAT(FROM_UNIXTIME(g.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               g.created_at
         FROM gateway g WHERE g.id = ?
     ]], gateway_id)
     release(db)
@@ -984,8 +984,8 @@ function M.list_auth_tokens(gateway_id)
     local rows = query_all(db, [[
         SELECT id, token_hash, scopes, user_id, label, rate_limit, budget_usd,
                CASE WHEN expires_at IS NOT NULL
-                    THEN DATE_FORMAT(FROM_UNIXTIME(expires_at), '%Y-%m-%dT%H:%i:%sZ') END AS expires_at,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+                    THEN expires_at END AS expires_at,
+               created_at
         FROM auth_token WHERE gateway_id = ?
           AND (expires_at IS NULL OR expires_at > ?)
         ORDER BY created_at DESC
@@ -999,7 +999,7 @@ function M.list_provider_configs(gateway_id)
     if not db then return {} end
     local rows = query_all(db, [[
         SELECT id, provider, alias,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               created_at
         FROM provider_config WHERE gateway_id = ? ORDER BY provider, alias
     ]], gateway_id) or {}
     release(db)
@@ -1035,10 +1035,10 @@ function M.get_user(id)
     local row = query_one(db, [[
         SELECT id, tenant_id, email, name, role,
                CASE WHEN deleted_at IS NOT NULL
-                    THEN DATE_FORMAT(FROM_UNIXTIME(deleted_at), '%Y-%m-%dT%H:%i:%sZ') END AS deleted_at,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
+                    THEN deleted_at END AS deleted_at,
+               created_at,
                CASE WHEN last_login_at IS NOT NULL
-                    THEN DATE_FORMAT(FROM_UNIXTIME(last_login_at), '%Y-%m-%dT%H:%i:%sZ') END AS last_login_at
+                    THEN last_login_at END AS last_login_at
         FROM `user` WHERE id = ?
     ]], id)
     release(db)
@@ -1066,9 +1066,9 @@ function M.list_users(tenant_id, opts)
         rows = query_all(db, string.format([[
             SELECT u.id, u.tenant_id, u.email, u.name, u.role,
                    t.slug AS tenant_slug,
-                   DATE_FORMAT(FROM_UNIXTIME(u.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   u.created_at,
                    CASE WHEN u.last_login_at IS NOT NULL
-                        THEN DATE_FORMAT(FROM_UNIXTIME(u.last_login_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') END AS last_login_at
+                        THEN u.last_login_at END AS last_login_at
             FROM `user` u
             LEFT JOIN tenant t ON t.id = u.tenant_id
             WHERE u.tenant_id = ? AND u.deleted_at IS NULL
@@ -1078,9 +1078,9 @@ function M.list_users(tenant_id, opts)
         rows = query_all(db, string.format([[
             SELECT u.id, u.tenant_id, u.email, u.name, u.role,
                    NULL AS tenant_slug,
-                   DATE_FORMAT(FROM_UNIXTIME(u.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   u.created_at,
                    CASE WHEN u.last_login_at IS NOT NULL
-                        THEN DATE_FORMAT(FROM_UNIXTIME(u.last_login_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') END AS last_login_at
+                        THEN u.last_login_at END AS last_login_at
             FROM `user` u
             WHERE u.tenant_id IS NULL AND u.deleted_at IS NULL
             ORDER BY %s
@@ -1089,9 +1089,9 @@ function M.list_users(tenant_id, opts)
         rows = query_all(db, string.format([[
             SELECT u.id, u.tenant_id, u.email, u.name, u.role,
                    t.slug AS tenant_slug,
-                   DATE_FORMAT(FROM_UNIXTIME(u.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   u.created_at,
                    CASE WHEN u.last_login_at IS NOT NULL
-                        THEN DATE_FORMAT(FROM_UNIXTIME(u.last_login_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') END AS last_login_at
+                        THEN u.last_login_at END AS last_login_at
             FROM `user` u
             LEFT JOIN tenant t ON t.id = u.tenant_id
             WHERE u.deleted_at IS NULL
@@ -1152,8 +1152,8 @@ function M.list_user_tokens(user_id)
     local rows = query_all(db, [[
         SELECT id, gateway_id, token_hash, scopes, label, rate_limit, budget_usd,
                CASE WHEN expires_at IS NOT NULL
-                    THEN DATE_FORMAT(FROM_UNIXTIME(expires_at), '%Y-%m-%dT%H:%i:%sZ') END AS expires_at,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+                    THEN expires_at END AS expires_at,
+               created_at
         FROM auth_token WHERE user_id = ? ORDER BY created_at DESC
     ]], user_id) or {}
     release(db)
@@ -1166,7 +1166,7 @@ function M.list_model_prices()
     local rows = query_all(db, [[
         SELECT provider, model, input_per_1k, output_per_1k,
                cache_write_per_1k, cache_read_per_1k,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+               updated_at
         FROM model_price ORDER BY provider, model
     ]]) or {}
     release(db)
@@ -1180,7 +1180,7 @@ function M.list_models(provider)
         local rows = query_all(db, [[
             SELECT provider, model, input_per_1k, output_per_1k,
                    cache_write_per_1k, cache_read_per_1k,
-                   DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+                   updated_at
             FROM   model_price
             WHERE  provider = ?
             ORDER  BY model
@@ -1223,7 +1223,7 @@ function M.list_logs(filters)
     local offset = filters.offset or 0
     local sql = string.format([[
         SELECT id,
-               DATE_FORMAT(FROM_UNIXTIME(ts/1000), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS ts,
+               ROUND(ts / 1000) AS ts,
                tenant_id, gateway_id,
                provider, model, status, cached, blocked,
                blocked_by, block_reason, guardrail_verdict,
@@ -1248,7 +1248,7 @@ function M.get_log(id)
     if not db then return nil end
     local row = query_one(db, [[
         SELECT id,
-               DATE_FORMAT(FROM_UNIXTIME(ts/1000), '%Y-%m-%dT%H:%i:%sZ') AS ts,
+               ROUND(ts / 1000) AS ts,
                tenant_id, gateway_id, provider, model, status, cached, blocked,
                blocked_by, block_reason, guardrail_verdict,
                input_tokens, output_tokens, cost_usd, latency_ms,
@@ -1344,7 +1344,7 @@ function M.get_usage_stats(tenant_id)
     local by_tenant = query_all(db, by_tenant_sql) or {}
 
     local recent_sql = string.format([[
-        SELECT DATE_FORMAT(FROM_UNIXTIME(r.ts/1000), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS ts,
+        SELECT ROUND(r.ts / 1000) AS ts,
                r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
                r.gateway_id, COALESCE(g.slug, r.gateway_id) AS gateway,
                r.provider, r.model,
@@ -1364,7 +1364,7 @@ function M.get_usage_stats(tenant_id)
     local recent = query_all(db, recent_sql) or {}
 
     local recent_blocked_sql = string.format([[
-        SELECT DATE_FORMAT(FROM_UNIXTIME(r.ts/1000), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS ts,
+        SELECT ROUND(r.ts / 1000) AS ts,
                r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
                r.gateway_id, COALESCE(g.slug, r.gateway_id) AS gateway,
                r.blocked_by, r.block_reason, r.latency_ms,
@@ -1631,7 +1631,7 @@ function M.list_client_errors(limit)
     if not db then return {} end
     local rows = query_all(db, string.format([[
         SELECT id, message, stack, url, user_agent,
-               DATE_FORMAT(FROM_UNIXTIME(ts/1000), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS ts
+               ROUND(ts / 1000) AS ts
         FROM   client_error_log
         ORDER  BY ts DESC
         LIMIT  %d
@@ -1661,7 +1661,7 @@ function M.list_audit_logs(limit, offset)
     if not db then return {} end
     local rows = query_all(db, string.format([[
         SELECT id,
-               DATE_FORMAT(FROM_UNIXTIME(ts/1000), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS ts,
+               ROUND(ts / 1000) AS ts,
                actor_id, actor_ip, method, path, status
         FROM   audit_log
         ORDER  BY id DESC
@@ -1796,7 +1796,7 @@ function M.list_guardrail_events(gateway_id, limit)
     local db, err = get_conn()
     if not db then return {} end
     local rows = query_all(db, string.format([[
-        SELECT DATE_FORMAT(FROM_UNIXTIME(ts/1000), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS ts,
+        SELECT ROUND(ts / 1000) AS ts,
                blocked, scrub_applied, detectors_fired,
                blocked_by, block_reason,
                guardrail_latency_ms, guardrail_verdict,
@@ -1964,8 +1964,8 @@ function M.list_conversations(user_id, limit, offset, opts)
     local rows = query_all(db, string.format([[
         SELECT id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens,
                starred, archived_at, memory_disabled,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
+               created_at,
+               updated_at
         FROM chat_conversation
         WHERE user_id = ? AND deleted_at IS NULL %s
         ORDER BY starred DESC, updated_at DESC
@@ -2004,8 +2004,8 @@ function M.get_conversation(id, user_id)
     local conv = query_one(db, [[
         SELECT id, user_id, gateway_id, project_id, title, model, system_prompt, temperature, max_tokens,
                starred, archived_at, memory_disabled,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+               created_at,
+               updated_at
         FROM chat_conversation
         WHERE id = ? AND user_id = ? AND deleted_at IS NULL
         LIMIT 1
@@ -2016,7 +2016,7 @@ function M.get_conversation(id, user_id)
     local msgs = query_all(db, [[
         SELECT id, parent_message_id, role, content,
                input_tokens, output_tokens, cost_usd, latency_ms, gateway_id, model,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               created_at
         FROM chat_message
         WHERE conversation_id = ? AND deleted_at IS NULL
         ORDER BY created_at ASC
@@ -2033,7 +2033,7 @@ function M.get_conversation(id, user_id)
         local in_clause = table.concat(msg_ids, ",")
         local atts = query_all(db, string.format([[
             SELECT id, message_id, filename, mime_type, size_bytes,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at
+                   created_at
             FROM chat_attachment WHERE message_id IN (%s)
         ]], in_clause)) or {}
         for _, att in ipairs(atts) do
@@ -2169,7 +2169,7 @@ function M.get_attachment(id, user_id)
     if not db then return nil, err end
     local row = query_one(db, [[
         SELECT a.id, a.message_id, a.filename, a.mime_type, a.size_bytes, a.data,
-               DATE_FORMAT(FROM_UNIXTIME(a.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               a.created_at
         FROM chat_attachment a
         JOIN chat_message m    ON m.id = a.message_id
         JOIN chat_conversation c ON c.id = m.conversation_id
@@ -2203,8 +2203,8 @@ function M.list_presets(user_id)
     if not db then return setmetatable({}, cjson.array_mt) end
     local rows = query_all(db, [[
         SELECT id, name, model, system_prompt, temperature, max_tokens,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+               created_at,
+               updated_at
         FROM chat_preset WHERE user_id = ? ORDER BY name ASC
     ]], user_id) or {}
     release(db)
@@ -2265,8 +2265,8 @@ function M.list_commands(user_id)
     if not db then return setmetatable({}, cjson.array_mt) end
     local rows = query_all(db, [[
         SELECT id, name, description, template,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+               created_at,
+               updated_at
         FROM chat_command WHERE user_id = ? ORDER BY name ASC
     ]], user_id) or {}
     release(db)
@@ -2339,8 +2339,8 @@ function M.get_feedback(conv_id, user_id)
     if not db then return nil, err end
     local row = query_one(db, [[
         SELECT id, conversation_id, user_id, rating, comment, processed,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+               created_at,
+               updated_at
         FROM chat_feedback
         WHERE conversation_id = ? AND user_id = ?
         LIMIT 1
@@ -2366,8 +2366,8 @@ function M.list_feedback(opts)
     local sql = string.format([[
         SELECT f.id, f.conversation_id, f.user_id, u.email,
                f.rating, f.comment, f.processed,
-               DATE_FORMAT(FROM_UNIXTIME(f.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(f.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
+               f.created_at,
+               f.updated_at
         FROM chat_feedback f
         LEFT JOIN `user` u ON u.id = f.user_id
         WHERE %s
@@ -2423,11 +2423,11 @@ function M.list_projects(tenant_id, user_id, is_admin)
             SELECT p.id, p.tenant_id, p.name, p.description, p.instructions,
                    p.icon, p.color, p.default_gateway_id, p.default_model,
                    p.created_by,
-                   DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
-                   DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
+                   p.created_at,
+                   p.updated_at,
                    (SELECT COUNT(*) FROM chat_project_member  WHERE project_id = p.id) AS member_count,
                    (SELECT COUNT(*) FROM chat_project_knowledge WHERE project_id = p.id) AS knowledge_count,
-                   (SELECT DATE_FORMAT(FROM_UNIXTIME(MAX(c.updated_at)), '%%Y-%%m-%%dT%%H:%%i:%%sZ')
+                   (SELECT MAX(c.updated_at)
                     FROM chat_conversation c WHERE c.project_id = p.id AND c.deleted_at IS NULL) AS last_conversation_at,
                    m.role AS my_role
             FROM chat_project p
@@ -2441,11 +2441,11 @@ function M.list_projects(tenant_id, user_id, is_admin)
             SELECT p.id, p.tenant_id, p.name, p.description, p.instructions,
                    p.icon, p.color, p.default_gateway_id, p.default_model,
                    p.created_by,
-                   DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
-                   DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
+                   p.created_at,
+                   p.updated_at,
                    (SELECT COUNT(*) FROM chat_project_member  WHERE project_id = p.id) AS member_count,
                    (SELECT COUNT(*) FROM chat_project_knowledge WHERE project_id = p.id) AS knowledge_count,
-                   (SELECT DATE_FORMAT(FROM_UNIXTIME(MAX(c.updated_at)), '%%Y-%%m-%%dT%%H:%%i:%%sZ')
+                   (SELECT MAX(c.updated_at)
                     FROM chat_conversation c WHERE c.project_id = p.id AND c.deleted_at IS NULL) AS last_conversation_at,
                    m.role AS my_role
             FROM chat_project p
@@ -2495,8 +2495,8 @@ function M.get_project(id, user_id, is_admin)
             SELECT p.id, p.tenant_id, p.name, p.description, p.instructions,
                    p.icon, p.color, p.default_gateway_id, p.default_model,
                    p.created_by,
-                   DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at,
+                   p.created_at,
+                   p.updated_at,
                    NULL AS my_role
             FROM chat_project p
             WHERE p.id = ? AND p.deleted_at IS NULL
@@ -2507,8 +2507,8 @@ function M.get_project(id, user_id, is_admin)
             SELECT p.id, p.tenant_id, p.name, p.description, p.instructions,
                    p.icon, p.color, p.default_gateway_id, p.default_model,
                    p.created_by,
-                   DATE_FORMAT(FROM_UNIXTIME(p.created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   DATE_FORMAT(FROM_UNIXTIME(p.updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at,
+                   p.created_at,
+                   p.updated_at,
                    m.role AS my_role
             FROM chat_project p
             JOIN chat_project_member m ON m.project_id = p.id AND m.user_id = ?
@@ -2520,7 +2520,7 @@ function M.get_project(id, user_id, is_admin)
     -- Load members
     proj.members = query_all(db, [[
         SELECT m.user_id, m.role,
-               DATE_FORMAT(FROM_UNIXTIME(m.joined_at), '%Y-%m-%dT%H:%i:%sZ') AS joined_at,
+               m.joined_at,
                u.email, u.name
         FROM chat_project_member m
         JOIN `user` u ON u.id = m.user_id
@@ -2530,7 +2530,7 @@ function M.get_project(id, user_id, is_admin)
     -- Load knowledge file metadata (no text body — that would be large)
     proj.knowledge = query_all(db, [[
         SELECT id, filename, content_type, size_bytes, token_count,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               created_at
         FROM chat_project_knowledge
         WHERE project_id = ?
         ORDER BY created_at ASC
@@ -2642,7 +2642,7 @@ function M.list_project_knowledge(project_id)
     local rows = query_all(db, [[
         SELECT id, filename, content_type, size_bytes, token_count,
                COALESCE(source, 'text') AS source,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               created_at
         FROM chat_project_knowledge
         WHERE project_id = ?
         ORDER BY created_at ASC
@@ -2658,7 +2658,7 @@ function M.get_project_knowledge_item(kid, project_id)
     local rows = query_all(db, [[
         SELECT id, filename, content_type, size_bytes, token_count, extracted_text,
                COALESCE(source, 'text') AS source,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               created_at
         FROM chat_project_knowledge
         WHERE id = ? AND project_id = ?
         LIMIT 1
@@ -2816,16 +2816,16 @@ function M.list_memories(user_id, project_id)
     if project_id then
         rows = query_all(db, [[
             SELECT id, user_id, project_id, content, type, source,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+                   created_at,
+                   updated_at
             FROM chat_memory WHERE user_id = ? AND project_id = ?
             ORDER BY created_at ASC
         ]], user_id, project_id) or {}
     else
         rows = query_all(db, [[
             SELECT id, user_id, project_id, content, type, source,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+                   created_at,
+                   updated_at
             FROM chat_memory WHERE user_id = ? AND project_id IS NULL
             ORDER BY created_at ASC
         ]], user_id) or {}
@@ -2906,8 +2906,8 @@ function M.search_conversations_by_title(user_id, q, limit)
     if not db then return {} end
     local rows = query_all(db, string.format([[
         SELECT id, gateway_id, title, model, project_id, starred, archived_at,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
+               created_at,
+               updated_at
         FROM chat_conversation
         WHERE user_id = ? AND deleted_at IS NULL AND archived_at IS NULL
           AND title LIKE ?
@@ -2945,7 +2945,7 @@ function M.list_app_feedback(limit, offset, type_filter)
     if type_filter and type_filter ~= "" then
         rows = query_all(db, string.format([[
             SELECT f.id, f.user_id, f.type, f.summary, f.description, f.url,
-                   DATE_FORMAT(FROM_UNIXTIME(f.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   f.created_at,
                    f.processed,
                    u.email AS user_email
             FROM app_feedback f LEFT JOIN `user` u ON u.id = f.user_id
@@ -2956,7 +2956,7 @@ function M.list_app_feedback(limit, offset, type_filter)
     else
         rows = query_all(db, string.format([[
             SELECT f.id, f.user_id, f.type, f.summary, f.description, f.url,
-                   DATE_FORMAT(FROM_UNIXTIME(f.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
+                   f.created_at,
                    f.processed,
                    u.email AS user_email
             FROM app_feedback f LEFT JOIN `user` u ON u.id = f.user_id
@@ -2984,8 +2984,8 @@ function M.list_project_conversations(project_id, limit)
     if not db then return setmetatable({}, cjson.array_mt) end
     local rows = query_all(db, string.format([[
         SELECT id, gateway_id, title, model, project_id,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at
+               created_at,
+               updated_at
         FROM chat_conversation
         WHERE project_id = ? AND deleted_at IS NULL
         ORDER BY updated_at DESC
@@ -3035,10 +3035,10 @@ function M.list_project_feed(project_id, limit, offset)
     if not db then return setmetatable({}, cjson.array_mt) end
     local rows = query_all(db, string.format([[
         SELECT c.id, c.title, c.model, c.user_id, c.project_id,
-               DATE_FORMAT(FROM_UNIXTIME(c.shared_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS shared_at,
+               c.shared_at,
                c.shared_by,
                u.email AS shared_by_email,
-               DATE_FORMAT(FROM_UNIXTIME(c.created_at), '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS created_at
+               c.created_at
         FROM   chat_conversation c
         LEFT JOIN user u ON u.id = c.shared_by
         WHERE  c.project_id = ?
@@ -3081,7 +3081,7 @@ function M.list_conversation_summaries(conversation_id)
     local rows = query_all(db, [[
         SELECT id, conversation_id, summary_text, first_message_id, last_message_id,
                message_count, model_used,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at
+               created_at
         FROM   conversation_summary
         WHERE  conversation_id = ?
         ORDER  BY created_at ASC
@@ -3101,8 +3101,8 @@ function M.list_mcp_connectors(tenant_id, gateway_id)
     if gateway_id then
         rows = query_all(db, [[
             SELECT id, tenant_id, gateway_id, name, server_url, auth_type,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+                   created_at,
+                   updated_at
             FROM   mcp_connector
             WHERE  tenant_id = ? AND gateway_id = ?
             ORDER  BY name ASC
@@ -3110,8 +3110,8 @@ function M.list_mcp_connectors(tenant_id, gateway_id)
     else
         rows = query_all(db, [[
             SELECT id, tenant_id, gateway_id, name, server_url, auth_type,
-                   DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-                   DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+                   created_at,
+                   updated_at
             FROM   mcp_connector
             WHERE  tenant_id = ?
             ORDER  BY name ASC
@@ -3126,8 +3126,8 @@ function M.get_mcp_connector(id)
     if not db then return nil, err end
     local row = query_one(db, [[
         SELECT id, tenant_id, gateway_id, name, server_url, auth_type, auth_value,
-               DATE_FORMAT(FROM_UNIXTIME(created_at), '%Y-%m-%dT%H:%i:%sZ') AS created_at,
-               DATE_FORMAT(FROM_UNIXTIME(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS updated_at
+               created_at,
+               updated_at
         FROM   mcp_connector
         WHERE  id = ?
     ]], id)

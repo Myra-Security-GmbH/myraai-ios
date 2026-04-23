@@ -207,8 +207,8 @@ function TenantCommandModal({ command, onClose, onSaved }: {
       name:        name.trim().replace(/\s/g, "-").replace(/^\//, ""),
       description: description,
       template:    template,
-      created_at:  command?.created_at ?? new Date().toISOString(),
-      updated_at:  new Date().toISOString(),
+      created_at:  command?.created_at ?? Math.floor(Date.now() / 1000),
+      updated_at:  Math.floor(Date.now() / 1000),
     });
   }
 

@@ -31,7 +31,7 @@ const STATS: UsageStats = {
   by_tenant: [],
   recent: [
     {
-      id: "l1", ts: "2024-03-15T12:00:00Z", tenant: "acme", tenant_id: "t1",
+      id: "l1", ts: 1710460800, tenant: "acme", tenant_id: "t1",
       gateway_id: "gw1", provider: "openai", model: "gpt-4o", status: 200,
       cached: 0, blocked: 0, blocked_by: null, block_reason: null,
       guardrail_verdict: null, input_tokens: 100, output_tokens: 50,
