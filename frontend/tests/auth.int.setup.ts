@@ -13,7 +13,7 @@ const DB_PASS = "yefVaf]oresev8";
 const DB_NAME = "ai_gateway_int";
 const EMAIL   = "info@schumann.net";
 const CODE    = "999888";
-const SESSION = path.resolve(__dirname, ".auth/int-session.json");
+const SESSION = path.resolve(__dirname, ".auth/docker-session.json");
 
 function sql(query: string) {
   execSync(

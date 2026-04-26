@@ -11,7 +11,9 @@
  */
 
 import path from "path";
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 const ADMIN_URL      = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT  = "myratest";
@@ -22,25 +24,12 @@ const TARGET_MODEL   = "qwen3-30b-a3b";
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 async function selectGatewayAndModel(page: Page): Promise<boolean> {
   // ── Step 1: select tenant ────────────────────────────────────────────────
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOpt.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? TARGET_TENANT });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
   await page.waitForTimeout(800);
 
   // ── Step 2: gateway — native select OR preset mode ───────────────────────
@@ -49,9 +38,8 @@ async function selectGatewayAndModel(page: Page): Promise<boolean> {
 
   if (hasGatewaySelect) {
     const gatewaySel = page.locator("select").nth(1);
-    const gatewayOpt = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
-    if ((await gatewayOpt.count()) === 0) return false;
-    await gatewaySel.selectOption({ label: (await gatewayOpt.first().textContent()) ?? TARGET_GATEWAY });
+    await expect(gatewaySel).toContainText(TARGET_GATEWAY, { timeout: 10_000 });
+    await gatewaySel.selectOption({ label: TARGET_GATEWAY });
     await page.waitForTimeout(400);
   } else {
     // Preset mode: find the preset for our target model via admin API and click its button.
@@ -112,22 +100,24 @@ async function waitForStreamingDone(page: Page, timeoutMs = 120_000) {
 
 test.describe(`Chat — PDF upload with ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`, () => {
   test.setTimeout(180_000); // MinerU page rendering adds latency
-  let testStartTime: number;
+  let convIds: string[] = [];
   const FIXTURE = path.resolve(__dirname, "fixtures/eiffel-tower.pdf");
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await page.goto("/chat");
     await page.waitForTimeout(600);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("attach button accepts a PDF and shows it as a chip", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await page.waitForTimeout(300);
@@ -142,7 +132,7 @@ test.describe(`Chat — PDF upload with ${TARGET_MODEL} via ${TARGET_TENANT}/${T
 
   test("uploading a PDF and asking for a summary returns an assistant response", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await page.waitForTimeout(300);
@@ -172,7 +162,7 @@ test.describe(`Chat — PDF upload with ${TARGET_MODEL} via ${TARGET_TENANT}/${T
 
   test("no error banner is shown after a successful PDF summarisation", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await page.waitForTimeout(300);

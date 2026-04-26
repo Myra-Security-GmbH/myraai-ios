@@ -8,31 +8,20 @@
  * Preset: "PII claude-opus-4.7" → prod-pii gateway + claude-opus-4-7
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 const ADMIN_URL      = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT  = "myratest";
 const TARGET_PRESET  = "UNSAFE claude-sonnet-4-6";
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 async function selectPreset(page: Page, presetName: string): Promise<boolean> {
   // Select tenant
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOpt.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? TARGET_TENANT });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
 
   // Click the preset button
   const presetBtn = page.locator("button").filter({ hasText: new RegExp(presetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "i") });
@@ -60,15 +49,14 @@ async function getFirstTenantId(page: Page): Promise<string> {
 }
 
 test.describe("Chat — project read_file with Opus preset", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(120_000);
 
-  test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
-  });
-
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("model reads project file via tool_use or XML tags and produces response", async ({ page }) => {
@@ -103,7 +91,7 @@ test.describe("Chat — project read_file with Opus preset", () => {
       if (!presetOk) {
         // Fallback: try sonnet preset
         const sonnetOk = await selectPreset(page, "PII claude-sonnet");
-        if (!sonnetOk) { test.skip(); return; }
+        if (!sonnetOk) { test.skip(true, "Required gateway or model not available in this environment"); return; }
       }
 
       // Start new chat (label is "New project chat" in project context)

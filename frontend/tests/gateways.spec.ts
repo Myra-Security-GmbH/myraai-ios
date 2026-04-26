@@ -1,4 +1,4 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 // Helper: get tenant buttons inside the "Select Tenant" card
 function getTenantButtons(page: Page) {
@@ -51,7 +51,7 @@ test.describe("Gateways page", () => {
 
   test("selecting a tenant shows its gateways or empty state", async ({ page }) => {
     const ok = await selectFirstTenant(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     const hasTable = await page.locator("table").isVisible().catch(() => false);
     const hasEmpty = await page.getByText(/No gateways/).isVisible().catch(() => false);
     const hasNew = await page.getByRole("button", { name: /New Gateway/i }).isVisible().catch(() => false);
@@ -60,9 +60,9 @@ test.describe("Gateways page", () => {
 
   test("New Gateway modal opens and has all config fields", async ({ page }) => {
     const ok = await selectFirstTenant(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     const newBtn = page.getByRole("button", { name: /New Gateway/i });
-    if (!await newBtn.isVisible()) { test.skip(); return; }
+    if (!await newBtn.isVisible()) { test.skip(true, "Required UI element not visible in this environment"); return; }
     await newBtn.click();
     await expect(page.getByRole("heading", { name: /New Gateway/i })).toBeVisible();
     await expect(page.getByLabel("Slug *")).toBeVisible();
@@ -75,7 +75,7 @@ test.describe("Gateways page", () => {
 
   test("gateway detail shows all sections", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await expect(page.getByRole("heading", { name: "Provider Keys" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Auth Tokens" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Routing Rules" })).toBeVisible();
@@ -83,7 +83,7 @@ test.describe("Gateways page", () => {
 
   test("gateway detail shows config stat cards", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await expect(page.getByText("Budget").first()).toBeVisible();
     await expect(page.getByText("Cache TTL").first()).toBeVisible();
     await expect(page.getByText("Auth").first()).toBeVisible();
@@ -91,14 +91,14 @@ test.describe("Gateways page", () => {
 
   test("gateway detail shows Endpoint URL label (not Base URL)", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await expect(page.getByText("Endpoint URL")).toBeVisible();
     await expect(page.getByText("Base URL")).not.toBeVisible();
   });
 
   test("Edit gateway config modal has all fields", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.getByRole("button", { name: /^Edit$/i }).first().click();
     await expect(page.getByRole("heading", { name: /Edit Gateway/i })).toBeVisible();
     await expect(page.getByLabel("Budget (USD)")).toBeVisible();
@@ -110,7 +110,7 @@ test.describe("Gateways page", () => {
 
   test("Add/Rotate provider key modal", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.getByRole("button", { name: /Add \/ Rotate/i }).click();
     await expect(page.getByRole("heading", { name: "Add / Rotate Provider Key" })).toBeVisible();
     await expect(page.getByLabel("Provider")).toBeVisible();
@@ -120,7 +120,7 @@ test.describe("Gateways page", () => {
 
   test("Generate token modal shows expiry, rate limit, and spend cap fields", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.getByRole("button", { name: /\+ Generate/i }).click();
     await expect(page.getByRole("heading", { name: /Create Auth Token/i })).toBeVisible();
     await expect(page.getByLabel(/Expires At/i)).toBeVisible();
@@ -131,7 +131,7 @@ test.describe("Gateways page", () => {
 
   test("Edit gateway modal has webhook configuration section", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.getByRole("button", { name: /^Edit$/i }).first().click();
     await expect(page.getByRole("heading", { name: /Edit Gateway/i })).toBeVisible();
     await expect(page.getByText(/Webhook/i).first()).toBeVisible();
@@ -140,11 +140,11 @@ test.describe("Gateways page", () => {
 
   test("gateway detail token table has label and rate limit columns", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     // Token table headers
     const tokenSection = page.getByRole("heading", { name: "Auth Tokens" }).locator("xpath=ancestor::*[2]");
     const hasTokens = await tokenSection.locator("table").isVisible().catch(() => false);
-    if (!hasTokens) { test.skip(); return; }
+    if (!hasTokens) { test.skip(true, "Precondition not met in this environment"); return; }
     await expect(tokenSection.getByRole("columnheader", { name: /Label/i })).toBeVisible();
     await expect(tokenSection.getByRole("columnheader", { name: /Rate Limit/i })).toBeVisible();
     await expect(tokenSection.getByRole("columnheader", { name: /Spend Cap/i })).toBeVisible();
@@ -152,13 +152,13 @@ test.describe("Gateways page", () => {
 
   test("gateway detail shows Webhook stat card", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await expect(page.getByText("Webhook").first()).toBeVisible();
   });
 
   test("New routing rule modal has condition/action editors", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.getByRole("button", { name: /\+ New Rule/i }).click();
     await expect(page.getByRole("heading", { name: "New Routing Rule" })).toBeVisible();
     await expect(page.getByText(/Conditions/i).first()).toBeVisible();
@@ -169,7 +169,7 @@ test.describe("Gateways page", () => {
 
   test("routing rule modal can add a condition", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.getByRole("button", { name: /\+ New Rule/i }).click();
     const addCondBtn = page.getByRole("button", { name: /^\+ Add$/i }).first();
     await addCondBtn.click();
@@ -179,16 +179,16 @@ test.describe("Gateways page", () => {
 
   test("back button from gateway detail returns to list", async ({ page }) => {
     const ok = await openFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.getByText(/← Gateways/i).click();
     await expect(page.getByText("Select Tenant")).toBeVisible();
   });
 
   test("modal closes on Cancel", async ({ page }) => {
     const ok = await selectFirstTenant(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     const newBtn = page.getByRole("button", { name: /New Gateway/i });
-    if (!await newBtn.isVisible()) { test.skip(); return; }
+    if (!await newBtn.isVisible()) { test.skip(true, "Required UI element not visible in this environment"); return; }
     await newBtn.click();
     await page.getByRole("button", { name: /Cancel/i }).click();
     await expect(page.getByRole("heading", { name: /New Gateway/i })).not.toBeVisible();

@@ -29,14 +29,14 @@
  *   6. Assert a non-empty response was received (the model answered).
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-const ADMIN_URL   = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
-const GATEWAY_URL = "https://ai-api.myra.eu";
+const ADMIN_URL   = process.env.PLAYWRIGHT_ADMIN_URL   ?? "https://ai-api-admin.myra.eu";
+const GATEWAY_URL = process.env.PLAYWRIGHT_GATEWAY_URL ?? "https://ai-api.myra.eu";
 
 const TARGET_TENANT  = "myratest";
 const TARGET_GATEWAY = "prod-pii";  // Anthropic (claude-sonnet-4-6) gateway slug

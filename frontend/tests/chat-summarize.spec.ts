@@ -13,7 +13,9 @@
  * in the live environment.  Each test skips gracefully if the preset is absent.
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT = "myratest";
@@ -21,18 +23,6 @@ const TARGET_TENANT = "myratest";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
 
 /** Navigate to /chat and select the myratest tenant. Returns false if not found. */
 async function selectMyraTestTenant(page: Page): Promise<boolean> {
@@ -42,10 +32,8 @@ async function selectMyraTestTenant(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
 
-  const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if (await tenantOption.count() === 0) return false;
-
-  await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
   await page.waitForTimeout(500);
   return true;
 }
@@ -116,19 +104,18 @@ async function runFirstExchangeAndGetTitle(page: Page, message: string, streamTi
 test.describe("Chat auto-title — preset: SAFE local only", () => {
   test.setTimeout(150_000); // local model can be slow
 
-  let testStartTime: number;
-
-  test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
-  });
+  let convIds: string[] = [];
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("auto-title has no <think> artefacts and is meaningful", async ({ page }) => {
     const tenantOk = await selectMyraTestTenant(page);
-    if (!tenantOk) { test.skip(); return; }
+    if (!tenantOk) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const presetOk = await selectPreset(page, "SAFE local only");
     if (!presetOk) {
@@ -169,7 +156,7 @@ test.describe("Chat auto-title — preset: SAFE local only", () => {
 
   test("auto-title from local model does not bleed raw model output into sidebar", async ({ page }) => {
     const tenantOk = await selectMyraTestTenant(page);
-    if (!tenantOk) { test.skip(); return; }
+    if (!tenantOk) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const presetOk = await selectPreset(page, "SAFE local only");
     if (!presetOk) {
@@ -197,19 +184,18 @@ test.describe("Chat auto-title — preset: SAFE local only", () => {
 test.describe("Chat auto-title — preset: PII claude-sonnet-4-6", () => {
   test.setTimeout(120_000);
 
-  let testStartTime: number;
-
-  test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
-  });
+  let convIds: string[] = [];
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("auto-title is clean, relevant, and free of artefacts", async ({ page }) => {
     const tenantOk = await selectMyraTestTenant(page);
-    if (!tenantOk) { test.skip(); return; }
+    if (!tenantOk) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const presetOk = await selectPreset(page, "PII claude-sonnet-4-6");
     if (!presetOk) {
@@ -246,7 +232,7 @@ test.describe("Chat auto-title — preset: PII claude-sonnet-4-6", () => {
 
   test("auto-title is updated in the sidebar after first exchange", async ({ page }) => {
     const tenantOk = await selectMyraTestTenant(page);
-    if (!tenantOk) { test.skip(); return; }
+    if (!tenantOk) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const presetOk = await selectPreset(page, "PII claude-sonnet-4-6");
     if (!presetOk) {
@@ -285,19 +271,18 @@ test.describe("Chat auto-title — preset: PII claude-sonnet-4-6", () => {
 test.describe("Chat auto-title — cross-preset: both presets produce clean titles", () => {
   test.setTimeout(300_000); // runs both presets sequentially
 
-  let testStartTime: number;
-
-  test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
-  });
+  let convIds: string[] = [];
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("neither preset produces <think> artefacts in the conversation title", async ({ page }) => {
     const tenantOk = await selectMyraTestTenant(page);
-    if (!tenantOk) { test.skip(); return; }
+    if (!tenantOk) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const presetsToTest: Array<{ name: string; message: string; streamTimeout: number }> = [
       {

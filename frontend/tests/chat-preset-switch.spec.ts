@@ -28,7 +28,7 @@
  *   6. Assert PII preset is still selected and conv A is still active.
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_BASE = (process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173") + "/admin/v1";
 

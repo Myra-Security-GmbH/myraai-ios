@@ -7,7 +7,7 @@
  * exercise the export buttons.
  */
 
-import { test, expect, Page, Download } from "@playwright/test";
+import { test, expect, type Page, type Download } from "./base";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 
@@ -77,31 +77,29 @@ async function openConversation(page: Page, convId: string) {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — export (Markdown + PDF)", () => {
+  test.describe.configure({ mode: "serial" });
   let gatewayId: string;
   let gatewaySlug: string;
 
-  test.beforeAll(async ({ browser }) => {
-    const page = await browser.newPage();
-    const gid = await getFirstGatewayId(page);
-    if (!gid) { await page.close(); throw new Error("No gateway found — cannot run export tests"); }
-    const slug = await getGatewaySlug(page, gid);
-    await page.close();
-    if (!slug) throw new Error("Could not resolve gateway slug — cannot run export tests");
-    gatewayId = gid;
-    gatewaySlug = slug;
+  test.beforeAll(async ({ workerGatewayId, workerGatewaySlug }) => {
+    // Use the worker's own gateway so the chat page (running under the same session)
+    // can resolve the gateway slug from its loaded gateways list.
+    // Using a cross-tenant gateway (e.g. myratest's prod-pii) causes gwLabel to fall
+    // back to the UUID because the worker session cannot see that gateway.
+    gatewayId   = workerGatewayId;
+    gatewaySlug = workerGatewaySlug;
   });
 
   // ── 1. Buttons disabled with no active conversation ───────────────────────
 
   test("both export buttons are disabled on fresh load", async ({ page }) => {
     await page.goto("/chat");
-    await page.waitForTimeout(600);
 
     const mdBtn  = page.locator("button[title='Download Markdown']");
     const pdfBtn = page.locator("button[title='Download PDF']");
 
     const visible = await mdBtn.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!visible) { test.skip(); return; }
+    if (!visible) { test.skip(true, "Required UI element not visible in this environment"); return; }
 
     await expect(mdBtn).toBeDisabled();
     await expect(pdfBtn).toBeDisabled();
@@ -111,7 +109,7 @@ test.describe("Chat — export (Markdown + PDF)", () => {
 
   test("Markdown export downloads a .md file with correct content", async ({ page }) => {
     const convId = await createConversation(page, gatewayId, "Sky Colour Test");
-    if (!convId) { test.skip(); return; }
+    if (!convId) { test.skip(true, "Failed to create test conversation"); return; }
 
     const userMsg = "What colour is the sky?";
     const assistantMsg = "The sky is blue due to Rayleigh scattering.";
@@ -153,7 +151,7 @@ test.describe("Chat — export (Markdown + PDF)", () => {
 
   test("Markdown export omits docx text body, keeps filename reference", async ({ page }) => {
     const convId = await createConversation(page, gatewayId, "Docx Filter Test");
-    if (!convId) { test.skip(); return; }
+    if (!convId) { test.skip(true, "Failed to create test conversation"); return; }
 
     // Simulate a user message that contains a docx content block
     const docxContent = JSON.stringify([
@@ -197,7 +195,7 @@ test.describe("Chat — export (Markdown + PDF)", () => {
 
   test("export label shows ModelFamily (model-id) via gateway-slug per message", async ({ page }) => {
     const convId = await createConversation(page, gatewayId, "Label Format Test");
-    if (!convId) { test.skip(); return; }
+    if (!convId) { test.skip(true, "Failed to create test conversation"); return; }
 
     await addMessage(page, convId, "user", "Tell me about the weather.");
     await addMessage(page, convId, "assistant", "It is sunny today.", "claude-opus-4-6");
@@ -232,7 +230,7 @@ test.describe("Chat — export (Markdown + PDF)", () => {
 
   test("PDF export POSTs markdown and downloads a valid PDF binary", async ({ page }) => {
     const convId = await createConversation(page, gatewayId, "PDF Export Test");
-    if (!convId) { test.skip(); return; }
+    if (!convId) { test.skip(true, "Failed to create test conversation"); return; }
 
     await addMessage(page, convId, "user", "Name three colours of the rainbow.");
     await addMessage(page, convId, "assistant", "Red, orange, and yellow.");
@@ -277,7 +275,7 @@ test.describe("Chat — export (Markdown + PDF)", () => {
 
   test("PDF export failure shows error banner", async ({ page }) => {
     const convId = await createConversation(page, gatewayId, "PDF Failure Test");
-    if (!convId) { test.skip(); return; }
+    if (!convId) { test.skip(true, "Failed to create test conversation"); return; }
 
     await addMessage(page, convId, "user", "Hello.");
     await addMessage(page, convId, "assistant", "Hi there.");

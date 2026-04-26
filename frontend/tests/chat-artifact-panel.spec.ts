@@ -8,7 +8,8 @@
  * Gateway: myratest / UNSAFE claude-sonnet-4-6
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 const ADMIN_URL    = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT = "myratest";
@@ -18,18 +19,6 @@ const TARGET_PRESET = "UNSAFE claude-sonnet-4-6";
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 async function goToChatFresh(page: Page) {
   await page.goto("/chat");
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
@@ -37,16 +26,14 @@ async function goToChatFresh(page: Page) {
   // Wait for the tenant options to be populated (not just the select to be visible)
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 10_000 });
-  await tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") })
-    .first().waitFor({ state: "attached", timeout: 10_000 });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
 }
 
 async function selectPreset(page: Page): Promise<boolean> {
   const sel = page.locator("select").first();
   await sel.waitFor({ state: "visible", timeout: 5_000 });
-  const opt = sel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await opt.count()) === 0) return false;
-  await sel.selectOption({ label: (await opt.first().textContent()) ?? TARGET_TENANT });
+  await expect(sel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await sel.selectOption({ label: TARGET_TENANT });
   const esc = TARGET_PRESET.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const btn = page.locator("button").filter({ hasText: new RegExp(esc, "i") });
   if (!(await btn.isVisible({ timeout: 5_000 }).catch(() => false))) return false;
@@ -117,16 +104,18 @@ function pyArtifact(filename: string, content: string): string {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — model badge per message", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(60_000);
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await goToChatFresh(page);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("assistant message shows model name in meta row", async ({ page }) => {
@@ -167,16 +156,18 @@ test.describe("Chat — model badge per message", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — reason-annotated regeneration", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(60_000);
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await goToChatFresh(page);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("regenerate dropdown appears on last assistant message", async ({ page }) => {
@@ -288,16 +279,18 @@ test.describe("Chat — reason-annotated regeneration", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — multi-artifact panel and versioning", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(120_000);
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await goToChatFresh(page);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("clicking an artifact card opens the artifact panel", async ({ page }) => {

@@ -12,7 +12,7 @@
  * Depends on the "permissions-setup" project fixtures for member + tenant_admin sessions.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 import path from "path";
 import fs from "fs";
 

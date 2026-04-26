@@ -7,7 +7,9 @@
 
 import fs from "fs";
 import path from "path";
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
+import type {  Page  } from "./base";
 
 const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT = "myratest";
@@ -20,10 +22,9 @@ const FIXTURE       = path.resolve(__dirname, "fixtures/invoice-sample.png");
 async function selectFirstGateway(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOpt.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? TARGET_TENANT });
-  await page.waitForTimeout(800);
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
+  await expect(page.locator("select, [data-testid='config-preset-btn']").nth(1)).toBeVisible({ timeout: 5000 });
 
   // Select the first available gateway (any will do for this test)
   const hasGatewaySelect = await page.locator("select").nth(1)
@@ -33,7 +34,7 @@ async function selectFirstGateway(page: Page): Promise<boolean> {
     const options = gatewaySel.locator("option");
     if ((await options.count()) < 2) return false;
     await gatewaySel.selectOption({ index: 1 });
-    await page.waitForTimeout(400);
+    await expect(page.locator("[aria-haspopup='listbox'], select").nth(2)).toBeVisible({ timeout: 5000 });
   }
 
   // Pick the first model
@@ -44,7 +45,6 @@ async function selectFirstGateway(page: Page): Promise<boolean> {
     const options = modelSel.locator("option");
     if ((await options.count()) < 2) return false;
     await modelSel.selectOption({ index: 1 });
-    await page.waitForTimeout(200);
   }
   return true;
 }
@@ -80,50 +80,38 @@ async function pasteImage(page: Page, selector: string, pngPath: string) {
   );
 }
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — clipboard paste image", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await page.goto("/chat");
-    await page.waitForTimeout(600);
+    await expect(page.locator("[class*='config-bar'] select").first()).toBeVisible({ timeout: 10000 });
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("pasting a PNG into the textarea shows an attachment chip", async ({ page }) => {
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     // Focus the textarea
     const textarea = page.locator("[class*='chat-textarea']");
     await textarea.click();
-    await page.waitForTimeout(100);
 
     // Paste an image via synthetic ClipboardEvent
     await pasteImage(page, "[class*='chat-textarea']", FIXTURE);
-    await page.waitForTimeout(500);
 
     // Verify the attachment chip appeared (name includes timestamp: screenshot-YYYY-MM-DD...)
     const chip = page.locator("[class*='input-area']").getByText(/screenshot-\d{4}-/i);
@@ -132,17 +120,16 @@ test.describe("Chat — clipboard paste image", () => {
 
   test("pasting text does NOT create an attachment chip", async ({ page }) => {
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     const textarea = page.locator("[class*='chat-textarea']");
     await textarea.click();
 
     // Paste plain text
     await textarea.fill("Hello from clipboard");
-    await page.waitForTimeout(300);
 
     // No attachment chip should appear
     const chip = page.locator("[class*='input-area']").getByText(/screenshot-\d{4}-/i);

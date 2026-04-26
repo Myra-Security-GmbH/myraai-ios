@@ -7,7 +7,7 @@
  * Runs sequentially (docker logs access; not safe to parallelise).
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 import { execSync } from "child_process";
 
 const ADMIN_BASE  = process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173";

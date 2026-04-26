@@ -8,7 +8,7 @@
  *   Group 4 — UI: SharedConversation public page renders without auth
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/admin/v1`;
 const SHARE_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/share`;

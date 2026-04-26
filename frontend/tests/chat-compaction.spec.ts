@@ -17,7 +17,9 @@
  *     5. No aig_status:"compacted" event in qwen3 SSE stream
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
+import type {  Page  } from "./base";
 
 const ADMIN_URL         = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const ANTHROPIC_TENANT  = "myratest";
@@ -43,20 +45,10 @@ async function getGateway(page: Page, tenant: string, gateway: string) {
   return gws.find((x) => x.slug === gateway) ?? null;
 }
 
-async function deleteAllConversations(page: Page) {
-  const r = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`).catch(() => null);
-  if (!r?.ok()) return;
-  const convs = await r.json() as Array<{ id: string }>;
-  await Promise.all(convs.map((c) =>
-    page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${c.id}`).catch(() => {})
-  ));
-}
-
 async function sendMessage(page: Page, prompt: string) {
   const textarea = page.locator("[class*='chat-textarea']");
   await expect(textarea).toBeEnabled({ timeout: 8000 });
   await textarea.fill(prompt);
-  await page.waitForTimeout(300); // let React re-render
   await textarea.press("Enter");
 }
 
@@ -71,10 +63,9 @@ async function waitForStreamingDone(page: Page, timeoutMs = 120_000) {
 async function selectPreset(page: Page, presetName: string): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 8000 });
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(ANTHROPIC_TENANT, "i") });
-  if ((await tenantOpt.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? ANTHROPIC_TENANT });
-  await page.waitForTimeout(500);
+  await expect(tenantSel).toContainText(ANTHROPIC_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: ANTHROPIC_TENANT });
+  await expect(page.locator("button, [data-testid='config-preset-btn']").filter({ hasText: new RegExp(presetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") })).toBeVisible({ timeout: 5000 });
   const btn = page.locator("button").filter({
     hasText: new RegExp(presetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
   });
@@ -87,18 +78,16 @@ async function selectPreset(page: Page, presetName: string): Promise<boolean> {
 async function selectQwen3(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 8000 });
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(QWEN3_TENANT, "i") });
-  if ((await tenantOpt.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? QWEN3_TENANT });
-  await page.waitForTimeout(500);
+  await expect(tenantSel).toContainText(QWEN3_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: QWEN3_TENANT });
+  await expect(page.locator("select, [data-testid='config-preset-btn']").nth(1)).toBeVisible({ timeout: 5000 });
 
   const hasGwSelect = await page.locator("select").nth(1).isVisible({ timeout: 2000 }).catch(() => false);
   if (hasGwSelect) {
     const gatewaySel = page.locator("select").nth(1);
-    const gwOpt = gatewaySel.locator("option").filter({ hasText: new RegExp(QWEN3_GATEWAY, "i") });
-    if ((await gwOpt.count()) === 0) return false;
-    await gatewaySel.selectOption({ label: (await gwOpt.first().textContent()) ?? QWEN3_GATEWAY });
-    await page.waitForTimeout(400);
+    await expect(gatewaySel).toContainText(QWEN3_GATEWAY, { timeout: 10_000 });
+    await gatewaySel.selectOption({ label: QWEN3_GATEWAY });
+    await expect(page.locator("[aria-haspopup='listbox']")).toBeVisible({ timeout: 5000 });
   } else {
     // Preset mode: find preset for qwen3 via admin API
     const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
@@ -113,7 +102,6 @@ async function selectQwen3(page: Page): Promise<boolean> {
     const presetBtn = page.locator("button").filter({ hasText: new RegExp(`^\\s*${preset.name}\\s*$`) });
     if (!(await presetBtn.isVisible({ timeout: 3000 }).catch(() => false))) return false;
     await presetBtn.click();
-    await page.waitForTimeout(400);
     await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 8000 });
     return true;
   }
@@ -125,7 +113,7 @@ async function selectQwen3(page: Page): Promise<boolean> {
   const searchInput = page.locator("[role='listbox'] input[type='text'], [role='listbox'] input[type='search']");
   if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
     await searchInput.fill(QWEN3_MODEL);
-    await page.waitForTimeout(300);
+    await expect(page.locator("[role='listbox'] [role='option']").filter({ hasText: new RegExp(`^\\s*${QWEN3_MODEL}\\s*$`) }).first()).toBeVisible({ timeout: 5000 });
   }
   const opt = page.locator("[role='listbox'] [role='option']")
     .filter({ hasText: new RegExp(`^\\s*${QWEN3_MODEL}\\s*$`) }).first();
@@ -143,8 +131,13 @@ async function selectQwen3(page: Page): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 test.describe("Context compaction — Anthropic config and non-interference", () => {
+  let convIds: string[] = [];
+
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("gateway has context_compaction enabled with 200k default threshold", async ({ page }) => {
@@ -177,7 +170,7 @@ test.describe("Context compaction — Anthropic config and non-interference", ()
   test("normal message below threshold completes without error (compaction not triggered)", async ({ page }) => {
     test.setTimeout(90_000);
     await page.goto("/chat");
-    await page.waitForTimeout(600);
+    await expect(page.locator("[class*='config-bar'] select").first()).toBeVisible({ timeout: 10000 });
 
     const ok = await selectPreset(page, ANTHROPIC_PRESET);
     expect(ok, `Could not select preset "${ANTHROPIC_PRESET}"`).toBeTruthy();
@@ -199,7 +192,7 @@ test.describe("Context compaction — Anthropic config and non-interference", ()
 
   test("no aig_status:compacted event for short messages", async ({ page }) => {
     await page.goto("/chat");
-    await page.waitForTimeout(600);
+    await expect(page.locator("[class*='config-bar'] select").first()).toBeVisible({ timeout: 10000 });
 
     const compactionEvents: string[] = [];
     await page.route("**/compat/chat/completions", async (route) => {
@@ -210,7 +203,7 @@ test.describe("Context compaction — Anthropic config and non-interference", ()
     });
 
     const ok = await selectPreset(page, ANTHROPIC_PRESET);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await sendMessage(page, "Say: SHORT_OK");
     await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 20_000 });
@@ -230,16 +223,21 @@ test.describe("Context compaction — Anthropic config and non-interference", ()
 // ---------------------------------------------------------------------------
 
 test.describe("Context compaction — Qwen3 (non-Anthropic, no-op)", () => {
+  let convIds: string[] = [];
+
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("long qwen3 message completes without error (compaction is no-op)", async ({ page }) => {
     await page.goto("/chat");
-    await page.waitForTimeout(600);
+    await expect(page.locator("[class*='config-bar'] select").first()).toBeVisible({ timeout: 10000 });
 
     const ok = await selectQwen3(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     // Moderately long — compaction code path is Anthropic-only, must not fire
     const filler = "The sky is blue and the grass is green. ".repeat(50);
@@ -257,10 +255,10 @@ test.describe("Context compaction — Qwen3 (non-Anthropic, no-op)", () => {
 
   test("no aig_status:compacted event in qwen3 SSE stream", async ({ page }) => {
     await page.goto("/chat");
-    await page.waitForTimeout(600);
+    await expect(page.locator("[class*='config-bar'] select").first()).toBeVisible({ timeout: 10000 });
 
     const ok = await selectQwen3(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const compactionEvents: string[] = [];
     await page.route("**/chat/completions", async (route) => {

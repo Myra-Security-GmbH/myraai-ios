@@ -7,7 +7,7 @@ import { defineConfig, devices } from "@playwright/test";
 import path from "path";
 import { SEQUENTIAL_TESTS_INT } from "./playwright.int.config";
 
-const SESSION = path.resolve(__dirname, "tests/.auth/int-session.json");
+const SESSION = path.resolve(__dirname, "tests/.auth/docker-session.json");
 
 process.env.PLAYWRIGHT_ADMIN_URL   = "https://ai-api-admin-int.myra.eu";
 process.env.PLAYWRIGHT_BASE_URL    = process.env.PLAYWRIGHT_BASE_URL ?? "https://ai-int.myra.eu";

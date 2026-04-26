@@ -12,7 +12,9 @@
  */
 
 import path from "path";
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Helpers (mirrors chat-docx.spec.ts conventions)
@@ -20,21 +22,9 @@ import { test, expect, Page } from "@playwright/test";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 async function gotoChatPage(page: Page) {
   await page.goto("/chat");
-  await page.waitForTimeout(600);
+  await expect(page.locator("[class*='config-bar'] select").first()).toBeVisible({ timeout: 10000 });
 }
 
 const TARGET_TENANT  = "myratest";
@@ -44,10 +34,9 @@ const TARGET_MODEL   = "claude-sonnet-4-6";
 async function selectGatewayWithModel(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOption.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
-  await page.waitForTimeout(400);
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
+  await expect(page.locator("select, [data-testid='config-preset-btn']").nth(1)).toBeVisible({ timeout: 5000 });
 
   // Gateway — native select OR preset mode
   const hasGatewaySelect = await page.locator("select").nth(1)
@@ -55,10 +44,9 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
 
   if (hasGatewaySelect) {
     const gatewaySel = page.locator("select").nth(1);
-    const gatewayOption = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
-    if ((await gatewayOption.count()) === 0) return false;
-    await gatewaySel.selectOption({ label: (await gatewayOption.first().textContent()) ?? TARGET_GATEWAY });
-    await page.waitForTimeout(400);
+    await expect(gatewaySel).toContainText(TARGET_GATEWAY, { timeout: 10_000 });
+    await gatewaySel.selectOption({ label: TARGET_GATEWAY });
+    await expect(page.locator("[aria-haspopup='listbox']")).toBeVisible({ timeout: 5000 });
   } else {
     // Preset mode: find the preset for our target model via admin API and click its button.
     const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
@@ -74,7 +62,7 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
     const presetBtn = page.locator("button").filter({ hasText: new RegExp(`^\\s*${preset.name}\\s*$`) });
     if (!(await presetBtn.isVisible({ timeout: 3000 }).catch(() => false))) return false;
     await presetBtn.click();
-    await page.waitForTimeout(400);
+    await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
     return true;
   }
 
@@ -86,7 +74,7 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
   const hasSearch = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
   if (hasSearch) {
     await searchInput.fill(TARGET_MODEL);
-    await page.waitForTimeout(300);
+    await expect(page.locator("[role='listbox'] [role='option']").filter({ hasText: TARGET_MODEL }).first()).toBeVisible({ timeout: 5000 });
   }
 
   const targetOption = page.locator("[role='listbox'] [role='option']")
@@ -95,7 +83,7 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
   const found = await targetOption.isVisible({ timeout: 3000 }).catch(() => false);
   if (!found) { await page.keyboard.press("Escape"); return false; }
   await targetOption.click();
-  await page.waitForTimeout(300);
+  await expect(page.locator("[role='listbox']")).not.toBeVisible({ timeout: 3000 });
   return true;
 }
 
@@ -113,32 +101,34 @@ async function waitForStreamingDone(page: Page, timeoutMs = 90_000) {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat page — .xlsx upload and analysis", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(120_000); // xlsx skill uses code execution — allow extra time
 
   const FIXTURE = path.resolve(__dirname, "fixtures/q1-sales.xlsx");
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await gotoChatPage(page);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   // ── 1. UI: file chip appears ──────────────────────────────────────────────
 
   test("attach button accepts .xlsx and shows a chip with the filename", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     const fileInput = page.locator("input[type='file']");
     await fileInput.setInputFiles(FIXTURE);
-    await page.waitForTimeout(500);
+    await expect(page.locator("[class*='input-area']").getByText(/q1-sales\.xlsx/i)).toBeVisible({ timeout: 5000 });
 
     const chip = page.locator("[class*='input-area']").getByText(/q1-sales\.xlsx/i);
     await expect(chip).toBeVisible({ timeout: 5000 });
@@ -148,7 +138,7 @@ test.describe("Chat page — .xlsx upload and analysis", () => {
 
   test("uploading .xlsx calls POST /chat/files and receives a file_id", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     // Intercept the file upload request
     const uploadPromise = page.waitForRequest(
@@ -161,11 +151,11 @@ test.describe("Chat page — .xlsx upload and analysis", () => {
     );
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     const fileInput = page.locator("input[type='file']");
     await fileInput.setInputFiles(FIXTURE);
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='input-area']").getByText(/q1-sales\.xlsx/i)).toBeVisible({ timeout: 5000 });
 
     const textarea = page.locator("[class*='chat-textarea']");
     await textarea.fill("What is the total revenue?");
@@ -192,15 +182,13 @@ test.describe("Chat page — .xlsx upload and analysis", () => {
 
   test("asking about total revenue returns an answer containing a number", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     const fileInput = page.locator("input[type='file']");
     await fileInput.setInputFiles(FIXTURE);
-    await page.waitForTimeout(500);
-
     await expect(page.locator("[class*='input-area']").getByText(/q1-sales\.xlsx/i))
       .toBeVisible({ timeout: 5000 });
 
@@ -233,14 +221,14 @@ test.describe("Chat page — .xlsx upload and analysis", () => {
 
   test("no error banner is shown after a successful .xlsx analysis", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     const fileInput = page.locator("input[type='file']");
     await fileInput.setInputFiles(FIXTURE);
-    await page.waitForTimeout(500);
+    await expect(page.locator("[class*='input-area']").getByText(/q1-sales\.xlsx/i)).toBeVisible({ timeout: 5000 });
 
     await page.locator("[class*='chat-textarea']").fill("Summarise this spreadsheet in one sentence.");
     await page.locator("button[title='Send message']").click();
@@ -258,10 +246,10 @@ test.describe("Chat page — .xlsx upload and analysis", () => {
 
   test("uploading an unsupported file type shows an error banner", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     // Upload a .zip disguised as a file (just use the xlsx but with wrong ext for demo)
     // Actually set up a fake .exe file to trigger the unsupported path
@@ -273,7 +261,6 @@ test.describe("Chat page — .xlsx upload and analysis", () => {
 
     const fileInput = page.locator("input[type='file']");
     await fileInput.setInputFiles(fakeFile);
-    await page.waitForTimeout(500);
 
     await page.locator("[class*='chat-textarea']").fill("analyse this");
     await page.locator("button[title='Send message']").click();

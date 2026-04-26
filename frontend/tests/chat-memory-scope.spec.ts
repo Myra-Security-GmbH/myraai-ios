@@ -9,11 +9,11 @@
  *   Group 5 — Cascade: deleting a project removes its memories
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_BASE    = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/admin/v1`;
 const TENANT_SLUG   = "myratest";
-const TARGET_PRESET = "UNSAFE claude-sonnet-4-6";
+const TARGET_PRESET = "PII qwen3";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,9 +93,9 @@ async function selectPreset(page: Page, presetName: string): Promise<boolean> {
   const sel = page.locator("select").first();
   await sel.waitFor({ state: "visible", timeout: 5_000 });
   const opt = sel.locator("option").filter({ hasText: new RegExp(TENANT_SLUG, "i") });
-  await opt.first().waitFor({ state: "attached", timeout: 10_000 }).catch(() => {});
+  await expect(sel).toContainText(TENANT_SLUG, { timeout: 10_000 });
   if ((await opt.count()) === 0) return false;
-  await sel.selectOption({ label: (await opt.first().textContent()) ?? TENANT_SLUG });
+  await sel.selectOption({ label: TENANT_SLUG });
   await page.locator("[data-testid='config-preset-options']")
     .waitFor({ state: "visible", timeout: 12_000 }).catch(() => {});
   const esc = presetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -135,6 +135,9 @@ async function injectMemoryTag(page: Page, content: string, type = "fact") {
 // ---------------------------------------------------------------------------
 
 test.describe("Memory scope — API isolation", () => {
+  test.describe.configure({ mode: "serial" });
+  // beforeAll creates fixtures as the admin user; tests must use the same session.
+  test.use({ storageState: "tests/.auth/docker-session.json" });
   let userMem: MemRow;
   let projId: string;
   let projMem: MemRow;
@@ -235,6 +238,9 @@ test.describe("Memory scope — API isolation", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Memory scope — MemoriesPanel title", () => {
+  test.describe.configure({ mode: "serial" });
+  // beforeAll creates fixtures as the admin user; tests must use the same session.
+  test.use({ storageState: "tests/.auth/docker-session.json" });
   let tenantId: string;
   let projId: string;
   let t0: number;
@@ -260,7 +266,7 @@ test.describe("Memory scope — MemoriesPanel title", () => {
   test("standalone chat shows panel title 'Memories'", async ({ page }) => {
     await goToChat(page);
     const ok = await selectPreset(page, TARGET_PRESET);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.locator("[data-cy='memories-btn']").click();
     await expect(page.locator("[data-cy='memories-panel']")).toBeVisible({ timeout: 5_000 });
     await expect(page.locator("[data-cy='memories-panel']")).toContainText("Memories");
@@ -270,7 +276,7 @@ test.describe("Memory scope — MemoriesPanel title", () => {
   test("project chat shows panel title 'Project Memories'", async ({ page }) => {
     await goToChat(page, projId);
     const ok = await selectPreset(page, TARGET_PRESET);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.locator("[data-cy='memories-btn']").click();
     await expect(page.locator("[data-cy='memories-panel']")).toBeVisible({ timeout: 5_000 });
     await expect(page.locator("[data-cy='memories-panel']")).toContainText("Project Memories");
@@ -286,7 +292,7 @@ test.describe("Memory scope — MemoriesPanel title", () => {
       // Load standalone
       await goToChat(page);
       const ok = await selectPreset(page, TARGET_PRESET);
-      if (!ok) { test.skip(); return; }
+      if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
       await page.locator("[data-cy='memories-btn']").click();
       await expect(page.locator("[data-cy='memories-panel']")).toBeVisible({ timeout: 5_000 });
       // Global memory visible in standalone panel
@@ -319,6 +325,9 @@ test.describe("Memory scope — MemoriesPanel title", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Memory scope — manual add scoping", () => {
+  test.describe.configure({ mode: "serial" });
+  // beforeAll creates fixtures as the admin user; tests must use the same session.
+  test.use({ storageState: "tests/.auth/docker-session.json" });
   let tenantId: string;
   let projId: string;
   test.setTimeout(60_000);
@@ -341,7 +350,7 @@ test.describe("Memory scope — manual add scoping", () => {
   test("adding memory in project context saves with correct project_id", async ({ page }) => {
     await goToChat(page, projId);
     const ok = await selectPreset(page, TARGET_PRESET);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.locator("[data-cy='memories-btn']").click();
     await expect(page.locator("[data-cy='memories-panel']")).toBeVisible({ timeout: 5_000 });
 
@@ -360,7 +369,7 @@ test.describe("Memory scope — manual add scoping", () => {
   test("adding memory in standalone context saves without project_id", async ({ page }) => {
     await goToChat(page);
     const ok = await selectPreset(page, TARGET_PRESET);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
     await page.locator("[data-cy='memories-btn']").click();
     await expect(page.locator("[data-cy='memories-panel']")).toBeVisible({ timeout: 5_000 });
 
@@ -387,6 +396,9 @@ test.describe("Memory scope — manual add scoping", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Memory scope — auto-extraction scoping", () => {
+  test.describe.configure({ mode: "serial" });
+  // beforeAll creates fixtures as the admin user; tests must use the same session.
+  test.use({ storageState: "tests/.auth/docker-session.json" });
   let tenantId: string;
   let projId: string;
   test.setTimeout(90_000);
@@ -412,7 +424,7 @@ test.describe("Memory scope — auto-extraction scoping", () => {
 
     await goToChat(page, projId);
     const ok = await selectPreset(page, TARGET_PRESET);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new.*chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5_000 });
@@ -435,7 +447,7 @@ test.describe("Memory scope — auto-extraction scoping", () => {
 
     await goToChat(page);
     const ok = await selectPreset(page, TARGET_PRESET);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5_000 });

@@ -15,7 +15,7 @@
  *   Group 11 — Tenants page UI: Shared Commands section CRUD
  */
 
-import { test, expect, Page, BrowserContext } from "@playwright/test";
+import { test, expect, type Page, type BrowserContext } from "./base";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 
@@ -333,6 +333,7 @@ test.describe("My Commands page UI", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("tenant commands API", () => {
+  test.describe.configure({ mode: "serial" });
   let tenantId: string;
 
   test.beforeAll(async ({ browser }) => {
@@ -428,6 +429,7 @@ test.describe("tenant commands API", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("chat picker UI", () => {
+  test.describe.configure({ mode: "serial" });
   let gatewayId: string;
   let tenantId: string;
   let model: string;
@@ -600,6 +602,7 @@ test.describe("chat picker UI", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("variable fill modal", () => {
+  test.describe.configure({ mode: "serial" });
   let gatewayId: string;
   let tenantId: string;
   let model: string;
@@ -710,6 +713,7 @@ test.describe("variable fill modal", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("picker merges tenant and personal commands", () => {
+  test.describe.configure({ mode: "serial" });
   let gatewayId: string;
   let tenantId: string;
   let model: string;
@@ -1016,6 +1020,7 @@ test.describe("Commands page — navigation", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Tenants page UI — Shared Commands", () => {
+  test.describe.configure({ mode: "serial" });
   let tenantId: string;
   let tenantSlug: string;
 

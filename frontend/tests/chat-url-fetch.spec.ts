@@ -9,7 +9,9 @@
  * Gateway: myratest / prod   Model: claude-sonnet-4-6 (Anthropic native path)
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -24,18 +26,6 @@ const TARGET_PRESET  = "UNSAFE claude-sonnet-4-6";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
 
 async function selectGatewayWithModel(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
@@ -63,11 +53,10 @@ async function waitForStreamingDone(page: Page, timeoutMs = 90_000) {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(120_000);
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     // Clear any stale state from previous tests
     await page.goto("/chat");
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
@@ -76,14 +65,17 @@ test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   // ── 1. End-to-end: fetch_url tool works (model uses it to read a page) ───
 
   test("fetch_url tool is used by the model to read a URL", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
@@ -110,7 +102,7 @@ test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
 
   test("asking to read a URL returns page content without errors", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
@@ -142,7 +134,7 @@ test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
 
   test("fetch_url status label appears during URL fetch", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
@@ -171,7 +163,7 @@ test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
 
   test("message without URLs does not trigger fetch_url tool call", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
@@ -204,7 +196,7 @@ test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
 
   test("SSRF: internal URL is rejected gracefully", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
@@ -234,7 +226,7 @@ test.describe("Chat — fetch_url tool with claude-sonnet-4-6", () => {
 
   test("web_search and url_fetch don't conflict", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });

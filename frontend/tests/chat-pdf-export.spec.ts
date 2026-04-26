@@ -19,7 +19,8 @@
  * spaces) must not appear anywhere in the extracted PDF text.
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 import { execSync }                 from "child_process";
 import * as fs                      from "fs";
 import * as path                    from "path";
@@ -191,18 +192,6 @@ async function waitForStreamingDone(page: Page, timeoutMs = 120_000) {
     .waitFor({ state: "visible", timeout: timeoutMs });
 }
 
-async function deleteAllConversations(page: Page, createdAfter: number) {
-  try {
-    const r = await page.context().request.get(`${ADMIN_BASE}/conversations`);
-    if (!r.ok()) return;
-    const convs = (await r.json()) as Array<{ id: string; created_at?: string }>;
-    for (const c of convs) {
-      if (c.created_at && new Date(c.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_BASE}/conversations/${c.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 // ---------------------------------------------------------------------------
 // Suite 1 — API-level PDF generation
 // ---------------------------------------------------------------------------
@@ -322,17 +311,19 @@ test.describe("Chat — PDF export (API level)", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — PDF export (full UI flow)", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(180_000);
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await page.goto("/chat");
     await page.waitForTimeout(400);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("TAM query produces a PDF download with numbers and no inter-digit spaces", async ({ page }) => {
@@ -342,20 +333,18 @@ test.describe("Chat — PDF export (full UI flow)", () => {
       return;
     }
 
-    // Wait for preset buttons to appear (preset mode) or fallback to gateway select
-    const presetVisible = await page
-      .locator("button")
-      .filter({ hasText: /safe|local|vllm/i })
-      .first()
-      .isVisible({ timeout: 8_000 })
-      .catch(() => false);
+    // Worker sessions default to their own e2e tenant which has no presets.
+    // Explicitly switch to myratest via the tenant selector so preset buttons appear.
+    const tenantSelect = page.locator('[data-testid="config-tenant-select"]');
+    if (await tenantSelect.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await tenantSelect.selectOption(tenant.id);
+      await page.waitForTimeout(500);
+    }
 
-    if (presetVisible) {
-      const ok = await selectSafePreset(page, tenant);
-      if (!ok) {
-        test.fail(true, "Could not find SAFE vllm preset — check myratest tenant presets");
-        return;
-      }
+    const ok = await selectSafePreset(page, tenant);
+    if (!ok) {
+      test.fail(true, "Could not find SAFE vllm preset — check myratest tenant presets");
+      return;
     }
 
     // Start a new conversation

@@ -10,25 +10,15 @@
  * Gateway: myratest / prod   Model: claude-sonnet-4-6 (Anthropic native path)
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
-
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
 
 const TARGET_TENANT  = "myratest";
 const TARGET_GATEWAY = "prod";
@@ -37,9 +27,8 @@ const TARGET_PRESET  = "UNSAFE claude-sonnet-4-6";
 async function selectGatewayWithModel(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOption.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
   const presetBtn = page.locator("button").filter({ hasText: new RegExp(TARGET_PRESET.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "i") });
   if (!(await presetBtn.isVisible({ timeout: 5000 }).catch(() => false))) return false;
   await presetBtn.click();
@@ -61,11 +50,10 @@ async function waitForStreamingDone(page: Page, timeoutMs = 90_000) {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — web search with claude-sonnet-4-6", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(120_000);
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await page.goto("/chat");
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await page.reload();
@@ -73,7 +61,10 @@ test.describe("Chat — web search with claude-sonnet-4-6", () => {
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   // ── 1. CORS: x-aig-web-search header is allowed by preflight ─────────────
@@ -100,7 +91,7 @@ test.describe("Chat — web search with claude-sonnet-4-6", () => {
 
   test("every message includes x-aig-web-search: 1 header", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
@@ -121,7 +112,7 @@ test.describe("Chat — web search with claude-sonnet-4-6", () => {
 
   test("web search query returns a non-empty assistant reply without errors", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });

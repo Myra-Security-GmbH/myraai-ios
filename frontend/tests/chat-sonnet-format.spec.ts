@@ -9,30 +9,19 @@
  * Preset: "PII claude-sonnet-4-6" → prod-pii gateway + claude-sonnet-4-6
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT = "myratest";
 const TARGET_PRESET = "PII claude-sonnet-4-6";
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 async function selectPreset(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOpt.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? TARGET_TENANT });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
   await page.waitForTimeout(600);
 
   const presetBtn = page.locator("button").filter({
@@ -53,17 +42,19 @@ async function waitForStreamingDone(page: Page, timeoutMs = 90_000) {
 }
 
 test.describe(`Chat — ${TARGET_PRESET} response formatting`, () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(120_000);
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await page.goto("/chat");
     await page.waitForTimeout(600);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("structured analysis renders as inline markdown, not wrapped in an artifact card", async ({ page }) => {

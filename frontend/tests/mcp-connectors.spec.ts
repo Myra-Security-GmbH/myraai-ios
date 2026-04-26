@@ -7,7 +7,7 @@
  *   Group 3 — Permissions: tenant-scoped isolation
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/admin/v1`;
 
@@ -15,21 +15,11 @@ const ADMIN_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173
 // Types
 // ---------------------------------------------------------------------------
 
-interface TenantRow  { id: string; slug: string; }
 interface ConnRow    { id: string; name: string; server_url: string; auth_type: string; }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function getMyratestTenantId(page: Page): Promise<string> {
-  const r = await page.request.get(`${ADMIN_BASE}/tenants`);
-  expect(r.ok(), "list tenants").toBeTruthy();
-  const ts = await r.json() as TenantRow[];
-  const t = ts.find((t) => t.slug === "myratest");
-  if (!t) throw new Error("myratest tenant not found");
-  return t.id;
-}
 
 async function createConnector(page: Page, data: Partial<ConnRow> & { name: string; server_url: string }): Promise<ConnRow> {
   const r = await page.request.post(`${ADMIN_BASE}/mcp`, {
@@ -48,14 +38,6 @@ async function deleteConnector(page: Page, id: string) {
 // ---------------------------------------------------------------------------
 
 test.describe("MCP connectors — API CRUD", () => {
-  let createdId: string | null = null;
-
-  test.afterEach(async ({ page }) => {
-    if (createdId) {
-      await deleteConnector(page, createdId);
-      createdId = null;
-    }
-  });
 
   test("create connector with required fields", async ({ page }) => {
     const r = await page.request.post(`${ADMIN_BASE}/mcp`, {
@@ -63,11 +45,14 @@ test.describe("MCP connectors — API CRUD", () => {
     });
     expect(r.ok(), `create: ${await r.text()}`).toBeTruthy();
     const row = await r.json() as ConnRow;
-    createdId = row.id;
-    expect(row.name).toBe("Test MCP");
-    expect(row.server_url).toBe("https://mcp.example.com/rpc");
-    expect(row.auth_type).toBe("none");
-    expect(row.id).toBeTruthy();
+    try {
+      expect(row.name).toBe("Test MCP");
+      expect(row.server_url).toBe("https://mcp.example.com/rpc");
+      expect(row.auth_type).toBe("none");
+      expect(row.id).toBeTruthy();
+    } finally {
+      await deleteConnector(page, row.id);
+    }
   });
 
   test("create connector with bearer auth", async ({ page }) => {
@@ -81,10 +66,13 @@ test.describe("MCP connectors — API CRUD", () => {
     });
     expect(r.ok(), `create bearer: ${await r.text()}`).toBeTruthy();
     const row = await r.json() as ConnRow;
-    createdId = row.id;
-    // auth_value must NOT be returned in list/create response
-    expect((row as Record<string, unknown>).auth_value).toBeUndefined();
-    expect(row.auth_type).toBe("bearer");
+    try {
+      // auth_value must NOT be returned in list/create response
+      expect((row as Record<string, unknown>).auth_value).toBeUndefined();
+      expect(row.auth_type).toBe("bearer");
+    } finally {
+      await deleteConnector(page, row.id);
+    }
   });
 
   test("GET single connector includes auth_value", async ({ page }) => {
@@ -95,12 +83,14 @@ test.describe("MCP connectors — API CRUD", () => {
       // @ts-expect-error extra field
       auth_value: "my-secret",
     });
-    createdId = created.id;
-
-    const r = await page.request.get(`${ADMIN_BASE}/mcp/${created.id}`);
-    expect(r.ok(), `get single: ${await r.text()}`).toBeTruthy();
-    const row = await r.json() as ConnRow & { auth_value?: string };
-    expect(row.auth_value).toBe("my-secret");
+    try {
+      const r = await page.request.get(`${ADMIN_BASE}/mcp/${created.id}`);
+      expect(r.ok(), `get single: ${await r.text()}`).toBeTruthy();
+      const row = await r.json() as ConnRow & { auth_value?: string };
+      expect(row.auth_value).toBe("my-secret");
+    } finally {
+      await deleteConnector(page, created.id);
+    }
   });
 
   test("list connectors returns created row", async ({ page }) => {
@@ -108,15 +98,17 @@ test.describe("MCP connectors — API CRUD", () => {
       name: "List Me MCP",
       server_url: "https://mcp.example.com/list",
     });
-    createdId = created.id;
-
-    const r = await page.request.get(`${ADMIN_BASE}/mcp`);
-    expect(r.ok(), "list ok").toBeTruthy();
-    const rows = await r.json() as ConnRow[];
-    const found = rows.find((c) => c.id === created.id);
-    expect(found, "created connector appears in list").toBeTruthy();
-    // auth_value must not appear in list response
-    expect((found as Record<string, unknown>).auth_value).toBeUndefined();
+    try {
+      const r = await page.request.get(`${ADMIN_BASE}/mcp`);
+      expect(r.ok(), "list ok").toBeTruthy();
+      const rows = await r.json() as ConnRow[];
+      const found = rows.find((c) => c.id === created.id);
+      expect(found, "created connector appears in list").toBeTruthy();
+      // auth_value must not appear in list response
+      expect((found as Record<string, unknown>).auth_value).toBeUndefined();
+    } finally {
+      await deleteConnector(page, created.id);
+    }
   });
 
   test("PATCH connector updates fields", async ({ page }) => {
@@ -124,15 +116,17 @@ test.describe("MCP connectors — API CRUD", () => {
       name: "Patch Me MCP",
       server_url: "https://mcp.example.com/old",
     });
-    createdId = created.id;
-
-    const r = await page.request.patch(`${ADMIN_BASE}/mcp/${created.id}`, {
-      data: { name: "Patched MCP", server_url: "https://mcp.example.com/new" },
-    });
-    expect(r.ok(), `patch: ${await r.text()}`).toBeTruthy();
-    const updated = await r.json() as ConnRow;
-    expect(updated.name).toBe("Patched MCP");
-    expect(updated.server_url).toBe("https://mcp.example.com/new");
+    try {
+      const r = await page.request.patch(`${ADMIN_BASE}/mcp/${created.id}`, {
+        data: { name: "Patched MCP", server_url: "https://mcp.example.com/new" },
+      });
+      expect(r.ok(), `patch: ${await r.text()}`).toBeTruthy();
+      const updated = await r.json() as ConnRow;
+      expect(updated.name).toBe("Patched MCP");
+      expect(updated.server_url).toBe("https://mcp.example.com/new");
+    } finally {
+      await deleteConnector(page, created.id);
+    }
   });
 
   test("DELETE connector removes it", async ({ page }) => {
@@ -140,7 +134,6 @@ test.describe("MCP connectors — API CRUD", () => {
       name: "Delete Me MCP",
       server_url: "https://mcp.example.com/delete",
     });
-
     const del = await page.request.delete(`${ADMIN_BASE}/mcp/${created.id}`);
     expect(del.status()).toBe(204);
 
@@ -148,8 +141,6 @@ test.describe("MCP connectors — API CRUD", () => {
     const r = await page.request.get(`${ADMIN_BASE}/mcp`);
     const rows = await r.json() as ConnRow[];
     expect(rows.find((c) => c.id === created.id)).toBeUndefined();
-
-    createdId = null; // already deleted
   });
 
   test("create fails with missing name", async ({ page }) => {

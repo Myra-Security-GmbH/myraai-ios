@@ -15,7 +15,7 @@
 
 import path from "path";
 import fs from "fs";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 // When running with playwright.docker.config.ts, PLAYWRIGHT_ADMIN_URL is set to
 // "https://ai-api-admin.myra.eu" and the docker session cookie covers that domain.

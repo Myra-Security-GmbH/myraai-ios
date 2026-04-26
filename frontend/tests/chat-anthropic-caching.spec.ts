@@ -21,7 +21,7 @@
  * can construct a precise request and inspect the log entries.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 
 const ADMIN_URL    = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const GATEWAY_URL  = process.env.PLAYWRIGHT_GATEWAY_URL ?? "https://ai-api.myra.eu";

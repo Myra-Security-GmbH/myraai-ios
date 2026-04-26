@@ -1,10 +1,10 @@
 /**
- * playwright.docker.sequential.config.ts — Sequential pass for tests that use
- * deleteAllConversations(page, timestamp).
+ * playwright.docker.sequential.config.ts — Sequential pass for tests that have
+ * genuine resource or state conflicts (inference load, docker exec, localStorage
+ * mutations).  These cannot run in parallel even with per-worker data isolation.
  *
- * These tests bulk-delete conversations by wall-clock timestamp.  Running them
- * concurrently causes one file's afterEach cleanup to delete another file's
- * in-progress fixtures.  workers:1 serialises them so only one file runs at a time.
+ * Note: formerly this ran all 24 cleanup-based tests.  After migrating to per-ID
+ * cleanup and per-worker sessions, only 7 tests remain here.
  *
  * This config is invoked automatically by run-e2e.sh after the parallel pass
  * (playwright.docker.config.ts) completes.  Do not invoke it directly unless

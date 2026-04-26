@@ -1,14 +1,15 @@
 /**
- * reporters/progress.ts — Compact Playwright progress-bar reporter.
+ * reporters/progress.ts — Compact Playwright progress reporter.
  *
- * Shows a single updating bar line:
- *   [42/542] ████████░░░░░░░░░░░░ 8%   ✓ 41   ✘ 1   ~2m 30s left
+ * Progress line (updates in place, no ASCII art):
+ *   [42/542] 8%   ✓ 41   ✘ 1   ~2m 30s left
  *
- * After each test completes, a permanent one-liner scrolls above the bar:
- *   ✓ 1.4s   chat-memory.spec.ts · user memory is injected into system prompt
- *   · 0.0s   chat-memory.spec.ts · memory_disabled suppresses injection  [skipped]
+ * One permanent line per test (passed, skipped, or failed):
+ *   ✓ 1.4s   tests/chat-memory.spec.ts · user memory is injected into system prompt
+ *   · 0.0s   tests/chat-memory.spec.ts · memory_disabled suppresses injection  [skipped]
+ *   ✘ 2.0s   tests/chat-presets.spec.ts · PATCH chat_presets → 200  [expect(200).toBe(200)]
  *
- * Failures are printed in full immediately; a full summary is printed at the end.
+ * Full failure details (file, title, error) are printed after all tests complete.
  */
 
 import type {
@@ -20,14 +21,6 @@ import type {
   FullResult,
   TestError,
 } from "@playwright/test/reporter";
-
-const BAR_WIDTH = 28;
-
-function bar(done: number, total: number): string {
-  const pct = total === 0 ? 100 : Math.round((done / total) * 100);
-  const filled = total === 0 ? BAR_WIDTH : Math.min(BAR_WIDTH, Math.max(0, Math.round((done / total) * BAR_WIDTH)));
-  return "█".repeat(filled) + "░".repeat(BAR_WIDTH - filled) + ` ${String(pct).padStart(3)}%`;
-}
 
 function formatEta(elapsedMs: number, done: number, total: number): string {
   if (done === 0 || done >= total) return "";
@@ -51,10 +44,22 @@ function formatDuration(ms: number): string {
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
+function stripAnsi(str: string): string {
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function extractFirstErrorLine(err?: TestError): string {
+  if (!err?.message) return "";
+  const first = stripAnsi(err.message)
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0) ?? "";
+  return first.length > 80 ? first.slice(0, 77) + "…" : first;
+}
+
 function formatTestLine(test: TestCase, result: TestResult): string {
   const file = test.location.file.replace(/.*\/tests\//, "tests/");
-  // Last meaningful title segment (skip describe wrappers if name is long enough)
-  const segments = test.titlePath().slice(1); // drop file root
+  const segments = test.titlePath().slice(1);
   const name = segments.length > 1 ? segments[segments.length - 1] : segments[0] ?? "";
   const truncated = name.length > 72 ? name.slice(0, 69) + "…" : name;
   const dur = formatDuration(result.duration);
@@ -65,8 +70,10 @@ function formatTestLine(test: TestCase, result: TestResult): string {
   if (result.status === "skipped") {
     return `  \x1b[2m·\x1b[0m ${dur.padEnd(6)}  \x1b[2m${file} · ${truncated}  [skipped]\x1b[0m`;
   }
-  // failed / timedOut — the full error block is printed separately; show a compact line too
-  return `  \x1b[31m✘\x1b[0m ${dur.padEnd(6)}  ${file} · ${truncated}`;
+  // failed / timedOut — append first error line on same line
+  const errMsg = extractFirstErrorLine(result.errors[0]);
+  const suffix = errMsg ? `  \x1b[2m[${errMsg}]\x1b[0m` : "";
+  return `  \x1b[31m✘\x1b[0m ${dur.padEnd(6)}  ${file} · ${truncated}${suffix}`;
 }
 
 function formatError(test: TestCase, result: TestResult): string {
@@ -100,6 +107,7 @@ class ProgressReporter implements Reporter {
   private flaky = 0;
   private skipped = 0;
   private failedTitles = new Set<string>();
+  private failures: Array<{ test: TestCase; result: TestResult }> = [];
   private lineActive = false;
   private startTime = 0;
 
@@ -138,22 +146,24 @@ class ProgressReporter implements Reporter {
       result.status !== "skipped" &&
       result.retry >= (test.retries ?? 0);
 
-    // Clear the bar line before printing permanent output
-    this.clearBar();
-
-    // Full failure block
     if (isFinalAttempt) {
-      process.stdout.write(formatError(test, result));
+      this.failures.push({ test, result });
     }
 
-    // Per-test one-liner (always printed)
+    this.clearBar();
     process.stdout.write(formatTestLine(test, result) + "\n");
-
     this.renderBar();
   }
 
   onEnd(result: FullResult): void {
-    process.stdout.write("\n\n");
+    this.clearBar();
+
+    // Print full failure details after all tests have completed
+    for (const { test, result: r } of this.failures) {
+      process.stdout.write(formatError(test, r));
+    }
+
+    process.stdout.write("\n");
 
     const duration = Math.round(result.duration / 1000);
     const mins = Math.floor(duration / 60);
@@ -178,14 +188,14 @@ class ProgressReporter implements Reporter {
 
   private renderBar(): void {
     const elapsed = Date.now() - this.startTime;
+    const pct = this.total === 0 ? 100 : Math.round((this.done / this.total) * 100);
     const eta = formatEta(elapsed, this.done, this.total);
-    const b = bar(this.done, this.total);
     const pass  = `\x1b[32m✓ ${this.passed}\x1b[0m`;
     const fail  = this.failed > 0 ? `\x1b[31m✘ ${this.failed}\x1b[0m` : `✘ 0`;
     const flaky = this.flaky > 0  ? `\x1b[33m~ ${this.flaky}\x1b[0m`  : "";
     const etaPart = eta ? `\x1b[2m  ${eta}\x1b[0m` : "";
     const extra = [pass, fail, flaky].filter(Boolean).join("   ");
-    const line = `  [${this.done}/${this.total}] ${b}   ${extra}${etaPart}`;
+    const line = `  [${this.done}/${this.total}] ${pct}%   ${extra}${etaPart}`;
     process.stdout.write(`\r${line}`);
     this.lineActive = true;
   }

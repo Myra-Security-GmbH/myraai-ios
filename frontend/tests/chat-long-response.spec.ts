@@ -21,7 +21,9 @@
  *     --project=chromium-chat --timeout=360000
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
+import type {  Page  } from "./base";
 
 const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT = "myratest";
@@ -30,30 +32,17 @@ const TARGET_TENANT = "myratest";
 // Shared helpers (same pattern as chat-summarize.spec.ts)
 // ---------------------------------------------------------------------------
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 async function selectMyraTestTenant(page: Page): Promise<boolean> {
   await page.goto("/chat");
-  await page.waitForTimeout(600);
 
   const tenantSel = page.locator("select").first();
-  await tenantSel.waitFor({ state: "visible", timeout: 5000 });
+  await tenantSel.waitFor({ state: "visible", timeout: 10000 });
 
-  const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if (await tenantOption.count() === 0) return false;
-
-  await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
-  await page.waitForTimeout(500);
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
+  await expect(
+    page.locator("[data-testid='config-preset-btn'], select").nth(1),
+  ).toBeVisible({ timeout: 5000 });
   return true;
 }
 
@@ -62,7 +51,7 @@ async function selectPreset(page: Page, presetName: string): Promise<boolean> {
   const visible = await btn.isVisible({ timeout: 4000 }).catch(() => false);
   if (!visible) return false;
   await btn.click();
-  await page.waitForTimeout(300);
+  await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
   return true;
 }
 
@@ -95,14 +84,17 @@ test.describe("Chat long response — no mid-stream truncation", () => {
   // Very generous timeout: local models can take 3–5 min for a 1500-word response
   test.setTimeout(360_000);
 
-  let testStartTime: number;
+  let convIds: string[] = [];
 
   test.beforeEach(async () => {
-    testStartTime = Date.now();
+    // intentionally empty
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   // ── Test 1: Anthropic Sonnet — fast but produces long structured output ────
@@ -110,7 +102,7 @@ test.describe("Chat long response — no mid-stream truncation", () => {
 
   test("PII claude-sonnet-4-6: full long response received without truncation", async ({ page }) => {
     const tenantOk = await selectMyraTestTenant(page);
-    if (!tenantOk) { test.skip(); return; }
+    if (!tenantOk) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     // Use the "PII claude-sonnet-4-6" preset — it points at the prod-pii gateway
     // which uses claude-sonnet-4-6. Our prompt is PII-free so the PII protector
@@ -122,7 +114,7 @@ test.describe("Chat long response — no mid-stream truncation", () => {
     }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(400);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     // Prompt that forces a multi-section response long enough to verify streaming
     // is not cut off prematurely. "OpenAPI" in section 4 is the sentinel — if
@@ -147,10 +139,7 @@ test.describe("Chat long response — no mid-stream truncation", () => {
 
     // Wait for streaming to complete — allow up to 3 min for Sonnet
     await waitForStreamingComplete(page, 180_000);
-
-    // Give React a moment to commit the final state
-    await page.waitForTimeout(1500);
-
+    await expect(page.locator("[class*='bubble-row']:not([class*='user-row']) [class*='bubble-text']").last()).not.toBeEmpty({ timeout: 5000 });
     const responseText = await getLastAssistantText(page);
 
     // 1. Response must be substantially long (>= 500 chars)
@@ -179,7 +168,7 @@ test.describe("Chat long response — no mid-stream truncation", () => {
 
   test("SAFE local only: all 20 design patterns present (no mid-stream timeout)", async ({ page }) => {
     const tenantOk = await selectMyraTestTenant(page);
-    if (!tenantOk) { test.skip(); return; }
+    if (!tenantOk) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const presetOk = await selectPreset(page, "SAFE local only");
     if (!presetOk) {
@@ -188,7 +177,7 @@ test.describe("Chat long response — no mid-stream truncation", () => {
     }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(400);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     // 20 patterns — a local 3B model takes ~90–120 s to generate all of them.
     // With the old 60 s timeout only patterns 1–8 would appear.
@@ -209,8 +198,7 @@ test.describe("Chat long response — no mid-stream truncation", () => {
 
     // Allow up to 5 min for local model to finish
     await waitForStreamingComplete(page, 300_000);
-    await page.waitForTimeout(1500);
-
+    await expect(page.locator("[class*='bubble-row']:not([class*='user-row']) [class*='bubble-text']").last()).not.toBeEmpty({ timeout: 5000 });
     const responseText = await getLastAssistantText(page);
 
     // 1. Response must be reasonably long (>= 400 chars for 20 patterns)
@@ -232,7 +220,7 @@ test.describe("Chat long response — no mid-stream truncation", () => {
 
   test("PII claude-sonnet-4-6: 10-section guide reaches section 8 (circuit breakers)", async ({ page }) => {
     const tenantOk = await selectMyraTestTenant(page);
-    if (!tenantOk) { test.skip(); return; }
+    if (!tenantOk) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const presetOk = await selectPreset(page, "PII claude-sonnet-4-6");
     if (!presetOk) {
@@ -241,7 +229,7 @@ test.describe("Chat long response — no mid-stream truncation", () => {
     }
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(400);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     const prompt =
       "Write a structured guide with exactly 10 numbered sections:\n" +
@@ -265,8 +253,7 @@ test.describe("Chat long response — no mid-stream truncation", () => {
       .waitFor({ state: "visible", timeout: 30_000 });
 
     await waitForStreamingComplete(page, 180_000);
-    await page.waitForTimeout(1500);
-
+    await expect(page.locator("[class*='bubble-row']:not([class*='user-row']) [class*='bubble-text']").last()).not.toBeEmpty({ timeout: 5000 });
     const responseText = await getLastAssistantText(page);
 
     expect(responseText.length).toBeGreaterThanOrEqual(600);

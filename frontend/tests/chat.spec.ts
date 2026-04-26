@@ -1,30 +1,16 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
-
-/** Delete conversations created during this test run (best-effort cleanup). */
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch {
-    // best-effort — don't fail the test on cleanup errors
-  }
-}
+const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
+const TARGET_TENANT = "myratest";
 
 async function gotoChatPage(page: Page) {
   await page.goto("/chat");
-  // Wait for the page to settle (config bar or empty state)
-  await page.waitForTimeout(600);
+  await expect(page.locator("[class*='config-bar'] select, [class*='empty']").first()).toBeVisible({ timeout: 10000 });
 }
 
 /** Click the "+ New Chat" button (or equivalent) in the conversation sidebar. */
@@ -32,40 +18,59 @@ async function clickNewChat(page: Page) {
   const btn = page.getByRole("button", { name: /new chat/i });
   await btn.waitFor({ state: "visible", timeout: 5000 });
   await btn.click();
-  await page.waitForTimeout(300);
+  await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 }
 
 /** Select the first available gateway + model from the config bar.
  *  Handles both normal mode (gateway+model selects) and preset mode
  *  (tenant has chat_presets — gateway select is replaced by preset buttons). */
 async function selectFirstGateway(page: Page): Promise<boolean> {
-  // Tenant select
+  // Tenant select — always use the known test tenant
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOptions = await tenantSel.locator("option").count();
-  if (tenantOptions <= 1) return false; // only placeholder
-  await tenantSel.selectOption({ index: 1 });
-  await page.waitForTimeout(400);
+  // Wait for tenant options to load from the async API call before checking
+  await page.waitForFunction(
+    (slug) => Array.from(document.querySelectorAll("select")[0]?.querySelectorAll("option") ?? []).some(
+      (o) => (o.textContent ?? "").includes(slug)
+    ),
+    TARGET_TENANT,
+    { timeout: 8000 },
+  ).catch(() => {});
+  if (!(await tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") }).count())) return false;
+  await tenantSel.selectOption({ label: TARGET_TENANT });
+  // Wait for React to settle: either preset buttons appear (preset mode) or gateway select loads (normal mode).
+  // Uses waitForFunction so we don't time out on a race between the two UI paths.
+  await page.waitForFunction(() => {
+    const presetBtns = document.querySelectorAll("[data-testid='config-preset-btn']");
+    if (presetBtns.length > 0 && (presetBtns[0] as HTMLElement).offsetParent !== null) return true;
+    const selects = document.querySelectorAll("select");
+    const gwSel = selects[1] as HTMLSelectElement | undefined;
+    return gwSel && (gwSel as HTMLElement).offsetParent !== null && gwSel.options.length > 1;
+  }, null, { timeout: 10000 }).catch(() => {});
 
-  // Determine mode: preset mode (only 1 select remains) vs normal mode (2+ selects)
-  const selectCount = await page.locator("select").count();
-  if (selectCount < 2) {
+  // Determine mode: check if the second select is VISIBLE (not just present in DOM).
+  // In preset mode the model-chip select is hidden but still in the DOM, so counting
+  // all selects would incorrectly detect preset mode as normal mode.
+  const gatewaySelectVisible = await page.locator("select").nth(1).isVisible();
+  if (!gatewaySelectVisible) {
     // Preset mode — click the first preset button
     const presetBtn = page.locator("[data-testid='config-preset-btn']").first();
-    const visible = await presetBtn.isVisible({ timeout: 3000 }).catch(() => false);
+    const visible = await presetBtn.isVisible({ timeout: 8000 }).catch(() => false);
     if (!visible) return false;
     await presetBtn.click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
     return true;
   }
 
-  // Normal mode — Gateway select
+  // Normal mode — Gateway select: pick the first available gateway by its label
   const gatewaySel = page.locator("select").nth(1);
   await gatewaySel.waitFor({ state: "visible", timeout: 5000 });
   const gwOptions = await gatewaySel.locator("option").count();
   if (gwOptions <= 1) return false;
-  await gatewaySel.selectOption({ index: 1 });
-  await page.waitForTimeout(400);
+  const firstGwLabel = (await gatewaySel.locator("option").nth(1).textContent() ?? "").trim();
+  if (!firstGwLabel) return false;
+  await gatewaySel.selectOption({ label: firstGwLabel });
+  await expect(page.locator("[aria-haspopup='listbox']")).toBeVisible({ timeout: 5000 });
 
   // Model picker — open the dropdown and click the first option
   const modelPickerBtn = page.locator("[aria-haspopup='listbox']");
@@ -79,7 +84,51 @@ async function selectFirstGateway(page: Page): Promise<boolean> {
     return false;
   }
   await firstOption.click();
-  await page.waitForTimeout(300);
+  await expect(page.locator("[role='listbox']")).not.toBeVisible({ timeout: 3000 });
+  return true;
+}
+
+/**
+ * Select the worker's own e2e-tenant by tenant UUID (no presets → always normalMode),
+ * then pick the first available gateway and model via the native selects.
+ * Used by tests that require normalMode and cannot run against myratest (preset mode).
+ */
+async function selectWorkerGateway(page: Page, workerTenantId: string): Promise<boolean> {
+  const tenantSel = page.locator("select").first();
+  await tenantSel.waitFor({ state: "visible", timeout: 5000 });
+  // Wait for tenant options to load asynchronously before checking
+  await page.waitForFunction(
+    (id) => Array.from(document.querySelectorAll("select option")).some((o) => (o as HTMLOptionElement).value === id),
+    workerTenantId,
+    { timeout: 8000 },
+  ).catch(() => {});
+  const optExists = (await tenantSel.locator(`option[value="${workerTenantId}"]`).count()) > 0;
+  if (!optExists) return false;
+  await tenantSel.selectOption({ value: workerTenantId });
+
+  // e2e-tenant has no presets → gateway select is always visible
+  const gatewaySel = page.locator("select").nth(1);
+  await gatewaySel.waitFor({ state: "visible", timeout: 5000 });
+  const gwOptions = await gatewaySel.locator("option").count();
+  if (gwOptions <= 1) return false;
+  const firstGwLabel = (await gatewaySel.locator("option").nth(1).textContent() ?? "").trim();
+  if (!firstGwLabel) return false;
+  await gatewaySel.selectOption({ label: firstGwLabel });
+  await expect(page.locator("[aria-haspopup='listbox']")).toBeVisible({ timeout: 5000 });
+
+  // Open model picker and select first model
+  const modelPickerBtn = page.locator("[aria-haspopup='listbox']");
+  await modelPickerBtn.click();
+  const firstOption = page.locator("[role='listbox'] [role='option']").first();
+  const hasOptions = await firstOption.isVisible({ timeout: 3000 }).catch(() => false);
+  if (!hasOptions) {
+    await page.keyboard.press("Escape");
+    return false;
+  }
+  await firstOption.click();
+  await expect(page.locator("[role='listbox']")).not.toBeVisible({ timeout: 5000 }).catch(async () => {
+    await page.keyboard.press("Escape");
+  });
   return true;
 }
 
@@ -117,9 +166,11 @@ async function selectValue(page: Page, index: number): Promise<string> {
   return page.locator("select").nth(index).inputValue();
 }
 
-/** True when the chat UI is showing native select dropdowns (not preset mode). */
+/** True when the chat UI is showing native select dropdowns (not preset mode).
+ *  Preset mode has the gateway select replaced by preset buttons; the model-chip
+ *  select is still in the DOM but hidden — so we must check visibility, not count. */
 async function isNormalMode(page: Page): Promise<boolean> {
-  return (await page.locator("select").count()) >= 2;
+  return page.locator("select").nth(1).isVisible();
 }
 
 /** Return the model name shown by the ModelPicker button (strips the trailing dropdown arrow). */
@@ -144,11 +195,9 @@ test.describe("Chat page — localStorage persistence", () => {
   test("writes tenant, gateway and model to localStorage immediately after selection", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
-    // Wait for effects to flush (they run after render)
-    await page.waitForTimeout(200);
-
+    await expect.poll(() => readChatStorage(page).then(s => s.tenant), { timeout: 3000 }).toBeTruthy();
     const stored = await readChatStorage(page);
     expect(stored.tenant,  "tenant id should be written").toBeTruthy();
     expect(stored.gateway, "gateway id should be written").toBeTruthy();
@@ -165,9 +214,9 @@ test.describe("Chat page — localStorage persistence", () => {
   test("restores tenant, gateway and model after SPA navigation away and back", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
-    await page.waitForTimeout(200);
+    await expect.poll(() => readChatStorage(page).then(s => s.tenant), { timeout: 3000 }).toBeTruthy();
 
     // Capture what was selected (use localStorage for gateway/model in preset mode)
     const normalMode = await isNormalMode(page);
@@ -180,10 +229,10 @@ test.describe("Chat page — localStorage persistence", () => {
 
     // SPA navigate away then back (React Router unmounts / remounts Chat)
     await page.goto("/dashboard");
-    await page.waitForTimeout(200);
     await page.goto("/chat");
-    // Allow time for async API calls (tenants, gateways) + React effects to settle
-    await page.waitForTimeout(1200);
+    // Wait for selects to repopulate from async API calls and localStorage restoration
+    await expect(page.locator("select").first()).toBeEnabled({ timeout: 10000 });
+    await expect.poll(() => selectValue(page, 0), { timeout: 10000 }).toBeTruthy();
 
     const tenantAfter  = await selectValue(page, 0);
     const gatewayAfter = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
@@ -197,9 +246,9 @@ test.describe("Chat page — localStorage persistence", () => {
   test("restores tenant, gateway and model after hard page reload", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
-    await page.waitForTimeout(200);
+    await expect.poll(() => readChatStorage(page).then(s => s.tenant), { timeout: 3000 }).toBeTruthy();
 
     const normalMode = await isNormalMode(page);
     const tenantBefore  = await selectValue(page, 0);
@@ -208,7 +257,9 @@ test.describe("Chat page — localStorage persistence", () => {
 
     // Hard reload (equivalent to Ctrl+F5)
     await page.reload();
-    await page.waitForTimeout(1200);
+    // Wait for selects to repopulate from async API calls and localStorage restoration
+    await expect(page.locator("select").first()).toBeEnabled({ timeout: 10000 });
+    await expect.poll(() => selectValue(page, 0), { timeout: 10000 }).toBeTruthy();
 
     const tenantAfter  = await selectValue(page, 0);
     const gatewayAfter = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
@@ -219,17 +270,15 @@ test.describe("Chat page — localStorage persistence", () => {
     expect(modelAfter,   `model should survive reload (was ${modelBefore})`).toBe(modelBefore);
   });
 
-  test("does not reset gateway when only the model changes", async ({ page }) => {
+  test("does not reset gateway when only the model changes", async ({ page, workerTenantId }) => {
     await gotoChatPage(page);
-    const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    // Use the worker's own e2e-tenant — always normalMode (no presets configured).
+    // After DB-1, e2e-gateway has vllm so the model picker is populated.
+    const ok = await selectWorkerGateway(page, workerTenantId);
+    if (!ok) { test.skip(true, "Worker gateway not available (e2e-gateway needs vllm config)"); return; }
 
-    await page.waitForTimeout(200);
-    const normalMode = await isNormalMode(page);
-    const gatewayBefore = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
-
-    // In preset mode the model is fixed — skip the model-change step
-    if (!normalMode) { test.skip(); return; }
+    await expect.poll(() => readChatStorage(page).then(s => s.gateway), { timeout: 3000 }).toBeTruthy();
+    const gatewayBefore = await selectValue(page, 1);
 
     // Change model (open picker, pick second option if available)
     const modelPickerBtn = page.locator("[aria-haspopup='listbox']");
@@ -238,22 +287,26 @@ test.describe("Chat page — localStorage persistence", () => {
     const count = await options.count();
     if (count > 1) {
       await options.nth(1).click();
+      await expect(page.locator("[role='listbox']")).not.toBeVisible({ timeout: 5000 }).catch(async () => {
+        await page.keyboard.press("Escape");
+      });
     } else {
       await page.keyboard.press("Escape");
     }
-    await page.waitForTimeout(200);
 
     // Gateway must not have changed
-    const gatewayAfter = normalMode ? await selectValue(page, 1) : (await readChatStorage(page)).gateway;
+    const gatewayAfter = await selectValue(page, 1);
     expect(gatewayAfter, "changing model must not reset the gateway").toBe(gatewayBefore);
   });
 });
 
 test.describe("Chat page", () => {
-  let testStartTime: number;
-  test.beforeEach(async () => { testStartTime = Date.now(); });
+  let convIds: string[] = [];
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("page loads at /chat", async ({ page }) => {
@@ -282,7 +335,7 @@ test.describe("Chat page", () => {
   test("clicking New Chat creates a conversation entry in the sidebar", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await clickNewChat(page);
     // A conversation item should appear
@@ -299,7 +352,7 @@ test.describe("Chat page", () => {
   test("can rename a conversation inline", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await clickNewChat(page);
     const item = page.locator("[class*='conv-item']").first();
@@ -317,15 +370,13 @@ test.describe("Chat page", () => {
     // Type new name and confirm with Enter
     await input.fill("My renamed chat");
     await input.press("Enter");
-    await page.waitForTimeout(400);
-
-    await expect(page.getByText("My renamed chat").first()).toBeVisible({ timeout: 3000 });
+    await expect(page.getByText("My renamed chat").first()).toBeVisible({ timeout: 5000 });
   });
 
   test("can delete a conversation from the sidebar", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await clickNewChat(page);
     // Use role="option" (each conv-item has role="option") to count only conversation rows
@@ -333,18 +384,34 @@ test.describe("Chat page", () => {
     await expect(items.first()).toBeVisible({ timeout: 5000 });
     const countBefore = await items.count();
 
-    // Accept the window.confirm("Delete this conversation?") dialog
-    page.once("dialog", (dialog) => dialog.accept());
+    // The delete button lives inside .conv-item-menu which is display:none until
+    // CSS :hover.  Inject a stylesheet to override that (can't be reset by React),
+    // then click normally so React's delegated event system handles it properly.
+    await page.evaluate(() => {
+      (window as unknown as Record<string, unknown>).confirm = () => true;
+      const style = document.createElement("style");
+      style.textContent = '[class*="conv-item-menu"] { display: flex !important; }';
+      document.head.appendChild(style);
+    });
+    // Record the ID of the first conversation so we can assert on its specific element.
+    // Using items.first() for the locator risks re-resolution after a React re-render,
+    // so we pin the delete button to data-id= once we have the ID.
+    const targetId = await items.first().getAttribute("data-id");
+    expect(targetId, "first conversation item must have a data-id attribute").toBeTruthy();
 
-    // The delete button is display:none until CSS :hover — use dispatchEvent to fire it
-    const firstItem = items.first();
-    const deleteBtn = firstItem.locator("button[title='Delete conversation']");
-    await deleteBtn.waitFor({ state: "attached", timeout: 3000 });
-    await deleteBtn.dispatchEvent("click");
-    await page.waitForTimeout(600);
+    const targetItem = page.locator(
+      `[role='listbox'][aria-label='Conversations'] [role='option'][data-id='${targetId}']`
+    );
+    const deleteBtn = targetItem.locator("button[title='Delete conversation']");
+    await expect(deleteBtn).toBeVisible({ timeout: 2000 });
+    await deleteBtn.click();
 
-    // List should have one fewer item
-    await expect(items).toHaveCount(countBefore - 1, { timeout: 3000 });
+    // The target item must disappear from the DOM.  Use ID-based assertion rather
+    // than count-based: clickNewChat's setConversations update may be applied after
+    // the delete, making the total count stable even as the deleted item leaves.
+    await expect(
+      page.locator(`[role='listbox'][aria-label='Conversations'] [role='option'][data-id='${targetId}']`)
+    ).not.toBeAttached({ timeout: 8000 });
   });
 
   test("config bar shows tenant and gateway selects", async ({ page }) => {
@@ -385,7 +452,7 @@ test.describe("Chat page", () => {
   test("message input area is present with send button", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await clickNewChat(page);
 
@@ -399,7 +466,7 @@ test.describe("Chat page", () => {
   test("send button is disabled when textarea is empty", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await clickNewChat(page);
 
@@ -410,7 +477,7 @@ test.describe("Chat page", () => {
   test("send button enables when text is typed", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await clickNewChat(page);
 
@@ -423,7 +490,7 @@ test.describe("Chat page", () => {
   test("sending a message appends a user bubble to the thread", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await clickNewChat(page);
 
@@ -431,8 +498,6 @@ test.describe("Chat page", () => {
     await textarea.fill("Hello from the test");
     const sendBtn = page.locator("button[title='Send message']");
     await sendBtn.click();
-    await page.waitForTimeout(500);
-
     // The user bubble should contain the text we typed
     const userBubble = page.locator("[class*='user-row']").first();
     await expect(userBubble).toBeVisible({ timeout: 5000 });
@@ -442,7 +507,7 @@ test.describe("Chat page", () => {
   test("attach button is visible in the input area", async ({ page }) => {
     await gotoChatPage(page);
     const ok = await selectFirstGateway(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await clickNewChat(page);
 

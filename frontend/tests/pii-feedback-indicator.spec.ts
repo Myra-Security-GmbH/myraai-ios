@@ -9,7 +9,9 @@
  * pii_protector sidecar in the test environment.
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT = "myratest";
@@ -17,18 +19,6 @@ const TARGET_TENANT = "myratest";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
 
 /**
  * Navigate to /chat, select the myratest tenant, and select a preset.
@@ -40,9 +30,8 @@ async function setupChat(page: Page, presetName: string): Promise<boolean> {
 
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if (await tenantOption.count() === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
   await page.waitForTimeout(500);
 
   // Try to find and click the preset button
@@ -109,14 +98,13 @@ function buildSseStream(piiTypes: string | null, customCount?: number | null): s
 // ---------------------------------------------------------------------------
 
 test.describe("AGF-16 — PII masked indicator chip", () => {
-  let testStartTime: number;
-
-  test.beforeEach(async () => {
-    testStartTime = Date.now();
-  });
+  let convIds: string[] = [];
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   // ── V2: chip appears when pii_masked event fires ────────────────────────

@@ -24,7 +24,7 @@
  *      sidebars become drawers, freeing the full 980 px for content.
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -170,14 +170,16 @@ test.describe("Chat — 980 px touch CSS layout (Vanadium desktop mode)", () => 
     const hambBox = await hamburger.boundingBox();
     expect(hambBox).not.toBeNull();
 
-    const firstSelect = page.locator("select").first();
-    await expect(firstSelect).toBeVisible({ timeout: 5_000 });
-    const box = await firstSelect.boundingBox();
-    expect(box, "first config-bar select must have a bounding box").not.toBeNull();
+    // At 980 px touch (pointer:coarse) the native config-bar selects are hidden
+    // and replaced by the model chip.  Use the chip locator instead of "select".
+    const modelChip = page.locator('[data-cy="model-chip"]');
+    await expect(modelChip).toBeVisible({ timeout: 5_000 });
+    const box = await modelChip.boundingBox();
+    expect(box, "model chip must have a bounding box").not.toBeNull();
 
     const hamburgerRight = hambBox!.x + hambBox!.width;
-    expect(box!.x, "first select must clear the hamburger").toBeGreaterThanOrEqual(hamburgerRight - 4);
-    expect(box!.x + box!.width, "first select right edge must fit within 980 px").toBeLessThanOrEqual(984);
+    expect(box!.x, "model chip must clear the hamburger").toBeGreaterThanOrEqual(hamburgerRight - 4);
+    expect(box!.x + box!.width, "model chip right edge must fit within 980 px").toBeLessThanOrEqual(984);
   });
 });
 
@@ -420,6 +422,21 @@ test.describe("viewport-fix — message submission must not scroll the page (Van
       Object.defineProperty(window, "outerWidth", { get: () => 427, configurable: true });
     });
     await openChat(page);
+
+    // At this viewport (980px touch, outerWidth=427) the viewport-fix fires and
+    // the layout becomes 427px mobile.  The model chip replaces the selects.
+    // Select the first available option so the textarea becomes enabled.
+    // css-zoom on html (≈2.3×) makes selectOption() fail actionability checks,
+    // so drive the select directly via the native value setter + change event.
+    const modelChip = page.locator('[data-cy="model-chip"]');
+    await expect(modelChip.locator("option").first()).toBeAttached({ timeout: 10_000 });
+    await page.evaluate(() => {
+      const chip = document.querySelector('[data-cy="model-chip"]') as HTMLSelectElement;
+      if (!chip || chip.options.length === 0) return;
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!;
+      setter.call(chip, chip.options[0].value);
+      chip.dispatchEvent(new Event("change", { bubbles: true }));
+    });
 
     const zoom = await page.evaluate(() =>
       parseFloat(document.documentElement.style.zoom || "1")

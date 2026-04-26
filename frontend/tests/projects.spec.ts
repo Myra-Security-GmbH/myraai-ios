@@ -13,7 +13,7 @@
  *   9. Search/Filter/Sort toolbar — search bar, role filter buttons, sort select
  */
 
-import { test, expect, Page, Browser } from "@playwright/test";
+import { test, expect, type Page, type Browser } from "./base";
 import { execSync } from "child_process";
 
 const ADMIN_BASE = (process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173") + "/admin/v1";
@@ -26,21 +26,8 @@ async function apiDelete(page: Page, path: string) {
   await page.context().request.delete(`${ADMIN_BASE}${path}`).catch(() => {});
 }
 
-/** Fetch the first available tenant_id. Fails loudly if none found. */
-async function getFirstTenantId(page: Page): Promise<string> {
-  const resp = await page.context().request.get(`${ADMIN_BASE}/tenants`);
-  expect(resp.ok(), "GET /tenants must succeed").toBeTruthy();
-  const tenants = await resp.json() as Array<{ id: string; slug: string }>;
-  expect(tenants.length, "at least one tenant must exist").toBeGreaterThan(0);
-  // Prefer myratest — test fixture tenants (created most recently) would otherwise be first
-  // because the API returns tenants ORDER BY created_at DESC.
-  const myratest = tenants.find((t) => t.slug === "myratest");
-  return (myratest ?? tenants[0]).id;
-}
-
-/** Fetch gateways for the first available tenant. Fails loudly if none found. */
-async function getFirstGateway(page: Page): Promise<{ id: string; slug: string }> {
-  const tenantId = await getFirstTenantId(page);
+/** Fetch gateways for the given tenant. Fails loudly if none found. */
+async function getFirstGateway(page: Page, tenantId: string): Promise<{ id: string; slug: string }> {
   const resp = await page.context().request.get(`${ADMIN_BASE}/tenants/${tenantId}/gateways`);
   expect(resp.ok(), "GET /gateways must succeed").toBeTruthy();
   const gateways = await resp.json() as Array<{ id: string; slug: string }>;
@@ -48,19 +35,17 @@ async function getFirstGateway(page: Page): Promise<{ id: string; slug: string }
   return gateways[0];
 }
 
-/** Fetch gateways for the first available tenant. Returns empty array if none. */
-async function getFirstTenantGateways(page: Page): Promise<Array<{ id: string; slug: string }>> {
-  const tenantId = await getFirstTenantId(page);
+/** Fetch gateways for the given tenant. Returns empty array if none. */
+async function getFirstTenantGateways(page: Page, tenantId: string): Promise<Array<{ id: string; slug: string }>> {
   const resp = await page.context().request.get(`${ADMIN_BASE}/tenants/${tenantId}/gateways`);
   if (!resp.ok()) return [];
   return resp.json() as Promise<Array<{ id: string; slug: string }>>;
 }
 
-/** Create a project via API and return its id. Always succeeds or throws. */
-async function apiCreateProject(page: Page, name: string, extra?: Record<string, unknown>): Promise<string> {
-  const tenant_id = await getFirstTenantId(page);
+/** Create a project via API in the given tenant and return its id. Always succeeds or throws. */
+async function apiCreateProject(page: Page, name: string, tenantId: string, extra?: Record<string, unknown>): Promise<string> {
   const resp = await page.context().request.post(`${ADMIN_BASE}/projects`, {
-    data: { name, icon: "📁", color: "#2563eb", tenant_id, ...extra },
+    data: { name, icon: "📁", color: "#2563eb", tenant_id: tenantId, ...extra },
   });
   expect(resp.ok(), `create project '${name}': ${await resp.text()}`).toBeTruthy();
   const body = await resp.json() as { id: string };
@@ -75,17 +60,17 @@ async function apiDeleteProject(page: Page, id: string) {
 // Helpers for multi-role permission tests
 // ---------------------------------------------------------------------------
 
-const DB_HOST = "172.17.0.1";
-const DB_USER = "gateway";
-const DB_PASS = "gateway";
-const DB_NAME = "ai_gateway";
+const DB_HOST = process.env.E2E_DB_HOST ?? "172.17.0.1";
+const DB_USER = process.env.E2E_DB_USER ?? "gateway";
+const DB_PASS = process.env.E2E_DB_PASS ?? "gateway";
+const DB_NAME = process.env.E2E_DB_NAME ?? "ai_gateway";
 const PERM_OTP_CODE = "887766";
 const AUTH_BASE_PERM = (process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173") + "/admin/auth";
 
 function sql(query: string) {
   execSync(
-    `mysql -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} ${DB_NAME} -e ${JSON.stringify(query)}`,
-    { stdio: "pipe" }
+    `mysql -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} ${DB_NAME}`,
+    { input: query, stdio: ["pipe", "pipe", "pipe"] }
   );
 }
 
@@ -179,8 +164,8 @@ test.describe("Projects — Navigation", () => {
     ).toBeVisible({ timeout: 15000 });
   });
 
-  test("direct URL /projects/:id loads project detail", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Direct URL");
+  test("direct URL /projects/:id loads project detail", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Direct URL", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Direct URL" })).toBeVisible({ timeout: 8000 });
@@ -218,8 +203,8 @@ test.describe("Projects — CRUD", () => {
     await apiDeleteProject(page, pid);
   });
 
-  test("project detail page shows overview tab with default gateway field", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Detail Test");
+  test("project detail page shows overview tab with default gateway field", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Detail Test", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Detail Test" })).toBeVisible({ timeout: 8000 });
@@ -229,8 +214,8 @@ test.describe("Projects — CRUD", () => {
     }
   });
 
-  test("edit project name", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Edit Before");
+  test("edit project name", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Edit Before", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Edit Before" })).toBeVisible({ timeout: 8000 });
@@ -253,8 +238,8 @@ test.describe("Projects — CRUD", () => {
     }
   });
 
-  test("delete project shows confirmation and removes it", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Delete Me");
+  test("delete project shows confirmation and removes it", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Delete Me", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Delete Me" })).toBeVisible({ timeout: 8000 });
@@ -274,9 +259,9 @@ test.describe("Projects — CRUD", () => {
     }
   });
 
-  test("create project with gateway pre-selected shows it in detail overview", async ({ page }) => {
-    const gw = await getFirstGateway(page);
-    const pid = await apiCreateProject(page, "E2E Gateway Assigned", { default_gateway_id: gw.id });
+  test("create project with gateway pre-selected shows it in detail overview", async ({ page, workerTenantId }) => {
+    const gw = await getFirstGateway(page, workerTenantId);
+    const pid = await apiCreateProject(page, "E2E Gateway Assigned", workerTenantId, { default_gateway_id: gw.id });
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Gateway Assigned" })).toBeVisible({ timeout: 8000 });
@@ -286,8 +271,8 @@ test.describe("Projects — CRUD", () => {
     }
   });
 
-  test("project list shows created project in table", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Listed Project");
+  test("project list shows created project in table", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Listed Project", workerTenantId);
     try {
       await gotoProjects(page);
       await expect(page.locator(`[data-cy=project-row-${pid}]`)).toBeVisible({ timeout: 8000 });
@@ -304,8 +289,8 @@ test.describe("Projects — CRUD", () => {
 
 test.describe("Projects — Knowledge Files", () => {
 
-  test("upload a text file to knowledge panel", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Knowledge Upload");
+  test("upload a text file to knowledge panel", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Knowledge Upload", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Knowledge Upload" })).toBeVisible({ timeout: 8000 });
@@ -331,8 +316,8 @@ test.describe("Projects — Knowledge Files", () => {
     }
   });
 
-  test("delete a knowledge file removes it from the list", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Knowledge Delete");
+  test("delete a knowledge file removes it from the list", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Knowledge Delete", workerTenantId);
     try {
       const uploadResp = await page.context().request.post(
         `${ADMIN_BASE}/projects/${pid}/knowledge`,
@@ -354,8 +339,8 @@ test.describe("Projects — Knowledge Files", () => {
     }
   });
 
-  test("knowledge tab lists multiple uploaded files", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Knowledge List");
+  test("knowledge tab lists multiple uploaded files", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Knowledge List", workerTenantId);
     try {
       await page.context().request.post(
         `${ADMIN_BASE}/projects/${pid}/knowledge`,
@@ -377,8 +362,8 @@ test.describe("Projects — Knowledge Files", () => {
     }
   });
 
-  test("drag-and-drop zone is present for owners", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Drop Zone");
+  test("drag-and-drop zone is present for owners", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Drop Zone", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Drop Zone" })).toBeVisible({ timeout: 8000 });
@@ -389,8 +374,8 @@ test.describe("Projects — Knowledge Files", () => {
     }
   });
 
-  test("knowledge file too large is rejected client-side", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Large File Reject");
+  test("knowledge file too large is rejected client-side", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Large File Reject", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Large File Reject" })).toBeVisible({ timeout: 8000 });
@@ -424,8 +409,8 @@ test.describe("Projects — Knowledge Files", () => {
 
 test.describe("Projects — Members", () => {
 
-  test("members tab lists project owner", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Members List");
+  test("members tab lists project owner", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Members List", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Members List" })).toBeVisible({ timeout: 8000 });
@@ -436,8 +421,8 @@ test.describe("Projects — Members", () => {
     }
   });
 
-  test("invite member button is visible to project owner", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Invite Button");
+  test("invite member button is visible to project owner", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Invite Button", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Invite Button" })).toBeVisible({ timeout: 8000 });
@@ -448,8 +433,8 @@ test.describe("Projects — Members", () => {
     }
   });
 
-  test("invite modal shows error for unknown email", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Invite Modal");
+  test("invite modal shows error for unknown email", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Invite Modal", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Invite Modal" })).toBeVisible({ timeout: 8000 });
@@ -467,8 +452,8 @@ test.describe("Projects — Members", () => {
     }
   });
 
-  test("invite rejected for empty email", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Invite Empty");
+  test("invite rejected for empty email", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Invite Empty", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Invite Empty" })).toBeVisible({ timeout: 8000 });
@@ -486,8 +471,13 @@ test.describe("Projects — Members", () => {
     }
   });
 
-  test("successfully invite a member via UI", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Invite Success");
+  test("successfully invite a member via UI", async ({ page, workerTenantId }) => {
+    // The /users/search endpoint searches within the caller's tenant. Use a temp
+    // user in workerTenantId so the search can find them (sascha@schumann.net is a
+    // global admin with tenant_id=NULL and is not visible from worker tenants).
+    const tempEmail = `e2e-invite-${Date.now()}@example.invalid`;
+    const tempUserId = await createTempUser(page, workerTenantId, tempEmail);
+    const pid = await apiCreateProject(page, "E2E Invite Success", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Invite Success" })).toBeVisible({ timeout: 8000 });
@@ -496,7 +486,7 @@ test.describe("Projects — Members", () => {
 
       const emailInput = page.locator("[data-cy=member-email-input]");
       await expect(emailInput).toBeVisible({ timeout: 5000 });
-      await emailInput.fill("sascha@schumann.net");
+      await emailInput.fill(tempEmail);
       // Change role to editor — the select is the only combobox inside the invite modal
       const roleSelect = page.locator("dialog select, [class*='modal'] select").first();
       await roleSelect.selectOption("editor");
@@ -507,24 +497,23 @@ test.describe("Projects — Members", () => {
 
       // Close modal and verify member appears in the table
       await page.getByRole("button", { name: /close/i }).click();
-      await expect(page.getByRole("cell", { name: "sascha@schumann.net" })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole("cell", { name: tempEmail })).toBeVisible({ timeout: 5000 });
     } finally {
       await apiDeleteProject(page, pid);
+      await deleteTempUser(page, tempUserId);
     }
   });
 
-  test("invited member appears with correct role badge", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Invite Role Badge");
+  test("invited member appears with correct role badge", async ({ page, workerTenantId }) => {
+    // Use a temp user in workerTenantId — the /users/search endpoint only returns
+    // users within the caller's own tenant, so sascha@schumann.net (global admin)
+    // would not be found from a worker tenant context.
+    const tempEmail = `e2e-badge-${Date.now()}@example.invalid`;
+    const tempUserId = await createTempUser(page, workerTenantId, tempEmail);
+    const pid = await apiCreateProject(page, "E2E Invite Role Badge", workerTenantId);
     try {
-      // Invite via API as viewer
-      const meResp = await page.context().request.get(`${ADMIN_BASE}/users/search?email=sascha@schumann.net`);
-      expect(meResp.ok()).toBeTruthy();
-      const users = await meResp.json() as Array<{ id: string }>;
-      expect(users.length).toBeGreaterThan(0);
-      const userId = users[0].id;
-
       const addResp = await page.context().request.post(`${ADMIN_BASE}/projects/${pid}/members`, {
-        data: { user_id: userId, role: "viewer" },
+        data: { user_id: tempUserId, role: "viewer" },
       });
       expect(addResp.ok(), `add member: ${await addResp.text()}`).toBeTruthy();
 
@@ -533,30 +522,30 @@ test.describe("Projects — Members", () => {
       await expect(page.getByRole("heading", { name: "E2E Invite Role Badge" })).toBeVisible({ timeout: 8000 });
       await page.getByRole("button", { name: /members/i }).click();
 
-      await expect(page.getByRole("cell", { name: "sascha@schumann.net" })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole("cell", { name: tempEmail })).toBeVisible({ timeout: 5000 });
       // The viewer badge should be present in the row
-      const row = page.locator("tr", { has: page.getByRole("cell", { name: "sascha@schumann.net" }) });
+      const row = page.locator("tr", { has: page.getByRole("cell", { name: tempEmail }) });
       await expect(row.getByText("viewer")).toBeVisible();
     } finally {
       await apiDeleteProject(page, pid);
+      await deleteTempUser(page, tempUserId);
     }
   });
 
-  test("re-inviting existing member updates their role", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Re-invite Role");
+  test("re-inviting existing member updates their role", async ({ page, workerTenantId }) => {
+    // Use a temp user in workerTenantId — sascha@schumann.net is a global admin with
+    // tenant_id=NULL and cannot be found via /users/search from a worker tenant context.
+    const tempEmail = `e2e-reinvite-${Date.now()}@example.invalid`;
+    const tempUserId = await createTempUser(page, workerTenantId, tempEmail);
+    const pid = await apiCreateProject(page, "E2E Re-invite Role", workerTenantId);
     try {
-      // Look up user id via the new search endpoint
-      const meResp = await page.context().request.get(`${ADMIN_BASE}/users/search?email=sascha@schumann.net`);
-      const users = await meResp.json() as Array<{ id: string }>;
-      const userId = users[0].id;
-
       // Invite as viewer first
       await page.context().request.post(`${ADMIN_BASE}/projects/${pid}/members`, {
-        data: { user_id: userId, role: "viewer" },
+        data: { user_id: tempUserId, role: "viewer" },
       });
       // Re-invite as editor (ON DUPLICATE KEY UPDATE)
       const reInvite = await page.context().request.post(`${ADMIN_BASE}/projects/${pid}/members`, {
-        data: { user_id: userId, role: "editor" },
+        data: { user_id: tempUserId, role: "editor" },
       });
       expect(reInvite.ok(), `re-invite: ${await reInvite.text()}`).toBeTruthy();
 
@@ -565,10 +554,11 @@ test.describe("Projects — Members", () => {
       await expect(page.getByRole("heading", { name: "E2E Re-invite Role" })).toBeVisible({ timeout: 8000 });
       await page.getByRole("button", { name: /members/i }).click();
 
-      const row = page.locator("tr", { has: page.getByRole("cell", { name: "sascha@schumann.net" }) });
+      const row = page.locator("tr", { has: page.getByRole("cell", { name: tempEmail }) });
       await expect(row.getByText("editor")).toBeVisible({ timeout: 5000 });
     } finally {
       await apiDeleteProject(page, pid);
+      await deleteTempUser(page, tempUserId);
     }
   });
 
@@ -580,8 +570,8 @@ test.describe("Projects — Members", () => {
 
 test.describe("Projects — Chat Integration", () => {
 
-  test("'Open Chat' button navigates to /chat?project_id=", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Chat Button");
+  test("'Open Chat' button navigates to /chat?project_id=", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Chat Button", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Chat Button" })).toBeVisible({ timeout: 8000 });
@@ -596,8 +586,8 @@ test.describe("Projects — Chat Integration", () => {
     }
   });
 
-  test("chat page shows project banner when ?project_id= is set", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Chat Banner");
+  test("chat page shows project banner when ?project_id= is set", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Chat Banner", workerTenantId);
     try {
       await page.goto(`/chat?project_id=${pid}`);
       await expect(page.getByText("E2E Chat Banner").first()).toBeVisible({ timeout: 8000 });
@@ -606,8 +596,8 @@ test.describe("Projects — Chat Integration", () => {
     }
   });
 
-  test("conversations tab shows 'New Conversation' button and empty state or list", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Conv Tab Empty");
+  test("conversations tab shows 'New Conversation' button and empty state or list", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Conv Tab Empty", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Conv Tab Empty" })).toBeVisible({ timeout: 8000 });
@@ -622,9 +612,9 @@ test.describe("Projects — Chat Integration", () => {
     }
   });
 
-  test("conversation created via API with project_id appears in conversations tab", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Conv Tab Linked");
-    const gw = await getFirstGateway(page);
+  test("conversation created via API with project_id appears in conversations tab", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Conv Tab Linked", workerTenantId);
+    const gw = await getFirstGateway(page, workerTenantId);
     let convId: string | null = null;
     try {
       const convResp = await page.context().request.post(`${ADMIN_BASE}/conversations`, {
@@ -644,9 +634,9 @@ test.describe("Projects — Chat Integration", () => {
     }
   });
 
-  test("clicking conversation row navigates to /chat?project_id=&conv= (Bug fix)", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Conv Row Click");
-    const gw = await getFirstGateway(page);
+  test("clicking conversation row navigates to /chat?project_id=&conv= (Bug fix)", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Conv Row Click", workerTenantId);
+    const gw = await getFirstGateway(page, workerTenantId);
     let convId: string | null = null;
     try {
       const convResp = await page.context().request.post(`${ADMIN_BASE}/conversations`, {
@@ -673,8 +663,8 @@ test.describe("Projects — Chat Integration", () => {
     }
   });
 
-  test("'New conversation' button click creates conversation linked to project (Bug fix: send-path)", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Conv Send Project");
+  test("'New conversation' button click creates conversation linked to project (Bug fix: send-path)", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Conv Send Project", workerTenantId);
 
     // Pre-set gateway+model in localStorage so chat input is immediately active.
     // We fetch the first preset from myratest to get a valid gateway+model pair.
@@ -691,7 +681,7 @@ test.describe("Projects — Chat Integration", () => {
         localStorage.setItem("aig-chat-tenant",  tenantId);
       }, { gwId: firstPreset.gateway_id, model: firstPreset.model, tenantId: myratest!.id });
     } else {
-      const gw = await getFirstGateway(page);
+      const gw = await getFirstGateway(page, workerTenantId);
       await page.evaluate((gwId) => { localStorage.setItem("aig-chat-gateway", gwId); }, gw.id);
     }
 
@@ -737,8 +727,8 @@ test.describe("Projects — Chat Integration", () => {
 
 test.describe("Projects — Permissions (API-level)", () => {
 
-  test("owner can read their own project", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Permission Read");
+  test("owner can read their own project", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Permission Read", workerTenantId);
     try {
       const getResp = await page.context().request.get(`${ADMIN_BASE}/projects/${pid}`);
       expect(getResp.ok()).toBeTruthy();
@@ -761,9 +751,9 @@ test.describe("Projects — Permissions (API-level)", () => {
     expect(resp.status()).toBe(400);
   });
 
-  test("member user can create a project via API (returns 201)", async ({ page, browser }) => {
+  test("member user can create a project via API (returns 201)", async ({ page, browser, workerTenantId }) => {
     // Regression guard: previously only admin/tenant_admin could create projects.
-    const tenantId = await getFirstTenantId(page);
+    const tenantId = workerTenantId;
     const email    = `perm-member-create-${Date.now()}@local.test`;
     const userId   = await createTempUserWithRole(page, tenantId, email, "member");
     let   pid: string | undefined;
@@ -783,8 +773,8 @@ test.describe("Projects — Permissions (API-level)", () => {
     }
   });
 
-  test("member user sees + New Project button in UI", async ({ page, browser }) => {
-    const tenantId = await getFirstTenantId(page);
+  test("member user sees + New Project button in UI", async ({ page, browser, workerTenantId }) => {
+    const tenantId = workerTenantId;
     const email    = `perm-member-ui-${Date.now()}@local.test`;
     const userId   = await createTempUserWithRole(page, tenantId, email, "member");
 
@@ -798,8 +788,8 @@ test.describe("Projects — Permissions (API-level)", () => {
     }
   });
 
-  test("viewer user cannot create a project via API (returns 403)", async ({ page, browser }) => {
-    const tenantId = await getFirstTenantId(page);
+  test("viewer user cannot create a project via API (returns 403)", async ({ page, browser, workerTenantId }) => {
+    const tenantId = workerTenantId;
     const email    = `perm-viewer-create-${Date.now()}@local.test`;
     const userId   = await createTempUserWithRole(page, tenantId, email, "viewer");
 
@@ -816,8 +806,8 @@ test.describe("Projects — Permissions (API-level)", () => {
     }
   });
 
-  test("viewer user does not see + New Project button in UI", async ({ page, browser }) => {
-    const tenantId = await getFirstTenantId(page);
+  test("viewer user does not see + New Project button in UI", async ({ page, browser, workerTenantId }) => {
+    const tenantId = workerTenantId;
     const email    = `perm-viewer-ui-${Date.now()}@local.test`;
     const userId   = await createTempUserWithRole(page, tenantId, email, "viewer");
 
@@ -840,8 +830,8 @@ test.describe("Projects — Permissions (API-level)", () => {
 
 test.describe("Projects — Regression", () => {
 
-  test("last-owner cannot be removed via API (409)", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Last Owner Remove");
+  test("last-owner cannot be removed via API (409)", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Last Owner Remove", workerTenantId);
     try {
       const projResp = await page.context().request.get(`${ADMIN_BASE}/projects/${pid}`);
       const proj = await projResp.json() as { members?: Array<{ user_id: string; role: string }> };
@@ -857,8 +847,8 @@ test.describe("Projects — Regression", () => {
     }
   });
 
-  test("last-owner cannot be demoted via API (409)", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Last Owner Demote");
+  test("last-owner cannot be demoted via API (409)", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Last Owner Demote", workerTenantId);
     try {
       const projResp = await page.context().request.get(`${ADMIN_BASE}/projects/${pid}`);
       const proj = await projResp.json() as { members?: Array<{ user_id: string; role: string }> };
@@ -875,9 +865,9 @@ test.describe("Projects — Regression", () => {
     }
   });
 
-  test("deleting a project detaches its conversations", async ({ page }) => {
-    const gw = await getFirstGateway(page);
-    const pid = await apiCreateProject(page, "E2E Detach Conv");
+  test("deleting a project detaches its conversations", async ({ page, workerTenantId }) => {
+    const gw = await getFirstGateway(page, workerTenantId);
+    const pid = await apiCreateProject(page, "E2E Detach Conv", workerTenantId);
 
     const convResp = await page.context().request.post(`${ADMIN_BASE}/conversations`, {
       data: { gateway_id: gw.id, project_id: pid, title: "E2E Detach Me" },
@@ -897,8 +887,8 @@ test.describe("Projects — Regression", () => {
     await apiDelete(page, `/conversations/${conv.id}`);
   });
 
-  test("gateway dropdown in New Project modal is populated", async ({ page }) => {
-    const gw = await getFirstGateway(page);
+  test("gateway dropdown in New Project modal is populated", async ({ page, workerTenantId }) => {
+    const gw = await getFirstGateway(page, workerTenantId);
 
     await gotoProjects(page);
 
@@ -923,12 +913,11 @@ test.describe("Projects — Regression", () => {
 
 test.describe("Projects — Counts (Bug fixes)", () => {
 
-  test("API: GET /projects list returns member_count = 1 for newly created project", async ({ page }) => {
+  test("API: GET /projects list returns member_count = 1 for newly created project", async ({ page, workerTenantId }) => {
     // Bug: list_projects() SQL did not aggregate member counts → always returned undefined (shown as 0)
-    const pid = await apiCreateProject(page, "E2E Member Count API");
+    const pid = await apiCreateProject(page, "E2E Member Count API", workerTenantId);
     try {
-      const tenantId = await getFirstTenantId(page);
-      const listResp = await page.context().request.get(`${ADMIN_BASE}/projects?tenant_id=${tenantId}`);
+      const listResp = await page.context().request.get(`${ADMIN_BASE}/projects?tenant_id=${workerTenantId}`);
       expect(listResp.ok()).toBeTruthy();
       const list = await listResp.json() as Array<{ id: string; member_count?: number; knowledge_count?: number }>;
 
@@ -941,8 +930,8 @@ test.describe("Projects — Counts (Bug fixes)", () => {
     }
   });
 
-  test("API: GET /projects list returns knowledge_count = 1 after upload", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Knowledge Count API");
+  test("API: GET /projects list returns knowledge_count = 1 after upload", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Knowledge Count API", workerTenantId);
     try {
       const uploadResp = await page.context().request.post(
         `${ADMIN_BASE}/projects/${pid}/knowledge`,
@@ -950,8 +939,7 @@ test.describe("Projects — Counts (Bug fixes)", () => {
       );
       expect(uploadResp.ok(), "knowledge upload must succeed").toBeTruthy();
 
-      const tenantId = await getFirstTenantId(page);
-      const listResp = await page.context().request.get(`${ADMIN_BASE}/projects?tenant_id=${tenantId}`);
+      const listResp = await page.context().request.get(`${ADMIN_BASE}/projects?tenant_id=${workerTenantId}`);
       const list = await listResp.json() as Array<{ id: string; knowledge_count?: number }>;
 
       const proj = list.find((p) => p.id === pid);
@@ -962,9 +950,9 @@ test.describe("Projects — Counts (Bug fixes)", () => {
     }
   });
 
-  test("UI: projects list table shows member_count = 1 (not 0) for new project", async ({ page }) => {
+  test("UI: projects list table shows member_count = 1 (not 0) for new project", async ({ page, workerTenantId }) => {
     // Bug: projects table always showed 0 members even when creator was added as owner
-    const pid = await apiCreateProject(page, "E2E Member Count UI");
+    const pid = await apiCreateProject(page, "E2E Member Count UI", workerTenantId);
     try {
       await gotoProjects(page);
 
@@ -979,8 +967,8 @@ test.describe("Projects — Counts (Bug fixes)", () => {
     }
   });
 
-  test("UI: member_count in list matches member_count in detail overview", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Count Consistency");
+  test("UI: member_count in list matches member_count in detail overview", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Count Consistency", workerTenantId);
     try {
       // Check list view count
       await gotoProjects(page);
@@ -1002,10 +990,10 @@ test.describe("Projects — Counts (Bug fixes)", () => {
     }
   });
 
-  test("API: conversation created with project_id appears in /projects/:id/conversations", async ({ page }) => {
+  test("API: conversation created with project_id appears in /projects/:id/conversations", async ({ page, workerTenantId }) => {
     // Bug: conversations created via handleSend() lacked project_id
-    const pid = await apiCreateProject(page, "E2E Conv Link API");
-    const gw = await getFirstGateway(page);
+    const pid = await apiCreateProject(page, "E2E Conv Link API", workerTenantId);
+    const gw = await getFirstGateway(page, workerTenantId);
     let convId: string | null = null;
     try {
       const convResp = await page.context().request.post(`${ADMIN_BASE}/conversations`, {
@@ -1037,8 +1025,8 @@ test.describe("Projects — Counts (Bug fixes)", () => {
 
 test.describe("Projects — Tab URL routing", () => {
 
-  test("direct URL with ?tab=files renders the Files tab", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Tab URL Files");
+  test("direct URL with ?tab=files renders the Files tab", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Tab URL Files", workerTenantId);
     try {
       await page.goto(`/projects/${pid}?tab=files`);
       await expect(page.getByRole("heading", { name: "E2E Tab URL Files" })).toBeVisible({ timeout: 8000 });
@@ -1053,8 +1041,8 @@ test.describe("Projects — Tab URL routing", () => {
     }
   });
 
-  test("clicking a tab updates the URL", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Tab Click URL");
+  test("clicking a tab updates the URL", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Tab Click URL", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Tab Click URL" })).toBeVisible({ timeout: 8000 });
@@ -1069,8 +1057,8 @@ test.describe("Projects — Tab URL routing", () => {
     }
   });
 
-  test("reload preserves the active tab", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Tab Reload");
+  test("reload preserves the active tab", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Tab Reload", workerTenantId);
     try {
       await page.goto(`/projects/${pid}?tab=conversations`);
       await expect(page.getByRole("heading", { name: "E2E Tab Reload" })).toBeVisible({ timeout: 8000 });
@@ -1085,8 +1073,8 @@ test.describe("Projects — Tab URL routing", () => {
     }
   });
 
-  test("invalid ?tab= value falls back to Overview tab", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Tab Invalid");
+  test("invalid ?tab= value falls back to Overview tab", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Tab Invalid", workerTenantId);
     try {
       await page.goto(`/projects/${pid}?tab=bogus`);
       await expect(page.getByRole("heading", { name: "E2E Tab Invalid" })).toBeVisible({ timeout: 8000 });
@@ -1097,8 +1085,8 @@ test.describe("Projects — Tab URL routing", () => {
     }
   });
 
-  test("clicking Overview tab removes ?tab= from URL", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Tab Overview Clean");
+  test("clicking Overview tab removes ?tab= from URL", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Tab Overview Clean", workerTenantId);
     try {
       await page.goto(`/projects/${pid}?tab=members`);
       await expect(page.getByRole("heading", { name: "E2E Tab Overview Clean" })).toBeVisible({ timeout: 8000 });
@@ -1120,8 +1108,8 @@ test.describe("Projects — Tab URL routing", () => {
 
 test.describe("Projects — Clickable stat cards", () => {
 
-  test("clicking Members card navigates to members tab", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Card Members");
+  test("clicking Members card navigates to members tab", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Card Members", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Card Members" })).toBeVisible({ timeout: 8000 });
@@ -1135,8 +1123,8 @@ test.describe("Projects — Clickable stat cards", () => {
     }
   });
 
-  test("clicking Files card navigates to files tab", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Card Files");
+  test("clicking Files card navigates to files tab", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Card Files", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Card Files" })).toBeVisible({ timeout: 8000 });
@@ -1148,8 +1136,8 @@ test.describe("Projects — Clickable stat cards", () => {
     }
   });
 
-  test("clicking Conversations card navigates to conversations tab", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Card Convs");
+  test("clicking Conversations card navigates to conversations tab", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Card Convs", workerTenantId);
     try {
       await page.goto(`/projects/${pid}`);
       await expect(page.getByRole("heading", { name: "E2E Card Convs" })).toBeVisible({ timeout: 8000 });
@@ -1161,9 +1149,9 @@ test.describe("Projects — Clickable stat cards", () => {
     }
   });
 
-  test("Conversations card shows correct count", async ({ page }) => {
-    const pid = await apiCreateProject(page, "E2E Card Conv Count");
-    const gw = await getFirstGateway(page);
+  test("Conversations card shows correct count", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, "E2E Card Conv Count", workerTenantId);
+    const gw = await getFirstGateway(page, workerTenantId);
     const convIds: string[] = [];
     try {
       // Create 2 conversations linked to this project
@@ -1206,8 +1194,8 @@ test.describe("Projects — Knowledge download & URL", () => {
     await page.context().request.delete(`${ADMIN_BASE}/projects/${projectId}/knowledge/${kid}`).catch(() => {});
   }
 
-  test("Download button is present and single-item API returns extracted_text", async ({ page }) => {
-    const pid = await apiCreateProject(page, `E2E KnowDownload-${Date.now()}`);
+  test("Download button is present and single-item API returns extracted_text", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, `E2E KnowDownload-${Date.now()}`, workerTenantId);
     const filename = `download-test-${Date.now()}.txt`;
     const content = "Hello from knowledge download test";
     const kid = await uploadKnowledgeEntry(page, pid, filename, content);
@@ -1230,9 +1218,9 @@ test.describe("Projects — Knowledge download & URL", () => {
     }
   });
 
-  test("Copy URL button copies the correct reference URL to clipboard", async ({ page, context }) => {
+  test("Copy URL button copies the correct reference URL to clipboard", async ({ page, context, workerTenantId }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    const pid = await apiCreateProject(page, `E2E KnowCopyUrl-${Date.now()}`);
+    const pid = await apiCreateProject(page, `E2E KnowCopyUrl-${Date.now()}`, workerTenantId);
     const filename = `url-test-${Date.now()}.md`;
     const kid = await uploadKnowledgeEntry(page, pid, filename, "# Reference test");
     try {
@@ -1253,8 +1241,8 @@ test.describe("Projects — Knowledge download & URL", () => {
     }
   });
 
-  test("Download and Copy URL buttons visible; Delete button also present for editor", async ({ page }) => {
-    const pid = await apiCreateProject(page, `E2E KnowButtons-${Date.now()}`);
+  test("Download and Copy URL buttons visible; Delete button also present for editor", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, `E2E KnowButtons-${Date.now()}`, workerTenantId);
     const filename = `buttons-test-${Date.now()}.txt`;
     const kid = await uploadKnowledgeEntry(page, pid, filename, "button visibility test");
     try {
@@ -1356,10 +1344,10 @@ test.describe("Search/Filter/Sort toolbar", () => {
 
   // ── Search ─────────────────────────────────────────────────────────────────
 
-  test("search filters by name — matching project visible, non-matching hidden", async ({ page }) => {
+  test("search filters by name — matching project visible, non-matching hidden", async ({ page, workerTenantId }) => {
     const marker = `xzqm-${Date.now()}`;
-    const pid1 = await apiCreateProject(page, `E2E-search-baseline-${Date.now()}`);
-    const pid2 = await apiCreateProject(page, `${marker}-target`);
+    const pid1 = await apiCreateProject(page, `E2E-search-baseline-${Date.now()}`, workerTenantId);
+    const pid2 = await apiCreateProject(page, `${marker}-target`, workerTenantId);
     try {
       await page.goto("/projects");
       await expect(page.locator("[data-cy=projects-search]")).toBeVisible({ timeout: 8000 });
@@ -1379,11 +1367,20 @@ test.describe("Search/Filter/Sort toolbar", () => {
     }
   });
 
-  test("search with no matches shows empty-state message", async ({ page }) => {
-    await page.goto("/projects");
-    await expect(page.locator("[data-cy=projects-search]")).toBeVisible({ timeout: 8000 });
-    await page.locator("[data-cy=projects-search]").fill("zzz-no-match-ever-zzz");
-    await expect(page.locator("text=No projects match your search.")).toBeVisible({ timeout: 3000 });
+  test("search with no matches shows empty-state message", async ({ page, workerTenantId }) => {
+    // "No projects match your search." only renders when projects.length > 0 but
+    // displayProjects.length === 0 (search filters out all of them). Create one
+    // project first so the list is non-empty before searching.
+    const pid = await apiCreateProject(page, `E2E-search-nomatch-${Date.now()}`, workerTenantId);
+    try {
+      await page.goto("/projects");
+      await expect(page.locator("[data-cy=projects-search]")).toBeVisible({ timeout: 8000 });
+      await expect(page.locator(`[data-cy="project-row-${pid}"]`)).toBeVisible({ timeout: 5000 });
+      await page.locator("[data-cy=projects-search]").fill("zzz-no-match-ever-zzz");
+      await expect(page.locator("text=No projects match your search.")).toBeVisible({ timeout: 3000 });
+    } finally {
+      await apiDeleteProject(page, pid);
+    }
   });
 
   // ── Filter: Your projects (owner) ─────────────────────────────────────────
@@ -1392,8 +1389,8 @@ test.describe("Search/Filter/Sort toolbar", () => {
     // ownerPid: admin is owner (default after create)
     // editorPid: admin is demoted to editor
     const { id: adminId, tenant_id: tenantId } = await getMe(page);
-    const ownerPid  = await apiCreateProject(page, `E2E-filter-owner-${Date.now()}`);
-    const editorPid = await apiCreateProject(page, `E2E-filter-editor-${Date.now()}`);
+    const ownerPid  = await apiCreateProject(page, `E2E-filter-owner-${Date.now()}`, tenantId);
+    const editorPid = await apiCreateProject(page, `E2E-filter-editor-${Date.now()}`, tenantId);
     const tmpEmail  = `tmp-filter-${Date.now()}@example.invalid`;
     const tmpUserId = await createTempUser(page, tenantId, tmpEmail);
 
@@ -1422,8 +1419,8 @@ test.describe("Search/Filter/Sort toolbar", () => {
 
   test("'Team' filter shows editor-role project, hides owner-role project", async ({ page }) => {
     const { id: adminId, tenant_id: tenantId } = await getMe(page);
-    const ownerPid  = await apiCreateProject(page, `E2E-team-owner-${Date.now()}`);
-    const editorPid = await apiCreateProject(page, `E2E-team-editor-${Date.now()}`);
+    const ownerPid  = await apiCreateProject(page, `E2E-team-owner-${Date.now()}`, tenantId);
+    const editorPid = await apiCreateProject(page, `E2E-team-editor-${Date.now()}`, tenantId);
     const tmpEmail  = `tmp-team-${Date.now()}@example.invalid`;
     const tmpUserId = await createTempUser(page, tenantId, tmpEmail);
 
@@ -1449,8 +1446,8 @@ test.describe("Search/Filter/Sort toolbar", () => {
 
   test("'Shared with you' shows viewer-role project, hides owner-role project", async ({ page }) => {
     const { id: adminId, tenant_id: tenantId } = await getMe(page);
-    const ownerPid  = await apiCreateProject(page, `E2E-shared-owner-${Date.now()}`);
-    const viewerPid = await apiCreateProject(page, `E2E-shared-viewer-${Date.now()}`);
+    const ownerPid  = await apiCreateProject(page, `E2E-shared-owner-${Date.now()}`, tenantId);
+    const viewerPid = await apiCreateProject(page, `E2E-shared-viewer-${Date.now()}`, tenantId);
     const tmpEmail  = `tmp-shared-${Date.now()}@example.invalid`;
     const tmpUserId = await createTempUser(page, tenantId, tmpEmail);
 
@@ -1476,8 +1473,8 @@ test.describe("Search/Filter/Sort toolbar", () => {
 
   test("'All' shows projects of every role (owner and editor) together", async ({ page }) => {
     const { id: adminId, tenant_id: tenantId } = await getMe(page);
-    const ownerPid  = await apiCreateProject(page, `E2E-all-owner-${Date.now()}`);
-    const editorPid = await apiCreateProject(page, `E2E-all-editor-${Date.now()}`);
+    const ownerPid  = await apiCreateProject(page, `E2E-all-owner-${Date.now()}`, tenantId);
+    const editorPid = await apiCreateProject(page, `E2E-all-editor-${Date.now()}`, tenantId);
     const tmpEmail  = `tmp-all-${Date.now()}@example.invalid`;
     const tmpUserId = await createTempUser(page, tenantId, tmpEmail);
 
@@ -1506,8 +1503,8 @@ test.describe("Search/Filter/Sort toolbar", () => {
 
   // ── Sort ───────────────────────────────────────────────────────────────────
 
-  test("changing sort does not crash and table remains visible", async ({ page }) => {
-    const pid = await apiCreateProject(page, `E2E-sort-${Date.now()}`);
+  test("changing sort does not crash and table remains visible", async ({ page, workerTenantId }) => {
+    const pid = await apiCreateProject(page, `E2E-sort-${Date.now()}`, workerTenantId);
     try {
       await page.goto("/projects");
       await expect(page.locator("[data-cy=projects-sort]")).toBeVisible({ timeout: 8000 });
@@ -1525,11 +1522,11 @@ test.describe("Search/Filter/Sort toolbar", () => {
     }
   });
 
-  test("'Date created' sort puts the newest project first", async ({ page }) => {
-    const pid1 = await apiCreateProject(page, `E2E-sort-first-${Date.now()}`);
+  test("'Date created' sort puts the newest project first", async ({ page, workerTenantId }) => {
+    const pid1 = await apiCreateProject(page, `E2E-sort-first-${Date.now()}`, workerTenantId);
     // Small delay so created_at timestamps differ
     await new Promise((r) => setTimeout(r, 1100));
-    const pid2 = await apiCreateProject(page, `E2E-sort-second-${Date.now()}`);
+    const pid2 = await apiCreateProject(page, `E2E-sort-second-${Date.now()}`, workerTenantId);
     try {
       await page.goto("/projects");
       await page.reload();

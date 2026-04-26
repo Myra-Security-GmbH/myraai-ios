@@ -1,15 +1,14 @@
 /**
  * playwright.docker.config.ts — Run e2e tests against the live Docker stack.
  *
- * Parallelism strategy (workers: 4):
- *   "docker" project    — safe to parallelise; runs up to 4 files at once.
- *   "docker-sequential" — files that use deleteAllConversations(page, timestamp)
- *                         for cleanup; bulk-deletes by timestamp are unsafe across
- *                         concurrent workers because one file's cleanup deletes
- *                         another file's in-progress fixtures.  These files run
- *                         after "docker" completes and are forced onto a single
- *                         worker via workers:1 in playwright.docker.sequential.config.ts
- *                         (run-e2e.sh executes both configs in order).
+ * Parallelism strategy (workers: 16):
+ *   "docker" project         — safe to parallelise; each worker gets its own
+ *                              authenticated session (worker-{i}-session.json) via
+ *                              workers.setup.ts so cleanup never touches other workers' data.
+ *   "docker-sequential"      — a small set of tests with genuine resource conflicts
+ *                              (heavy inference load, docker exec, localStorage mutations)
+ *                              that cannot safely run concurrently regardless of data isolation.
+ *                              Run after "docker" via playwright.docker.sequential.config.ts.
  *
  * Usage (via run-e2e.sh — preferred):
  *   ./run-e2e.sh --config playwright.docker.config.ts
@@ -28,43 +27,24 @@ process.env.PLAYWRIGHT_ADMIN_URL   = "https://ai-api-admin.myra.eu";
 process.env.PLAYWRIGHT_BASE_URL    = process.env.PLAYWRIGHT_BASE_URL ?? "https://ai.myra.eu";
 process.env.PLAYWRIGHT_GATEWAY_URL = "https://ai-api.myra.eu";
 
-// These files use deleteAllConversations(page, timestamp) which bulk-deletes by
-// wall-clock time.  Running them concurrently causes cross-file fixture deletion.
-// They are excluded here and run sequentially by playwright.docker.sequential.config.ts.
+// Files with genuine resource/state conflicts that cannot run in parallel even with
+// per-worker user isolation.  All other tests (including formerly "sequential" cleanup
+// tests) are now safe to parallelise because per-worker sessions isolate their data.
 export const SEQUENTIAL_TESTS = [
-  "**/chat.spec.ts",
-  "**/chat-autotitle.spec.ts",
-  "**/chat-autotitle-presets.spec.ts",
-  "**/chat-docx.spec.ts",
-  "**/chat-docx-qwen.spec.ts",
-  "**/chat-anthropic-caching.spec.ts",
-  "**/chat-image-qwen.spec.ts",
-  "**/chat-long-response.spec.ts",
-  "**/chat-ods.spec.ts",
-  "**/chat-pdf-qwen.spec.ts",
-  "**/chat-pptx.spec.ts",
-  "**/chat-qwen3-a3b.spec.ts",
-  "**/chat-summarize.spec.ts",
-  "**/chat-web-search.spec.ts",
-  "**/chat-xlsx.spec.ts",
-  // Full permutation matrix: real inference across all model/PII/tool combinations.
+  // Full permutation matrix: real inference across all model/PII/tool combinations — overloads workers
   "**/chat-tool-matrix.spec.ts",
-  // Contains real-inference Suite B (vllm); fails under parallel load from 16 workers.
+  // Real-inference Suite B (vllm): fails under parallel inference load from 16 workers
   "**/chat-project-read-commands.spec.ts",
-  // Creates conversations + checks sidebar auto-title; sidebar state conflicts with parallel workers.
+  // Checks sidebar auto-title behaviour; sidebar conversation list is a shared UI region
   "**/chat-preset-switch.spec.ts",
-  // Uses deleteAllConversations in afterEach (UI suite) and runs a long inference flow.
-  "**/chat-pdf-export.spec.ts",
-  // Uses deleteAllConversations; real-inference tests for response formatting regressions.
-  "**/chat-sonnet-format.spec.ts",
-  // Uses deleteAllConversations; artifact panel, model badge, and regeneration tests.
-  "**/chat-artifact-panel.spec.ts",
-  // Creates a project fixture and mutates localStorage for dark-mode testing.
+  // Mutates localStorage (dark-mode); conflicts when multiple workers share a browser origin
   "**/css-rendering.spec.ts",
-  // Runs docker exec for pymupdf geometry analysis; not safe to parallelise.
+  // Runs docker exec for pymupdf geometry analysis — not safe to parallelise
   "**/css-pdf-quality.spec.ts",
-  // Reads Docker logs to verify SMTP delivery; not safe to parallelise.
+  // Reads Docker container logs to verify SMTP delivery — not safe to parallelise
   "**/email-delivery.spec.ts",
+  // Heavy real-inference with response caching; kept sequential conservatively
+  "**/chat-anthropic-caching.spec.ts",
 ];
 
 export default defineConfig({
@@ -82,14 +62,33 @@ export default defineConfig({
   },
 
   projects: [
-    // Auth setup — inserts OTP into MySQL, saves session
+    // 1. Auth setup — inserts OTP into MySQL, saves admin session
     {
       name: "docker-setup",
       testMatch: "**/auth.docker.setup.ts",
       use: { ...devices["Desktop Chrome"] },
     },
 
-    // Permissions setup — creates isolated tenant/gateway/user fixtures + member session
+    // 2. Worker users setup — creates 10 admin users + per-worker sessions
+    {
+      name: "workers-setup",
+      testMatch: "**/workers.setup.ts",
+      dependencies: ["docker-setup"],
+      teardown: "workers-teardown",
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "https://ai.myra.eu",
+      },
+    },
+
+    // 3. Workers teardown — deletes the 10 e2e worker users after the suite
+    {
+      name: "workers-teardown",
+      testMatch: "**/workers.teardown.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+
+    // 4. Permissions setup — creates isolated tenant/gateway/user fixtures + member session
     {
       name: "permissions-setup",
       testMatch: "**/permissions.docker.setup.ts",
@@ -97,13 +96,17 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
 
-    // Parallel-safe tests — up to 16 files run concurrently
+    // 5. Parallel tests — up to 16 files concurrently; each worker uses its own session
+    //    (tests importing from ./base get worker-{i}-session.json automatically)
     {
       name: "docker",
-      dependencies: ["docker-setup", "permissions-setup"],
+      dependencies: ["docker-setup", "workers-setup", "permissions-setup"],
       testIgnore: [
         "**/auth.setup.ts",
         "**/auth.docker.setup.ts",
+        "**/auth.int.setup.ts",
+        "**/workers.setup.ts",
+        "**/workers.teardown.ts",
         "**/permissions.setup.ts",
         "**/permissions.docker.setup.ts",
         "**/permissions.teardown.ts",
@@ -111,13 +114,13 @@ export default defineConfig({
         "**/tenant-admin-scoping.spec.ts",
         "**/login.spec.ts",
         "**/input-perf.spec.ts",
-        // Sequential tests — run separately via playwright.docker.sequential.config.ts
+        // Truly sequential tests — run after this pass via playwright.docker.sequential.config.ts
         ...SEQUENTIAL_TESTS,
       ],
       use: { ...devices["Desktop Chrome"], storageState: SESSION },
     },
 
-    // Screenshots — authenticated, wider viewport, 2× DPI
+    // 6. Screenshots — authenticated, wider viewport, 2× DPI
     {
       name: "screenshots",
       dependencies: ["docker-setup"],
@@ -130,7 +133,7 @@ export default defineConfig({
       },
     },
 
-    // UI review — dark + light mode capture
+    // 7. UI review — dark + light mode capture
     {
       name: "ui-review",
       dependencies: ["docker-setup"],

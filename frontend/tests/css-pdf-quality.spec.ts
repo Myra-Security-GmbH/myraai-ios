@@ -18,7 +18,7 @@
  *   • H2 headings have more space before than after (visual hierarchy)
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 import { execSync } from "child_process";
 import * as fs   from "fs";
 import * as path from "path";

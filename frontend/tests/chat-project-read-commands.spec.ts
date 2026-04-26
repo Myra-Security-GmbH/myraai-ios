@@ -19,7 +19,7 @@
  *     6. MAX_FILE_READS=5 cap prevents infinite read loops
  */
 
-import { test, expect, Page, Route } from "@playwright/test";
+import { test, expect, type Page, type Route } from "./base";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 
@@ -81,9 +81,8 @@ async function selectSafeLocalPreset(page: Page): Promise<void> {
   await expect(tenantSel).toBeVisible({ timeout: 8000 });
 
   // Select the myratest tenant
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: /myratest/i });
-  expect(await tenantOpt.count(), "myratest tenant must exist in the tenant selector").toBeGreaterThan(0);
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? "myratest" });
+  await expect(tenantSel).toContainText("myratest", { timeout: 8000 });
+  await tenantSel.selectOption({ label: "myratest" });
 
   // In preset mode, preset buttons appear instead of gateway/model selects.
   // The FIRST preset is always "SAFE local only" (vllm — uses dev master key).
@@ -142,6 +141,7 @@ async function waitForStreamingDone(page: Page, timeoutMs = 120_000): Promise<vo
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — project read commands: system prompt", () => {
+  test.describe.configure({ mode: "serial" });
   let tenantId: string;
   let gatewayId: string;
   let model: string;
@@ -256,6 +256,7 @@ test.describe("Chat — project read commands: system prompt", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — project read commands: real inference", () => {
+  test.describe.configure({ mode: "serial" });
   test.setTimeout(180_000); // real model responses can be slow
 
   let tenantId: string;
@@ -348,6 +349,7 @@ test.describe("Chat — project read commands: real inference", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — project read commands: frontend plumbing", () => {
+  test.describe.configure({ mode: "serial" });
   let tenantId: string;
   let gatewayId: string;
   let model: string;

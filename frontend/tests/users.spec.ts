@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 import { execSync } from "child_process";
 
 // ---------------------------------------------------------------------------
@@ -78,6 +78,7 @@ test.describe("admin sees all users", () => {
 const DB = "/opt/ai-gateway/data/config.db";
 
 test.describe("Users page", () => {
+  test.describe.configure({ mode: "serial" });
   test.beforeEach(async ({ page }) => {
     await page.goto("/users");
     await page.waitForTimeout(400);
@@ -100,14 +101,14 @@ test.describe("Users page", () => {
 
   test("user rows are clickable and navigate to detail", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     await expect(page.getByRole("button", { name: /← Users/i })).toBeVisible();
   });
 
   test("back button returns to list", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     await page.getByRole("button", { name: /← Users/i }).click();
     await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
@@ -115,13 +116,13 @@ test.describe("Users page", () => {
 
   test("Open → button navigates to detail", async ({ page }) => {
     const openBtn = page.getByRole("button", { name: "Open →" }).first();
-    if (!await openBtn.isVisible().catch(() => false)) { test.skip(); return; }
+    if (!await openBtn.isVisible().catch(() => false)) { test.skip(true, "Required UI element not visible in this environment"); return; }
     await openBtn.click();
     await expect(page.getByRole("button", { name: /← Users/i })).toBeVisible();
   });
 
   test("table shows Email, Name, Role, Tenant columns", async ({ page }) => {
-    if (!await page.locator("table").isVisible().catch(() => false)) { test.skip(); return; }
+    if (!await page.locator("table").isVisible().catch(() => false)) { test.skip(true, "Data table not available in this environment"); return; }
     const headers = page.locator("thead th");
     await expect(headers.filter({ hasText: "Email" })).toBeVisible();
     await expect(headers.filter({ hasText: "Name" })).toBeVisible();
@@ -130,7 +131,7 @@ test.describe("Users page", () => {
   });
 
   test("shows role badges in the table", async ({ page }) => {
-    if (!await page.locator("table").isVisible().catch(() => false)) { test.skip(); return; }
+    if (!await page.locator("table").isVisible().catch(() => false)) { test.skip(true, "Data table not available in this environment"); return; }
     const badges = page.locator("tbody .badge, tbody [class*='badge']");
     await expect(badges.first()).toBeVisible();
   });
@@ -150,7 +151,7 @@ test.describe("Users page", () => {
 
   test("detail shows stat cards: Email, Name, Role, Tenant", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     // Stat labels are in .stat-label divs — use more specific locators to avoid matching table headers
     const statLabels = page.locator("[class*='stat-label']");
@@ -162,14 +163,14 @@ test.describe("Users page", () => {
 
   test("detail shows Tokens section heading", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     await expect(page.getByRole("heading", { name: "Tokens" })).toBeVisible();
   });
 
   test("Edit button opens edit modal", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     await page.getByRole("button", { name: /^Edit$/i }).click();
     await expect(page.getByRole("heading", { name: /Edit:/i })).toBeVisible();
@@ -177,7 +178,7 @@ test.describe("Users page", () => {
 
   test("edit modal pre-fills email field", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     // grab the email from the first row before clicking
     const emailCell = rows.first().locator("td").first();
     const email = await emailCell.textContent();
@@ -226,14 +227,14 @@ test.describe("Users page", () => {
     // Hard-delete any leftover test user directly from the DB to ensure a clean slate.
     if (process.env.PLAYWRIGHT_ADMIN_URL) {
       // Docker mode — MySQL
-      const DB_HOST = "172.17.0.1";
-      const DB_USER = "gateway";
-      const DB_PASS = "gateway";
-      const DB_NAME = "ai_gateway";
+      const DB_HOST = process.env.E2E_DB_HOST ?? "172.17.0.1";
+      const DB_USER = process.env.E2E_DB_USER ?? "gateway";
+      const DB_PASS = process.env.E2E_DB_PASS ?? "gateway";
+      const DB_NAME = process.env.E2E_DB_NAME ?? "ai_gateway";
       try {
         execSync(
-          `mysql -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} ${DB_NAME} -e "DELETE FROM user WHERE email='${TEST_EMAIL}'"`,
-          { stdio: "pipe" }
+          `mysql -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} ${DB_NAME}`,
+          { input: `DELETE FROM user WHERE email='${TEST_EMAIL}'`, stdio: ["pipe", "pipe", "pipe"] }
         );
       } catch { /* ignore — user may not exist */ }
     } else {
@@ -245,7 +246,7 @@ test.describe("Users page", () => {
     // Ensure at least one tenant exists; skip gracefully if not
     const adminBase = process.env.PLAYWRIGHT_ADMIN_URL ?? "";
     const orgsRes = await page.request.get(`${adminBase}/admin/v1/tenants`);
-    if (!orgsRes.ok() || (await orgsRes.json()).length === 0) { test.skip(); return; }
+    if (!orgsRes.ok() || (await orgsRes.json()).length === 0) { test.skip(true, "No tenants configured in this environment"); return; }
 
     await page.getByRole("button", { name: /New User/i }).click();
     await expect(page.getByRole("heading", { name: "New User" })).toBeVisible();
@@ -268,7 +269,7 @@ test.describe("Users page", () => {
     // If the previous test created the user, it should now appear in the table.
     const rows = page.locator("tbody tr");
     const count = await rows.count();
-    if (count === 0) { test.skip(); return; }
+    if (count === 0) { test.skip(true, "Precondition not met in this environment"); return; }
 
     const emails = await page.locator("tbody td:first-child").allTextContents();
     expect(emails.some(e => e.includes(TEST_EMAIL))).toBe(true);
@@ -277,7 +278,7 @@ test.describe("Users page", () => {
   test("create user — duplicate email shows error", async ({ page }) => {
     const adminBase = process.env.PLAYWRIGHT_ADMIN_URL ?? "";
     const orgsRes = await page.request.get(`${adminBase}/admin/v1/tenants`);
-    if (!orgsRes.ok() || (await orgsRes.json()).length === 0) { test.skip(); return; }
+    if (!orgsRes.ok() || (await orgsRes.json()).length === 0) { test.skip(true, "No tenants configured in this environment"); return; }
 
     // Try to create the same email again
     await page.getByRole("button", { name: /New User/i }).click();

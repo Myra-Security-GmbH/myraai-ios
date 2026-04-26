@@ -1,21 +1,24 @@
 /**
- * cors.spec.ts — Verifies the inference API (ai-api.myra.eu) returns correct
- * CORS headers so the playground (ai.myra.eu) can make cross-origin requests.
+ * cors.spec.ts — Verifies the inference API returns correct CORS headers so
+ * the frontend (ai.myra.eu or ai-int.myra.eu) can make cross-origin requests.
  *
- * These tests only make sense when run against the live Docker stack.
+ * Runs against both production and integration Docker stacks.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 
-const INFERENCE_BASE  = "https://ai-api.myra.eu";
-const FRONTEND_ORIGIN = "https://ai.myra.eu";
+const base = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173";
+
+// Derive inference base from PLAYWRIGHT_GATEWAY_URL (set by int/prod configs)
+// or fall back to the production URL.
+const INFERENCE_BASE  = (process.env.PLAYWRIGHT_GATEWAY_URL ?? "https://ai-api.myra.eu").replace(/\/$/, "");
+const FRONTEND_ORIGIN = base.replace(/\/$/, "");
 const COMPAT_URL      = `${INFERENCE_BASE}/v1/myratest/prod/compat/chat/completions`;
 
 // Skip when running against localhost (dev mode — Vite proxies, no CORS needed)
 test.beforeEach(({}, testInfo) => {
-  const base = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173";
-  if (!base.includes("ai.myra.eu")) {
-    testInfo.skip(true, "CORS tests only run against the Docker stack (PLAYWRIGHT_BASE_URL=https://ai.myra.eu)");
+  if (!base.includes("ai.myra.eu") && !base.includes("ai-int.myra.eu")) {
+    testInfo.skip(true, "CORS tests only run against the live stack (set PLAYWRIGHT_BASE_URL to ai.myra.eu or ai-int.myra.eu)");
   }
 });
 

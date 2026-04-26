@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Request } from "@playwright/test";
+import { test, expect, type Page, type Request } from "./base";
 
 const ADMIN_BASE = process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173/admin/v1";
 
@@ -26,8 +26,7 @@ async function captureAnalyticsRequests(
   };
   page.on("request", listener);
   await action();
-  // Give the browser a moment to fire the request.
-  await page.waitForTimeout(500);
+  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
   page.off("request", listener);
   return captured;
 }
@@ -352,8 +351,7 @@ test.describe("Dashboard – Top Models heading reflects timeframe", () => {
   test("Top Models heading says 'Today' when Today tab is selected", async ({ page }) => {
     await page.goto("/dashboard?timeframe=today");
     await waitForDashboardReady(page);
-    // Wait briefly for analytics to load
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
     const heading = await topModelsHeading(page);
     if (!heading) return; // no data — skip
     await expect(heading).toContainText("Today");
@@ -362,7 +360,7 @@ test.describe("Dashboard – Top Models heading reflects timeframe", () => {
   test("Top Models heading updates to 'Last 7 days' after switching tab", async ({ page }) => {
     await page.goto("/dashboard?timeframe=today");
     await waitForDashboardReady(page);
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
 
     const headingBefore = await topModelsHeading(page);
     if (!headingBefore) return; // no data — skip
@@ -380,7 +378,7 @@ test.describe("Dashboard – Top Models heading reflects timeframe", () => {
   test("Top Models heading updates to 'Yesterday' after switching tab", async ({ page }) => {
     await page.goto("/dashboard?timeframe=today");
     await waitForDashboardReady(page);
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
 
     const headingBefore = await topModelsHeading(page);
     if (!headingBefore) return; // no data — skip
@@ -395,7 +393,7 @@ test.describe("Dashboard – Top Models heading reflects timeframe", () => {
   test("Top Models table columns are correct when section is visible", async ({ page }) => {
     await page.goto("/dashboard");
     await waitForDashboardReady(page);
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
     const heading = await topModelsHeading(page);
     if (!heading) return;
     const table = page.locator("table").filter({

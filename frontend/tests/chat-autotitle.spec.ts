@@ -11,7 +11,9 @@
  *   5. Asserts the title in the sidebar is no longer the default "New conversation"
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
+import type {  Page  } from "./base";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 
@@ -23,43 +25,23 @@ interface TenantRow  { id: string; slug: string; plan: string }
 interface GatewayRow { id: string; slug: string; config: unknown }
 interface ModelPriceRow { provider: string; model: string }
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
-/** Returns first tenant id + gateway id available to the session.
+/** Returns the myratest tenant id + first gateway id for inference tests.
  *
- * Prefers tenants WITHOUT chat_presets (e.g. konzern-sergej) so that the chat
- * loads in non-preset mode and the gateway token is fetched exactly once —
- * avoiding the double-fetch that occurs when preset mode overrides the gateway
- * from localStorage on a preset tenant (e.g. myratest).
+ * Pins to myratest by slug because that tenant has real API keys.
+ * e2e-tenant-{i} gateways have config:'{}' (no keys) and cannot serve inference.
  */
-async function getFirstTenantAndGateway(page: Page): Promise<{ tenantId: string; gatewayId: string } | null> {
+async function getTenantAndGatewayForInference(page: Page): Promise<{ tenantId: string; gatewayId: string }> {
   const tr = await page.request.get(`${ADMIN_URL}/admin/v1/tenants`);
-  if (!tr.ok()) return null;
+  expect(tr.ok(), "GET /tenants must succeed").toBeTruthy();
   const tenants = await tr.json() as TenantRow[];
-  // Skip tenants that have chat_presets_config (preset mode triggers double token fetch).
-  // Also skip test-fixture tenants (z-perm-test-*) whose gateways lack real API keys.
-  const preferred = tenants.filter((t) =>
-    !(t as any).chat_presets_config?.length &&
-    !t.slug.startsWith("z-perm-test")
-  );
-  const ordered = preferred.length ? preferred : tenants;
-  for (const t of ordered) {
-    const gr = await page.request.get(`${ADMIN_URL}/admin/v1/tenants/${t.id}/gateways`);
-    if (!gr.ok()) continue;
-    const gws = await gr.json() as GatewayRow[];
-    if (gws.length) return { tenantId: t.id, gatewayId: gws[0].id };
-  }
-  return null;
+  const myratest = tenants.find((t) => t.slug === "myratest");
+  expect(myratest, "myratest tenant must exist for inference tests").not.toBeUndefined();
+
+  const gr = await page.request.get(`${ADMIN_URL}/admin/v1/tenants/${myratest!.id}/gateways`);
+  expect(gr.ok(), "GET myratest gateways must succeed").toBeTruthy();
+  const gws = await gr.json() as GatewayRow[];
+  expect(gws.length, "myratest must have at least one gateway").toBeGreaterThan(0);
+  return { tenantId: myratest!.id, gatewayId: gws[0].id };
 }
 
 /** Returns a model string suitable for chat (prefers claude-sonnet-4-6, the well-supported model). */
@@ -82,7 +64,7 @@ async function setChatPreferences(page: Page, gatewayId: string, model: string, 
   const currentUrl = page.url();
   if (currentUrl === "about:blank" || currentUrl === "") {
     await page.goto("/dashboard");
-    await page.waitForTimeout(300);
+    await page.waitForLoadState("domcontentloaded");
   }
   await page.evaluate(({ g, m, t }) => {
     localStorage.setItem("aig-chat-gateway", g);
@@ -96,20 +78,20 @@ async function setChatPreferences(page: Page, gatewayId: string, model: string, 
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — auto-title generation", () => {
+  test.describe.configure({ mode: "serial" });
+  let convIds: string[] = [];
   let tenantId: string;
   let gatewayId: string;
   let model: string;
-  let testStartTime: number;
 
   test.beforeAll(async ({ browser }) => {
     const ctx = await browser.newContext({ storageState: "tests/.auth/docker-session.json" });
     const page = await ctx.newPage();
     await page.goto("/dashboard");
 
-    const tg = await getFirstTenantAndGateway(page);
-    expect(tg, "at least one tenant + gateway must exist").not.toBeNull();
-    tenantId  = tg!.tenantId;
-    gatewayId = tg!.gatewayId;
+    const tg = await getTenantAndGatewayForInference(page);
+    tenantId  = tg.tenantId;
+    gatewayId = tg.gatewayId;
 
     const m = await getAModel(page);
     expect(m, "at least one model must be configured").not.toBeNull();
@@ -119,14 +101,16 @@ test.describe("Chat — auto-title generation", () => {
   });
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await setChatPreferences(page, gatewayId, model, tenantId);
     await page.goto("/chat");
-    await page.waitForTimeout(400);
+    await expect(page.locator("[class*='chat-textarea'], [class*='config-bar']").first()).toBeVisible({ timeout: 10000 });
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   test("title updates from default after the first exchange", async ({ page }) => {
@@ -134,8 +118,6 @@ test.describe("Chat — auto-title generation", () => {
     const newChatBtn = page.getByRole("button", { name: /new chat/i });
     await newChatBtn.waitFor({ state: "visible", timeout: 5000 });
     await newChatBtn.click();
-    await page.waitForTimeout(400);
-
     // Confirm the sidebar shows a conversation item
     const convItem = page.locator("[role='option']").first();
     await convItem.waitFor({ state: "visible", timeout: 5000 });
@@ -161,19 +143,15 @@ test.describe("Chat — auto-title generation", () => {
 
     // Wait for streaming to finish: the stop button disappears
     await page.waitForSelector("button[title='Stop generation']", { state: "hidden", timeout: 60_000 });
-    await page.waitForTimeout(500);
 
     // Wait for the PATCH request that renames the conversation
     await titlePatchPromise;
 
-    // Allow state update + re-render
-    await page.waitForTimeout(800);
-
-    // Title in the sidebar should have changed to something meaningful
+    // Wait for the sidebar title to change to something meaningful
+    await expect(titleEl).not.toHaveText(/^new conversation$/i, { timeout: 10_000 });
     const updatedTitle = (await titleEl.textContent() ?? "").trim();
     expect(updatedTitle, "title should change after first exchange").not.toBe(initialTitle);
     expect(updatedTitle.length, "title should be non-empty").toBeGreaterThan(0);
-    expect(updatedTitle.toLowerCase(), "title should not be the generic default").not.toMatch(/^new conversation$/i);
   });
 
   test("title updates when conversation is created inline (no pre-created conversation)", async ({ page }) => {
@@ -192,16 +170,16 @@ test.describe("Chat — auto-title generation", () => {
     const assistantBubble = page.locator("[class*='bubble-row']:not([class*='user-row'])").first();
     await assistantBubble.waitFor({ state: "visible", timeout: 20_000 });
     await page.waitForSelector("button[title='Stop generation']", { state: "hidden", timeout: 60_000 });
-    await page.waitForTimeout(500);
 
     // Wait for rename PATCH
     await titlePatchPromise;
-    await page.waitForTimeout(800);
 
     // Verify a sidebar item exists with a non-default title
     const convItem = page.locator("[role='option']").first();
     await convItem.waitFor({ state: "visible", timeout: 5000 });
-    const title = (await convItem.locator("[class*='conv-item-title']").first().textContent() ?? "").trim();
+    const titleEl2 = convItem.locator("[class*='conv-item-title']").first();
+    await expect(titleEl2).not.toHaveText(/^new conversation$/i, { timeout: 10_000 });
+    const title = (await titleEl2.textContent() ?? "").trim();
 
     expect(title.toLowerCase()).not.toMatch(/^new conversation$/i);
     expect(title.length).toBeGreaterThan(0);
@@ -299,7 +277,7 @@ test.describe("Chat — auto-title generation", () => {
     });
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(400);
+    await expect(page.locator("[role='option']").first()).toBeVisible({ timeout: 8000 });
 
     const textarea = page.locator("[class*='chat-textarea']");
     await textarea.fill("Hello test");
@@ -310,11 +288,10 @@ test.describe("Chat — auto-title generation", () => {
     await assistantBubble.waitFor({ state: "visible", timeout: 20_000 });
     await page.waitForSelector("button[title='Stop generation']", { state: "hidden", timeout: 60_000 });
 
-    // Allow time for the title request to be intercepted and the warn to fire
-    await page.waitForTimeout(3000);
-
-    // generateTitle should have logged a warning about the 500 response
-    const titleWarn = warnings.find((w) => w.includes("[generateTitle]"));
-    expect(titleWarn, "generateTitle should console.warn on failure").toBeTruthy();
+    // Poll until generateTitle logs the warning about the 500 response
+    await expect.poll(
+      () => warnings.find((w) => w.includes("[generateTitle]")),
+      { timeout: 10_000, message: "generateTitle should console.warn on failure" },
+    ).toBeTruthy();
   });
 });

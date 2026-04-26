@@ -8,7 +8,7 @@
  *   Group 4 — UI: <memory> tag in streamed response is stripped + saved
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/admin/v1`;
 
@@ -302,9 +302,9 @@ async function selectChatPreset(page: Page): Promise<boolean> {
   const sel = page.locator("select").first();
   await sel.waitFor({ state: "visible", timeout: 5_000 });
   const opt = sel.locator("option").filter({ hasText: new RegExp(TENANT_SLUG, "i") });
-  await opt.first().waitFor({ state: "attached", timeout: 10_000 }).catch(() => {});
+  await expect(sel).toContainText(TENANT_SLUG, { timeout: 10_000 });
   if ((await opt.count()) === 0) return false;
-  await sel.selectOption({ label: (await opt.first().textContent()) ?? TENANT_SLUG });
+  await sel.selectOption({ label: TENANT_SLUG });
   await page.locator("[data-testid='config-preset-options']")
     .waitFor({ state: "visible", timeout: 12_000 }).catch(() => {});
   const esc = PRESET_NAME.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -386,7 +386,7 @@ test.describe("memory tag extraction from stream", () => {
 
     await goToChatFresh(page);
     const ok = await selectChatPreset(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await interceptInference(page, { memoryContent: marker, memoryType: "preference", visibleText: "Noted." });
 
@@ -422,7 +422,7 @@ test.describe("memory tag extraction from stream", () => {
 
     await goToChatFresh(page);
     const ok = await selectChatPreset(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     // Step 1: send a priming message to create a conversation (route: simple response)
     await interceptInference(page, { visibleText: "Hello!" });
@@ -432,7 +432,7 @@ test.describe("memory tag extraction from stream", () => {
     // Step 2: patch the active conversation to memory_disabled=1 via API
     const convUrl = page.url();
     const convId  = new URL(convUrl).searchParams.get("conv");
-    if (!convId) { test.skip(); return; }
+    if (!convId) { test.skip(true, "Failed to create test conversation"); return; }
     await page.request.patch(`${ADMIN_BASE}/conversations/${convId}`, { data: { memory_disabled: 1 } });
 
     // Step 3: reload so React state picks up memory_disabled=1
@@ -482,7 +482,7 @@ test.describe("memory injected into system prompt", () => {
 
     await goToChatFresh(page);
     const ok = await selectChatPreset(page);
-    if (!ok) { await deleteMemory(page, mem.id); test.skip(); return; }
+    if (!ok) { await deleteMemory(page, mem.id); test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     // Wait for memory badge to confirm the memory has loaded into React state
     await expect(page.locator("[data-cy='memories-btn'] span")).toBeVisible({ timeout: 10_000 });
@@ -565,7 +565,7 @@ test.describe("memory injected into system prompt", () => {
 
     await goToChatFresh(page);
     const ok = await selectChatPreset(page);
-    if (!ok) { await deleteMemory(page, mem.id); test.skip(); return; }
+    if (!ok) { await deleteMemory(page, mem.id); test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     // Send a priming message (intercepted) to create the conversation
     await interceptInference(page, { visibleText: "Hello!" });
@@ -574,7 +574,7 @@ test.describe("memory injected into system prompt", () => {
 
     // Get the conversation ID and disable memory on it
     const convId = new URL(page.url()).searchParams.get("conv");
-    if (!convId) { await deleteMemory(page, mem.id); test.skip(); return; }
+    if (!convId) { await deleteMemory(page, mem.id); test.skip(true, "Failed to create test conversation"); return; }
     await page.request.patch(`${ADMIN_BASE}/conversations/${convId}`, { data: { memory_disabled: 1 } });
 
     // Reload so React picks up memory_disabled=1, then navigate back

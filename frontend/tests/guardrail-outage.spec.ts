@@ -23,7 +23,7 @@
  * Cleanup runs in finally{} for every test — no fixture ever leaks.
  */
 
-import { test, expect, APIRequestContext } from "@playwright/test";
+import { test, expect, type APIRequestContext } from "./base";
 
 const ADMIN_HOST = process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173";
 const ADMIN_BASE = `${ADMIN_HOST}/admin/v1`;
@@ -64,7 +64,6 @@ async function createOutageGateway(
     timeout_ms:         30_000,
     log_payloads:       true,
     cache_ttl:          0,
-    provider_base_urls: { vllm: "http://172.28.0.1:8003" },
     guardrails: [{
       name:            "outage-probe",
       type:            "pii_protector",

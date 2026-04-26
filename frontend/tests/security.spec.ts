@@ -4,7 +4,8 @@
  * Each test is named after the symptom so failures are immediately actionable.
  */
 
-import { test, expect, type Page, request as playwrightRequest } from "@playwright/test";
+import { test, expect, type Page } from "./base";
+import { request as playwrightRequest } from "@playwright/test";
 
 // PLAYWRIGHT_ADMIN_URL is set in docker mode; in dev mode we access the backend
 // directly at port 8081 since the Vite proxy does not expose /monitor.

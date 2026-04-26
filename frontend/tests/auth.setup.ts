@@ -10,7 +10,11 @@ import { test as setup, expect } from "@playwright/test";
 import { execSync } from "child_process";
 import path from "path";
 
-const MYSQL   = "mysql -h 172.17.0.1 -u gateway -pgateway ai_gateway -e";
+const DB_HOST = process.env.E2E_DB_HOST ?? "172.17.0.1";
+const DB_USER = process.env.E2E_DB_USER ?? "gateway";
+const DB_PASS = process.env.E2E_DB_PASS ?? "gateway";
+const DB_NAME = process.env.E2E_DB_NAME ?? "gateway_dev";
+const MYSQL   = `mysql -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} ${DB_NAME} -e`;
 const EMAIL   = "info@schumann.net";
 const CODE    = "999888";
 const SESSION = path.resolve(__dirname, ".auth/session.json");

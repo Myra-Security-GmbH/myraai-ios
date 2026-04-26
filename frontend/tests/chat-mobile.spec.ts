@@ -23,7 +23,7 @@
  * These tests lock in that behaviour and would have caught the regression.
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -294,7 +294,10 @@ test.describe("Chat — 960 × 2142 viewport (GrapheneOS Vanadium, DPR=1)", () =
     const modelChip = page.locator('[data-cy="model-chip"]');
     await expect(modelChip, "Model chip must be visible at 960 px on touch").toBeVisible({ timeout: 5_000 });
 
-    // The chip text shows the current preset name or model name
+    // The chip text shows the current preset name or model name.
+    // Wait for at least one option to load (the /models API call may not have
+    // returned yet when the chip first becomes visible).
+    await expect(modelChip.locator("option").first()).toBeAttached({ timeout: 10_000 });
     const chipText = await modelChip.textContent();
     expect(chipText?.trim().length, "Model chip must show a non-empty label").toBeGreaterThan(0);
 

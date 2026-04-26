@@ -19,7 +19,9 @@
  *      re-scroll is suppressed (user intent respected).
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT = "myratest";
@@ -29,45 +31,32 @@ const TARGET_PRESET = "PII claude-sonnet-4-6";
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 async function selectPreset(page: Page): Promise<boolean> {
   await page.goto("/chat");
-  await page.waitForTimeout(600);
 
   const tenantSel = page.locator("select").first();
-  await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOpt.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? TARGET_TENANT });
-  await page.waitForTimeout(600);
+  await tenantSel.waitFor({ state: "visible", timeout: 10000 });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
+  await expect(page.locator("button").filter({
+    hasText: new RegExp(TARGET_PRESET.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
+  })).toBeVisible({ timeout: 5000 });
 
   const presetBtn = page.locator("button").filter({
     hasText: new RegExp(TARGET_PRESET.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
   });
   if (!(await presetBtn.isVisible({ timeout: 5000 }).catch(() => false))) return false;
   await presetBtn.click();
-  await page.waitForTimeout(400);
+  await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
   return true;
 }
 
 async function waitForStreamingComplete(page: Page, timeoutMs = 120_000) {
-  await page.locator("button[title='Stop generating']")
+  await page.locator("button[title='Stop generation']")
     .waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
   await page.locator("button[title='Send message']")
     .waitFor({ state: "visible", timeout: timeoutMs });
-  // Let React commit the final state
-  await page.waitForTimeout(800);
+  await expect(page.locator("[class*='bubble-row']:not([class*='user-row']) [class*='bubble-text']").last()).not.toBeEmpty({ timeout: 5000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -76,14 +65,13 @@ async function waitForStreamingComplete(page: Page, timeoutMs = 120_000) {
 
 test.describe("Chat — scroll-to-question after streaming (AGF-2-83501)", () => {
   test.setTimeout(180_000);
-  let testStartTime: number;
-
-  test.beforeEach(async () => {
-    testStartTime = Date.now();
-  });
+  let convIds: string[] = [];
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   /**
@@ -95,7 +83,7 @@ test.describe("Chat — scroll-to-question after streaming (AGF-2-83501)", () =>
     expect(ok, `Preset "${TARGET_PRESET}" not found — check myratest tenant config`).toBeTruthy();
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     // Prompt that forces a long multi-section response
     const prompt =
@@ -164,7 +152,7 @@ test.describe("Chat — scroll-to-question after streaming (AGF-2-83501)", () =>
     expect(ok, `Preset "${TARGET_PRESET}" not found`).toBeTruthy();
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     await page.locator("[class*='chat-textarea']").fill(
       "List and briefly describe 15 different sorting algorithms. Include time complexity for each."
@@ -177,7 +165,7 @@ test.describe("Chat — scroll-to-question after streaming (AGF-2-83501)", () =>
 
     // During streaming, check that the streaming cursor OR the stop button is
     // visible and that the thread is scrolled near the bottom.
-    await page.locator("button[title='Stop generating']")
+    await page.locator("button[title='Stop generation']")
       .waitFor({ state: "visible", timeout: 15_000 });
 
     const isNearBottom = await page.evaluate(() => {
@@ -204,7 +192,7 @@ test.describe("Chat — scroll-to-question after streaming (AGF-2-83501)", () =>
     expect(ok, `Preset "${TARGET_PRESET}" not found`).toBeTruthy();
 
     await page.getByRole("button", { name: /new chat/i }).click();
-    await page.waitForTimeout(300);
+    await expect(page.locator("[class*='chat-textarea']")).toBeVisible({ timeout: 5000 });
 
     await page.locator("[class*='chat-textarea']").fill(
       "List and briefly describe 20 different design patterns. Include a one-sentence example for each."
@@ -212,7 +200,7 @@ test.describe("Chat — scroll-to-question after streaming (AGF-2-83501)", () =>
     await page.locator("button[title='Send message']").click();
 
     // Wait for streaming to start
-    await page.locator("button[title='Stop generating']")
+    await page.locator("button[title='Stop generation']")
       .waitFor({ state: "visible", timeout: 20_000 });
 
     // Simulate user scrolling up by 300px while streaming

@@ -5,7 +5,9 @@
  * Model:   qwen3-30b-a3b        (served by vllm-qwen3-A3B.service on port 8003)
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT  = "myratest";
@@ -16,25 +18,12 @@ const TARGET_MODEL   = "qwen3-30b-a3b";
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 /** Select myratest / prod-pii, then pick qwen3-30b-a3b from the ModelPicker. */
 async function selectGatewayAndModel(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOpt.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? TARGET_TENANT });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
   await page.waitForTimeout(400);
 
   // Gateway — native select OR preset mode
@@ -43,9 +32,8 @@ async function selectGatewayAndModel(page: Page): Promise<boolean> {
 
   if (hasGatewaySelect) {
     const gatewaySel = page.locator("select").nth(1);
-    const gatewayOpt = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
-    if ((await gatewayOpt.count()) === 0) return false;
-    await gatewaySel.selectOption({ label: (await gatewayOpt.first().textContent()) ?? TARGET_GATEWAY });
+    await expect(gatewaySel).toContainText(TARGET_GATEWAY, { timeout: 10_000 });
+    await gatewaySel.selectOption({ label: TARGET_GATEWAY });
     await page.waitForTimeout(400);
   } else {
     // Preset mode: find the preset for our target model via admin API and click its button.
@@ -104,29 +92,50 @@ async function waitForStreamingDone(page: Page, timeoutMs = 90_000) {
 
 test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`, () => {
   test.setTimeout(120_000);
-  let testStartTime: number;
+  let convIds: string[] = [];
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await page.goto("/chat");
     await page.waitForTimeout(600);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
-  test("qwen3-30b-a3b appears in the ModelPicker for prod-pii", async ({ page }) => {
-    const ok = await selectGatewayAndModel(page);
-    if (!ok) { test.skip(); return; }
+  test("qwen3-30b-a3b appears in the ModelPicker for a vllm-enabled gateway", async ({ page, workerTenantId }) => {
+    // myratest uses presets (no ModelPicker in config bar). Use the worker's own
+    // e2e-tenant instead — no presets → normalMode → ModelPicker is always visible.
+    // DB-1 configured e2e-gateway with provider_base_urls.vllm, so vllm models appear.
+    await page.goto("/chat");
 
-    // In preset mode there is no ModelPicker — skip this picker-specific check
-    const hasModelPicker = await page.locator("[aria-haspopup='listbox']").isVisible({ timeout: 2000 }).catch(() => false);
-    if (!hasModelPicker) { test.skip(); return; }
+    const tenantSel = page.locator("select").first();
+    await tenantSel.waitFor({ state: "visible", timeout: 5000 });
+    // Wait for tenant options to load (API call may be async)
+    await page.waitForFunction(
+      (id) => Array.from(document.querySelectorAll("select option")).some((o) => (o as HTMLOptionElement).value === id),
+      workerTenantId,
+      { timeout: 8000 },
+    ).catch(() => {});
+    const optExists = (await tenantSel.locator(`option[value="${workerTenantId}"]`).count()) > 0;
+    if (!optExists) { test.skip(true, "Worker tenant not in tenant dropdown"); return; }
+    await tenantSel.selectOption({ value: workerTenantId });
 
-    // Reopen the picker and verify the model is listed
+    const gatewaySel = page.locator("select").nth(1);
+    await gatewaySel.waitFor({ state: "visible", timeout: 5000 });
+    if ((await gatewaySel.locator("option").count()) <= 1) {
+      test.skip(true, "No gateway options for worker tenant"); return;
+    }
+    await gatewaySel.selectOption({ index: 1 });
+
+    // ModelPicker must be visible in normalMode
     const modelBtn = page.locator("[aria-haspopup='listbox']");
+    await modelBtn.waitFor({ state: "visible", timeout: 5000 });
     await modelBtn.click();
+
     const searchInput = page.locator("[role='listbox'] input[type='text'], [role='listbox'] input[type='search']");
     if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
       await searchInput.fill(TARGET_MODEL);
@@ -135,13 +144,13 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
     const opt = page.locator("[role='listbox'] [role='option']")
       .filter({ hasText: new RegExp(`^\\s*${TARGET_MODEL}\\s*$`) })
       .first();
-    await expect(opt).toBeVisible({ timeout: 5000 });
+    await expect(opt, `${TARGET_MODEL} must appear in the vllm ModelPicker`).toBeVisible({ timeout: 5000 });
     await page.keyboard.press("Escape");
   });
 
   test("selecting qwen3-30b-a3b is reflected in the config bar and localStorage", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.waitForTimeout(200);
     const hasModelPicker = await page.locator("[aria-haspopup='listbox']").isVisible({ timeout: 1000 }).catch(() => false);
@@ -156,7 +165,7 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
 
   test("qwen3-30b-a3b selection survives a hard page reload", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const hasModelPicker = await page.locator("[aria-haspopup='listbox']").isVisible({ timeout: 1000 }).catch(() => false);
 
@@ -209,7 +218,7 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
 
   test("sends a message and receives a non-empty reply from qwen3-30b-a3b", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await page.waitForTimeout(300);

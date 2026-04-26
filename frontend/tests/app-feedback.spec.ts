@@ -16,7 +16,7 @@
  *   9. Widget is not shown on /login page (authenticated route guard)
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 

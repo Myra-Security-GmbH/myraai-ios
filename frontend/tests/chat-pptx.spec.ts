@@ -12,25 +12,15 @@
  */
 
 import path from "path";
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Helpers (mirrors chat-xlsx.spec.ts conventions)
 // ---------------------------------------------------------------------------
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
-
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
 
 async function gotoChatPage(page: Page) {
   await page.goto("/chat");
@@ -44,9 +34,8 @@ const TARGET_MODEL   = "claude-sonnet-4-6";
 async function selectGatewayWithModel(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
-  const tenantOption = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOption.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOption.first().textContent()) ?? TARGET_TENANT });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
   await page.waitForTimeout(400);
 
   // Gateway — native select OR preset mode
@@ -55,9 +44,8 @@ async function selectGatewayWithModel(page: Page): Promise<boolean> {
 
   if (hasGatewaySelect) {
     const gatewaySel = page.locator("select").nth(1);
-    const gatewayOption = gatewaySel.locator("option").filter({ hasText: new RegExp(TARGET_GATEWAY, "i") });
-    if ((await gatewayOption.count()) === 0) return false;
-    await gatewaySel.selectOption({ label: (await gatewayOption.first().textContent()) ?? TARGET_GATEWAY });
+    await expect(gatewaySel).toContainText(TARGET_GATEWAY, { timeout: 10_000 });
+    await gatewaySel.selectOption({ label: TARGET_GATEWAY });
     await page.waitForTimeout(400);
   } else {
     // Preset mode: find the preset for our target model via admin API and click its button.
@@ -113,25 +101,27 @@ async function waitForStreamingDone(page: Page, timeoutMs = 90_000) {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat page — .pptx upload and analysis", () => {
-  let testStartTime: number;
+  let convIds: string[] = [];
   test.setTimeout(120_000); // pptx skill uses code execution — allow extra time
 
   const FIXTURE = path.resolve(__dirname, "fixtures/q1-roadmap.pptx");
 
   test.beforeEach(async ({ page }) => {
-    testStartTime = Date.now();
     await gotoChatPage(page);
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllConversations(page, testStartTime);
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
   });
 
   // ── 1. UI: file chip appears ──────────────────────────────────────────────
 
   test("attach button accepts .pptx and shows a chip with the filename", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await page.waitForTimeout(300);
@@ -148,7 +138,7 @@ test.describe("Chat page — .pptx upload and analysis", () => {
 
   test("uploading .pptx calls POST /chat/files and receives a file_id", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     const uploadPromise = page.waitForRequest(
       (req) => req.method() === "POST" && req.url().includes("/chat/files"),
@@ -189,7 +179,7 @@ test.describe("Chat page — .pptx upload and analysis", () => {
 
   test("asking about total revenue returns an answer containing the correct figure", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await page.waitForTimeout(300);
@@ -225,7 +215,7 @@ test.describe("Chat page — .pptx upload and analysis", () => {
 
   test("no error banner is shown after a successful .pptx analysis", async ({ page }) => {
     const ok = await selectGatewayWithModel(page);
-    if (!ok) { test.skip(); return; }
+    if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await page.waitForTimeout(300);

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 
 test.describe("Monitor page", () => {
   test.beforeEach(async ({ page }) => {
@@ -25,7 +25,7 @@ test.describe("Monitor page", () => {
 
   test("pause stops auto-refresh", async ({ page }) => {
     const pauseBtn = page.getByRole("button", { name: /pause/i });
-    await pauseBtn.waitFor({ state: "visible", timeout: 5000 }).catch(() => { test.skip(); return; });
+    await pauseBtn.waitFor({ state: "visible", timeout: 5000 }).catch(() => { test.skip(true, "Required UI element not visible in this environment"); return; });
     await pauseBtn.click();
     await expect(page.getByRole("button", { name: /resume/i })).toBeVisible();
   });

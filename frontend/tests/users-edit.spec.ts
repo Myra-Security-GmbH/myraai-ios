@@ -11,7 +11,7 @@
  *  4. GET /admin/v1/users/:id    → returns the user object (new endpoint)
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 
@@ -112,7 +112,7 @@ test.describe("Users — list invalidation after edit", () => {
 
   test("changing a user's name is reflected in the list immediately", async ({ page }) => {
     const tenants = await getFirstTwoTenants(page);
-    if (tenants.length === 0) { test.skip(); return; }
+    if (tenants.length === 0) { test.skip(true, "No tenants configured in this environment"); return; }
 
     const u = await createTestUser(page, tenants[0].id, "name");
     try {
@@ -131,7 +131,7 @@ test.describe("Users — list invalidation after edit", () => {
 
   test("changing a user's role is reflected in the list immediately", async ({ page }) => {
     const tenants = await getFirstTwoTenants(page);
-    if (tenants.length === 0) { test.skip(); return; }
+    if (tenants.length === 0) { test.skip(true, "No tenants configured in this environment"); return; }
 
     const u = await createTestUser(page, tenants[0].id, "role");
     try {
@@ -192,7 +192,7 @@ test.describe("Users — list invalidation after edit", () => {
 
   test("list does not show stale data after navigating back without editing", async ({ page }) => {
     const tenants = await getFirstTwoTenants(page);
-    if (tenants.length === 0) { test.skip(); return; }
+    if (tenants.length === 0) { test.skip(true, "No tenants configured in this environment"); return; }
 
     const u = await createTestUser(page, tenants[0].id, "nochange");
     try {
@@ -220,7 +220,7 @@ test.describe("Users — list invalidation after edit", () => {
 test.describe("GET /admin/v1/users/:id", () => {
   test("returns the user object for an existing user", async ({ page }) => {
     const tenants = await getFirstTwoTenants(page);
-    if (tenants.length === 0) { test.skip(); return; }
+    if (tenants.length === 0) { test.skip(true, "No tenants configured in this environment"); return; }
 
     const u = await createTestUser(page, tenants[0].id, "getbyid");
     try {
@@ -243,7 +243,7 @@ test.describe("GET /admin/v1/users/:id", () => {
 
   test("PATCH /users/:id returns the updated user object", async ({ page }) => {
     const tenants = await getFirstTwoTenants(page);
-    if (tenants.length === 0) { test.skip(); return; }
+    if (tenants.length === 0) { test.skip(true, "No tenants configured in this environment"); return; }
 
     const u = await createTestUser(page, tenants[0].id, "patchreturn");
     try {

@@ -10,7 +10,9 @@
  * AND must not equal (or start with) the verbatim prompt text.
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
+import type {  Page  } from "./base";
 
 const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT = "myratest";
@@ -25,18 +27,6 @@ const PRESETS = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function deleteAllConversations(page: Page, createdAfter?: number) {
-  try {
-    const resp = await page.context().request.get(`${ADMIN_URL}/admin/v1/conversations`);
-    if (!resp.ok()) return;
-    const convs = (await resp.json()) as Array<{ id: string; created_at?: string }>;
-    for (const conv of convs) {
-      if (createdAfter && conv.created_at && new Date(conv.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_URL}/admin/v1/conversations/${conv.id}`).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 /**
  * Select the myratest tenant and click the named preset button.
  * Returns false if the tenant or preset cannot be found (test should skip).
@@ -45,9 +35,8 @@ async function selectPreset(page: Page, presetName: string): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
 
-  const tenantOpt = tenantSel.locator("option").filter({ hasText: new RegExp(TARGET_TENANT, "i") });
-  if ((await tenantOpt.count()) === 0) return false;
-  await tenantSel.selectOption({ label: (await tenantOpt.first().textContent()) ?? TARGET_TENANT });
+  await expect(tenantSel).toContainText(TARGET_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: TARGET_TENANT });
   await page.waitForTimeout(500);
 
   // The tenant has presets — expect a preset button to appear
@@ -77,21 +66,23 @@ for (const presetName of PRESETS) {
   test.describe(`Auto-title via preset "${presetName}" (${TARGET_TENANT})`, () => {
     test.setTimeout(300_000);
 
-    let testStartTime: number;
+    let convIds: string[] = [];
 
     test.beforeEach(async ({ page }) => {
-      testStartTime = Date.now();
       await page.goto("/chat");
       await page.waitForTimeout(600);
     });
 
     test.afterEach(async ({ page }) => {
-      await deleteAllConversations(page, testStartTime);
+      const id = captureConvId(page);
+      if (id) convIds.push(id);
+      await deleteConversations(page, convIds);
+      convIds = [];
     });
 
     test(`title is meaningful — not the verbatim prompt`, async ({ page }) => {
       const ok = await selectPreset(page, presetName);
-      if (!ok) { test.skip(); return; }
+      if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
       // Start a fresh conversation so isFirstMessage = true
       const newChatBtn = page.getByRole("button", { name: /new chat/i });

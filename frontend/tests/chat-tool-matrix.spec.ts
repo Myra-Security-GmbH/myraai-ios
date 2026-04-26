@@ -20,7 +20,9 @@
  *   "PII qwen3"                → prod-pii · vllm      · PII active
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./base";
+import type {  Page  } from "./base";
+import { deleteConversations, captureConvId } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -71,19 +73,6 @@ async function getProjectKnowledge(page: Page, projectId: string) {
   return r.ok() ? (await r.json() as Array<{ filename: string }>) : [];
 }
 
-async function deleteAllConversations(page: Page, createdAfter: number) {
-  try {
-    const r = await page.context().request.get(`${ADMIN_BASE}/admin/v1/conversations`);
-    if (!r.ok()) return;
-    const convs = await r.json() as Array<{ id: string; created_at?: string }>;
-    for (const c of convs) {
-      if (c.created_at && new Date(c.created_at).getTime() < createdAfter) continue;
-      await page.context().request.delete(`${ADMIN_BASE}/admin/v1/conversations/${c.id}`)
-        .catch(() => {});
-    }
-  } catch { /* best-effort */ }
-}
-
 async function goToChat(page: Page, projectId?: string) {
   await page.goto("/chat");
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
@@ -99,10 +88,9 @@ async function selectPreset(page: Page, presetName: string): Promise<boolean> {
   const sel = page.locator("select").first();
   await sel.waitFor({ state: "visible", timeout: 5_000 });
   // Wait for the tenant options to finish loading (the select renders before the API returns)
-  const opt = sel.locator("option").filter({ hasText: new RegExp(TENANT_SLUG, "i") });
-  await opt.first().waitFor({ state: "attached", timeout: 10_000 }).catch(() => {});
-  if ((await opt.count()) === 0) return false;
-  await sel.selectOption({ label: (await opt.first().textContent()) ?? TENANT_SLUG });
+  await expect(sel).toContainText(TENANT_SLUG, { timeout: 10_000 });
+  if (!(await sel.locator("option").filter({ hasText: new RegExp(TENANT_SLUG, "i") }).count())) return false;
+  await sel.selectOption({ label: TENANT_SLUG });
   // Wait for the preset options container to appear (tenant presets are now loaded)
   await page.locator("[data-testid='config-preset-options']")
     .waitFor({ state: "visible", timeout: 12_000 }).catch(() => {});
@@ -145,12 +133,17 @@ async function assertNoError(page: Page) {
 
 test.describe("Tool matrix — sonnet + PII (prod-pii)", () => {
   test.setTimeout(180_000);
-  let t0: number;
-  test.beforeEach(async ({ page }) => { t0 = Date.now(); await goToChat(page); });
-  test.afterEach(async ({ page }) => deleteAllConversations(page, t0));
+  let convIds: string[] = [];
+  test.beforeEach(async ({ page }) => { await goToChat(page); });
+  test.afterEach(async ({ page }) => {
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
+  });
 
   test("web_search returns real result", async ({ page }) => {
-    if (!await selectPreset(page, PRESET_SONNET_PII)) { test.skip(); return; }
+    if (!await selectPreset(page, PRESET_SONNET_PII)) { test.skip(true, "Required preset not available in this environment"); return; }
     const reply = await sendAndWait(page,
       "What is the current price of Bitcoin in USD? Reply with just the number.");
     await assertNoError(page);
@@ -159,7 +152,7 @@ test.describe("Tool matrix — sonnet + PII (prod-pii)", () => {
   });
 
   test("fetch_url reads URL content", async ({ page }) => {
-    if (!await selectPreset(page, PRESET_SONNET_PII)) { test.skip(); return; }
+    if (!await selectPreset(page, PRESET_SONNET_PII)) { test.skip(true, "Required preset not available in this environment"); return; }
     const reply = await sendAndWait(page,
       "Read this page and tell me the product name: https://ai-docs.myra.eu");
     await assertNoError(page);
@@ -174,7 +167,7 @@ test.describe("Tool matrix — sonnet + PII (prod-pii)", () => {
       await uploadKnowledgeFile(page, pid, "facts.txt",
         `Codename: ${marker}. Budget: EUR 99000.`);
       await goToChat(page, pid);
-      if (!await selectPreset(page, PRESET_SONNET_PII)) { test.skip(); return; }
+      if (!await selectPreset(page, PRESET_SONNET_PII)) { test.skip(true, "Required preset not available in this environment"); return; }
       const reply = await sendAndWait(page,
         "Read facts.txt and tell me the codename.", 120_000);
       await assertNoError(page);
@@ -188,7 +181,7 @@ test.describe("Tool matrix — sonnet + PII (prod-pii)", () => {
     const pid = await createProject(page, tId, "matrix-sonnet-pii-write-" + Date.now());
     try {
       await goToChat(page, pid);
-      if (!await selectPreset(page, PRESET_SONNET_PII)) { test.skip(); return; }
+      if (!await selectPreset(page, PRESET_SONNET_PII)) { test.skip(true, "Required preset not available in this environment"); return; }
       await sendAndWait(page,
         `Create a file called ${marker}.txt with content "hello from e2e". ` +
         `Use the <write_file filename="${marker}.txt"> tag.`, 120_000);
@@ -206,12 +199,17 @@ test.describe("Tool matrix — sonnet + PII (prod-pii)", () => {
 
 test.describe("Tool matrix — qwen3 + no PII (prod)", () => {
   test.setTimeout(180_000);
-  let t0: number;
-  test.beforeEach(async ({ page }) => { t0 = Date.now(); await goToChat(page); });
-  test.afterEach(async ({ page }) => deleteAllConversations(page, t0));
+  let convIds: string[] = [];
+  test.beforeEach(async ({ page }) => { await goToChat(page); });
+  test.afterEach(async ({ page }) => {
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
+  });
 
   test("web_search returns real result", async ({ page }) => {
-    if (!await selectPreset(page, PRESET_QWEN3_NOPII)) { test.skip(); return; }
+    if (!await selectPreset(page, PRESET_QWEN3_NOPII)) { test.skip(true, "Required preset not available in this environment"); return; }
     const reply = await sendAndWait(page,
       "What is the current price of Bitcoin in USD? Reply with just the number.");
     await assertNoError(page);
@@ -220,7 +218,7 @@ test.describe("Tool matrix — qwen3 + no PII (prod)", () => {
   });
 
   test("fetch_url reads URL content", async ({ page }) => {
-    if (!await selectPreset(page, PRESET_QWEN3_NOPII)) { test.skip(); return; }
+    if (!await selectPreset(page, PRESET_QWEN3_NOPII)) { test.skip(true, "Required preset not available in this environment"); return; }
     const reply = await sendAndWait(page,
       "Read this page and tell me the product name: https://ai-docs.myra.eu");
     await assertNoError(page);
@@ -235,7 +233,7 @@ test.describe("Tool matrix — qwen3 + no PII (prod)", () => {
       await uploadKnowledgeFile(page, pid, "facts.txt",
         `Codename: ${marker}. Budget: EUR 99000.`);
       await goToChat(page, pid);
-      if (!await selectPreset(page, PRESET_QWEN3_NOPII)) { test.skip(); return; }
+      if (!await selectPreset(page, PRESET_QWEN3_NOPII)) { test.skip(true, "Required preset not available in this environment"); return; }
       const reply = await sendAndWait(page,
         "Read facts.txt and tell me the codename.", 120_000);
       await assertNoError(page);
@@ -249,7 +247,7 @@ test.describe("Tool matrix — qwen3 + no PII (prod)", () => {
     const pid = await createProject(page, tId, "matrix-qwen3-nopii-write-" + Date.now());
     try {
       await goToChat(page, pid);
-      if (!await selectPreset(page, PRESET_QWEN3_NOPII)) { test.skip(); return; }
+      if (!await selectPreset(page, PRESET_QWEN3_NOPII)) { test.skip(true, "Required preset not available in this environment"); return; }
       await sendAndWait(page,
         `Create a file called ${marker}.txt with content "hello from e2e". ` +
         `Use the <write_file filename="${marker}.txt"> tag.`, 120_000);
@@ -267,12 +265,17 @@ test.describe("Tool matrix — qwen3 + no PII (prod)", () => {
 
 test.describe("Tool matrix — qwen3 + PII (prod-pii)", () => {
   test.setTimeout(180_000);
-  let t0: number;
-  test.beforeEach(async ({ page }) => { t0 = Date.now(); await goToChat(page); });
-  test.afterEach(async ({ page }) => deleteAllConversations(page, t0));
+  let convIds: string[] = [];
+  test.beforeEach(async ({ page }) => { await goToChat(page); });
+  test.afterEach(async ({ page }) => {
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
+  });
 
   test("web_search returns real result despite pii_force_buffered", async ({ page }) => {
-    if (!await selectPreset(page, PRESET_QWEN3_PII)) { test.skip(); return; }
+    if (!await selectPreset(page, PRESET_QWEN3_PII)) { test.skip(true, "Required preset not available in this environment"); return; }
     const reply = await sendAndWait(page,
       "What is the current price of Bitcoin in USD? Reply with just the number.");
     await assertNoError(page);
@@ -281,7 +284,7 @@ test.describe("Tool matrix — qwen3 + PII (prod-pii)", () => {
   });
 
   test("fetch_url reads URL content despite pii_force_buffered", async ({ page }) => {
-    if (!await selectPreset(page, PRESET_QWEN3_PII)) { test.skip(); return; }
+    if (!await selectPreset(page, PRESET_QWEN3_PII)) { test.skip(true, "Required preset not available in this environment"); return; }
     const reply = await sendAndWait(page,
       "Read this page and tell me the product name: https://ai-docs.myra.eu");
     await assertNoError(page);
@@ -296,7 +299,7 @@ test.describe("Tool matrix — qwen3 + PII (prod-pii)", () => {
       await uploadKnowledgeFile(page, pid, "facts.txt",
         `Codename: ${marker}. Budget: EUR 99000.`);
       await goToChat(page, pid);
-      if (!await selectPreset(page, PRESET_QWEN3_PII)) { test.skip(); return; }
+      if (!await selectPreset(page, PRESET_QWEN3_PII)) { test.skip(true, "Required preset not available in this environment"); return; }
       const reply = await sendAndWait(page,
         "Read facts.txt and tell me the codename.", 120_000);
       await assertNoError(page);
@@ -310,7 +313,7 @@ test.describe("Tool matrix — qwen3 + PII (prod-pii)", () => {
     const pid = await createProject(page, tId, "matrix-qwen3-pii-write-" + Date.now());
     try {
       await goToChat(page, pid);
-      if (!await selectPreset(page, PRESET_QWEN3_PII)) { test.skip(); return; }
+      if (!await selectPreset(page, PRESET_QWEN3_PII)) { test.skip(true, "Required preset not available in this environment"); return; }
       await sendAndWait(page,
         `Create a file called ${marker}.txt with content "hello from e2e". ` +
         `Use the <write_file filename="${marker}.txt"> tag.`, 120_000);

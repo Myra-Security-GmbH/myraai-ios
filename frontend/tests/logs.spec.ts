@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 
 test.describe("Logs page", () => {
   test.beforeEach(async ({ page }) => {
@@ -36,7 +36,7 @@ test.describe("Logs page", () => {
 
   test("table has time and provider columns when data present", async ({ page }) => {
     const table = page.locator("table");
-    if (!await table.isVisible()) { test.skip(); return; }
+    if (!await table.isVisible()) { test.skip(true, "Log table not visible — no log data in this environment"); return; }
     await expect(page.getByRole("columnheader", { name: /Time|ts/i }).first()).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /Provider/i })).toBeVisible();
   });

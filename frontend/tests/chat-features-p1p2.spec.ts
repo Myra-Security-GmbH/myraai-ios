@@ -7,7 +7,7 @@
  *   P2.2 — Infinite Chats: context summarization API
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/admin/v1`;
 
@@ -28,6 +28,8 @@ interface FeedEntry   { id: string; title: string; }
 // ---------------------------------------------------------------------------
 
 async function getGatewayId(page: Page): Promise<string> {
+  // Use workerGatewayId fixture for isolation; this fallback is kept for
+  // beforeAll contexts that cannot receive test-scoped fixtures.
   const r = await page.request.get(`${ADMIN_BASE}/tenants`);
   expect(r.ok(), "list tenants").toBeTruthy();
   const tenants = await r.json() as TenantRow[];
@@ -97,8 +99,8 @@ test.describe("P1.3 — Copy conversation as Markdown", () => {
   let convId: string | null = null;
   let gwId: string;
 
-  test.beforeEach(async ({ page }) => {
-    gwId = await getGatewayId(page);
+  test.beforeEach(async ({ page, workerGatewayId }) => {
+    gwId = workerGatewayId;
     const conv = await createConv(page, gwId, `copy-md-${Date.now()}`);
     convId = conv.id;
     await addMsg(page, convId, "user", "Hello, can you help me?");
@@ -224,8 +226,8 @@ test.describe("P2.3 — Project feed", () => {
   let convId: string | null = null;
   let gwId: string;
 
-  test.beforeEach(async ({ page }) => {
-    gwId = await getGatewayId(page);
+  test.beforeEach(async ({ page, workerGatewayId }) => {
+    gwId = workerGatewayId;
     const proj = await createProject(page, `Feed Test ${Date.now()}`);
     projectId = proj.id;
   });
@@ -279,7 +281,7 @@ test.describe("P2.3 — Project feed", () => {
     if (!projectId) throw new Error("setup failed");
 
     await page.goto(`/projects/${projectId}`);
-    await expect(page.getByRole("button", { name: /feed/i })).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole("button", { name: "Feed", exact: true })).toBeVisible({ timeout: 8000 });
   });
 
   test("UI: feed tab shows shared conversation", async ({ page }) => {
@@ -292,7 +294,7 @@ test.describe("P2.3 — Project feed", () => {
     await page.request.post(`${ADMIN_BASE}/conversations/${convId}/share-project`);
 
     await page.goto(`/projects/${projectId}`);
-    await page.getByRole("button", { name: /feed/i }).click();
+    await page.getByRole("button", { name: "Feed", exact: true }).click();
 
     await expect(page.locator('[data-cy="feed-entry-row"]')).toBeVisible({ timeout: 8000 });
   });
@@ -301,7 +303,7 @@ test.describe("P2.3 — Project feed", () => {
     if (!projectId) throw new Error("setup failed");
 
     await page.goto(`/projects/${projectId}`);
-    await page.getByRole("button", { name: /feed/i }).click();
+    await page.getByRole("button", { name: "Feed", exact: true }).click();
 
     // No shared convs — should show empty state
     await expect(page.getByText(/No conversations shared yet/i)).toBeVisible({ timeout: 5000 });
@@ -325,8 +327,8 @@ test.describe("P2.2 — Context summarization API", () => {
   let convId: string | null = null;
   let gwId: string;
 
-  test.beforeEach(async ({ page }) => {
-    gwId = await getGatewayId(page);
+  test.beforeEach(async ({ page, workerGatewayId }) => {
+    gwId = workerGatewayId;
   });
 
   test.afterEach(async ({ page }) => {
@@ -388,8 +390,8 @@ test.describe("P2.2 — Context summarization API", () => {
     await page.request.post(`${ADMIN_BASE}/conversations/${convId}/summaries`, {
       data: { summary_text: "Summary A", first_message_id: m1.id, last_message_id: m2.id, message_count: 2, model_used: "m" },
     });
-    // Small delay to ensure different timestamps
-    await page.waitForTimeout(1100);
+    // Ensure timestamps differ for ordering assertion
+    await new Promise((r) => setTimeout(r, 1100));
     await page.request.post(`${ADMIN_BASE}/conversations/${convId}/summaries`, {
       data: { summary_text: "Summary B", first_message_id: m3.id, last_message_id: m4.id, message_count: 2, model_used: "m" },
     });

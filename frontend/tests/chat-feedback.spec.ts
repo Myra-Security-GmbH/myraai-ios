@@ -5,7 +5,7 @@
  * button and the GET/PUT feedback endpoints directly.
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_URL = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 
@@ -60,6 +60,7 @@ async function openConversation(page: Page, convId: string) {
 // ---------------------------------------------------------------------------
 
 test.describe("Chat — session feedback", () => {
+  test.describe.configure({ mode: "serial" });
   let gatewayId: string;
 
   test.beforeAll(async ({ browser }) => {
@@ -78,7 +79,7 @@ test.describe("Chat — session feedback", () => {
 
     const btn = page.locator("button[title='Session feedback']");
     const visible = await btn.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!visible) { test.skip(); return; }
+    if (!visible) { test.skip(true, "Required UI element not visible in this environment"); return; }
 
     await expect(btn).toBeDisabled();
   });
@@ -87,7 +88,7 @@ test.describe("Chat — session feedback", () => {
 
   test("feedback modal opens, saves rating+comment, and pre-fills on re-open", async ({ page }) => {
     const convId = await createConversation(page, gatewayId, "Feedback Test Conversation");
-    if (!convId) { test.skip(); return; }
+    if (!convId) { test.skip(true, "Failed to create test conversation"); return; }
 
     await addMessage(page, convId, "user", "Hello.");
     await addMessage(page, convId, "assistant", "Hi there!");
@@ -165,7 +166,7 @@ test.describe("Chat — session feedback", () => {
 
   test("Save feedback button is disabled until a rating is selected", async ({ page }) => {
     const convId = await createConversation(page, gatewayId, "Feedback Disabled Test");
-    if (!convId) { test.skip(); return; }
+    if (!convId) { test.skip(true, "Failed to create test conversation"); return; }
 
     await addMessage(page, convId, "user", "Quick question.");
     await addMessage(page, convId, "assistant", "Quick answer.");

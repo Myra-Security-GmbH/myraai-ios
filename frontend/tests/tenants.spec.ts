@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 
 test.describe("Tenants page", () => {
   test.beforeEach(async ({ page }) => {
@@ -15,7 +15,7 @@ test.describe("Tenants page", () => {
 
   test("tenant rows are clickable and show detail view", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     await expect(page.getByText(/← Tenants/i)).toBeVisible();
     await expect(page.getByText(/Tenant:/i)).toBeVisible();
@@ -23,7 +23,7 @@ test.describe("Tenants page", () => {
 
   test("tenant detail shows config stats", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     await expect(page.getByText("Plan")).toBeVisible();
     await expect(page.getByText("Budget Limit")).toBeVisible();
@@ -31,7 +31,7 @@ test.describe("Tenants page", () => {
 
   test("back button returns to list", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     await page.getByText(/← Tenants/i).click();
     await expect(page.getByRole("heading", { name: "Tenants" })).toBeVisible();
@@ -66,7 +66,7 @@ test.describe("Tenants page", () => {
 
   test("tenant detail Edit button opens edit modal", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     await page.getByRole("button", { name: /^Edit$/i }).first().click();
     await expect(page.getByRole("heading", { name: /Edit:/i })).toBeVisible();
@@ -76,14 +76,14 @@ test.describe("Tenants page", () => {
 
   test("tenant detail shows gateway list section", async ({ page }) => {
     const rows = page.locator("tbody tr");
-    if (await rows.count() === 0) { test.skip(); return; }
+    if (await rows.count() === 0) { test.skip(true, "No data rows present in this environment"); return; }
     await rows.first().click();
     await expect(page.getByRole("heading", { name: /Gateways/i })).toBeVisible();
   });
 
   test("Open → button navigates to gateway detail", async ({ page }) => {
     const openBtn = page.getByRole("button", { name: /Open →/i }).first();
-    if (!await openBtn.isVisible()) { test.skip(); return; }
+    if (!await openBtn.isVisible()) { test.skip(true, "Required UI element not visible in this environment"); return; }
     await openBtn.click();
     await expect(page.getByRole("button", { name: /← Tenants/i })).toBeVisible();
   });

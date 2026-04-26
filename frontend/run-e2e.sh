@@ -44,6 +44,21 @@ cd "$(dirname "$0")"
 # Playwright (single-config mode) — no two-pass logic.
 for arg in "$@"; do
   if [[ "$arg" == "--config" ]]; then
+    # When running against the int environment, pass DB credentials for workers.setup.ts.
+    if [[ "$*" == *"playwright.int.config"* ]] && [[ -f "$(dirname "$0")/../.env.integration" ]]; then
+      set -a
+      # shellcheck source=../.env.integration
+      source "$(dirname "$0")/../.env.integration"
+      set +a
+      export E2E_DB_USER="${AIG_MYSQL_USER:-gateway_int}"
+      export E2E_DB_PASS="${AIG_MYSQL_PASS_INT:-}"
+      export E2E_DB_NAME="${AIG_MYSQL_DB:-ai_gateway_int}"
+    elif [[ "$*" == *"playwright.config"* ]] && ! [[ "$*" == *"playwright.docker"* || "$*" == *"playwright.int"* || "$*" == *"playwright.production"* ]]; then
+      # Dev config — uses gateway_dev
+      export E2E_DB_USER="${E2E_DB_USER:-gateway}"
+      export E2E_DB_PASS="${E2E_DB_PASS:-gateway}"
+      export E2E_DB_NAME="${E2E_DB_NAME:-gateway_dev}"
+    fi
     exec npx playwright test "$@"
   fi
 done

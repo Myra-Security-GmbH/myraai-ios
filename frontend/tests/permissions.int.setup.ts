@@ -13,9 +13,9 @@ const DB_USER = "gateway_int";
 const DB_PASS = "yefVaf]oresev8";
 const DB_NAME = "ai_gateway_int";
 
-const MEMBER_SESSION       = path.resolve(__dirname, ".auth/int-member-session.json");
-const TENANT_ADMIN_SESSION = path.resolve(__dirname, ".auth/int-tenant-admin-session.json");
-const FIXTURES             = path.resolve(__dirname, ".auth/int-fixtures.json");
+const MEMBER_SESSION       = path.resolve(__dirname, ".auth/member-session.json");
+const TENANT_ADMIN_SESSION = path.resolve(__dirname, ".auth/tenant-admin-session.json");
+const FIXTURES             = path.resolve(__dirname, ".auth/fixtures.json");
 
 const MEMBER_EMAIL       = "perm-test-member@local.test";
 const TENANT_ADMIN_EMAIL = "perm-test-tenant-admin@local.test";
@@ -25,6 +25,11 @@ const SLUG_TENANT_A = "z-perm-test-tenant-a";
 const SLUG_TENANT_B = "z-perm-test-tenant-b";
 const SLUG_GW_A     = "z-perm-test-gw-a";
 const SLUG_GW_B     = "z-perm-test-gw-b";
+
+const TENANT_A_ID  = "00000000-0000-0000-0000-000000000001";
+const TENANT_B_ID  = "00000000-0000-0000-0000-000000000002";
+const GATEWAY_A_ID = "00000000-0000-0000-0000-000000000003";
+const GATEWAY_B_ID = "00000000-0000-0000-0000-000000000004";
 
 function sql(query: string) {
   execSync(
@@ -75,23 +80,19 @@ setup("create permission fixtures (int MySQL)", async ({ page }) => {
   sql(`DELETE FROM gateway WHERE slug IN ('${SLUG_GW_A}','${SLUG_GW_B}')`);
   sqlNoFk(`DELETE FROM tenant WHERE slug IN ('${SLUG_TENANT_A}','${SLUG_TENANT_B}')`);
 
-  const tenantAId  = uuid();
-  const tenantBId  = uuid();
-  const gatewayAId = uuid();
-  const gatewayBId = uuid();
-  const memberId   = uuid();
-  const adminId    = uuid();
+  const memberId = uuid();
+  const adminId  = uuid();
 
-  sql(`INSERT INTO tenant (id, slug, plan) VALUES ('${tenantAId}', '${SLUG_TENANT_A}', 'standard')`);
-  sql(`INSERT INTO tenant (id, slug, plan) VALUES ('${tenantBId}', '${SLUG_TENANT_B}', 'standard')`);
-  sql(`INSERT INTO gateway (id, tenant_id, slug, config) VALUES ('${gatewayAId}', '${tenantAId}', '${SLUG_GW_A}', '{}')`);
-  sql(`INSERT INTO gateway (id, tenant_id, slug, config) VALUES ('${gatewayBId}', '${tenantBId}', '${SLUG_GW_B}', '{}')`);
-  sql(`INSERT INTO user (id, tenant_id, email, role) VALUES ('${memberId}', '${tenantAId}', '${MEMBER_EMAIL}', 'member')`);
-  sql(`INSERT INTO user (id, tenant_id, email, role) VALUES ('${adminId}', '${tenantAId}', '${TENANT_ADMIN_EMAIL}', 'tenant_admin')`);
+  sql(`INSERT INTO tenant (id, slug, plan) VALUES ('${TENANT_A_ID}', '${SLUG_TENANT_A}', 'standard')`);
+  sql(`INSERT INTO tenant (id, slug, plan) VALUES ('${TENANT_B_ID}', '${SLUG_TENANT_B}', 'standard')`);
+  sql(`INSERT INTO gateway (id, tenant_id, slug, config) VALUES ('${GATEWAY_A_ID}', '${TENANT_A_ID}', '${SLUG_GW_A}', '{}')`);
+  sql(`INSERT INTO gateway (id, tenant_id, slug, config) VALUES ('${GATEWAY_B_ID}', '${TENANT_B_ID}', '${SLUG_GW_B}', '{}')`);
+  sql(`INSERT INTO user (id, tenant_id, email, role) VALUES ('${memberId}', '${TENANT_A_ID}', '${MEMBER_EMAIL}', 'member')`);
+  sql(`INSERT INTO user (id, tenant_id, email, role) VALUES ('${adminId}', '${TENANT_A_ID}', '${TENANT_ADMIN_EMAIL}', 'tenant_admin')`);
 
   fs.writeFileSync(FIXTURES, JSON.stringify({
-    tenantAId, tenantBId,
-    gatewayAId, gatewayBId,
+    tenantAId: TENANT_A_ID, tenantBId: TENANT_B_ID,
+    gatewayAId: GATEWAY_A_ID, gatewayBId: GATEWAY_B_ID,
     memberId, adminId,
   }, null, 2));
 

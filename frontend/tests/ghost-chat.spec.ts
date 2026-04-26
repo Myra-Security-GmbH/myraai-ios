@@ -13,7 +13,7 @@
  *   6. Regression — feedback button hidden in ghost mode
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const ADMIN_BASE = `${process.env.PLAYWRIGHT_ADMIN_URL ?? "http://localhost:5173"}/admin/v1`;
 
@@ -341,8 +341,11 @@ test.describe("Ghost mode — regression", () => {
     // Send a message so a response bubble (with a potential feedback button) exists
     await sendAndAwaitResponse(page, "feedback-test-" + Date.now());
 
-    // In normal mode, feedback button may be visible on the assistant bubble
-    const feedbackBtn = page.locator("[title*='feedback'], [title*='Feedback']").first();
+    // In normal mode, the session feedback button on the chat bubble is visible.
+    // Use data-cy to target the chat-specific button only — the global sidebar
+    // "Send feedback" button (title="Send feedback") is always visible regardless
+    // of ghost mode and must not be matched here.
+    const feedbackBtn = page.locator("[data-cy='feedback-flag-btn']").first();
 
     await enableGhostMode(page);
     // In ghost mode, the feedback button must not be visible
