@@ -44,4 +44,35 @@ function M.store_key(gateway_id, provider, alias, plaintext_key)
     storage.upsert_provider_config(gateway_id, provider, alias, enc, "")
 end
 
+-- Tenant-scoped key variants (no gateway_id — for management keys like anthropic-admin).
+
+function M.get_tenant_key(tenant_id, provider, alias)
+    alias = alias or "default"
+    local state_key = "byok:tenant:" .. tenant_id .. ":" .. provider .. ":" .. alias
+
+    local cached = state.byok_get(state_key)
+    if cached then return cached end
+
+    local enc_key, nonce, err = storage.get_tenant_provider_key(tenant_id, provider, alias)
+    if err then
+        return nil, "byok storage: " .. err
+    end
+
+    local plaintext, dec_err = crypto.decrypt(enc_key, cfg.master_key)
+    if not plaintext then
+        return nil, "byok decrypt: " .. tostring(dec_err)
+    end
+
+    state.byok_set(state_key, plaintext, cfg.defaults.byok_cache_ttl)
+    return plaintext
+end
+
+function M.store_tenant_key(tenant_id, provider, alias, plaintext_key)
+    local enc, err = crypto.encrypt(plaintext_key, cfg.master_key)
+    if not enc then
+        return "byok encrypt: " .. tostring(err)
+    end
+    return storage.upsert_tenant_provider_config(tenant_id, provider, alias, enc, "")
+end
+
 return M

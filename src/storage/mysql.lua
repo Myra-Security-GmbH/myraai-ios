@@ -175,6 +175,8 @@ local MIGRATIONS = {
     { version = "0005", file = "0005_add_conversation_sharing.sql",  description = "Add conversation sharing columns" },
     { version = "0006", file = "0006_add_conversation_summary.sql",   description = "Add conversation_summary table" },
     { version = "0007", file = "0007_add_mcp_and_cache_deletion.sql", description = "Add mcp_connector table and cache_deletion_tokens column" },
+    { version = "0008", file = "0008_anthropic_usage.sql",            description = "Tenant-scoped provider keys and Anthropic usage snapshots" },
+    { version = "0009", file = "0009_cache_write_1h.sql",             description = "1h cache write pricing in model_price and token split in request_log" },
 }
 
 -- Errors that mean "this change is already applied" — tolerated silently.
@@ -397,7 +399,7 @@ function M.get_model_pricing(provider, model)
     local db, err = get_conn()
     if not db then return nil, err end
     local row, e = query_one(db, [[
-        SELECT input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k
+        SELECT input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, cache_write_1h_per_1k
         FROM   model_price
         WHERE  provider = ? AND model = ?
     ]], provider, model)
@@ -415,7 +417,7 @@ function M.insert_log(f)
     local e = exec_one(db, [[
         INSERT INTO request_log
             (id, tenant_id, gateway_id, provider, model, status, cached,
-             input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens,
+             input_tokens, output_tokens, cache_creation_tokens, cache_creation_1h_tokens, cache_read_tokens, cache_deletion_tokens,
              cost_usd, latency_ms, ts,
              prompt, response, meta, blocked, blocked_by, block_reason,
              guardrail_latency_ms, guardrail_verdict,
@@ -428,12 +430,12 @@ function M.insert_log(f)
              compaction_tokens_saved, compaction_cost_saved,
              compaction_triggered, compaction_tokens_before,
              rate_limited)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ]],
         f.id, f.tenant_id, f.gateway_id, f.provider, f.model,
         f.status, f.cached and 1 or 0,
         f.input_tokens, f.output_tokens,
-        f.cache_creation_tokens or 0, f.cache_read_tokens or 0, f.cache_deletion_tokens or 0,
+        f.cache_creation_tokens or 0, f.cache_creation_1h_tokens or 0, f.cache_read_tokens or 0, f.cache_deletion_tokens or 0,
         f.cost_usd, f.latency_ms, f.ts,
         f.prompt, f.response,
         json.encode(f.meta or {}),
@@ -732,20 +734,21 @@ end
 -- Model pricing write helpers
 -- ---------------------------------------------------------------------------
 
-function M.upsert_model_price(provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k)
+function M.upsert_model_price(provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, cache_write_1h_per_1k)
     local db, err = get_conn()
     if not db then return err end
     local e = exec_one(db, [[
         INSERT INTO model_price
-            (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at)
-        VALUES (?,?,?,?,?,?,UNIX_TIMESTAMP())
+            (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, cache_write_1h_per_1k, updated_at)
+        VALUES (?,?,?,?,?,?,?,UNIX_TIMESTAMP())
         ON DUPLICATE KEY UPDATE
-            input_per_1k       = VALUES(input_per_1k),
-            output_per_1k      = VALUES(output_per_1k),
-            cache_write_per_1k = VALUES(cache_write_per_1k),
-            cache_read_per_1k  = VALUES(cache_read_per_1k),
-            updated_at         = UNIX_TIMESTAMP()
-    ]], provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k)
+            input_per_1k          = VALUES(input_per_1k),
+            output_per_1k         = VALUES(output_per_1k),
+            cache_write_per_1k    = VALUES(cache_write_per_1k),
+            cache_read_per_1k     = VALUES(cache_read_per_1k),
+            cache_write_1h_per_1k = VALUES(cache_write_1h_per_1k),
+            updated_at            = UNIX_TIMESTAMP()
+    ]], provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, cache_write_1h_per_1k)
     release(db)
     return e
 end
@@ -944,6 +947,136 @@ function M.get_first_provider_key(provider)
     return row.gateway_id, row.encrypted_key, row.nonce
 end
 
+-- ---------------------------------------------------------------------------
+-- Tenant-scoped provider key helpers (provider_config rows with tenant_id,
+-- no gateway_id — used for management keys like anthropic-admin).
+-- ---------------------------------------------------------------------------
+
+function M.get_tenant_provider_key(tenant_id, provider, alias)
+    alias = alias or "default"
+    local db, err = get_conn()
+    if not db then return nil, nil, err end
+    local row, e = query_one(db, [[
+        SELECT encrypted_key, nonce FROM provider_config
+        WHERE  tenant_id = ? AND provider = ? AND alias = ? AND gateway_id IS NULL
+        LIMIT 1
+    ]], tenant_id, provider, alias)
+    release(db)
+    if e then return nil, nil, e end
+    if not row then return nil, nil, "not_found" end
+    return row.encrypted_key, row.nonce
+end
+
+function M.upsert_tenant_provider_config(tenant_id, provider, alias, encrypted_key, nonce)
+    alias = alias or "default"
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        INSERT INTO provider_config (id, tenant_id, provider, alias, encrypted_key, nonce)
+        VALUES (?,?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE
+            encrypted_key = VALUES(encrypted_key),
+            nonce         = VALUES(nonce)
+    ]], uuid(), tenant_id, provider, alias, encrypted_key, nonce)
+    release(db)
+    return e
+end
+
+function M.delete_tenant_provider_config(tenant_id, provider, alias)
+    alias = alias or "default"
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        DELETE FROM provider_config
+        WHERE tenant_id = ? AND provider = ? AND alias = ? AND gateway_id IS NULL
+    ]], tenant_id, provider, alias)
+    release(db)
+    return e
+end
+
+function M.list_tenant_provider_configs(tenant_id)
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows = query_all(db, [[
+        SELECT id, provider, alias, created_at
+        FROM provider_config
+        WHERE tenant_id = ? AND gateway_id IS NULL
+        ORDER BY provider, alias
+    ]], tenant_id) or {}
+    release(db)
+    return rows
+end
+
+-- Returns all tenants that have an anthropic-admin key configured.
+-- Used by the usage sync to know who to fetch data for.
+function M.list_tenants_with_anthropic_admin_key()
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows = query_all(db, [[
+        SELECT t.id AS tenant_id, t.slug, pc.encrypted_key, pc.nonce
+        FROM   provider_config pc
+        JOIN   tenant t ON t.id = pc.tenant_id
+        WHERE  pc.provider = 'anthropic-admin'
+          AND  pc.gateway_id IS NULL
+          AND  t.deleted_at IS NULL
+    ]]) or {}
+    release(db)
+    return rows
+end
+
+-- ---------------------------------------------------------------------------
+-- Anthropic usage snapshot helpers
+-- ---------------------------------------------------------------------------
+
+function M.upsert_anthropic_usage(row)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        INSERT INTO anthropic_usage_snapshot
+            (id, tenant_id, snapshot_date, source, model, service_tier,
+             uncached_input_tokens, output_tokens,
+             cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens,
+             web_search_requests, cost_usd)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE
+            uncached_input_tokens = VALUES(uncached_input_tokens),
+            output_tokens         = VALUES(output_tokens),
+            cache_write_5m_tokens = VALUES(cache_write_5m_tokens),
+            cache_write_1h_tokens = VALUES(cache_write_1h_tokens),
+            cache_read_tokens     = VALUES(cache_read_tokens),
+            web_search_requests   = VALUES(web_search_requests),
+            cost_usd              = VALUES(cost_usd)
+    ]], uuid(), row.tenant_id, row.snapshot_date, row.source, row.model,
+        row.service_tier, row.uncached_input_tokens, row.output_tokens,
+        row.cache_write_5m_tokens, row.cache_write_1h_tokens, row.cache_read_tokens,
+        row.web_search_requests, row.cost_usd)
+    release(db)
+    return e
+end
+
+function M.get_anthropic_usage(tenant_id, from_date, to_date)
+    local db, err = get_conn()
+    if not db then return {}, err end
+    local rows = query_all(db, [[
+        SELECT snapshot_date, source, model, service_tier,
+               SUM(uncached_input_tokens)  AS uncached_input_tokens,
+               SUM(output_tokens)          AS output_tokens,
+               SUM(cache_write_5m_tokens)  AS cache_write_5m_tokens,
+               SUM(cache_write_1h_tokens)  AS cache_write_1h_tokens,
+               SUM(cache_read_tokens)      AS cache_read_tokens,
+               SUM(web_search_requests)    AS web_search_requests,
+               CAST(SUM(cost_usd) AS CHAR) AS cost_usd,
+               MAX(UNIX_TIMESTAMP(fetched_at)) AS fetched_at
+        FROM   anthropic_usage_snapshot
+        WHERE  tenant_id = ?
+          AND  snapshot_date >= ? AND snapshot_date <= ?
+        GROUP  BY snapshot_date, source, model, service_tier
+        ORDER  BY snapshot_date DESC, model
+    ]], tenant_id, from_date, to_date) or {}
+    release(db)
+    return rows
+end
+
 function M.list_routing_rules(gateway_id)
     local db, err = get_conn()
     if not db then return {} end
@@ -1092,7 +1225,7 @@ function M.list_model_prices()
     if not db then return {} end
     local rows = query_all(db, [[
         SELECT provider, model, input_per_1k, output_per_1k,
-               cache_write_per_1k, cache_read_per_1k,
+               cache_write_per_1k, cache_read_per_1k, cache_write_1h_per_1k,
                updated_at
         FROM model_price ORDER BY provider, model
     ]]) or {}
@@ -1106,7 +1239,7 @@ function M.list_models(provider)
         if not db then return {} end
         local rows = query_all(db, [[
             SELECT provider, model, input_per_1k, output_per_1k,
-                   cache_write_per_1k, cache_read_per_1k,
+                   cache_write_per_1k, cache_read_per_1k, cache_write_1h_per_1k,
                    updated_at
             FROM   model_price
             WHERE  provider = ?
@@ -1196,7 +1329,7 @@ end
 -- Usage stats (dashboard overview)
 -- ---------------------------------------------------------------------------
 
-function M.get_usage_stats(tenant_id)
+function M.get_usage_stats(tenant_id, user_id)
     local db, err = get_conn()
     if not db then return {} end
 
@@ -1213,6 +1346,23 @@ function M.get_usage_stats(tenant_id)
         assert(tenant_id:match("^[0-9a-fA-F%-]+$"), "tenant_id must be UUID format")
         tenant_clause = " AND tenant_id = ?"
         tenant_param  = tenant_id
+    end
+
+    local user_clause = ""
+    local user_param  = nil
+    if user_id and user_id ~= "" then
+        assert(user_id:match("^[0-9a-fA-F%-]+$"), "user_id must be UUID format")
+        user_clause = " AND user_id = ?"
+        user_param  = user_id
+    end
+    local extra_clause = tenant_clause .. user_clause
+
+    local function bind_params(...)
+        local t = {}
+        if tenant_param then t[#t+1] = tenant_param end
+        if user_param   then t[#t+1] = user_param   end
+        for _, v in ipairs({...}) do t[#t+1] = v end
+        return table.unpack(t)
     end
 
     local function pcols(p, cond)
@@ -1240,9 +1390,9 @@ function M.get_usage_stats(tenant_id)
         pcols("td", "ts >= " .. today_ms),
         pcols("yd", string.format("ts >= %d AND ts < %d", yesterday_ms, today_ms)),
         pcols("l7", "1=1"),
-        last_7d_ms, tenant_clause)
+        last_7d_ms, extra_clause)
 
-    local r = query_one(db, all_sql, table.unpack(tenant_param and {tenant_param} or {})) or {}
+    local r = query_one(db, all_sql, bind_params()) or {}
 
     local function extract(p)
         return {
@@ -1261,18 +1411,21 @@ function M.get_usage_stats(tenant_id)
         }
     end
 
-    local by_tenant_sql = string.format([[
-        SELECT r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
-               COUNT(*) AS requests,
-               COALESCE(SUM(r.input_tokens),0)  AS input_tokens,
-               COALESCE(SUM(r.output_tokens),0) AS output_tokens,
-               ROUND(COALESCE(SUM(r.cost_usd),0),4) AS cost_usd
-        FROM request_log r
-        LEFT JOIN tenant t ON t.id = r.tenant_id
-        WHERE r.ts >= %d%s
-        GROUP BY r.tenant_id ORDER BY cost_usd DESC
-    ]], today_ms, tenant_clause)
-    local by_tenant = query_all(db, by_tenant_sql, table.unpack(tenant_param and {tenant_param} or {})) or {}
+    local by_tenant = {}
+    if not user_id then
+        local by_tenant_sql = string.format([[
+            SELECT r.tenant_id, COALESCE(t.slug, r.tenant_id) AS tenant,
+                   COUNT(*) AS requests,
+                   COALESCE(SUM(r.input_tokens),0)  AS input_tokens,
+                   COALESCE(SUM(r.output_tokens),0) AS output_tokens,
+                   ROUND(COALESCE(SUM(r.cost_usd),0),4) AS cost_usd
+            FROM request_log r
+            LEFT JOIN tenant t ON t.id = r.tenant_id
+            WHERE r.ts >= %d AND t.id IS NOT NULL AND t.deleted_at IS NULL%s
+            GROUP BY r.tenant_id ORDER BY cost_usd DESC
+        ]], today_ms, tenant_clause)
+        by_tenant = query_all(db, by_tenant_sql, table.unpack(tenant_param and {tenant_param} or {})) or {}
+    end
 
     local recent_sql = string.format([[
         SELECT ROUND(r.ts / 1000) AS ts,
@@ -1290,10 +1443,10 @@ function M.get_usage_stats(tenant_id)
         FROM request_log r
         LEFT JOIN tenant t ON t.id = r.tenant_id
         LEFT JOIN gateway g ON g.id = r.gateway_id
-        %s
+        WHERE t.id IS NOT NULL AND t.deleted_at IS NULL%s
         ORDER BY r.ts DESC LIMIT 10
-    ]], tenant_clause ~= "" and ("WHERE 1=1" .. tenant_clause) or "")
-    local recent = query_all(db, recent_sql, table.unpack(tenant_param and {tenant_param} or {})) or {}
+    ]], extra_clause)
+    local recent = query_all(db, recent_sql, bind_params()) or {}
 
     local recent_blocked_sql = string.format([[
         SELECT ROUND(r.ts / 1000) AS ts,
@@ -1306,12 +1459,13 @@ function M.get_usage_stats(tenant_id)
         FROM request_log r
         LEFT JOIN tenant t ON t.id = r.tenant_id
         LEFT JOIN gateway g ON g.id = r.gateway_id
-        WHERE (r.blocked = 1
+        WHERE t.id IS NOT NULL AND t.deleted_at IS NULL
+          AND (r.blocked = 1
            OR r.scrub_applied = 1
            OR (r.detectors_fired IS NOT NULL AND r.detectors_fired != '[]'))%s
         ORDER BY r.ts DESC LIMIT 20
-    ]], tenant_clause)
-    local recent_blocked = query_all(db, recent_blocked_sql, table.unpack(tenant_param and {tenant_param} or {})) or {}
+    ]], extra_clause)
+    local recent_blocked = query_all(db, recent_blocked_sql, bind_params()) or {}
     for _, row in ipairs(recent_blocked) do decode_detectors(row) end
 
     release(db)
@@ -1331,7 +1485,7 @@ end
 -- Time-series stats
 -- ---------------------------------------------------------------------------
 
-function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
+function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id, user_id)
     local db, err = get_conn()
     if not db then return setmetatable({}, cjson.array_mt) end
 
@@ -1344,6 +1498,10 @@ function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
     if tenant_id then
         tenant_clause = " AND tenant_id = ?"
     end
+    local user_clause = ""
+    if user_id then
+        user_clause = " AND user_id = ?"
+    end
     local sql = string.format([[
         SELECT (ts DIV %d) * %d AS bucket_ts,
                COUNT(*) AS requests,
@@ -1351,17 +1509,15 @@ function M.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id)
                SUM(CASE WHEN rate_limited=1 THEN 1 ELSE 0 END) AS rate_limited,
                ROUND(COALESCE(SUM(cost_usd),0),6) AS cost_usd
         FROM request_log
-        WHERE ts >= ?%s
+        WHERE ts >= ?%s%s
         GROUP BY bucket_ts
         ORDER BY bucket_ts ASC
-    ]], bms, bms, tenant_clause)
+    ]], bms, bms, tenant_clause, user_clause)
 
-    local rows
-    if tenant_id then
-        rows = query_all(db, sql, since_ms, tenant_id) or {}
-    else
-        rows = query_all(db, sql, since_ms) or {}
-    end
+    local params = { since_ms }
+    if tenant_id then params[#params+1] = tenant_id end
+    if user_id   then params[#params+1] = user_id   end
+    local rows = query_all(db, sql, table.unpack(params)) or {}
     release(db)
 
     local by_ts = {}
@@ -1452,7 +1608,7 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
                SUM(CASE WHEN r.status >= 400 THEN 1 ELSE 0 END)                   AS errors
         FROM request_log r
         LEFT JOIN tenant t ON t.id = r.tenant_id
-        WHERE r.ts >= ?%s%s
+        WHERE r.ts >= ?%s%s AND t.id IS NOT NULL AND t.deleted_at IS NULL
         GROUP BY r.tenant_id ORDER BY cost_usd DESC
     ]], tc, uc), table.unpack(bind_params)) or {}
 
@@ -1471,7 +1627,7 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
         FROM request_log r
         LEFT JOIN gateway g ON g.id = r.gateway_id
         LEFT JOIN tenant  t ON t.id = r.tenant_id
-        WHERE r.ts >= ?%s%s
+        WHERE r.ts >= ?%s%s AND t.id IS NOT NULL AND t.deleted_at IS NULL
         GROUP BY r.gateway_id ORDER BY cost_usd DESC
     ]], tc, uc), table.unpack(bind_params)) or {}
 
@@ -1500,19 +1656,20 @@ function M.get_analytics_depth(since_ms, tenant_id, until_ms)
     -- Joins model_price per row for accurate per-model pricing.
     local cache_eff = query_one(db, string.format([[
         SELECT
-            COALESCE(SUM(r.cache_creation_tokens), 0) AS cache_write_tokens,
+            COALESCE(SUM(r.cache_creation_tokens + r.cache_creation_1h_tokens), 0) AS cache_write_tokens,
             COALESCE(SUM(r.cache_read_tokens),     0) AS cache_read_tokens,
             COALESCE(SUM(r.input_tokens),          0) AS standard_input_tokens,
             ROUND(SUM(
-                r.cache_creation_tokens * COALESCE(mp.cache_write_per_1k, 0) / 1000 +
-                r.input_tokens          * COALESCE(mp.input_per_1k,       0) / 1000
+                r.cache_creation_tokens     * COALESCE(mp.cache_write_per_1k,    0) / 1000 +
+                r.cache_creation_1h_tokens  * COALESCE(mp.cache_write_1h_per_1k, mp.cache_write_per_1k * 1.6, 0) / 1000 +
+                r.input_tokens              * COALESCE(mp.input_per_1k,          0) / 1000
             ), 4) AS uncached_cost_usd,
             ROUND(SUM(
                 r.cache_read_tokens * COALESCE(mp.cache_read_per_1k, 0) / 1000
             ), 4) AS cached_cost_usd,
             ROUND(
                 COALESCE(SUM(r.cache_read_tokens), 0) * 100.0 /
-                NULLIF(SUM(r.cache_creation_tokens + r.cache_read_tokens + r.input_tokens), 0),
+                NULLIF(SUM(r.cache_creation_tokens + r.cache_creation_1h_tokens + r.cache_read_tokens + r.input_tokens), 0),
             1) AS cache_hit_pct,
             COALESCE(SUM(r.compaction_tokens_saved), 0) AS compaction_tokens_saved,
             ROUND(COALESCE(SUM(r.compaction_cost_saved), 0), 4) AS compaction_cost_saved

@@ -46,15 +46,19 @@ function M.get_gateway(tenant_slug, gateway_slug)
     config.timeout_ms   = config.timeout_ms   or cfg.defaults.timeout_ms
     config.log_payloads = (config.log_payloads ~= false)
     -- prompt_caching: gateway setting wins; fall back to system default.
-    -- A gateway can opt out by setting prompt_caching = { enabled = false }.
-    -- cjson.null is truthy but not nil — treat it as absent so the default applies.
-    if config.prompt_caching == nil or type(config.prompt_caching) ~= "table" then
+    -- cjson.null = user explicitly disabled (UI saved null) → treat as {enabled=false}.
+    -- nil = never configured → apply system default.
+    if config.prompt_caching == json.null then
+        config.prompt_caching = { enabled = false }
+    elseif config.prompt_caching == nil or type(config.prompt_caching) ~= "table" then
         config.prompt_caching = cfg.defaults.prompt_caching
     end
     -- context_compaction: gateway setting wins; fall back to system default.
-    -- A gateway can opt out by setting context_compaction = { enabled = false }.
-    -- cjson.null is truthy but not nil — treat it as absent so the default applies.
-    if config.context_compaction == nil or type(config.context_compaction) ~= "table" then
+    -- cjson.null = user explicitly disabled → treat as {enabled=false}.
+    -- nil = never configured → apply system default.
+    if config.context_compaction == json.null then
+        config.context_compaction = { enabled = false }
+    elseif config.context_compaction == nil or type(config.context_compaction) ~= "table" then
         config.context_compaction = cfg.defaults.context_compaction
     end
 

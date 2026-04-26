@@ -17,6 +17,11 @@
 --   GET    /admin/v1/tenants/:id/spend
 --   DELETE /admin/v1/tenants/:id/budget
 --   GET    /admin/v1/tenants/:id/analytics
+--   GET    /admin/v1/tenants/:id/keys
+--   POST   /admin/v1/tenants/:id/keys
+--   DELETE /admin/v1/tenants/:id/keys/:provider/:alias
+--   GET    /admin/v1/tenants/:id/anthropic-usage
+--   POST   /admin/v1/anthropic-usage/sync
 --   PATCH  /admin/v1/users/:id
 --   DELETE /admin/v1/users/:id
 --   GET    /admin/v1/users/:id/tokens
@@ -190,11 +195,12 @@ end
 -- Stats & logs
 -- ---------------------------------------------------------------------------
 route("GET", "^/admin/v1/stats$", function()
-    if not require_tenant_admin() then return end
-    local args = ngx.req.get_uri_args()
     local u = ngx.ctx.admin_user
+    if not u then return send(401, { error = "unauthenticated" }) end
+    local args          = ngx.req.get_uri_args()
     local tenant_filter = (u.role ~= "admin") and u.tenant_id or args.tenant_id
-    send(200, storage.get_usage_stats(tenant_filter))
+    local user_filter   = (u.role == "member" or u.role == "viewer") and u.id or nil
+    send(200, storage.get_usage_stats(tenant_filter, user_filter))
 end)
 
 -- GET /admin/v1/stats/timeseries?bucket=1h&n=24[&tenant_id=X]
@@ -202,15 +208,16 @@ end)
 -- n: number of buckets to return (default 24, max 168)
 local BUCKET_SIZES = { ["5m"]=300, ["15m"]=900, ["30m"]=1800, ["1h"]=3600, ["6h"]=21600, ["1d"]=86400 }
 route("GET", "^/admin/v1/stats/timeseries$", function()
-    if not require_tenant_admin() then return end
+    local u = ngx.ctx.admin_user
+    if not u then return send(401, { error = "unauthenticated" }) end
     local args       = ngx.req.get_uri_args()
     local bucket_sec = BUCKET_SIZES[args.bucket or "1h"] or 3600
     local n          = math.min(math.max(tonumber(args.n) or 24, 1), 168)
     local end_sec    = tonumber(args["until"])
-    local u = ngx.ctx.admin_user
-    local tenant_id = (u.role ~= "admin") and u.tenant_id
+    local tenant_id  = (u.role ~= "admin") and u.tenant_id
         or ((args.tenant_id ~= nil and args.tenant_id ~= "") and args.tenant_id or nil)
-    send(200, storage.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id))
+    local user_id    = (u.role == "member" or u.role == "viewer") and u.id or nil
+    send(200, storage.get_stats_timeseries(bucket_sec, n, end_sec, tenant_id, user_id))
 end)
 
 route("GET", "^/admin/v1/logs$", function()
@@ -353,7 +360,8 @@ route("PATCH", "^/admin/v1/gateways/([^/]+)$", function(gateway_id)
     if b.config then
         for k, v in pairs(b.config) do existing[k] = v end
     end
-    storage.upsert_gateway(row.tenant_id, row.slug, existing)
+    local _, err = storage.upsert_gateway(row.tenant_id, row.slug, existing)
+    if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
 
@@ -504,7 +512,7 @@ route("PUT", "^/admin/v1/model%-prices$", function()
         return send(400, { error = "provider and model required" })
     end
     local err = storage.upsert_model_price(b.provider, b.model,
-        b.input_per_1k, b.output_per_1k, b.cache_write_per_1k, b.cache_read_per_1k)
+        b.input_per_1k, b.output_per_1k, b.cache_write_per_1k, b.cache_read_per_1k, b.cache_write_1h_per_1k)
     if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
 end)
@@ -1052,6 +1060,79 @@ route("DELETE", "^/admin/v1/tenants/([^/]+)/budget$", function(tenant_id)
     local period = args.period ~= "" and args.period or nil
     storage.reset_spend("tenant", tenant_id, period)
     send(200, { ok = true })
+end)
+
+-- ---------------------------------------------------------------------------
+-- Tenant-scoped provider key routes (e.g. anthropic-admin key)
+-- ---------------------------------------------------------------------------
+route("GET", "^/admin/v1/tenants/([^/]+)/keys$", function(tenant_id)
+    if not require_tenant_access(tenant_id) then return end
+    send(200, storage.list_tenant_provider_configs(tenant_id))
+end)
+
+route("POST", "^/admin/v1/tenants/([^/]+)/keys$", function(tenant_id)
+    if not require_tenant_admin() then return end
+    if not require_tenant_access(tenant_id) then return end
+    local b = read_body()
+    if not b or not b.provider or not b.key then
+        return send(400, { error = "provider and key required" })
+    end
+    local err = byok.store_tenant_key(tenant_id, b.provider, b.alias or "default", b.key)
+    if err then return send(500, { error = tostring(err) }) end
+    send(201, { ok = true, provider = b.provider, alias = b.alias or "default" })
+end)
+
+route("DELETE", "^/admin/v1/tenants/([^/]+)/keys/([^/]+)/([^/]+)$", function(tenant_id, provider, alias)
+    if not require_tenant_admin() then return end
+    if not require_tenant_access(tenant_id) then return end
+    local err = storage.delete_tenant_provider_config(tenant_id, provider, alias)
+    if err then return send(500, { error = tostring(err) }) end
+    send(200, { ok = true })
+end)
+
+-- ---------------------------------------------------------------------------
+-- Anthropic usage routes
+-- ---------------------------------------------------------------------------
+
+-- GET /admin/v1/tenants/:id/anthropic-usage?from=YYYY-MM-DD&to=YYYY-MM-DD
+route("GET", "^/admin/v1/tenants/([^/]+)/anthropic%-usage$", function(tenant_id)
+    if not require_tenant_access(tenant_id) then return end
+    local args     = ngx.req.get_uri_args()
+    local from_d   = (args.from ~= "" and args.from) or os.date("!%Y-%m-%d", os.time() - 30 * 86400)
+    local to_d     = (args.to   ~= "" and args.to)   or os.date("!%Y-%m-%d", os.time())
+    local rows     = storage.get_anthropic_usage(tenant_id, from_d, to_d)
+    local totals   = { uncached_input_tokens = 0, output_tokens = 0,
+                       cache_write_5m_tokens = 0, cache_write_1h_tokens = 0,
+                       cache_read_tokens = 0, web_search_requests = 0, cost_usd = "0" }
+    local last_syn = nil
+    local total_cost = 0
+    for _, r in ipairs(rows) do
+        totals.uncached_input_tokens = totals.uncached_input_tokens + (r.uncached_input_tokens or 0)
+        totals.output_tokens         = totals.output_tokens         + (r.output_tokens         or 0)
+        totals.cache_write_5m_tokens = totals.cache_write_5m_tokens + (r.cache_write_5m_tokens or 0)
+        totals.cache_write_1h_tokens = totals.cache_write_1h_tokens + (r.cache_write_1h_tokens or 0)
+        totals.cache_read_tokens     = totals.cache_read_tokens     + (r.cache_read_tokens     or 0)
+        totals.web_search_requests   = totals.web_search_requests   + (r.web_search_requests   or 0)
+        total_cost = total_cost + tonumber(r.cost_usd or "0")
+        if r.fetched_at and (not last_syn or r.fetched_at > last_syn) then
+            last_syn = r.fetched_at
+        end
+    end
+    totals.cost_usd = string.format("%.8f", total_cost)
+    send(200, { daily = rows, totals = totals, last_synced_at = last_syn })
+end)
+
+-- POST /admin/v1/anthropic-usage/sync  — manual trigger (admin only)
+route("POST", "^/admin/v1/anthropic%-usage/sync$", function()
+    if not require_tenant_admin() then return end
+    ngx.timer.at(0, function(premature)
+        if premature then return end
+        local ok, err = pcall(require("admin.anthropic_usage_sync").sync_recent)
+        if not ok then
+            ngx.log(ngx.ERR, "anthropic_usage_sync: manual trigger failed: ", tostring(err))
+        end
+    end)
+    send(200, { ok = true, message = "sync triggered" })
 end)
 
 -- ---------------------------------------------------------------------------
