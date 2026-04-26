@@ -40,10 +40,10 @@ const PLAY_TOKEN: PlaygroundToken = {
 };
 
 const MODELS: ModelPrice[] = [
-  { provider: "openai",      model: "gpt-4o",              input_per_1k: 0.005,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
-  { provider: "anthropic",   model: "claude-sonnet-4-6",   input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: true  },
-  { provider: "gemini",      model: "gemini-2.0-flash",    input_per_1k: 0.00015, output_per_1k: 0.0006, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
-  { provider: "perplexity",  model: "sonar-pro",           input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
+  { provider: "openai",      model: "gpt-4o",              input_per_1k: 0.005,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_write_1h_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
+  { provider: "anthropic",   model: "claude-sonnet-4-6",   input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_write_1h_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: true  },
+  { provider: "gemini",      model: "gemini-2.0-flash",    input_per_1k: 0.00015, output_per_1k: 0.0006, cache_write_per_1k: null, cache_write_1h_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
+  { provider: "perplexity",  model: "sonar-pro",           input_per_1k: 0.003,   output_per_1k: 0.015,  cache_write_per_1k: null, cache_write_1h_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
 ];
 
 const PROVIDER_META: ProviderMeta[] = [
@@ -382,7 +382,7 @@ describe("Playground — ModelPicker", () => {
     // Add an ollama model to MODELS to have something to filter
     const modelsWithOllama = [
       ...MODELS,
-      { provider: "ollama", model: "llama3", input_per_1k: 0, output_per_1k: 0, cache_write_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
+      { provider: "ollama", model: "llama3", input_per_1k: 0, output_per_1k: 0, cache_write_per_1k: null, cache_write_1h_per_1k: null, cache_read_per_1k: null, updated_at: 1704067200, supports_thinking: false },
     ];
     // ollama requires_key=false so it IS runnable; use a provider with no key instead
     // Simulate perplexity having no key configured
@@ -1141,6 +1141,7 @@ const CLAUDE_MODEL: ModelPrice = {
   input_per_1k: 0.0008,
   output_per_1k: 0.004,
   cache_write_per_1k: null,
+  cache_write_1h_per_1k: null,
   cache_read_per_1k: null,
   updated_at: 1704067200,
   supports_thinking: false,
@@ -1795,6 +1796,7 @@ const CLAUDE_OPUS_45: ModelPrice = {
   input_per_1k: 0.015,
   output_per_1k: 0.075,
   cache_write_per_1k: null,
+  cache_write_1h_per_1k: null,
   cache_read_per_1k: null,
   updated_at: 1704067200,
   supports_thinking: true,

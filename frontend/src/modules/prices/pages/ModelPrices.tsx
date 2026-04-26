@@ -17,6 +17,7 @@ function PriceModal({ price, onClose, onSaved }: {
   const [inputPer1k, setInputPer1k] = useState(price ? String(price.input_per_1k) : "");
   const [outputPer1k, setOutputPer1k] = useState(price ? String(price.output_per_1k) : "");
   const [cacheWrite, setCacheWrite] = useState(price?.cache_write_per_1k != null ? String(price.cache_write_per_1k) : "");
+  const [cacheWrite1h, setCacheWrite1h] = useState(price?.cache_write_1h_per_1k != null ? String(price.cache_write_1h_per_1k) : "");
   const [cacheRead, setCacheRead] = useState(price?.cache_read_per_1k != null ? String(price.cache_read_per_1k) : "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +32,7 @@ function PriceModal({ price, onClose, onSaved }: {
         input_per_1k: parseFloat(inputPer1k),
         output_per_1k: parseFloat(outputPer1k),
         cache_write_per_1k: cacheWrite !== "" ? parseFloat(cacheWrite) : null,
+        cache_write_1h_per_1k: cacheWrite1h !== "" ? parseFloat(cacheWrite1h) : null,
         cache_read_per_1k: cacheRead !== "" ? parseFloat(cacheRead) : null,
       });
       onSaved(); onClose();
@@ -65,13 +67,20 @@ function PriceModal({ price, onClose, onSaved }: {
           </div>
           <div className={s["form-row"]}>
             <div className={s["form-group"]}>
-              <label htmlFor="cachewrite" className={s["form-label"]}>Cache Write $/1K (optional)</label>
+              <label htmlFor="cachewrite" className={s["form-label"]}>Cache Write 5m $/1K (optional)</label>
               <input id="cachewrite" className={s["form-input"]} type="number" step="any" min="0" value={cacheWrite} onChange={(e) => setCacheWrite(e.target.value)} placeholder="—" />
             </div>
+            <div className={s["form-group"]}>
+              <label htmlFor="cachewrite1h" className={s["form-label"]}>Cache Write 1h $/1K (optional)</label>
+              <input id="cachewrite1h" className={s["form-input"]} type="number" step="any" min="0" value={cacheWrite1h} onChange={(e) => setCacheWrite1h(e.target.value)} placeholder="—" />
+            </div>
+          </div>
+          <div className={s["form-row"]}>
             <div className={s["form-group"]}>
               <label htmlFor="cacheread" className={s["form-label"]}>Cache Read $/1K (optional)</label>
               <input id="cacheread" className={s["form-input"]} type="number" step="any" min="0" value={cacheRead} onChange={(e) => setCacheRead(e.target.value)} placeholder="—" />
             </div>
+            <div className={s["form-group"]} />
           </div>
           <div className={s["form-actions"]}>
             <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={onClose}>Cancel</button>
@@ -177,7 +186,8 @@ export default function ModelPrices() {
                 <th>Model</th>
                 <th>Input $/1K tokens</th>
                 <th>Output $/1K tokens</th>
-                <th>Cache Write $/1K</th>
+                <th>Cache Write 5m $/1K</th>
+                <th>Cache Write 1h $/1K</th>
                 <th>Cache Read $/1K</th>
                 <th>Updated</th>
                 <th></th>
@@ -191,6 +201,7 @@ export default function ModelPrices() {
                   <td>{fmt(p.input_per_1k)}</td>
                   <td>{fmt(p.output_per_1k)}</td>
                   <td>{fmt(p.cache_write_per_1k)}</td>
+                  <td>{fmt(p.cache_write_1h_per_1k)}</td>
                   <td>{fmt(p.cache_read_per_1k)}</td>
                   <td className={s.mono} style={{ fontSize: 11 }}>{fmtDate(p.updated_at)}</td>
                   <td style={{ display: "flex", gap: 6 }}>

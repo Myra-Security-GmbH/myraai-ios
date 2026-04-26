@@ -3,7 +3,7 @@ import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { useAuth } from "src/common/contexts/AuthContext";
 import { api } from "src/api/client";
-import { Tenant, Gateway, BudgetPeriod, TenantPreset, SlashCommand, ModelPrice, ProviderMeta } from "src/api/types";
+import { Tenant, Gateway, BudgetPeriod, TenantPreset, SlashCommand, ModelPrice, ProviderMeta, ProviderConfig } from "src/api/types";
 import ModelPicker from "src/common/components/ModelPicker/ModelPicker";
 import { fmtDate } from "src/common/utils/date";
 import { fmtCost } from "src/common/utils/format";
@@ -218,14 +218,13 @@ function TenantCommandModal({ command, onClose, onSaved }: {
         <div className={s["form-group"]}>
           <label className={s["form-label"]}>Name *</label>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ opacity: 0.5, fontFamily: "monospace" }}>/</span>
+            <span className={s.mono} style={{ opacity: 0.5 }}>/</span>
             <input
-              className={s["form-input"]}
+              className={`${s["form-input"]} ${s.mono}`}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="command-name"
               required
-              style={{ fontFamily: "monospace" }}
             />
           </div>
         </div>
@@ -241,13 +240,13 @@ function TenantCommandModal({ command, onClose, onSaved }: {
         <div className={s["form-group"]}>
           <label className={s["form-label"]}>Template *</label>
           <textarea
-            className={s["form-input"]}
+            className={`${s["form-input"]} ${s.mono}`}
             value={template}
             onChange={(e) => setTemplate(e.target.value)}
             rows={4}
             placeholder={"Use {{variable}} for placeholders.\nExample: Translate to {{language}}: {{text}}"}
             required
-            style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
+            style={{ resize: "vertical", fontSize: 13 }}
           />
           {vars.length > 0 && (
             <p className={s["form-hint"]}>Variables: {vars.map((v) => `{{${v}}}`).join(", ")}</p>
@@ -283,6 +282,11 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
   const [savingCommands, setSavingCommands] = useState(false);
   const navigate = useNavigate();
   const canEditPresets = me?.role === "admin" || me?.role === "tenant_admin";
+  const [adminKeys, setAdminKeys] = useState<ProviderConfig[]>([]);
+  const [showAddAdminKey, setShowAddAdminKey] = useState(false);
+  const [adminKeyInput, setAdminKeyInput] = useState("");
+  const [addingKey, setAddingKey] = useState(false);
+  const [adminKeyError, setAdminKeyError] = useState<string | null>(null);
 
   function loadGateways() {
     setLoadingGateways(true);
@@ -291,7 +295,41 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
       .finally(() => setLoadingGateways(false));
   }
 
-  useEffect(() => { loadGateways(); }, [tenant.id]);
+  function loadAdminKeys() {
+    api.get<ProviderConfig[]>(`/tenants/${tenant.id}/keys`)
+      .then(setAdminKeys)
+      .catch(() => {});
+  }
+
+  useEffect(() => { loadGateways(); loadAdminKeys(); }, [tenant.id]);
+
+  async function handleAddAdminKey(e: React.FormEvent) {
+    e.preventDefault();
+    if (!adminKeyInput.trim()) return;
+    setAddingKey(true); setAdminKeyError(null);
+    try {
+      await api.post(`/tenants/${tenant.id}/keys`, {
+        provider: "anthropic-admin",
+        key: adminKeyInput.trim(),
+      });
+      setAdminKeyInput(""); setShowAddAdminKey(false);
+      loadAdminKeys();
+    } catch (err: any) {
+      setAdminKeyError(err.message);
+    } finally {
+      setAddingKey(false);
+    }
+  }
+
+  async function handleDeleteAdminKey(provider: string, alias: string) {
+    if (!confirm(`Remove ${provider} key (${alias})?`)) return;
+    try {
+      await api.delete(`/tenants/${tenant.id}/keys/${provider}/${alias}`);
+      loadAdminKeys();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
 
   async function handleDelete() {
     if (!confirm(`Delete tenant "${tenant.slug}"? This will also delete all their gateways, keys, and tokens.`)) return;
@@ -494,6 +532,82 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
         )}
       </div>
 
+      {/* Admin Keys card */}
+      {canEditPresets && (
+        <div className={s.card}>
+          <div className={s["card-header"]}>
+            <h2 className={s["card-title"]}>Admin API Keys</h2>
+            <button
+              className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`}
+              onClick={() => { setShowAddAdminKey(true); setAdminKeyError(null); setAdminKeyInput(""); }}
+            >
+              + Add Key
+            </button>
+          </div>
+          {showAddAdminKey && (
+            <form onSubmit={handleAddAdminKey} style={{ padding: "12px 0", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className={s["form-group"]} style={{ margin: 0 }}>
+                <label className={s["form-label"]}>Anthropic Admin Key</label>
+                <input
+                  className={s["form-input"]}
+                  type="password"
+                  value={adminKeyInput}
+                  onChange={(e) => setAdminKeyInput(e.target.value)}
+                  placeholder="sk-ant-admin01-…"
+                  autoFocus
+                  required
+                />
+                <p className={s["form-hint"]}>Stored encrypted. Used to sync usage data from the Anthropic Admin API.</p>
+              </div>
+              {adminKeyError && <div className={`${s.alert} ${s["alert--error"]}`}>{adminKeyError}</div>}
+              <div className={s["form-actions"]} style={{ paddingTop: 0 }}>
+                <button type="button" className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={() => setShowAddAdminKey(false)}>Cancel</button>
+                <button type="submit" className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`} disabled={addingKey}>
+                  {addingKey ? "Saving…" : "Save Key"}
+                </button>
+              </div>
+            </form>
+          )}
+          {adminKeys.length === 0 && !showAddAdminKey ? (
+            <div className={s.empty}>
+              No admin keys configured. Add an Anthropic Admin key (<span className={s.code}>sk-ant-admin01-…</span>) to enable authoritative usage reporting.
+            </div>
+          ) : (
+            adminKeys.length > 0 && (
+              <div className={s["table-wrapper"]}>
+                <table className={s.table}>
+                  <thead>
+                    <tr>
+                      <th>Provider</th>
+                      <th>Alias</th>
+                      <th>Added</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminKeys.map((k) => (
+                      <tr key={k.id}>
+                        <td><span className={s.code}>{k.provider}</span></td>
+                        <td>{k.alias}</td>
+                        <td className={s.mono}>{fmtDate(k.created_at)}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <button
+                            className={`${s.btn} ${s["btn--danger"]} ${s["btn--sm"]}`}
+                            onClick={() => handleDeleteAdminKey(k.provider, k.alias)}
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </div>
+      )}
+
       {/* Chat Presets card — visible to admin and tenant_admin only */}
       {canEditPresets && (
         <div className={s.card}>
@@ -595,7 +709,7 @@ function TenantDetail({ tenant: initialTenant, onBack, onDeleted, onUpdated }: {
                     <tr key={cmd.id}>
                       <td><span className={s.code}>/{cmd.name}</span></td>
                       <td style={{ opacity: 0.75 }}>{cmd.description || "—"}</td>
-                      <td className={s.truncate} style={{ maxWidth: 240, opacity: 0.75, fontFamily: "monospace", fontSize: 12 }}>
+                      <td className={`${s.truncate} ${s.mono}`} style={{ maxWidth: 240, opacity: 0.75 }}>
                         {cmd.template}
                       </td>
                       <td style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>

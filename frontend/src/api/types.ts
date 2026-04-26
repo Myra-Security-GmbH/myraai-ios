@@ -427,6 +427,37 @@ export interface ProviderConfig {
   created_at: number;
 }
 
+export interface AnthropicUsageRow {
+  snapshot_date: string;
+  source: "byok" | "local";
+  model: string;
+  service_tier: string;
+  uncached_input_tokens: number;
+  output_tokens: number;
+  cache_write_5m_tokens: number;
+  cache_write_1h_tokens: number;
+  cache_read_tokens: number;
+  web_search_requests: number;
+  cost_usd: string;
+  fetched_at: number | null;
+}
+
+export interface AnthropicUsageTotals {
+  uncached_input_tokens: number;
+  output_tokens: number;
+  cache_write_5m_tokens: number;
+  cache_write_1h_tokens: number;
+  cache_read_tokens: number;
+  web_search_requests: number;
+  cost_usd: string;
+}
+
+export interface AnthropicUsage {
+  daily: AnthropicUsageRow[];
+  totals: AnthropicUsageTotals;
+  last_synced_at: number | null;
+}
+
 export interface RoutingRule {
   id: string;
   priority: number;
@@ -446,6 +477,7 @@ export interface ModelPrice {
   input_per_1k: number;
   output_per_1k: number;
   cache_write_per_1k: number | null;
+  cache_write_1h_per_1k: number | null;
   cache_read_per_1k: number | null;
   updated_at: number;
   /** True for Anthropic claude-3-7-sonnet and all claude-4-series models */

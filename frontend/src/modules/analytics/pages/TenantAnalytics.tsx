@@ -7,7 +7,7 @@ import { api } from "src/api/client";
 import {
   AnalyticsDepth, Tenant, TenantStats, GatewayStats, UserStats,
   TenantAnalyticsDetail, SpendRecord, TopModelRow, TimeseriesPoint,
-  LatencyPercentiles,
+  LatencyPercentiles, AnthropicUsage, AnthropicUsageRow,
 } from "src/api/types";
 import { fmtNumber, fmtCost, fmtMs } from "src/common/utils/format";
 import s from "src/common/components/layout/Layout.module.scss";
@@ -125,6 +125,9 @@ function BudgetBar({ used, total, fmtFn = fmtCost }: { used: number; total: numb
 }
 
 function BarChart({ data, height = 72 }: { data: TimeseriesPoint[]; height?: number }) {
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+
   if (!data.length) return <div style={{ height }} />;
   const max = Math.max(...data.map(d => d.cost_usd));
   if (max === 0) return (
@@ -134,13 +137,38 @@ function BarChart({ data, height = 72 }: { data: TimeseriesPoint[]; height?: num
   );
   const W = 400; const H = height; const gap = 2;
   const barW = Math.max(2, (W - gap * (data.length - 1)) / data.length);
+  const hp = hovered !== null ? data[hovered] : null;
   return (
-    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ color: "var(--badge-success-text, #16a34a)" }}>
-      {data.map((d, i) => {
-        const bh = (d.cost_usd / max) * H * 0.92;
-        return <rect key={i} x={i * (barW + gap)} y={H - bh} width={barW} height={bh} fill="currentColor" opacity={0.75} rx={1} />;
-      })}
-    </svg>
+    <div style={{ position: "relative" }}>
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+           style={{ color: "var(--badge-success-text, #16a34a)", display: "block" }}
+           onMouseLeave={() => setHovered(null)}>
+        {data.map((d, i) => {
+          const bh = (d.cost_usd / max) * H * 0.92;
+          return (
+            <rect key={i} x={i * (barW + gap)} y={H - bh} width={barW} height={bh}
+                  fill="currentColor" opacity={hovered === null || hovered === i ? 0.75 : 0.35} rx={1}
+                  onMouseEnter={e => { setHovered(i); setPos({ x: e.clientX, y: e.clientY }); }}
+                  onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })} />
+          );
+        })}
+      </svg>
+      {hp && (
+        <div style={{
+          position: "fixed", left: pos.x + 12, top: pos.y - 40,
+          background: "var(--card-bg, #fff)", border: "1px solid var(--card-border)",
+          borderRadius: 6, padding: "4px 9px", fontSize: 12,
+          pointerEvents: "none", zIndex: 9999,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15)", whiteSpace: "nowrap",
+        }}>
+          <span style={{ color: "var(--text-secondary)" }}>
+            {new Date(hp.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          </span>
+          {" "}
+          <strong>${hp.cost_usd.toFixed(4)}</strong>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -148,13 +176,125 @@ function BarChart({ data, height = 72 }: { data: TimeseriesPoint[]; height?: num
 // Detail panel
 // ---------------------------------------------------------------------------
 
+function anthropicToTimeseries(usage: AnthropicUsage, n = 30): TimeseriesPoint[] {
+  const byDate = new Map<string, number>();
+  for (const row of usage.daily) {
+    byDate.set(row.snapshot_date, (byDate.get(row.snapshot_date) ?? 0) + parseFloat(row.cost_usd));
+  }
+  const result: TimeseriesPoint[] = [];
+  const now = Date.now();
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now - i * 86400000);
+    const dateStr = d.toISOString().slice(0, 10);
+    result.push({
+      ts: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+      cost_usd: byDate.get(dateStr) ?? 0,
+      requests: 0,
+      blocked: 0,
+      rate_limited: 0,
+    });
+  }
+  return result;
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function AnthropicUsagePanel({ usage }: { usage: AnthropicUsage | null }) {
+  if (!usage) return null;
+  if (usage.daily.length === 0) return (
+    <div className={s.card} style={{ marginBottom: 20 }}>
+      <div className={s["card-header"]}><h2 className={s["card-title"]}>Anthropic Usage (API)</h2></div>
+      <div className={s.empty}>No usage data yet. Syncs hourly once an admin key is configured.</div>
+    </div>
+  );
+
+  const lastSync = usage.last_synced_at
+    ? new Date(usage.last_synced_at * 1000).toLocaleString()
+    : "never";
+
+  const isAuthoritative = usage.daily.some(r => r.source === "byok");
+
+  const byDate = new Map<string, AnthropicUsageRow[]>();
+  for (const row of usage.daily) {
+    const rows = byDate.get(row.snapshot_date) ?? [];
+    rows.push(row);
+    byDate.set(row.snapshot_date, rows);
+  }
+  const dates = [...byDate.keys()].sort((a, b) => b.localeCompare(a)).slice(0, 14);
+
+  return (
+    <div className={s.card} style={{ marginBottom: 20 }}>
+      <div className={s["card-header"]}>
+        <h2 className={s["card-title"]}>Anthropic Usage (API)</h2>
+        <span className={`${s.badge} ${isAuthoritative ? s["badge--success"] : s["badge--neutral"]}`}>
+          {isAuthoritative ? "Authoritative" : "Estimated"}
+        </span>
+      </div>
+
+      <div className={s["stats-grid"]} style={{ marginBottom: 16 }}>
+        {([
+          ["Input Tokens",       fmtTokens(usage.totals.uncached_input_tokens)],
+          ["Output Tokens",      fmtTokens(usage.totals.output_tokens)],
+          ["Cache Read",         fmtTokens(usage.totals.cache_read_tokens)],
+          ["Web Searches",       String(usage.totals.web_search_requests)],
+          ["Total Cost",         `$${parseFloat(usage.totals.cost_usd).toFixed(4)}`],
+        ] as [string, string][]).map(([label, value]) => (
+          <div key={label} className={s["stat-card"]}>
+            <div className={s["stat-label"]}>{label}</div>
+            <div className={s["stat-value"]}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className={s["table-wrapper"]}>
+        <table className={s.table}>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Model</th>
+              <th>Tier</th>
+              <th style={{ textAlign: "right" }}>Input</th>
+              <th style={{ textAlign: "right" }}>Output</th>
+              <th style={{ textAlign: "right" }}>Cache Read</th>
+              <th style={{ textAlign: "right" }}>Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dates.flatMap(date =>
+              (byDate.get(date) ?? []).map((row, i) => (
+                <tr key={`${date}-${i}`}>
+                  <td className={s.mono} style={{ fontSize: 11 }}>{i === 0 ? date : ""}</td>
+                  <td><span className={s.mono} style={{ fontSize: 11 }}>{row.model || "—"}</span></td>
+                  <td>{row.service_tier}</td>
+                  <td style={{ textAlign: "right" }}>{fmtTokens(row.uncached_input_tokens)}</td>
+                  <td style={{ textAlign: "right" }}>{fmtTokens(row.output_tokens)}</td>
+                  <td style={{ textAlign: "right" }}>{fmtTokens(row.cache_read_tokens)}</td>
+                  <td style={{ textAlign: "right" }}>${parseFloat(row.cost_usd).toFixed(4)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 8, padding: "0 4px" }}>
+        Last synced: {lastSync}
+      </p>
+    </div>
+  );
+}
+
 function DetailPanel({
-  tenant, tenantMeta, detail, spend, onClose, fc,
+  tenant, tenantMeta, detail, spend, anthropicUsage, onClose, fc,
 }: {
   tenant: TenantStats;
   tenantMeta: Tenant | undefined;
   detail: TenantAnalyticsDetail | null;
   spend: SpendRecord[] | null;
+  anthropicUsage: AnthropicUsage | null;
   onClose: () => void;
   fc: (n: number | undefined | null) => string;
 }) {
@@ -210,10 +350,25 @@ function DetailPanel({
           </div>
         )}
 
-        <div className={s.card} style={{ marginBottom: 20 }}>
-          <div className={s["card-header"]}><h2 className={s["card-title"]}>Cost — Last 30 Days</h2></div>
-          {detail ? <BarChart data={detail.timeseries} /> : <div className={s.empty} style={{ padding: 24 }}>Loading…</div>}
-        </div>
+        {(() => {
+          const anthropicTs = anthropicUsage && anthropicUsage.daily.length > 0
+            ? anthropicToTimeseries(anthropicUsage) : null;
+          const chartData = anthropicTs ?? detail?.timeseries ?? [];
+          const authoritative = anthropicTs !== null;
+          return (
+            <div className={s.card} style={{ marginBottom: 20 }}>
+              <div className={s["card-header"]}>
+                <h2 className={s["card-title"]}>Cost — Last 30 Days</h2>
+                {authoritative && (
+                  <span className={`${s.badge} ${s["badge--success"]}`}>Authoritative</span>
+                )}
+              </div>
+              {chartData.length > 0
+                ? <BarChart data={chartData} />
+                : <div className={s.empty} style={{ padding: 24 }}>Loading…</div>}
+            </div>
+          );
+        })()}
 
         {(detail?.top_models?.length ?? 0) > 0 && (
           <div className={s.card} style={{ marginBottom: 20 }}>
@@ -240,7 +395,7 @@ function DetailPanel({
         )}
 
         {monthlySpend.length > 0 && (
-          <div className={s.card}>
+          <div className={s.card} style={{ marginBottom: 20 }}>
             <div className={s["card-header"]}><h2 className={s["card-title"]}>Monthly Spend</h2></div>
             <div className={s["table-wrapper"]}>
               <table className={s.table}>
@@ -254,6 +409,8 @@ function DetailPanel({
             </div>
           </div>
         )}
+
+        <AnthropicUsagePanel usage={anthropicUsage} />
       </div>
     </>
   );
@@ -309,6 +466,7 @@ export default function TenantAnalytics() {
   const [selected, setSelected]           = useState<TenantStats | null>(null);
   const [detail, setDetail]               = useState<TenantAnalyticsDetail | null>(null);
   const [spend, setSpend]                 = useState<SpendRecord[] | null>(null);
+  const [anthropicUsage, setAnthropicUsage] = useState<AnthropicUsage | null>(null);
   const [filterText, setFilterText]       = useState("");
   const { currency, setCurrency, fc } = useCurrency();
 
@@ -332,15 +490,18 @@ export default function TenantAnalytics() {
   // Reset filter when switching tabs
   useEffect(() => { setFilterText(""); }, [tab]);
 
-  // Fetch detail + spend when a tenant row is selected
+  // Fetch detail + spend + Anthropic usage when a tenant row is selected
   useEffect(() => {
-    if (!selected) { setDetail(null); setSpend(null); return; }
+    if (!selected) { setDetail(null); setSpend(null); setAnthropicUsage(null); return; }
     const since = periodSince("30d");
-    setDetail(null); setSpend(null);
+    const from  = new Date(since).toISOString().slice(0, 10);
+    const to    = new Date().toISOString().slice(0, 10);
+    setDetail(null); setSpend(null); setAnthropicUsage(null);
     Promise.all([
       api.get<TenantAnalyticsDetail>(`/tenants/${selected.tenant_id}/analytics?since=${since}&bucket=1d&n=30`),
       api.get<SpendRecord[]>(`/tenants/${selected.tenant_id}/spend?limit=18`),
-    ]).then(([d, sp]) => { setDetail(d); setSpend(sp); }).catch(() => {});
+      api.get<AnthropicUsage>(`/tenants/${selected.tenant_id}/anthropic-usage?from=${from}&to=${to}`),
+    ]).then(([d, sp, au]) => { setDetail(d); setSpend(sp); setAnthropicUsage(au); }).catch(() => {});
   }, [selected]);
 
   // Derived values
@@ -736,6 +897,7 @@ export default function TenantAnalytics() {
           tenantMeta={tenantMap.get(selected.tenant_id)}
           detail={detail}
           spend={spend}
+          anthropicUsage={anthropicUsage}
           onClose={() => setSelected(null)}
           fc={fc}
         />
