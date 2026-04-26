@@ -8,8 +8,8 @@ local json    = require("utils.json")
 local M = {}
 
 -- In-process fallback for when storage is unavailable.
--- Per 1,000 tokens: { input, output, cache_write, cache_read }
--- cache_write/cache_read default to input/0 when absent.
+-- Per 1,000 tokens: { input, output, cache_write_5m, cache_read, cache_write_1h }
+-- cache_write_1h defaults to cache_write_5m * 1.6 when absent.
 local FALLBACK = {
     openai = {
         ["gpt-4o"]                   = { 0.0025,   0.010   },
@@ -18,27 +18,28 @@ local FALLBACK = {
         ["gpt-3.5-turbo"]            = { 0.0005,   0.0015  },
     },
     anthropic = {
+        -- { input, output, cache_write_5m, cache_read, cache_write_1h }
         -- Claude 4.6 (latest)
-        ["claude-opus-4-6"]              = { 0.005,    0.025,   0.00625, 0.0005  },
-        ["claude-opus-4-6-20260205"]     = { 0.005,    0.025,   0.00625, 0.0005  },
-        ["claude-sonnet-4-6"]            = { 0.003,    0.015,   0.00375, 0.0003  },
-        ["claude-haiku-4-5"]             = { 0.001,    0.005,   0.00125, 0.0001  },
-        ["claude-haiku-4-5-20251001"]    = { 0.001,    0.005,   0.00125, 0.0001  },
+        ["claude-opus-4-6"]              = { 0.005,    0.025,   0.00625, 0.0005,  0.01     },
+        ["claude-opus-4-6-20260205"]     = { 0.005,    0.025,   0.00625, 0.0005,  0.01     },
+        ["claude-sonnet-4-6"]            = { 0.003,    0.015,   0.00375, 0.0003,  0.006    },
+        ["claude-haiku-4-5"]             = { 0.001,    0.005,   0.00125, 0.0001,  0.002    },
+        ["claude-haiku-4-5-20251001"]    = { 0.001,    0.005,   0.00125, 0.0001,  0.002    },
         -- Claude 4.5
-        ["claude-opus-4-5"]              = { 0.005,    0.025,   0.00625, 0.0005  },
-        ["claude-opus-4-5-20251101"]     = { 0.005,    0.025,   0.00625, 0.0005  },
-        ["claude-sonnet-4-5"]            = { 0.003,    0.015,   0.00375, 0.0003  },
-        ["claude-sonnet-4-5-20250929"]   = { 0.003,    0.015,   0.00375, 0.0003  },
+        ["claude-opus-4-5"]              = { 0.005,    0.025,   0.00625, 0.0005,  0.01     },
+        ["claude-opus-4-5-20251101"]     = { 0.005,    0.025,   0.00625, 0.0005,  0.01     },
+        ["claude-sonnet-4-5"]            = { 0.003,    0.015,   0.00375, 0.0003,  0.006    },
+        ["claude-sonnet-4-5-20250929"]   = { 0.003,    0.015,   0.00375, 0.0003,  0.006    },
         -- Claude 4.1 / 4.0 (legacy)
-        ["claude-opus-4-1"]              = { 0.015,    0.075,   0.01875, 0.0015  },
-        ["claude-opus-4-1-20250805"]     = { 0.015,    0.075,   0.01875, 0.0015  },
-        ["claude-opus-4-0"]              = { 0.015,    0.075,   0.01875, 0.0015  },
-        ["claude-opus-4-20250514"]       = { 0.015,    0.075,   0.01875, 0.0015  },
-        ["claude-sonnet-4-0"]            = { 0.003,    0.015,   0.00375, 0.0003  },
-        ["claude-sonnet-4-20250514"]     = { 0.003,    0.015,   0.00375, 0.0003  },
+        ["claude-opus-4-1"]              = { 0.015,    0.075,   0.01875, 0.0015,  0.03     },
+        ["claude-opus-4-1-20250805"]     = { 0.015,    0.075,   0.01875, 0.0015,  0.03     },
+        ["claude-opus-4-0"]              = { 0.015,    0.075,   0.01875, 0.0015,  0.03     },
+        ["claude-opus-4-20250514"]       = { 0.015,    0.075,   0.01875, 0.0015,  0.03     },
+        ["claude-sonnet-4-0"]            = { 0.003,    0.015,   0.00375, 0.0003,  0.006    },
+        ["claude-sonnet-4-20250514"]     = { 0.003,    0.015,   0.00375, 0.0003,  0.006    },
         -- Claude 3.x (legacy/deprecated)
-        ["claude-3-7-sonnet-20250219"]   = { 0.003,    0.015,   0.00375, 0.0003  },
-        ["claude-3-haiku-20240307"]      = { 0.00025,  0.00125, 0.0003,  0.00003 },
+        ["claude-3-7-sonnet-20250219"]   = { 0.003,    0.015,   0.00375, 0.0003,  0.006    },
+        ["claude-3-haiku-20240307"]      = { 0.00025,  0.00125, 0.0003,  0.00003, 0.00048  },
     },
     gemini = {
         ["gemini-1.5-pro"]           = { 0.00125,  0.005   },
@@ -165,12 +166,14 @@ function M.get(provider, model)
     local fb_provider = FALLBACK[provider]
     if fb_provider and fb_provider[model] then
         local p = fb_provider[model]
+        local cw5m = p[3] or p[1]
         return {
-            input_per_1k        = p[1],
-            output_per_1k       = p[2],
-            cache_write_per_1k  = p[3] or p[1],
-            cache_read_per_1k   = p[4] or 0,
-            cache_delete_per_1k = p[5] or 0,
+            input_per_1k          = p[1],
+            output_per_1k         = p[2],
+            cache_write_per_1k    = cw5m,
+            cache_read_per_1k     = p[4] or 0,
+            cache_write_1h_per_1k = p[5] or cw5m * 1.6,
+            cache_delete_per_1k   = 0,
         }
     end
 
@@ -179,16 +182,19 @@ end
 
 -- Calculate cost in USD given token counts.
 -- Returns nil when pricing is unknown (distinguishes "free" from "untracked").
--- cache_creation, cache_read, and cache_deletion are optional (Anthropic prompt-caching tokens).
+-- cache_creation_tokens = 5m writes; cache_creation_1h_tokens = 1h writes (Anthropic only).
 function M.calculate(provider, model, input_tokens, output_tokens,
-                     cache_creation_tokens, cache_read_tokens, cache_deletion_tokens)
+                     cache_creation_tokens, cache_creation_1h_tokens, cache_read_tokens, cache_deletion_tokens)
     local pricing = M.get(provider, model)
     if not pricing then return nil end
-    return (input_tokens          / 1000 * pricing.input_per_1k)
-         + (output_tokens         / 1000 * pricing.output_per_1k)
-         + ((cache_creation_tokens or 0) / 1000 * (pricing.cache_write_per_1k or pricing.input_per_1k))
-         + ((cache_read_tokens     or 0) / 1000 * (pricing.cache_read_per_1k  or 0))
-         + ((cache_deletion_tokens or 0) / 1000 * (pricing.cache_delete_per_1k or 0))
+    local cw5m = pricing.cache_write_per_1k    or pricing.input_per_1k
+    local cw1h = pricing.cache_write_1h_per_1k or cw5m * 1.6
+    return (input_tokens                    / 1000 * pricing.input_per_1k)
+         + (output_tokens                   / 1000 * pricing.output_per_1k)
+         + ((cache_creation_tokens    or 0) / 1000 * cw5m)
+         + ((cache_creation_1h_tokens or 0) / 1000 * cw1h)
+         + ((cache_read_tokens        or 0) / 1000 * (pricing.cache_read_per_1k  or 0))
+         + ((cache_deletion_tokens    or 0) / 1000 * (pricing.cache_delete_per_1k or 0))
 end
 
 return M

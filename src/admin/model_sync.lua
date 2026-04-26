@@ -37,22 +37,22 @@ local PROVIDER_ORDER = {
 
 -- ---------------------------------------------------------------------------
 -- Pricing tiers — first match wins (check more specific patterns first)
--- i = input_per_1k, o = output_per_1k, cw = cache_write_per_1k, cr = cache_read_per_1k
+-- i = input_per_1k, o = output_per_1k, cw = cache_write_per_1k (5m), cr = cache_read_per_1k, cw1h = cache_write_1h_per_1k
 -- ---------------------------------------------------------------------------
 local PRICING_TIERS = {
     -- ── Anthropic ────────────────────────────────────────────────────────────
-    { p = "anthropic", pat = "^claude%-opus%-4%-[56]",             i = 0.005,   o = 0.025,   cw = 0.00625,  cr = 0.0005 },
-    { p = "anthropic", pat = "^claude%-opus%-4",                   i = 0.015,   o = 0.075,   cw = 0.01875,  cr = 0.0015 },
-    { p = "anthropic", pat = "^claude%-4%-opus",                   i = 0.015,   o = 0.075,   cw = 0.01875,  cr = 0.0015 },
-    { p = "anthropic", pat = "^claude%-sonnet%-4",                 i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003 },
-    { p = "anthropic", pat = "^claude%-4%-sonnet",                 i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003 },
-    { p = "anthropic", pat = "^claude%-haiku%-4",                  i = 0.001,   o = 0.005,   cw = 0.00125,  cr = 0.0001 },
-    { p = "anthropic", pat = "^claude%-3%-7%-sonnet",              i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003 },
-    { p = "anthropic", pat = "^claude%-3%-5%-sonnet",              i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003 },
-    { p = "anthropic", pat = "^claude%-3%-5%-haiku",               i = 0.0008,  o = 0.004,   cw = 0.001,    cr = 0.00008 },
-    { p = "anthropic", pat = "^claude%-3%-opus",                   i = 0.015,   o = 0.075,   cw = 0.01875,  cr = 0.0015 },
-    { p = "anthropic", pat = "^claude%-3%-sonnet",                 i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003 },
-    { p = "anthropic", pat = "^claude%-3%-haiku",                  i = 0.00025, o = 0.00125, cw = 0.0003,   cr = 0.00003 },
+    { p = "anthropic", pat = "^claude%-opus%-4%-[56]",             i = 0.005,   o = 0.025,   cw = 0.00625,  cr = 0.0005,  cw1h = 0.01     },
+    { p = "anthropic", pat = "^claude%-opus%-4",                   i = 0.015,   o = 0.075,   cw = 0.01875,  cr = 0.0015,  cw1h = 0.03     },
+    { p = "anthropic", pat = "^claude%-4%-opus",                   i = 0.015,   o = 0.075,   cw = 0.01875,  cr = 0.0015,  cw1h = 0.03     },
+    { p = "anthropic", pat = "^claude%-sonnet%-4",                 i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
+    { p = "anthropic", pat = "^claude%-4%-sonnet",                 i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
+    { p = "anthropic", pat = "^claude%-haiku%-4",                  i = 0.001,   o = 0.005,   cw = 0.00125,  cr = 0.0001,  cw1h = 0.002    },
+    { p = "anthropic", pat = "^claude%-3%-7%-sonnet",              i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
+    { p = "anthropic", pat = "^claude%-3%-5%-sonnet",              i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
+    { p = "anthropic", pat = "^claude%-3%-5%-haiku",               i = 0.0008,  o = 0.004,   cw = 0.001,    cr = 0.00008, cw1h = 0.0016   },
+    { p = "anthropic", pat = "^claude%-3%-opus",                   i = 0.015,   o = 0.075,   cw = 0.01875,  cr = 0.0015,  cw1h = 0.03     },
+    { p = "anthropic", pat = "^claude%-3%-sonnet",                 i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
+    { p = "anthropic", pat = "^claude%-3%-haiku",                  i = 0.00025, o = 0.00125, cw = 0.0003,   cr = 0.00003, cw1h = 0.00048  },
 
     -- ── OpenAI ───────────────────────────────────────────────────────────────
     { p = "openai", pat = "^gpt%-4%.1%-mini",    i = 0.0004,  o = 0.0016 },
@@ -157,15 +157,16 @@ function M.fetch_models(provider, api_key)
 end
 
 --- Match a model ID against pricing tiers for a provider.
---- Returns { input, output, cache_write, cache_read } or nil.
+--- Returns { input, output, cache_write, cache_read, cache_write_1h } or nil.
 function M.infer_pricing(provider, model_id)
     for _, tier in ipairs(PRICING_TIERS) do
         if tier.p == provider and model_id:find(tier.pat) then
             return {
-                input  = tier.i,
-                output = tier.o,
-                cache_write = tier.cw,
-                cache_read  = tier.cr,
+                input          = tier.i,
+                output         = tier.o,
+                cache_write    = tier.cw,
+                cache_read     = tier.cr,
+                cache_write_1h = tier.cw1h,
             }
         end
     end
@@ -199,7 +200,7 @@ function M.sync_provider(provider)
         local pricing = M.infer_pricing(provider, model_id)
         if not pricing then
             -- Unknown pricing — add with zero so it appears in the list
-            pricing = { input = 0, output = 0, cache_write = nil, cache_read = nil }
+            pricing = { input = 0, output = 0, cache_write = nil, cache_read = nil, cache_write_1h = nil }
         end
 
         local ex = existing[model_id]
@@ -214,7 +215,7 @@ function M.sync_provider(provider)
                 local upsert_err = storage.upsert_model_price(
                     provider, model_id,
                     pricing.input, pricing.output,
-                    pricing.cache_write, pricing.cache_read
+                    pricing.cache_write, pricing.cache_read, pricing.cache_write_1h
                 )
                 if upsert_err then
                     result.errors[#result.errors + 1] = model_id .. ": " .. tostring(upsert_err)

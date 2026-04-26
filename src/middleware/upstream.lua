@@ -244,7 +244,7 @@ local function handle_compat_streaming(ctx, res)
     local buf          = ""
     local chat_id      = "chatcmpl-" .. (ctx.request_id or "aig")
     local model        = ctx.model
-    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens = 0, 0, 0, 0, 0
+    local input_tokens, output_tokens, cache_creation_tokens, cache_creation_1h_tokens, cache_read_tokens, cache_deletion_tokens = 0, 0, 0, 0, 0, 0
     local first_chunk_seen = false
     local done_sent        = false
     local stream_errored   = false  -- #8: track mid-stream read failures
@@ -281,9 +281,10 @@ local function handle_compat_streaming(ctx, res)
     local function on_compat_chunk(parsed)
         if parsed.input_tokens          then input_tokens          = parsed.input_tokens          end
         if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
-        if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
-        if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
-        if parsed.cache_deletion_tokens then cache_deletion_tokens = parsed.cache_deletion_tokens end
+        if parsed.cache_creation_tokens    then cache_creation_tokens    = parsed.cache_creation_tokens    end
+        if parsed.cache_creation_1h_tokens then cache_creation_1h_tokens = parsed.cache_creation_1h_tokens end
+        if parsed.cache_read_tokens        then cache_read_tokens        = parsed.cache_read_tokens        end
+        if parsed.cache_deletion_tokens    then cache_deletion_tokens    = parsed.cache_deletion_tokens    end
 
         -- Accumulate stop_reason from message_delta — it arrives in an earlier
         -- chunk than message_stop (parsed.done), so we must capture it here.
@@ -588,12 +589,13 @@ local function handle_compat_streaming(ctx, res)
         ctx.upstream_latency_ms = math.floor((ngx.now() - ctx.upstream_t_start) * 1000)
     end
 
-    ctx.input_tokens          = input_tokens
-    ctx.output_tokens         = output_tokens
-    ctx.cache_creation_tokens = cache_creation_tokens
-    ctx.cache_read_tokens     = cache_read_tokens
-    ctx.cache_deletion_tokens = cache_deletion_tokens
-    ctx.is_streaming          = true
+    ctx.input_tokens             = input_tokens
+    ctx.output_tokens            = output_tokens
+    ctx.cache_creation_tokens    = cache_creation_tokens
+    ctx.cache_creation_1h_tokens = cache_creation_1h_tokens
+    ctx.cache_read_tokens        = cache_read_tokens
+    ctx.cache_deletion_tokens    = cache_deletion_tokens
+    ctx.is_streaming             = true
     ctx.provider_status       = 200
 
     -- pii_protector: log raw streamed content for audit.
@@ -619,7 +621,7 @@ local function handle_streaming(ctx, res)
     local provider_mod = res.provider_mod
     local buf          = ""
     local parse_state  = {}     -- per-stream state for parse_sse_chunk
-    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens = 0, 0, 0, 0, 0
+    local input_tokens, output_tokens, cache_creation_tokens, cache_creation_1h_tokens, cache_read_tokens, cache_deletion_tokens = 0, 0, 0, 0, 0, 0
     local first_chunk_seen = false
     -- #1: table accumulator; only allocated when pii_protector is active
     local acc_parts = ctx.pii_token_map and {} or nil
@@ -634,9 +636,10 @@ local function handle_streaming(ctx, res)
     local function on_stream_chunk(parsed)
         if parsed.input_tokens          then input_tokens          = parsed.input_tokens          end
         if parsed.output_tokens         then output_tokens         = parsed.output_tokens         end
-        if parsed.cache_creation_tokens then cache_creation_tokens = parsed.cache_creation_tokens end
-        if parsed.cache_read_tokens     then cache_read_tokens     = parsed.cache_read_tokens     end
-        if parsed.cache_deletion_tokens then cache_deletion_tokens = parsed.cache_deletion_tokens end
+        if parsed.cache_creation_tokens    then cache_creation_tokens    = parsed.cache_creation_tokens    end
+        if parsed.cache_creation_1h_tokens then cache_creation_1h_tokens = parsed.cache_creation_1h_tokens end
+        if parsed.cache_read_tokens        then cache_read_tokens        = parsed.cache_read_tokens        end
+        if parsed.cache_deletion_tokens    then cache_deletion_tokens    = parsed.cache_deletion_tokens    end
         if acc_parts and parsed.delta and parsed.delta ~= "" then
             acc_parts[#acc_parts + 1] = parsed.delta  -- #1
         end
@@ -709,12 +712,13 @@ local function handle_streaming(ctx, res)
         ctx.upstream_latency_ms = math.floor((ngx.now() - ctx.upstream_t_start) * 1000)
     end
 
-    ctx.input_tokens          = input_tokens
-    ctx.output_tokens         = output_tokens
-    ctx.cache_creation_tokens = cache_creation_tokens
-    ctx.cache_read_tokens     = cache_read_tokens
-    ctx.cache_deletion_tokens = cache_deletion_tokens
-    ctx.is_streaming          = true
+    ctx.input_tokens             = input_tokens
+    ctx.output_tokens            = output_tokens
+    ctx.cache_creation_tokens    = cache_creation_tokens
+    ctx.cache_creation_1h_tokens = cache_creation_1h_tokens
+    ctx.cache_read_tokens        = cache_read_tokens
+    ctx.cache_deletion_tokens    = cache_deletion_tokens
+    ctx.is_streaming             = true
     ctx.provider_status       = 200
 
     trace.step(ctx, "response_delivered", {
@@ -769,12 +773,13 @@ local function handle_buffered(ctx, res)
         })
     end
 
-    ctx.response_body         = body_str
-    ctx.input_tokens          = parsed.input_tokens
-    ctx.output_tokens         = parsed.output_tokens
-    ctx.cache_creation_tokens = parsed.cache_creation_tokens or 0
-    ctx.cache_read_tokens     = parsed.cache_read_tokens     or 0
-    ctx.cache_deletion_tokens = parsed.cache_deletion_tokens or 0
+    ctx.response_body            = body_str
+    ctx.input_tokens             = parsed.input_tokens
+    ctx.output_tokens            = parsed.output_tokens
+    ctx.cache_creation_tokens    = parsed.cache_creation_tokens    or 0
+    ctx.cache_creation_1h_tokens = parsed.cache_creation_1h_tokens or 0
+    ctx.cache_read_tokens        = parsed.cache_read_tokens        or 0
+    ctx.cache_deletion_tokens    = parsed.cache_deletion_tokens    or 0
     ctx.provider_status       = res.status
     ctx.is_streaming    = false
     return true

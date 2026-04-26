@@ -4,6 +4,118 @@ local json = require("utils.json")
 
 local M = {}
 
+-- ── Claude Code request tracing ───────────────────────────────────────────────
+-- Active until 2026-04-24 09:50 UTC (2 hours from deployment).
+-- Logs every header and body change for Claude Code requests so we can audit
+-- exactly what the gateway modifies vs. what the client sent.
+local CC_TRACE_UNTIL = 1777024255
+
+local function cc_trace_active()
+    return ngx.time() <= CC_TRACE_UNTIL
+end
+
+local function is_claude_code(req_headers)
+    local beta = req_headers and req_headers["anthropic-beta"]
+    return beta and beta:find("claude%-code%-", 1, false) ~= nil
+end
+
+-- Redact credential header values so they don't appear in logs.
+local REDACT = { ["x-api-key"] = true, ["authorization"] = true }
+local function safe_hval(k, v)
+    if REDACT[k:lower()] then
+        local s = tostring(v)
+        return s:sub(1, 12) .. "…<redacted>"
+    end
+    return tostring(v)
+end
+
+-- Collect cache_control TTLs from a content-block array (recursive for tool_result).
+local function collect_ttls(blocks, out)
+    if type(blocks) ~= "table" then return end
+    for _, blk in ipairs(blocks) do
+        if blk.cache_control then
+            out[#out+1] = blk.cache_control.ttl or "5m(default)"
+        end
+        if type(blk.content) == "table" then collect_ttls(blk.content, out) end
+    end
+end
+
+-- Produce a compact diff string between two body snapshots.
+-- Returns a summary string; returns "(none)" when nothing changed.
+local function body_diff(orig, final)
+    local changes = {}
+
+    -- Top-level keys added or removed
+    for k in pairs(final) do
+        if orig[k] == nil then
+            changes[#changes+1] = "+" .. k
+        end
+    end
+    for k in pairs(orig) do
+        if final[k] == nil then
+            changes[#changes+1] = "-" .. k
+        end
+    end
+
+    -- tools: count change + cache_control TTL rewrites
+    local ot = orig.tools  or {}
+    local ft = final.tools or {}
+    if #ot ~= #ft then
+        changes[#changes+1] = ("tools.count:%d->%d"):format(#ot, #ft)
+    else
+        local orig_ttls, final_ttls = {}, {}
+        for _, t in ipairs(ot) do
+            if t.cache_control then orig_ttls[#orig_ttls+1] = t.cache_control.ttl or "5m(default)" end
+        end
+        for _, t in ipairs(ft) do
+            if t.cache_control then final_ttls[#final_ttls+1] = t.cache_control.ttl or "5m(default)" end
+        end
+        local os = table.concat(orig_ttls, ",")
+        local fs = table.concat(final_ttls, ",")
+        if os ~= fs then
+            changes[#changes+1] = "tools.cc_ttl:[" .. os .. "]->[" .. fs .. "]"
+        end
+    end
+
+    -- system: cache_control added or TTL changed
+    local function sys_ttls(sys)
+        local t = {}
+        if type(sys) == "table" then collect_ttls(sys, t) end
+        return table.concat(t, ",")
+    end
+    local os2 = sys_ttls(orig.system)
+    local fs2 = sys_ttls(final.system)
+    if os2 ~= fs2 then
+        changes[#changes+1] = "system.cc_ttl:[" .. os2 .. "]->[" .. fs2 .. "]"
+    end
+
+    -- messages: any cache_control mutation
+    local function msg_ttls(msgs)
+        local t = {}
+        for _, m in ipairs(msgs or {}) do
+            collect_ttls(type(m.content) == "table" and m.content or {}, t)
+        end
+        return table.concat(t, ",")
+    end
+    local om = msg_ttls(orig.messages)
+    local fm = msg_ttls(final.messages)
+    if om ~= fm then
+        changes[#changes+1] = "messages.cc_ttl:[" .. om .. "]->[" .. fm .. "]"
+    end
+
+    -- context_management
+    if final.context_management and not orig.context_management then
+        changes[#changes+1] = "+context_management(" .. (final.context_management.type or "?") .. ")"
+    end
+
+    -- stream flag (gateway may normalise this)
+    if tostring(orig.stream) ~= tostring(final.stream) then
+        changes[#changes+1] = ("stream:%s->%s"):format(tostring(orig.stream), tostring(final.stream))
+    end
+
+    return #changes > 0 and table.concat(changes, " | ") or "(none)"
+end
+
 -- ── Prompt caching helpers ────────────────────────────────────────────────────
 --
 -- Anthropic supports cache_control breakpoints on system prompt and message
@@ -90,6 +202,24 @@ local function overwrite_cache_ttl(body, ttl)
     for _, msg in ipairs(body.messages or {}) do
         overwrite_blocks(msg.content, cc)
     end
+end
+
+-- Return true when the client has cache_control on any tool schema.
+-- Older Claude Code versions (pre prompt-caching-scope-2026-01-05) placed
+-- cache_control on tools; newer versions place it on system/messages instead.
+-- Used as a secondary guard; is_claude_code() is the primary guard for CC.
+local function client_manages_tool_cache(tools)
+    if type(tools) ~= "table" then return false end
+    for _, t in ipairs(tools) do
+        if type(t) == "table" and t.cache_control then return true end
+    end
+    return false
+end
+
+-- Return true when the request should be treated as a Claude Code client.
+-- These clients manage their own caching and should not have tools injected.
+local function skip_tool_injection(req_headers, tools)
+    return is_claude_code(req_headers) or client_manages_tool_cache(tools)
 end
 
 -- ── Context compaction helpers ────────────────────────────────────────────────
@@ -187,13 +317,19 @@ function M.build_headers(ctx, api_key)
             headers["anthropic-beta"] = skill_betas
         end
     end
-    -- Anthropic native web search — always enabled; the tool is always injected in
-    -- build_request() so the beta header must also always be present.
-    local ws_beta = "web-search-2025-03-05"
-    if headers["anthropic-beta"] then
-        headers["anthropic-beta"] = headers["anthropic-beta"] .. "," .. ws_beta
-    else
-        headers["anthropic-beta"] = ws_beta
+    -- Anthropic native web search beta — only when the gateway will inject the tool.
+    -- Skipped for Claude Code (is_claude_code) and for any client with cache_control
+    -- on tools (client_manages_tool_cache). Newer CC versions use prompt-caching-scope
+    -- and place cache_control on system/messages, not tools, so the tool check alone
+    -- is insufficient — the CC identity check is the primary guard.
+    local rb = ctx.request_body
+    if not skip_tool_injection(req_headers, rb and rb.tools) then
+        local ws_beta = "web-search-2025-03-05"
+        if headers["anthropic-beta"] then
+            headers["anthropic-beta"] = headers["anthropic-beta"] .. "," .. ws_beta
+        else
+            headers["anthropic-beta"] = ws_beta
+        end
     end
     -- Extended thinking: interleaved-thinking beta required when budget > 0
     if req_headers["x-aig-thinking-budget"] then
@@ -213,6 +349,10 @@ function M.build_headers(ctx, api_key)
             headers["anthropic-beta"] = compact_beta
         end
     end
+    -- Forward client identity headers so Anthropic receives the originating app info.
+    for _, h in ipairs({ "user-agent", "x-app", "x-claude-code-session-id" }) do
+        if req_headers[h] then headers[h] = req_headers[h] end
+    end
     -- Forward any x-aig-provider-* overrides as raw provider headers.
     -- Blocked: credentials and headers already controlled by the gateway.
     local BLOCKED = {
@@ -225,6 +365,41 @@ function M.build_headers(ctx, api_key)
         local fwd = k:match("^x%-aig%-provider%-(.+)$")
         if fwd and not BLOCKED[fwd:lower()] then headers[fwd] = v end
     end
+
+    -- Trace header changes for Claude Code requests.
+    if cc_trace_active() and is_claude_code(req_headers) then
+        -- Build a lowercase index of outgoing header names for comparison.
+        local out_lc = {}
+        for k in pairs(headers) do out_lc[k:lower()] = k end
+
+        local dropped, added, changed = {}, {}, {}
+
+        for k, v in pairs(req_headers) do
+            local kl = k:lower()
+            if out_lc[kl] then
+                -- Header present in both — check if value changed.
+                local oval = safe_hval(k, v)
+                local nval = safe_hval(k, headers[out_lc[kl]])
+                if oval ~= nval then
+                    changed[#changed+1] = k .. ": [" .. oval .. "]=>[" .. nval .. "]"
+                end
+            else
+                dropped[#dropped+1] = k .. "=" .. safe_hval(k, v)
+            end
+        end
+        for k, v in pairs(headers) do
+            if not req_headers[k:lower()] then
+                added[#added+1] = k .. "=" .. safe_hval(k, v)
+            end
+        end
+
+        ngx.log(ngx.NOTICE,
+            "[CC-TRACE][hdr] rid=", ctx.request_id or "-",
+            " | DROPPED(", #dropped, ")=[", table.concat(dropped, " , "), "]",
+            " | ADDED(", #added, ")=[", table.concat(added, " , "), "]",
+            " | CHANGED(", #changed, ")=[", table.concat(changed, " , "), "]")
+    end
+
     return headers
 end
 
@@ -276,12 +451,16 @@ function M.build_request(ctx)
         local raw = ctx.raw_request_body
         local body = json.decode(raw)
         if body then
+            -- Snapshot original state for trace (before any modifications).
+            local orig = (cc_trace_active() and is_claude_code(req_headers))
+                         and json.decode(raw) or nil
+
             body.tools = body.tools or {}
             local already = false
             for _, t in ipairs(body.tools) do
                 if t.type == "web_search_20250305" then already = true; break end
             end
-            if not already then
+            if not already and not skip_tool_injection(req_headers, body.tools) then
                 body.tools[#body.tools + 1] = { type = "web_search_20250305", name = "web_search" }
             end
             inject_thinking(body, req_headers)
@@ -299,26 +478,45 @@ function M.build_request(ctx)
                 if body.system then
                     body.system = inject_system_cache(body.system, ttl)
                 end
-                local msgs = body.messages or {}
-                if #msgs >= 4 then
-                    local user_count = 0
-                    for i = #msgs, 1, -1 do
-                        if msgs[i].role == "user" then
-                            user_count = user_count + 1
-                            if user_count == 2 then
-                                inject_message_cache(msgs[i], ttl)
-                                break
-                            end
-                        end
-                    end
-                end
+                -- NOTE: conversation-history caching (second-to-last user message) was
+                -- intentionally removed. The breakpoint moves every turn, so every request
+                -- creates a NEW cache entry for the full history that is never read again
+                -- (Anthropic cache keys are content-based; a different breakpoint position
+                -- is a different key). This generated 2.2B write tokens/month at 1.25-2×
+                -- cost with a 0.58× read/write ratio — pure overhead. Only the system
+                -- prompt is stable enough to cache profitably.
             end
             local encoded = json.encode(body)
             if not encoded then
                 ngx.log(ngx.ERR, "anthropic: json.encode failed, falling back to raw body")
                 return json.sanitize_surrogates(raw)
             end
-            return json.sanitize_surrogates(encoded)
+            local result = json.sanitize_surrogates(encoded)
+
+            -- Emit body diff trace for Claude Code.
+            if orig then
+                -- Also check whether surrogate sanitisation actually changed anything.
+                local surrogates_changed = result ~= json.sanitize_surrogates(encoded)
+                local diff = body_diff(orig, body)
+                -- Count total cache_control blocks in original messages (summary context).
+                local orig_msg_cc = 0
+                for _, m in ipairs(orig.messages or {}) do
+                    if type(m.content) == "table" then
+                        local t = {}; collect_ttls(m.content, t)
+                        orig_msg_cc = orig_msg_cc + #t
+                    end
+                end
+                ngx.log(ngx.NOTICE,
+                    "[CC-TRACE][body] rid=", ctx.request_id or "-",
+                    " model=", ctx.model or "-",
+                    " turns=", #(orig.messages or {}),
+                    " orig_msg_cc_blocks=", orig_msg_cc,
+                    " orig_tools=", #(orig.tools or {}),
+                    " surrogates_changed=", tostring(surrogates_changed),
+                    " body_diff=[", diff, "]")
+            end
+
+            return result
         end
         return json.sanitize_surrogates(raw)
     end
@@ -368,33 +566,18 @@ function M.build_request(ctx)
     }
     if system_msg        then body.system         = system_msg end
 
-    -- Prompt caching: inject cache_control breakpoints when enabled on this gateway
+    -- Prompt caching: only cache the system prompt (stable across turns).
+    -- Conversation-history caching (second-to-last user message) was removed:
+    -- the breakpoint moves every turn → different cache key every turn → every
+    -- request creates a new write that is never read, paying 1.25-2× for nothing.
     local pc = ctx.gateway_config and ctx.gateway_config.prompt_caching
     if pc and pc.enabled then
         local ttl = pc.ttl
-        -- 1. Cache the system prompt
         if body.system then
             body.system = inject_system_cache(body.system, ttl)
         end
-        -- 2. Cache the conversation history: put a breakpoint on the second-to-last
-        --    user message so the full prior context is cached before the current turn.
-        --    Only when there are enough turns (≥ 4 messages) to make it worthwhile.
-        if #messages >= 4 then
-            -- Walk backwards to find the second-to-last user message
-            local user_count = 0
-            for i = #messages, 1, -1 do
-                if messages[i].role == "user" then
-                    user_count = user_count + 1
-                    if user_count == 2 then
-                        inject_message_cache(messages[i], ttl)
-                        break
-                    end
-                end
-            end
-        end
-        ngx.log(ngx.DEBUG, "prompt_caching: injected cache_control ttl=", ttl,
-            " system=", body.system ~= nil and "yes" or "no",
-            " msgs=", #messages)
+        ngx.log(ngx.DEBUG, "prompt_caching: injected system cache_control ttl=", ttl,
+            " system=", body.system ~= nil and "yes" or "no")
     end
 
     if src.temperature   then body.temperature    = src.temperature end
@@ -441,15 +624,15 @@ function M.build_request(ctx)
         table.insert(body.tools, 1, { type = "code_execution_20250825", name = "code_execution" })
     end
 
-    -- Anthropic native web search — always injected together with its beta header.
-    -- The web_search_20250305 tool type requires the matching beta header; both must
-    -- be present or absent together.  The beta header is added in build_headers().
+    -- Anthropic native web search — injected unless the client manages its own
+    -- tool-level caching (cache_control on tools). Changing the tools array in
+    -- that case invalidates the client's tool cache key → costly re-write.
     if not body.tools then body.tools = {} end
     local already = false
     for _, t in ipairs(body.tools) do
         if t.type == "web_search_20250305" then already = true; break end
     end
-    if not already then
+    if not already and not skip_tool_injection(req_headers, body.tools) then
         body.tools[#body.tools + 1] = { type = "web_search_20250305", name = "web_search" }
     end
 
@@ -483,14 +666,16 @@ function M.parse_response(body_str)
     end
 
     local usage = body.usage or {}
+    local cc    = usage.cache_creation or {}
     return {
-        content               = content,
-        input_tokens          = usage.input_tokens          or 0,
-        output_tokens         = usage.output_tokens         or 0,
-        cache_creation_tokens = usage.cache_creation_input_tokens or 0,
-        cache_read_tokens     = usage.cache_read_input_tokens     or 0,
-        cache_deletion_tokens = usage.cache_deletion_input_tokens or 0,
-        raw                   = body,
+        content                  = content,
+        input_tokens             = usage.input_tokens          or 0,
+        output_tokens            = usage.output_tokens         or 0,
+        cache_creation_tokens    = cc.ephemeral_5m_input_tokens or usage.cache_creation_input_tokens or 0,
+        cache_creation_1h_tokens = cc.ephemeral_1h_input_tokens or 0,
+        cache_read_tokens        = usage.cache_read_input_tokens     or 0,
+        cache_deletion_tokens    = usage.cache_deletion_input_tokens or 0,
+        raw                      = body,
     }
 end
 
@@ -570,32 +755,35 @@ function M.parse_sse_chunk(line, st)
     local done = (chunk.type == "message_stop")
 
     local stop_reason
-    local input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_deletion_tokens
+    local input_tokens, output_tokens, cache_creation_tokens, cache_creation_1h_tokens, cache_read_tokens, cache_deletion_tokens
     if chunk.type == "message_delta" then
         if chunk.delta then stop_reason = chunk.delta.stop_reason end
         if chunk.usage then output_tokens = chunk.usage.output_tokens end
     end
     if chunk.type == "message_start" and chunk.message and chunk.message.usage then
-        local u = chunk.message.usage
-        input_tokens          = u.input_tokens
-        cache_creation_tokens = u.cache_creation_input_tokens
-        cache_read_tokens     = u.cache_read_input_tokens
-        cache_deletion_tokens = u.cache_deletion_input_tokens
+        local u  = chunk.message.usage
+        local cc = u.cache_creation or {}
+        input_tokens             = u.input_tokens
+        cache_creation_tokens    = cc.ephemeral_5m_input_tokens or u.cache_creation_input_tokens
+        cache_creation_1h_tokens = cc.ephemeral_1h_input_tokens
+        cache_read_tokens        = u.cache_read_input_tokens
+        cache_deletion_tokens    = u.cache_deletion_input_tokens
     end
 
     return {
-        delta                 = delta,
-        done                  = done,
-        tool_name             = tool_name,
-        tool_id               = tool_id,
-        tool_input_delta      = tool_input_delta,
-        stop_reason           = stop_reason,
-        input_tokens          = input_tokens,
-        output_tokens         = output_tokens,
-        cache_creation_tokens = cache_creation_tokens,
-        cache_read_tokens     = cache_read_tokens,
-        cache_deletion_tokens = cache_deletion_tokens,
-        compaction_summary    = compaction_summary,  -- set when compaction block arrives
+        delta                    = delta,
+        done                     = done,
+        tool_name                = tool_name,
+        tool_id                  = tool_id,
+        tool_input_delta         = tool_input_delta,
+        stop_reason              = stop_reason,
+        input_tokens             = input_tokens,
+        output_tokens            = output_tokens,
+        cache_creation_tokens    = cache_creation_tokens,
+        cache_creation_1h_tokens = cache_creation_1h_tokens,
+        cache_read_tokens        = cache_read_tokens,
+        cache_deletion_tokens    = cache_deletion_tokens,
+        compaction_summary       = compaction_summary,
     }
 end
 

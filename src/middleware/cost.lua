@@ -10,17 +10,18 @@ local state      = require("state")
 local M = {}
 
 function M.run(ctx)
-    local input_t    = ctx.input_tokens          or 0
-    local output_t   = ctx.output_tokens         or 0
-    local cache_cre  = ctx.cache_creation_tokens or 0
-    local cache_read = ctx.cache_read_tokens     or 0
-    local cache_del  = ctx.cache_deletion_tokens or 0
+    local input_t     = ctx.input_tokens             or 0
+    local output_t    = ctx.output_tokens            or 0
+    local cache_cre   = ctx.cache_creation_tokens    or 0
+    local cache_cre1h = ctx.cache_creation_1h_tokens or 0
+    local cache_read  = ctx.cache_read_tokens        or 0
+    local cache_del   = ctx.cache_deletion_tokens    or 0
 
     -- nil means pricing is unknown for this provider/model combination.
     -- We preserve nil rather than coercing to 0 so callers can distinguish
     -- "zero cost" (free/local model) from "cost unknown" (missing price entry).
     local cost = cost_table.calculate(ctx.provider, ctx.model,
-                                      input_t, output_t, cache_cre, cache_read, cache_del)
+                                      input_t, output_t, cache_cre, cache_cre1h, cache_read, cache_del)
     ctx.cost_usd = cost
 
     if not cost or cost <= 0 then return end

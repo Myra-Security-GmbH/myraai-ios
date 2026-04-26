@@ -45,6 +45,7 @@ function M.init()
     ctx.input_tokens               = 0
     ctx.output_tokens              = 0
     ctx.cache_creation_tokens      = 0
+    ctx.cache_creation_1h_tokens   = 0
     ctx.cache_read_tokens          = 0
     ctx.cache_deletion_tokens      = 0
     ctx.provider_status            = nil

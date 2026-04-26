@@ -43,9 +43,10 @@ function M.emit(ctx)
         cached        = ctx.cache_hit  or false,
         input_tokens          = ctx.input_tokens          or 0,
         output_tokens         = ctx.output_tokens         or 0,
-        cache_creation_tokens = ctx.cache_creation_tokens or 0,
-        cache_read_tokens     = ctx.cache_read_tokens     or 0,
-        cache_deletion_tokens = ctx.cache_deletion_tokens or 0,
+        cache_creation_tokens    = ctx.cache_creation_tokens    or 0,
+        cache_creation_1h_tokens = ctx.cache_creation_1h_tokens or 0,
+        cache_read_tokens        = ctx.cache_read_tokens        or 0,
+        cache_deletion_tokens    = ctx.cache_deletion_tokens    or 0,
         cost_usd              = ctx.cost_usd              or 0,
         latency_ms    = ctx.start_ms
                         and math.floor(ngx.now() * 1000 - ctx.start_ms)
