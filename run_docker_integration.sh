@@ -35,6 +35,12 @@ set +a
 done_next "Secrets loaded" "[2/4] Building documentation"
 log_cmd bash -c "cd '$(dirname "$0")/docs' && bash gen_docs.sh"
 
+# ── Build Android APK and copy to frontend/public ────────────────────────────
+log_cmd bash -c "cd '$(dirname "$0")/src/mobile/android' && \
+  ./gradlew assembleRelease && \
+  cp app/build/outputs/apk/release/app-release.apk \
+     '$(dirname "$0")/frontend/public/android.apk'"
+
 # ── Build frontend with int URLs ──────────────────────────────────────────────
 done_next "Documentation built" "[3/4] Building frontend"
 log_cmd bash -c "cd '$(dirname "$0")/frontend' && \
