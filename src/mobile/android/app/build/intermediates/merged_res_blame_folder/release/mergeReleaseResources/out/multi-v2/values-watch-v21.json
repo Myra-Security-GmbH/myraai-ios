@@ -1,0 +1,20 @@
+{
+    "logs": [
+        {
+            "outputFile": "eu.myra.myraai.app-mergeReleaseResources-31:/values-watch-v21/values-watch-v21.xml",
+            "map": [
+                {
+                    "source": "/home/sas/.gradle/caches/transforms-3/e8eed3d9b6c40954ee737f3470b21c30/transformed/appcompat-1.6.1/res/values-watch-v21/values-watch-v21.xml",
+                    "from": {
+                        "startLines": "2,6,10",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,271,499",
+                        "endLines": "5,9,13",
+                        "endColumns": "12,12,12",
+                        "endOffsets": "266,494,724"
+                    }
+                }
+            ]
+        }
+    ]
+}

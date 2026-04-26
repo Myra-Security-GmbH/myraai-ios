@@ -1,0 +1,174 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="eu.myra.myraai"
+4    android:versionCode="1"
+5    android:versionName="1.0.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="26"
+9        android:targetSdkVersion="35" />
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:4:5-67
+11-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:4:22-64
+12    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+12-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:5:5-79
+12-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:5:22-76
+13    <uses-permission android:name="android.permission.VIBRATE" />
+13-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:6:5-66
+13-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:6:22-63
+14
+15    <permission
+15-->[androidx.core:core:1.12.0] /home/sas/.gradle/caches/transforms-3/d2672441f9cbfaa1201d795e8c13015f/transformed/core-1.12.0/AndroidManifest.xml:22:5-24:47
+16        android:name="eu.myra.myraai.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+16-->[androidx.core:core:1.12.0] /home/sas/.gradle/caches/transforms-3/d2672441f9cbfaa1201d795e8c13015f/transformed/core-1.12.0/AndroidManifest.xml:23:9-81
+17        android:protectionLevel="signature" />
+17-->[androidx.core:core:1.12.0] /home/sas/.gradle/caches/transforms-3/d2672441f9cbfaa1201d795e8c13015f/transformed/core-1.12.0/AndroidManifest.xml:24:9-44
+18
+19    <uses-permission android:name="eu.myra.myraai.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+19-->[androidx.core:core:1.12.0] /home/sas/.gradle/caches/transforms-3/d2672441f9cbfaa1201d795e8c13015f/transformed/core-1.12.0/AndroidManifest.xml:26:5-97
+19-->[androidx.core:core:1.12.0] /home/sas/.gradle/caches/transforms-3/d2672441f9cbfaa1201d795e8c13015f/transformed/core-1.12.0/AndroidManifest.xml:26:22-94
+20
+21    <application
+21-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:8:5-43:19
+22        android:allowBackup="true"
+22-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:9:9-35
+23        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+23-->[androidx.core:core:1.12.0] /home/sas/.gradle/caches/transforms-3/d2672441f9cbfaa1201d795e8c13015f/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
+24        android:debuggable="true"
+25        android:extractNativeLibs="false"
+26        android:hardwareAccelerated="true"
+26-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:14:9-43
+27        android:icon="@mipmap/ic_launcher"
+27-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:10:9-43
+28        android:label="@string/app_name"
+28-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:12:9-41
+29        android:roundIcon="@mipmap/ic_launcher_round"
+29-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:11:9-54
+30        android:supportsRtl="true"
+30-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:13:9-35
+31        android:theme="@style/Theme.MYRAai" >
+31-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:15:9-44
+32        <activity
+32-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:17:9-42:20
+33            android:name="eu.myra.myraai.MainActivity"
+33-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:18:13-41
+34            android:configChanges="orientation|screenSize|keyboardHidden"
+34-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:22:13-74
+35            android:exported="true"
+35-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:19:13-36
+36            android:launchMode="singleTask"
+36-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:20:13-44
+37            android:windowSoftInputMode="adjustNothing" >
+37-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:21:13-56
+38            <intent-filter>
+38-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:24:13-27:29
+39                <action android:name="android.intent.action.MAIN" />
+39-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:25:17-69
+39-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:25:25-66
+40
+41                <category android:name="android.intent.category.LAUNCHER" />
+41-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:26:17-77
+41-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:26:27-74
+42            </intent-filter>
+43
+44            <!-- Android App Links — opens ai.myra.eu URLs directly in-app -->
+45            <intent-filter android:autoVerify="true" >
+45-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:30:13-35:29
+45-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:30:28-53
+46                <action android:name="android.intent.action.VIEW" />
+46-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:31:17-69
+46-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:31:25-66
+47
+48                <category android:name="android.intent.category.DEFAULT" />
+48-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:32:17-76
+48-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:32:27-73
+49                <category android:name="android.intent.category.BROWSABLE" />
+49-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:33:17-78
+49-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:33:27-75
+50
+51                <data
+51-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:34:17-74
+52                    android:host="ai.myra.eu"
+52-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:34:46-71
+53                    android:scheme="https" />
+53-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:34:23-45
+54            </intent-filter>
+55
+56            <!-- Static launcher shortcuts (long-press the app icon) -->
+57            <meta-data
+57-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:38:13-40:53
+58                android:name="android.app.shortcuts"
+58-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:39:17-53
+59                android:resource="@xml/shortcuts" />
+59-->/home/sas/work/ai-gateway/src/mobile/android/app/src/main/AndroidManifest.xml:40:17-50
+60        </activity>
+61
+62        <provider
+62-->[androidx.emoji2:emoji2:1.2.0] /home/sas/.gradle/caches/transforms-3/212c7ea24ae57ab2d8b513f6391623f8/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:24:9-32:20
+63            android:name="androidx.startup.InitializationProvider"
+63-->[androidx.emoji2:emoji2:1.2.0] /home/sas/.gradle/caches/transforms-3/212c7ea24ae57ab2d8b513f6391623f8/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:25:13-67
+64            android:authorities="eu.myra.myraai.androidx-startup"
+64-->[androidx.emoji2:emoji2:1.2.0] /home/sas/.gradle/caches/transforms-3/212c7ea24ae57ab2d8b513f6391623f8/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:26:13-68
+65            android:exported="false" >
+65-->[androidx.emoji2:emoji2:1.2.0] /home/sas/.gradle/caches/transforms-3/212c7ea24ae57ab2d8b513f6391623f8/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:27:13-37
+66            <meta-data
+66-->[androidx.emoji2:emoji2:1.2.0] /home/sas/.gradle/caches/transforms-3/212c7ea24ae57ab2d8b513f6391623f8/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:29:13-31:52
+67                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+67-->[androidx.emoji2:emoji2:1.2.0] /home/sas/.gradle/caches/transforms-3/212c7ea24ae57ab2d8b513f6391623f8/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:30:17-75
+68                android:value="androidx.startup" />
+68-->[androidx.emoji2:emoji2:1.2.0] /home/sas/.gradle/caches/transforms-3/212c7ea24ae57ab2d8b513f6391623f8/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:31:17-49
+69            <meta-data
+69-->[androidx.lifecycle:lifecycle-process:2.6.1] /home/sas/.gradle/caches/transforms-3/f1f1f66f2b969cca509bac4bec396c5e/transformed/jetified-lifecycle-process-2.6.1/AndroidManifest.xml:29:13-31:52
+70                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+70-->[androidx.lifecycle:lifecycle-process:2.6.1] /home/sas/.gradle/caches/transforms-3/f1f1f66f2b969cca509bac4bec396c5e/transformed/jetified-lifecycle-process-2.6.1/AndroidManifest.xml:30:17-78
+71                android:value="androidx.startup" />
+71-->[androidx.lifecycle:lifecycle-process:2.6.1] /home/sas/.gradle/caches/transforms-3/f1f1f66f2b969cca509bac4bec396c5e/transformed/jetified-lifecycle-process-2.6.1/AndroidManifest.xml:31:17-49
+72            <meta-data
+72-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:29:13-31:52
+73                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+73-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:30:17-85
+74                android:value="androidx.startup" />
+74-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:31:17-49
+75        </provider>
+76
+77        <receiver
+77-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:34:9-52:20
+78            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+78-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:35:13-76
+79            android:directBootAware="false"
+79-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:36:13-44
+80            android:enabled="true"
+80-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:37:13-35
+81            android:exported="true"
+81-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:38:13-36
+82            android:permission="android.permission.DUMP" >
+82-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:39:13-57
+83            <intent-filter>
+83-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:40:13-42:29
+84                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+84-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:41:17-91
+84-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:41:25-88
+85            </intent-filter>
+86            <intent-filter>
+86-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:43:13-45:29
+87                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+87-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:44:17-85
+87-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:44:25-82
+88            </intent-filter>
+89            <intent-filter>
+89-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:46:13-48:29
+90                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+90-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:47:17-88
+90-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:47:25-85
+91            </intent-filter>
+92            <intent-filter>
+92-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:49:13-51:29
+93                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+93-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:50:17-95
+93-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/sas/.gradle/caches/transforms-3/44fcaaeb9a0fd100a0cae0e8b4e4194d/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:50:25-92
+94            </intent-filter>
+95        </receiver>
+96    </application>
+97
+98</manifest>

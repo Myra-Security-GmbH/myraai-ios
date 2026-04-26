@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "eu.myra.myraai",
+    "sha256_cert_fingerprints": [
+      "A0:34:AE:B4:E5:3E:D6:32:54:01:C8:88:ED:28:78:AA:12:0D:75:01:7C:E5:15:92:BE:D2:05:75:73:69:05:A7"
+    ]
+  }
+}]

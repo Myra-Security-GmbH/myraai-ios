@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="myra_blue">#5CC5EB</color>
+    <color name="myra_light_text">#A0B0C0</color>
+    <color name="myra_navy">#0d1b2a</color>
+    <color name="myra_white">#FFFFFF</color>
+    <string name="app_name">MYRA AI</string>
+    <string name="offline_message">Check your internet connection and try again.</string>
+    <string name="offline_title">No connection</string>
+    <string name="retry">Retry</string>
+    <string name="shortcut_new_chat">New Chat</string>
+    <string name="shortcut_new_chat_long">Start a new MYRA AI chat</string>
+    <style name="Theme.MYRAai" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/myra_navy</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.MYRAai.App</item>
+    </style>
+    <style name="Theme.MYRAai.App" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/myra_navy</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

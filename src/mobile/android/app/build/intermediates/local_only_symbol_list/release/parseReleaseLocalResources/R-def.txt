@@ -1,0 +1,24 @@
+R_DEF: Internal format may change without notice
+local
+color myra_blue
+color myra_light_text
+color myra_navy
+color myra_white
+drawable ic_launcher_foreground
+id offline_view
+id progress_bar
+id retry_button
+id swipe_refresh
+id webview
+layout activity_main
+mipmap ic_launcher
+mipmap ic_launcher_round
+string app_name
+string offline_message
+string offline_title
+string retry
+string shortcut_new_chat
+string shortcut_new_chat_long
+style Theme.MYRAai
+style Theme.MYRAai.App
+xml shortcuts
