@@ -206,12 +206,42 @@ end
 -- Fix package.path for project layout
 package.path = "src/?.lua;src/?/init.lua;tests/?.lua;tests/?/init.lua;" .. package.path
 
+-- ---------------------------------------------------------------------------
+-- Protect C FFI modules from re-initialisation
+-- ---------------------------------------------------------------------------
+-- resty.sha256 (and resty.hmac) call ffi.cdef which defines a C struct.
+-- LuaJIT raises "attempt to redefine 'SHA256state_st'" if cdef runs a second
+-- time.  Tests that want a mock can do  package.loaded["resty.sha256"] = mock,
+-- which is fine.  But tests that do  package.loaded["resty.sha256"] = nil
+-- to force a re-require will trigger the error.
+-- Solution: intercept nil-writes to protected modules and restore the real one.
+local _protected = {}
+local function _protect(name)
+    local ok, mod = pcall(require, name)
+    if ok then _protected[name] = mod end
+end
+_protect("resty.sha256")
+_protect("resty.hmac")
+
+local _pl_mt = debug.getmetatable(package.loaded) or {}
+local _pl_ni_orig = _pl_mt.__newindex
+_pl_mt.__newindex = function(t, k, v)
+    if v == nil and _protected[k] then
+        rawset(t, k, _protected[k])
+        return
+    end
+    if _pl_ni_orig then _pl_ni_orig(t, k, v)
+    else rawset(t, k, v) end
+end
+debug.setmetatable(package.loaded, _pl_mt)
+
 local files = {}
 for i = 1, #arg do files[#files + 1] = arg[i] end
 
 if #files == 0 then
-    -- Auto-discover if no args
-    local handle = io.popen("find tests -name 'test_*.lua' | sort")
+    -- Auto-discover unit tests only; integration tests require a live gateway
+    -- and are invoked explicitly: resty tests/runner.lua tests/integration/...
+    local handle = io.popen("find tests/unit -name 'test_*.lua' | sort")
     for f in handle:lines() do files[#files + 1] = f end
     handle:close()
 end

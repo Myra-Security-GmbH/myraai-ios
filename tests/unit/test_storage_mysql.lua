@@ -100,9 +100,11 @@ package.preload["resty.mysql"] = function() return mysql_stub end
 -- Helper: fresh module load
 -- ---------------------------------------------------------------------------
 local function reset_storage(cfg_override)
-    package.loaded["storage.mysql"] = nil
-    package.loaded["utils.uuid"]    = nil
-    package.loaded["utils.json"]    = nil
+    package.loaded["storage.mysql"]  = nil
+    package.preload["storage.mysql"] = nil   -- prevent stale stubs from test_state_backends
+    package.loaded["resty.mysql"]    = nil   -- force use of our stub, not stale from prior test
+    package.loaded["utils.uuid"]     = nil
+    package.loaded["utils.json"]     = nil
     -- leave resty.mysql stub in place
 
     queries         = {}

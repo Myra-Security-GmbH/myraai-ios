@@ -8,9 +8,10 @@
 
 local _ngx_time = 1700000000
 
--- Save the real base64 functions BEFORE overwriting the ngx global.
-local _real_encode_base64 = _G.ngx and _G.ngx.encode_base64
-local _real_decode_base64 = _G.ngx and _G.ngx.decode_base64
+-- Save the real base64 functions; fall back to require("ngx") in case a prior
+-- test replaced _G.ngx with a stub that doesn't include encode_base64.
+local _real_encode_base64 = (_G.ngx and _G.ngx.encode_base64) or require("ngx").encode_base64
+local _real_decode_base64 = (_G.ngx and _G.ngx.decode_base64) or require("ngx").decode_base64
 
 _G.ngx = {
     time          = function() return _ngx_time end,

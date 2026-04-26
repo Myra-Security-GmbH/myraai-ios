@@ -9,8 +9,8 @@
 
 local _ngx_time = 1700000000
 
-local _real_encode_base64 = _G.ngx and _G.ngx.encode_base64
-local _real_decode_base64 = _G.ngx and _G.ngx.decode_base64
+local _real_encode_base64 = (_G.ngx and _G.ngx.encode_base64) or require("ngx").encode_base64
+local _real_decode_base64 = (_G.ngx and _G.ngx.decode_base64) or require("ngx").decode_base64
 
 local _ngx_printed  = nil
 local _ngx_cookie   = ""
@@ -47,7 +47,7 @@ _G.ngx = {
         aig_ratelimit = (function()
             local store = {}
             return {
-                set    = function(_, k, v, _ttl) store[k] = v end,
+                set    = function(_, k, v, _ttl) store[k] = v; return true, nil end,
                 get    = function(_, k) return store[k] end,
                 delete = function(_, k) store[k] = nil end,
             }
@@ -68,10 +68,12 @@ package.loaded["core.app_config"]  = nil
 package.preload["core.app_config"] = function()
     return {
         auth = {
-            jwt_secret      = "test-secret-for-auth-handlers",
-            jwt_expiry_secs = 3600,
-            otp_expiry_secs = 900,
-            otp_from_email  = "noreply@test.local",
+            jwt_secret          = "test-secret-for-auth-handlers",
+            jwt_expiry_secs     = 3600,
+            otp_expiry_secs     = 900,
+            otp_from_email      = "noreply@test.local",
+            google_client_id    = "test-google-client-id",
+            google_redirect_uri = "http://localhost:5173/admin/auth/google/callback",
         },
     }
 end

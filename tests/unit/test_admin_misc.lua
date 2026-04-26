@@ -13,9 +13,14 @@ local _status   = 200
 local _headers  = {}
 local _exited   = nil
 
+local _prev_e64 = _G.ngx and _G.ngx.encode_base64
+local _prev_d64 = _G.ngx and _G.ngx.decode_base64
+
 _G.ngx = {
-    now    = function() return 1700000000.0 end,
-    time   = function() return 1700000000 end,
+    now           = function() return 1700000000.0 end,
+    time          = function() return 1700000000 end,
+    encode_base64 = _prev_e64,
+    decode_base64 = _prev_d64,
     log    = function() end,
     exit   = function(c) _exited = c; error(c, 0) end,
     print  = function(s) _printed = s end,

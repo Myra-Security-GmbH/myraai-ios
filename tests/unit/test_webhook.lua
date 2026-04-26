@@ -24,11 +24,21 @@ _G.ngx = {
 
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
+-- Save real resty.sha256 before mock setup.  The runner.lua protects
+-- package.loaded["resty.sha256"] = nil, so this require always returns the
+-- real C module regardless of what earlier tests set as a mock.
+local _real_sha256 = require("resty.sha256")
+
 -- ─── module stubs ──────────────────────────────────────────────────────────
-for _, n in ipairs({ "utils.webhook", "resty.http", "resty.sha256", "resty.string" }) do
+for _, n in ipairs({ "utils.webhook", "resty.http", "resty.string" }) do
     package.loaded[n]  = nil
     package.preload[n] = nil
 end
+-- The runner.lua protection intercepts nil-writes to resty.sha256, so the
+-- real module stays in package.loaded.  Mock preloads below are never invoked
+-- (package.loaded is always non-nil), which is fine — tests only check the
+-- "sha256=" prefix, not the exact HMAC value.
+package.loaded["resty.sha256"] = nil  -- no-op due to runner protection
 
 -- resty.sha256 stub
 package.preload["resty.sha256"] = function()
@@ -170,10 +180,14 @@ end)
 
 do
     -- Reset to real resty modules for the HMAC correctness tests.
-    for _, n in ipairs({"utils.webhook","resty.sha256","resty.string","resty.hmac"}) do
+    -- resty.sha256 is restored from the saved reference (not re-required, which
+    -- would trigger a C FFI redefinition error).
+    for _, n in ipairs({"utils.webhook","resty.string","resty.hmac"}) do
         package.loaded[n]  = nil
         package.preload[n] = nil
     end
+    package.loaded["resty.sha256"]  = _real_sha256
+    package.preload["resty.sha256"] = nil
     -- resty.http stub re-declared so webhook delivery still works without network
     package.preload["resty.http"] = function()
         return {

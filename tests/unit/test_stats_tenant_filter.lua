@@ -58,8 +58,10 @@ end
 local function reset()
     queries       = {}
     query_results = {}
-    package.loaded["storage.mysql"] = nil
-    package.loaded["utils.uuid"]    = nil
+    package.loaded["storage.mysql"]  = nil
+    package.preload["storage.mysql"] = nil   -- prevent stale stubs from test_state_backends
+    package.loaded["resty.mysql"]    = nil   -- force use of our mock preload, not stale from prior test
+    package.loaded["utils.uuid"]     = nil
     local M = require("storage.mysql")
     M.init({ mysql = { host="127.0.0.1", port=3306, database="ai_gateway",
                        user="gateway", password="secret",

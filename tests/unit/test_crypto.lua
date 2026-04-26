@@ -25,7 +25,9 @@ package.path  = "src/?.lua;src/?/init.lua;" .. package.path
 package.cpath = "/usr/lib/x86_64-linux-gnu/lua/5.1/?.so;" .. package.cpath
 
 local function clear()
-    for _, n in ipairs({"utils.crypto","resty.sha256","resty.string","resty.aes","resty.random"}) do
+    -- resty.sha256 wraps a C FFI struct that can only be defined once per process;
+    -- never clear it or re-requiring it raises "attempt to redefine 'SHA256state_st'".
+    for _, n in ipairs({"utils.crypto","resty.string","resty.aes","resty.random"}) do
         package.loaded[n]  = nil
         package.preload[n] = nil
     end

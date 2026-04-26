@@ -7,10 +7,15 @@
 local response_body   = nil
 local response_status = 200
 
+local _prev_e64 = _G.ngx and _G.ngx.encode_base64
+local _prev_d64 = _G.ngx and _G.ngx.decode_base64
+
 _G.ngx = {
-    now    = function() return 1700000000.0 end,
-    time   = function() return 1700000000 end,
-    log    = function() end,
+    now           = function() return 1700000000.0 end,
+    time          = function() return 1700000000 end,
+    log           = function() end,
+    encode_base64 = _prev_e64,
+    decode_base64 = _prev_d64,
     -- ngx.exit called by OPTIONS handler; we capture and continue
     exit   = function(code) response_status = code end,
     status = 200,
@@ -156,6 +161,11 @@ local storage_stub = {
     list_gateway_traces       = function(gw_id, lim) track("list_gateway_traces", gw_id, lim); return {} end,
     get_playground_trace      = function(id)         track("get_playground_trace", id); return nil end,
     get_playground_trace_steps = function(id)        return {} end,
+    search_users_by_email     = function(tid, email) track("search_users_by_email", tid, email)
+        return { { id = "found-uid", email = email, role = "member", tenant_id = tid } }
+    end,
+    list_tenant_provider_configs = function(tid)     track("list_tenant_provider_configs", tid); return {} end,
+    anthropic_usage_list         = function(tid)     track("anthropic_usage_list", tid); return {} end,
 }
 
 -- ---------------------------------------------------------------------------
@@ -575,6 +585,109 @@ ok("PUT /model-prices missing provider → 400", ngx.status == 400)
 
 s, b = call("DELETE", "/admin/v1/model-prices/openai/gpt-4o")
 ok("DELETE /model-prices/:p/:m → 200", ngx.status == 200)
+
+-- ---------------------------------------------------------------------------
+-- User search
+-- ---------------------------------------------------------------------------
+s, b = call("GET", "/admin/v1/users/search", nil, {})
+ok("GET /users/search no email → 400", ngx.status == 400, ngx.status)
+ok("GET /users/search no email → error", b.error ~= nil)
+
+s, b = call("GET", "/admin/v1/users/search", nil, { email = "test@example.com" })
+ok("GET /users/search with email → 200", ngx.status == 200, ngx.status)
+ok("GET /users/search delegates to search_users_by_email",
+    storage_calls[#storage_calls].name == "search_users_by_email")
+ok("GET /users/search returns array",
+    type(b) == "table" and b[1] ~= nil)
+
+-- user with no tenant_id → 400
+s, b = call("GET", "/admin/v1/users/search", nil, { email = "x@y.com" },
+    { id = "u-notenant", role = "admin", tenant_id = nil })
+ok("GET /users/search no tenant on caller → 400", ngx.status == 400, ngx.status)
+
+-- ---------------------------------------------------------------------------
+-- POST /tenants/:id/users
+-- ---------------------------------------------------------------------------
+s, b = call("POST", "/admin/v1/tenants/tn-1/users", {})
+ok("POST /tenants/:id/users missing email → 400", ngx.status == 400, ngx.status)
+ok("POST /tenants/:id/users → error mentions 'email'",
+    b.error and b.error:find("email") ~= nil, b.error)
+
+s, b = call("POST", "/admin/v1/tenants/tn-1/users", { email = "new@example.com" })
+ok("POST /tenants/:id/users valid email → 201", ngx.status == 201, ngx.status)
+ok("POST /tenants/:id/users → returns id", b.id ~= nil)
+ok("POST /tenants/:id/users → email echoed", b.email == "new@example.com")
+ok("POST /tenants/:id/users → insert_user called",
+    storage_calls[#storage_calls - 1] and
+    (storage_calls[#storage_calls - 1].name == "insert_user" or
+     storage_calls[#storage_calls].name == "insert_user"))
+
+-- Invalid role should be rejected
+s, b = call("POST", "/admin/v1/tenants/tn-1/users",
+    { email = "x@y.com", role = "superadmin" })
+ok("POST /tenants/:id/users invalid role → 403", ngx.status == 403, ngx.status)
+
+-- ---------------------------------------------------------------------------
+-- GET /me/tokens
+-- ---------------------------------------------------------------------------
+s, b = call("GET", "/admin/v1/me/tokens")
+ok("GET /me/tokens → 200", ngx.status == 200, ngx.status)
+ok("GET /me/tokens → delegates to list_user_tokens with me.id",
+    storage_calls[#storage_calls].name == "list_user_tokens" and
+    storage_calls[#storage_calls].args[1] == "user-1")
+
+-- ---------------------------------------------------------------------------
+-- POST /me/tokens
+-- ---------------------------------------------------------------------------
+s, b = call("POST", "/admin/v1/me/tokens", {})
+ok("POST /me/tokens missing gateway_id → 400", ngx.status == 400, ngx.status)
+ok("POST /me/tokens → error mentions 'gateway_id'",
+    b.error and b.error:find("gateway_id") ~= nil, b.error)
+
+s, b = call("POST", "/admin/v1/me/tokens", { gateway_id = "gw-1" })
+ok("POST /me/tokens valid → 201", ngx.status == 201, ngx.status)
+ok("POST /me/tokens → token field present in response", b.token ~= nil)
+ok("POST /me/tokens → token starts with 'myra_'",
+    b.token and b.token:sub(1, 5) == "myra_", tostring(b.token))
+ok("POST /me/tokens → id returned", b.id ~= nil)
+
+-- ---------------------------------------------------------------------------
+-- DELETE /me/tokens/:id
+-- ---------------------------------------------------------------------------
+-- Override list_user_tokens to return a known token id for the owning user
+local _orig_list_user_tokens = storage_stub.list_user_tokens
+storage_stub.list_user_tokens = function(uid)
+    track("list_user_tokens", uid)
+    if uid == "user-1" then return { { id = "tok-mine" } } end
+    return {}
+end
+
+s, b = call("DELETE", "/admin/v1/me/tokens/tok-mine")
+ok("DELETE /me/tokens/:id owned token → 200", ngx.status == 200, ngx.status)
+ok("DELETE /me/tokens/:id → delete_auth_token called",
+    storage_calls[#storage_calls].name == "delete_auth_token" and
+    storage_calls[#storage_calls].args[1] == "tok-mine")
+
+s, b = call("DELETE", "/admin/v1/me/tokens/tok-other")
+ok("DELETE /me/tokens/:id not owned → 403", ngx.status == 403, ngx.status)
+
+storage_stub.list_user_tokens = _orig_list_user_tokens  -- restore
+
+-- ---------------------------------------------------------------------------
+-- POST /users/:id/resend-invite
+-- ---------------------------------------------------------------------------
+-- member user (not tenant_admin) → 403
+s, b = call("POST", "/admin/v1/users/resend%2Btest/resend-invite", nil, nil,
+    { id = "u-member", role = "member", tenant_id = "tn-1" })
+ok("POST /users/:id/resend-invite member → 403",
+    ngx.status == 403 or ngx.status == 404, ngx.status)
+
+-- tenant_admin, valid user → 200
+s, b = call("POST", "/admin/v1/users/user-1/resend-invite", nil, nil,
+    { id = "u-admin2", role = "tenant_admin", tenant_id = "tn-1" })
+ok("POST /users/:id/resend-invite tenant_admin valid user → 200",
+    ngx.status == 200, ngx.status)
+ok("POST /users/:id/resend-invite → ok=true", b.ok == true)
 
 -- ---------------------------------------------------------------------------
 -- Summary

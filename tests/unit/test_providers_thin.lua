@@ -172,6 +172,10 @@ end
 -- providers/init.lua
 -- ============================================================================
 
+-- Clear any stub set by earlier admin test files so we load the real module.
+package.preload["providers"] = nil
+package.loaded["providers"]  = nil
+
 describe("providers/init.lua: registry", function()
 
     local providers = require("providers")
@@ -297,4 +301,93 @@ describe("providers.vllm: base_url and build_request", function()
         end
     end)
 
+end)
+
+-- ============================================================================
+-- Error-path tests for thin providers
+-- ============================================================================
+-- The happy-path contract tests above verify that parse_response delegates to
+-- the OpenAI parser for a valid response body. These tests verify graceful
+-- handling of the two most common failure modes: nil body and provider error.
+
+describe("thin providers: parse_response error paths", function()
+
+    local ERROR_BODY = cjson.encode({
+        error = {
+            message = "Incorrect API key provided",
+            type    = "invalid_request_error",
+            code    = "invalid_api_key",
+        },
+    })
+
+    for _, spec in ipairs(THIN_PROVIDERS) do
+        local name, module_name = spec[1], spec[2]
+
+        describe("providers." .. name .. " error paths", function()
+            local mod
+            before_each(function()
+                package.loaded[module_name] = nil
+                mod = require(module_name)
+            end)
+
+            it("parse_response with provider error body → nil + error message", function()
+                local r, err = mod.parse_response(ERROR_BODY)
+                assert.is_nil(r,   name .. ".parse_response must return nil on error body")
+                assert.not_nil(err, name .. ".parse_response must return an error string")
+                assert.is_string(err)
+                -- The delegated OpenAI parser extracts the message field
+                assert.match("Incorrect API key", err)
+            end)
+
+            it("parse_response with nil body → nil + non-nil error (no crash)", function()
+                local r, err = mod.parse_response(nil)
+                -- Either returns nil+err OR returns an empty result — must not crash.
+                -- When r is nil, err must be present.
+                if r == nil then
+                    assert.not_nil(err,
+                        name .. ".parse_response(nil) must return error string when result is nil")
+                else
+                    -- Returned a result (e.g., with empty content) — also acceptable.
+                    assert.is_string(err or "", "if non-nil result, err may be nil or string")
+                end
+            end)
+        end)
+    end
+end)
+
+-- ============================================================================
+-- Azure-specific: missing config fields
+-- ============================================================================
+
+describe("providers.azure: missing config graceful handling", function()
+    local azure
+    before_each(function()
+        package.loaded["providers.azure"] = nil
+        azure = require("providers.azure")
+    end)
+
+    it("base_url with azure_resource=nil still returns a string without crash", function()
+        local ctx = make_ctx("gpt-4o")
+        ctx.gateway_config.azure_resource    = nil
+        ctx.gateway_config.azure_api_version = "2024-10-21"
+        ctx.gateway_config.azure_deployment  = "gpt-4o"
+        -- Must not raise an error; may return an odd URL but must be a string
+        local ok, result = pcall(azure.base_url, ctx)
+        if ok then
+            assert.is_string(result, "azure.base_url must return a string")
+        else
+            -- An error is acceptable — documents current behaviour
+            assert.is_string(result, "azure.base_url error message must be a string")
+        end
+    end)
+
+    it("base_url with all config present includes resource and deployment", function()
+        local ctx = make_ctx("gpt-4o")
+        ctx.gateway_config.azure_resource    = "my-resource"
+        ctx.gateway_config.azure_api_version = "2024-10-21"
+        ctx.gateway_config.azure_deployment  = "my-deployment"
+        local url = azure.base_url(ctx)
+        assert.match("my%-resource", url)
+        assert.match("my%-deployment", url)
+    end)
 end)

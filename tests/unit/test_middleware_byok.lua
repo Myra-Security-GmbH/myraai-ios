@@ -7,8 +7,8 @@ package.cpath = "/usr/lib/x86_64-linux-gnu/lua/5.1/?.so;" .. package.cpath
 local _log_buf = {}
 local _exited  = nil
 
-local _real_encode_base64 = _G.ngx and _G.ngx.encode_base64
-local _real_decode_base64 = _G.ngx and _G.ngx.decode_base64
+local _real_encode_base64 = (_G.ngx and _G.ngx.encode_base64) or require("ngx").encode_base64
+local _real_decode_base64 = (_G.ngx and _G.ngx.decode_base64) or require("ngx").decode_base64
 
 _G.ngx = {
     encode_base64  = _real_encode_base64,

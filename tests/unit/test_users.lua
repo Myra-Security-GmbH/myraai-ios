@@ -874,7 +874,9 @@ describe("get_analytics_depth — user_id attribution in by_user", function()
         return { v4 = function() n = n + 1; return string.format("ua-uuid-%04d", n) end }
     end
 
-    package.loaded["storage.mysql"] = nil
+    package.loaded["storage.mysql"]  = nil
+    package.preload["storage.mysql"] = nil   -- prevent stale stubs from test_state_backends
+    package.loaded["resty.mysql"]    = nil   -- force use of our mock preload, not stale from prior test
     local M_depth = require("storage.mysql")
     M_depth.init({ mysql = { host="127.0.0.1", port=3306, database="ai_gateway",
                              user="gateway", password="secret",

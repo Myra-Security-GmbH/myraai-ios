@@ -2,11 +2,12 @@
 # scripts/db.sh — Database migration helper for AI Gateway
 #
 # Usage:
-#   ./scripts/db.sh status  [prod|int]        Show applied and pending migrations
-#   ./scripts/db.sh migrate [prod|int]        Apply pending migrations directly via CLI
+#   ./scripts/db.sh status  [prod|int|dev]    Show applied and pending migrations
+#   ./scripts/db.sh migrate [prod|int|dev]    Apply pending migrations directly via CLI
 #   ./scripts/db.sh new     DESCRIPTION       Create the next numbered migration file
 #
 # 'prod' (default) sources .env.production; 'int' sources .env.integration.
+# 'dev' uses gateway_dev with hardcoded dev credentials (no env file required).
 # Credentials from those files: AIG_MYSQL_PASS / AIG_MYSQL_PASS_INT.
 
 set -euo pipefail
@@ -31,6 +32,12 @@ resolve_env() {
         DB_NAME="${AIG_MYSQL_DB:-ai_gateway_int}"
         DB_USER="${AIG_MYSQL_USER:-gateway_int}"
         DB_PASS="${AIG_MYSQL_PASS_INT:-}"
+    elif [[ "$env" == "dev" ]]; then
+        DB_HOST="${AIG_MYSQL_HOST:-172.17.0.1}"
+        DB_PORT="${AIG_MYSQL_PORT:-3306}"
+        DB_NAME="gateway_dev"
+        DB_USER="${AIG_MYSQL_USER:-gateway}"
+        DB_PASS="${AIG_MYSQL_PASS:-gateway}"
     else
         local env_file="$REPO/.env.production"
         [[ -f "$env_file" ]] || { echo "ERROR: .env.production not found" >&2; exit 1; }
@@ -194,8 +201,8 @@ case "$CMD" in
         echo "Usage: $0 <command> [env]"
         echo ""
         echo "Commands:"
-        echo "  status  [prod|int]   Show applied and pending migrations"
-        echo "  migrate [prod|int]   Apply pending migrations via CLI"
+        echo "  status  [prod|int|dev]   Show applied and pending migrations"
+        echo "  migrate [prod|int|dev]   Apply pending migrations via CLI"
         echo "  new     DESCRIPTION  Create the next migration file"
         echo ""
         echo "env defaults to prod. Credentials sourced from .env.production or .env.integration."
