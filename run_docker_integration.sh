@@ -12,8 +12,8 @@ done_next() { echo "✓ $1 — ▶ $2"; }
 done_stage(){ echo "✓ $*"; }
 log_cmd()   { "$@" >> "$LOG" 2>&1; }
 
-exec 200>/tmp/ai-gateway-run-docker-int.lock
-flock -n 200 || { echo "run_docker_integration.sh is already running"; exit 1; }
+exec 200>/tmp/ai-gateway-build.lock
+flock 200
 
 # ── Launch guard sentinel ────────────────────────────────────────────────────
 export AIG_LAUNCHED_BY_SCRIPT=1
