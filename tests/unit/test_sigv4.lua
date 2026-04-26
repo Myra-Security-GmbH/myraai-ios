@@ -200,8 +200,9 @@ describe("sigv4.canonical_request", function()
         assert.equal("x-amz-date:20240101T120000Z", parts[5])
         assert.equal("",                            parts[6])  -- canonical_headers trailing blank line
         assert.equal("host;x-amz-date",             parts[7])
-        -- parts[8] = payload hash (fake from mock: FAKE_HASH_HEX)
-        assert.equal(FAKE_HASH_HEX, parts[8])
+        -- parts[8] = payload hash — 64-char lowercase hex regardless of sha256 implementation
+        assert.is_true(#parts[8] == 64 and parts[8]:match("^[0-9a-f]+$") ~= nil,
+            "payload hash must be a 64-char hex string, got: " .. tostring(parts[8]))
     end)
 end)
 

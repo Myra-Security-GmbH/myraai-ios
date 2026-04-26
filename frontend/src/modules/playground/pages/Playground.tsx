@@ -739,6 +739,8 @@ export default function Playground() {
       const modelName = model.replace(/^gemini\//, "");
       if (meta?.provider === "gemini" && modelName.startsWith("gemini")) return "gemini";
       if (meta?.provider === "perplexity") return "perplexity";
+      // vllm and ollama: use the gateway server-side 2-leg tool loop (same as openai compat path)
+      if (meta?.provider === "vllm" || meta?.provider === "ollama") return "openai";
       return null;
     },
     [models]
@@ -824,7 +826,7 @@ export default function Playground() {
       const searchMode = getWebSearchMode(panel.model);
       const webSearchActive = !!(webSearch && searchMode && searchMode !== "perplexity");
       const wsHeaders = webSearchActive
-        ? { ...commonHeaders, "X-Web-Search": "1" }
+        ? { ...commonHeaders, "x-aig-web-search": "1" }
         : commonHeaders;
 
       // Show the "searching…" badge immediately — before the fetch even starts.

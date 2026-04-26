@@ -104,9 +104,10 @@ describe("cost_table — fallback pricing for claude-sonnet-4-6", function()
     end)
 
     it("calculate() includes cache_read_tokens in cost", function()
-        -- 0 regular input, 0 output, 1000 cache_read
+        -- 0 regular input, 0 output, 1000 cache_read (7th positional arg)
+        -- signature: (provider, model, input, output, cache_creation_5m, cache_creation_1h, cache_read, cache_deletion)
         -- cache_read = $0.0003/1k
-        local cost = ct.calculate("anthropic", "claude-sonnet-4-6", 0, 0, 0, 1000)
+        local cost = ct.calculate("anthropic", "claude-sonnet-4-6", 0, 0, 0, 0, 1000)
         assert.is_true(math.abs(cost - 0.0003) < 1e-9,
             string.format("expected $0.0003 for 1000 cache_read_tokens, got %s", tostring(cost)))
     end)
@@ -269,14 +270,14 @@ describe("cost_table — cache_deletion_tokens (cache_delete_per_1k)", function(
     end)
 
     it("1000 cache_deletion_tokens at $0.001/1k costs $0.001", function()
-        local cost = ct.calculate("anthropic", "claude-sonnet-4-6", 0, 0, 0, 0, 1000)
+        local cost = ct.calculate("anthropic", "claude-sonnet-4-6", 0, 0, 0, 0, 0, 1000)
         assert.is_true(math.abs(cost - 0.001) < 1e-9,
             string.format("expected $0.001 for 1000 cache_deletion_tokens, got %s", tostring(cost)))
     end)
 
     it("cache_deletion_tokens adds to a combined cost correctly", function()
         -- input=$0.003 + output=$0.015 + deletion=$0.001 = $0.019
-        local cost = ct.calculate("anthropic", "claude-sonnet-4-6", 1000, 1000, 0, 0, 1000)
+        local cost = ct.calculate("anthropic", "claude-sonnet-4-6", 1000, 1000, 0, 0, 0, 1000)
         assert.is_true(math.abs(cost - 0.019) < 1e-9,
             string.format("expected $0.019, got %s", tostring(cost)))
     end)

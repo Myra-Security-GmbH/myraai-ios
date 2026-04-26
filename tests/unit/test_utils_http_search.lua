@@ -66,6 +66,7 @@ package.preload["resty.http"] = function()
                     }
                     return res, nil
                 end,
+                close         = function() end,
                 set_keepalive = function() end,
             }
         end,
