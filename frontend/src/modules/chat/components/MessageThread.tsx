@@ -104,6 +104,9 @@ export default function MessageThread({
             Math.max(0, target),
             Math.max(0, el.scrollHeight - el.clientHeight),
           );
+          // Mark as user-scrolled so subsequent state updates (e.g. processingStatus
+          // going null) don't re-trigger the 'else' branch and scroll back to bottom.
+          isUserScrolled.current = true;
         } else {
           el.scrollTop = el.scrollHeight;
         }
@@ -134,6 +137,7 @@ export default function MessageThread({
       }
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       isUserScrolled.current = !atBottom;
+      window.Android?.notifyScrollTop(el.scrollTop > 0);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
@@ -180,7 +184,7 @@ export default function MessageThread({
               <div className={s["project-welcome-files"]}>
                 {visibleFiles.map((f) => (
                   <span key={f.id} className={s["project-welcome-file-chip"]} title={f.filename}>
-                    📎 {f.filename}
+                    {f.filename}
                   </span>
                 ))}
                 {extraFiles > 0 && (
