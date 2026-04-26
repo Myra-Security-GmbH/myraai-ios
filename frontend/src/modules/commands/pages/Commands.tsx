@@ -64,14 +64,13 @@ function CommandModal({
         <div className={s["form-group"]}>
           <label className={s["form-label"]}>Name *</label>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ opacity: 0.5, fontFamily: "monospace" }}>/</span>
+            <span className={s.mono} style={{ opacity: 0.5 }}>/</span>
             <input
-              className={s["form-input"]}
+              className={`${s["form-input"]} ${s.mono}`}
               value={name}
               onChange={(e) => setName(e.target.value.replace(/\s/g, "-").replace(/^\//, ""))}
               placeholder="command-name"
               required
-              style={{ fontFamily: "monospace" }}
             />
           </div>
         </div>
@@ -87,13 +86,13 @@ function CommandModal({
         <div className={s["form-group"]}>
           <label className={s["form-label"]}>Template *</label>
           <textarea
-            className={s["form-input"]}
+            className={`${s["form-input"]} ${s.mono}`}
             value={template}
             onChange={(e) => setTemplate(e.target.value)}
             rows={5}
             placeholder={"Use {{variable}} for placeholders.\nExample: Translate to {{language}}: {{text}}"}
             required
-            style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
+            style={{ resize: "vertical", fontSize: 13 }}
           />
           {vars.length > 0 && (
             <div className={s["form-hint"]}>
@@ -174,9 +173,9 @@ export default function Commands() {
             <tbody>
               {commands.map((cmd) => (
                 <tr key={cmd.id}>
-                  <td><code style={{ fontFamily: "monospace" }}>/{cmd.name}</code></td>
+                  <td><code className={s.code}>/{cmd.name}</code></td>
                   <td style={{ color: "var(--text-secondary)" }}>{cmd.description || "—"}</td>
-                  <td className={s.truncate} style={{ maxWidth: 320, color: "var(--text-secondary)", fontFamily: "monospace", fontSize: 12 }}>
+                  <td className={`${s.truncate} ${s.mono}`} style={{ maxWidth: 320, color: "var(--text-secondary)" }}>
                     {cmd.template}
                   </td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>

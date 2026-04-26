@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { onEnterKey } from "@myraui/utils";
 import { api } from "src/api/client";
 import type { ProjectMember, ProjectRole } from "src/api/types";
 import { Modal } from "src/common/components/Modal";
@@ -58,7 +59,7 @@ export default function MembersDrawer({ projectId, onClose, onMemberAdded }: Pro
           className={s["form-input"]}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+          onKeyDown={(e) => onEnterKey(e, handleInvite)}
           placeholder="user@example.com"
           data-cy="member-email-input"
         />

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { onEnterKey } from "@myraui/utils";
 import type { ChatConversation } from "src/api/types";
 import { api } from "src/api/client";
 import s from "../pages/Chat.module.scss";
@@ -173,7 +174,7 @@ export default function ConversationList({
               onChange={(e) => setRenameValue(e.target.value)}
               onBlur={() => commitRename(conv.id)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") commitRename(conv.id);
+                onEnterKey(e, () => commitRename(conv.id));
                 if (e.key === "Escape") setRenamingId(null);
               }}
               onClick={(e) => e.stopPropagation()}

@@ -20,7 +20,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div style={{ padding: 40, fontFamily: "sans-serif" }}>
           <h2 style={{ color: "#dc2626" }}>Something went wrong</h2>
-          <pre style={{ fontSize: 12, color: "#555", whiteSpace: "pre-wrap" }}>{this.state.message}</pre>
+          <pre style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "pre-wrap" }}>{this.state.message}</pre>
           <button onClick={() => this.setState({ hasError: false, message: "" })}
             style={{ marginTop: 16, padding: "8px 16px", cursor: "pointer" }}>
             Try again

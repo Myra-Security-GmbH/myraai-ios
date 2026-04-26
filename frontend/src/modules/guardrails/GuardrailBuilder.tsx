@@ -3,6 +3,7 @@
 // Used inside the Gateways EditGatewayModal.
 
 import { useState } from "react";
+import { onEnterKey } from "@myraui/utils";
 import {
   DetectorConfig,
   RegexDetector,
@@ -289,7 +290,7 @@ function RegexEditor({ det, onChange }: { det: RegexDetector; onChange: (d: Rege
             value={customInput}
             onChange={(e) => setCustomInput(e.target.value)}
             placeholder="%d%d%d%d%-%d%d%d%d"
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustom())}
+            onKeyDown={(e) => onEnterKey(e, () => { e.preventDefault(); addCustom(); })}
           />
           <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addCustom}>Add</button>
         </div>
@@ -302,7 +303,7 @@ function RegexEditor({ det, onChange }: { det: RegexDetector; onChange: (d: Rege
         {(det.custom_patterns ?? []).length > 0 && (
           <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
             {(det.custom_patterns ?? []).map((cp, i) => (
-              <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface-2, #f4f4f5)", borderRadius: 4, padding: "2px 8px", fontSize: 12, fontFamily: "monospace" }}>
+              <span key={i} className={s.mono} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface-2, #f4f4f5)", borderRadius: 4, padding: "2px 8px" }}>
                 {cp}
                 <button type="button" onClick={() => removeCustom(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--text-muted, #888)" }}>×</button>
               </span>
@@ -382,7 +383,7 @@ function KeywordEditor({ det, onChange }: { det: KeywordDetector; onChange: (d: 
             value={kwInput}
             onChange={(e) => setKwInput(e.target.value)}
             placeholder="confidential"
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKeyword())}
+            onKeyDown={(e) => onEnterKey(e, () => { e.preventDefault(); addKeyword(); })}
           />
           <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addKeyword}>Add</button>
         </div>
@@ -474,7 +475,7 @@ function JailbreakEditor({ det, onChange }: { det: JailbreakDetector; onChange: 
             value={kwInput}
             onChange={(e) => setKwInput(e.target.value)}
             placeholder="add a phrase…"
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKeyword())}
+            onKeyDown={(e) => onEnterKey(e, () => { e.preventDefault(); addKeyword(); })}
           />
           <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addKeyword}>Add</button>
         </div>
@@ -630,7 +631,7 @@ function EntityEditor({
           value={customInput}
           onChange={(e) => setCustomInput(e.target.value)}
           placeholder="Custom entity (e.g. IN_PAN, UK_NHS…)"
-          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustom())}
+          onKeyDown={(e) => onEnterKey(e, () => { e.preventDefault(); addCustom(); })}
           style={{ fontSize: 12 }}
         />
         <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addCustom} style={{ fontSize: 12 }}>Add</button>
@@ -889,7 +890,7 @@ function CustomPiiEditor({ det, onChange }: { det: CustomPiiDetector; onChange: 
             value={kwInput}
             onChange={(e) => setKwInput(e.target.value)}
             placeholder="e.g. Müller GmbH, Project Orion, Thomas Huber"
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKeyword())}
+            onKeyDown={(e) => onEnterKey(e, () => { e.preventDefault(); addKeyword(); })}
           />
           <button type="button" className={`${s.btn} ${s["btn--secondary"]}`} onClick={addKeyword}>Add</button>
         </div>
@@ -1046,13 +1047,23 @@ const TYPE_LABELS: Record<DetectorConfig["type"], string> = {
 };
 
 const TYPE_BADGE_COLORS: Record<DetectorConfig["type"], string> = {
-  regex: "#3b82f6",
-  keyword: "#8b5cf6",
-  jailbreak: "#ef4444",
-  presidio: "#10b981",
-  prompt_guard: "#f59e0b",
-  pii_protector: "#06b6d4",
-  custom_pii: "#0284c7",
+  regex: "var(--badge-neutral-bg)",
+  keyword: "var(--badge-neutral-bg)",
+  jailbreak: "var(--badge-error-bg)",
+  presidio: "var(--badge-success-bg)",
+  prompt_guard: "var(--badge-warning-bg)",
+  pii_protector: "var(--badge-success-bg)",
+  custom_pii: "var(--badge-neutral-bg)",
+};
+
+const TYPE_BADGE_TEXT: Record<DetectorConfig["type"], string> = {
+  regex: "var(--badge-neutral-text)",
+  keyword: "var(--badge-neutral-text)",
+  jailbreak: "var(--badge-error-text)",
+  presidio: "var(--badge-success-text)",
+  prompt_guard: "var(--badge-warning-text)",
+  pii_protector: "var(--badge-success-text)",
+  custom_pii: "var(--badge-neutral-text)",
 };
 
 // Tier assignment mirrors src/guardrails/orchestrator.lua
@@ -1138,7 +1149,7 @@ function DetectorCard({
         <span
           style={{
             background: TYPE_BADGE_COLORS[det.type],
-            color: "#fff",
+            color: TYPE_BADGE_TEXT[det.type],
             borderRadius: 4,
             padding: "2px 7px",
             fontSize: 11,
@@ -1234,11 +1245,11 @@ function DetectorPhaseSummary({ detectors }: { detectors: DetectorConfig[] }) {
                 {DETECTOR_TIER[det.type] ?? "?"}
               </td>
               <td style={{ padding: "5px 10px 5px 0" }}>
-                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: TYPE_BADGE_COLORS[det.type], marginRight: 6, verticalAlign: "middle", flexShrink: 0 }} />
+                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: TYPE_BADGE_TEXT[det.type], marginRight: 6, verticalAlign: "middle", flexShrink: 0 }} />
                 {det.name}
               </td>
               <td style={{ padding: "5px 10px 5px 0", whiteSpace: "nowrap" }}>
-                <span style={{ fontFamily: "monospace", fontSize: 11, marginRight: 4 }}>{phaseArrow(det)}</span>
+                <span className={s.mono} style={{ marginRight: 4 }}>{phaseArrow(det)}</span>
                 {phaseLabel(det)}
               </td>
               <td style={{ padding: "5px 0", color: det.type === "pii_protector" ? "var(--badge-info-text, #0891b2)" : undefined }}>

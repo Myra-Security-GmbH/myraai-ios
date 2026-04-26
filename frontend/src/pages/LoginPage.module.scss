@@ -1,3 +1,5 @@
+@use "@myraui/styles/scss/mixins/tools";
+
 .page {
   min-height: 100vh;
   min-height: 100dvh;
@@ -5,53 +7,53 @@
   align-items: center;
   justify-content: center;
   background: var(--bg, #f5f5f5);
-  padding: 16px;
+  padding: tools.pixelToRem(16);
 }
 
 .card {
   background: var(--card-bg, #fff);
   border: 1px solid var(--border, #e5e7eb);
-  border-radius: 12px;
-  padding: 40px 36px;
+  border-radius: tools.pixelToRem(12);
+  padding: tools.pixelToRem(40) tools.pixelToRem(36);
   width: 100%;
-  max-width: 400px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  max-width: tools.pixelToRem(400);
+  box-shadow: 0 tools.pixelToRem(4) tools.pixelToRem(24) rgba(0, 0, 0, 0.06);
 }
 
 .logo {
   display: flex;
   justify-content: center;
-  margin-bottom: 24px;
+  margin-bottom: tools.pixelToRem(24);
 }
 
 .logo-img {
-  height: 36px;
-  background: #1b3a5c;
-  padding: 8px 16px;
-  border-radius: 8px;
+  height: tools.pixelToRem(36);
+  background: var(--logo-bg, #1b3a5c);
+  padding: tools.pixelToRem(8) tools.pixelToRem(16);
+  border-radius: tools.pixelToRem(8);
 }
 
 .title {
-  font-size: 20px;
+  font-size: tools.pixelToRem(20);
   font-weight: 600;
   text-align: center;
-  margin: 0 0 24px;
+  margin: 0 0 tools.pixelToRem(24);
   color: var(--text, #111);
 }
 
 .methods {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: tools.pixelToRem(12);
 }
 
 .email-btn {
-  padding: 10px 16px;
-  border-radius: 8px;
+  padding: tools.pixelToRem(10) tools.pixelToRem(16);
+  border-radius: tools.pixelToRem(8);
   border: 1px solid var(--border, #e5e7eb);
   background: transparent;
   color: var(--text, #111);
-  font-size: 14px;
+  font-size: tools.pixelToRem(14);
   font-weight: 500;
   cursor: pointer;
 }
@@ -59,27 +61,27 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: tools.pixelToRem(12);
 }
 
 .label {
-  font-size: 13px;
+  font-size: tools.pixelToRem(13);
   font-weight: 500;
   color: var(--text, #111);
-  margin-bottom: -4px;
+  margin-bottom: tools.pixelToRem(-4);
 }
 
 .hint {
-  font-size: 13px;
+  font-size: tools.pixelToRem(13);
   color: var(--text-muted, #888);
   margin: 0;
 }
 
 .input {
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: tools.pixelToRem(10) tools.pixelToRem(12);
+  border-radius: tools.pixelToRem(8);
   border: 1px solid var(--border, #e5e7eb);
-  font-size: 15px;
+  font-size: tools.pixelToRem(15);
   outline: none;
   width: 100%;
   box-sizing: border-box;
@@ -90,20 +92,20 @@
 .code-input {
   @extend .input;
   letter-spacing: 0.3em;
-  font-size: 22px;
+  font-size: tools.pixelToRem(22);
   text-align: center;
 }
 
 .primary-btn {
-  padding: 10px 16px;
-  border-radius: 8px;
+  padding: tools.pixelToRem(10) tools.pixelToRem(16);
+  border-radius: tools.pixelToRem(8);
   border: none;
   background: var(--primary, #2563eb);
   color: var(--btn-primary-text, #fff);
-  font-size: 14px;
+  font-size: tools.pixelToRem(14);
   font-weight: 500;
   cursor: pointer;
-  margin-top: 4px;
+  margin-top: tools.pixelToRem(4);
 
   &:disabled {
     opacity: 0.5;
@@ -112,11 +114,11 @@
 }
 
 .link-btn {
-  padding: 6px 0;
+  padding: tools.pixelToRem(6) 0;
   background: none;
   border: none;
   color: var(--text-muted, #888);
-  font-size: 13px;
+  font-size: tools.pixelToRem(13);
   cursor: pointer;
   text-align: left;
 }
@@ -124,11 +126,11 @@
 .remember-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: tools.pixelToRem(8);
+  font-size: tools.pixelToRem(13);
   color: var(--text-muted, #888);
   cursor: pointer;
-  margin: 2px 0;
+  margin: tools.pixelToRem(2) 0;
 
   input[type="checkbox"] {
     cursor: pointer;
@@ -138,20 +140,20 @@
 
 .error {
   background: rgba(239, 68, 68, 0.08);
-  color: #dc2626;
+  color: var(--badge-error-text);
   border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 13px;
-  margin-bottom: 12px;
+  border-radius: tools.pixelToRem(8);
+  padding: tools.pixelToRem(10) tools.pixelToRem(12);
+  font-size: tools.pixelToRem(13);
+  margin-bottom: tools.pixelToRem(12);
 }
 
 .info {
   background: rgba(34, 197, 94, 0.08);
-  color: #16a34a;
+  color: var(--badge-success-text);
   border: 1px solid rgba(34, 197, 94, 0.2);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 13px;
-  margin-bottom: 12px;
+  border-radius: tools.pixelToRem(8);
+  padding: tools.pixelToRem(10) tools.pixelToRem(12);
+  font-size: tools.pixelToRem(13);
+  margin-bottom: tools.pixelToRem(12);
 }

@@ -219,7 +219,7 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
       }
       newConfig.prompt_caching = pcEnabled
         ? { enabled: true, ttl: pcTtl }
-        : null;
+        : { enabled: false };
       newConfig.context_compaction = ccEnabled
         ? { enabled: true, threshold_tokens: parseInt(ccThreshold) || 200000, keep_last_turns: parseInt(ccKeepTurns) || 10 }
         : { enabled: false };
@@ -527,9 +527,9 @@ function EditGatewayModal({ gw, onClose, onSaved }: { gw: Gateway; onClose: () =
           <div className={s["form-group"]}>
             <label className={s["form-label"]}>Anthropic Prompt Caching</label>
             <p className={s["form-hint"]} style={{ marginBottom: 8 }}>
-              Inject <code>cache_control</code> breakpoints on the system prompt and conversation history so Anthropic
-              reuses cached tokens across turns. Cache reads cost 0.1× standard input price.
-              The 1 h TTL costs 2× write price vs 1.25× for 5 min — worthwhile for active sessions with many turns.
+              Inject a <code>cache_control</code> breakpoint on the system prompt so Anthropic reuses cached tokens
+              across turns. Cache reads cost 0.1× standard input price.
+              The 1 h TTL costs 2× write price vs 1.25× for 5 min — worthwhile for active sessions.
             </p>
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, marginBottom: 8 }}>
               <input type="checkbox" checked={pcEnabled} onChange={(e) => setPcEnabled(e.target.checked)} />
@@ -1271,6 +1271,22 @@ function GatewayDetail({ gw: initialGw, tenantSlug, onBack, onDeleted }: {
               {cfg.web_search?.enabled
                 ? <span style={{ color: "var(--badge-success-text)" }}>on</span>
                 : <span style={{ color: "var(--text-secondary)" }}>off</span>}
+            </div>
+          </div>
+          <div className={s["stat-card"]}>
+            <div className={s["stat-label"]}>Prompt Caching</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ fontSize: 11 }}>
+              {(cfg as any).prompt_caching?.enabled
+                ? <span style={{ color: "var(--badge-success-text)" }}>{(cfg as any).prompt_caching?.ttl ?? "1h"}</span>
+                : <span style={{ color: "var(--text-secondary)" }}>off</span>}
+            </div>
+          </div>
+          <div className={s["stat-card"]}>
+            <div className={s["stat-label"]}>Compaction</div>
+            <div className={`${s["stat-value"]} ${s["stat-value--text"]}`} style={{ fontSize: 11 }}>
+              {(cfg as any).context_compaction?.enabled === false
+                ? <span style={{ color: "var(--text-secondary)" }}>off</span>
+                : <span style={{ color: "var(--badge-success-text)" }}>on</span>}
             </div>
           </div>
         </div>

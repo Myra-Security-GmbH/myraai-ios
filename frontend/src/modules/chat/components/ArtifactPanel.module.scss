@@ -1,3 +1,5 @@
+@use "@myraui/styles/scss/mixins/tools";
+
 .panel {
   flex: 1;
   min-width: 0;
@@ -19,25 +21,25 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: tools.pixelToRem(8);
+  padding: tools.pixelToRem(8) tools.pixelToRem(12);
   border-bottom: 1px solid var(--card-border);
   background: var(--card-bg);
   flex-shrink: 0;
-  min-height: 40px;
+  min-height: tools.pixelToRem(40);
 }
 
 .mobileBack {
   display: none;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: tools.pixelToRem(28);
+  height: tools.pixelToRem(28);
   border: none;
   background: none;
   color: var(--text-primary);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: tools.pixelToRem(4);
   flex-shrink: 0;
 
   &:hover { background: var(--table-row-hover); }
@@ -52,7 +54,7 @@
 }
 
 .tag {
-  font-size: 10px;
+  font-size: tools.pixelToRem(10);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -61,12 +63,12 @@
   background: color-mix(in srgb, var(--accent, #0052cc) 10%, transparent);
   border: 1px solid rgba(0, 82, 204, 0.25);
   border: 1px solid color-mix(in srgb, var(--accent, #0052cc) 25%, transparent);
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: tools.pixelToRem(1) tools.pixelToRem(6);
+  border-radius: tools.pixelToRem(4);
 }
 
 .title {
-  font-size: 13px;
+  font-size: tools.pixelToRem(13);
   font-weight: 500;
   color: var(--text-primary);
   flex: 1;
@@ -77,33 +79,33 @@
 
 .dirtyDot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: tools.pixelToRem(8);
+  height: tools.pixelToRem(8);
   border-radius: 50%;
   background: var(--accent, #0052cc);
-  margin-left: 6px;
+  margin-left: tools.pixelToRem(6);
   vertical-align: middle;
 }
 
 .generating {
-  font-size: 11px;
+  font-size: tools.pixelToRem(11);
   color: var(--text-secondary);
   font-style: italic;
 }
 
 .actions {
   display: flex;
-  gap: 4px;
+  gap: tools.pixelToRem(4);
 }
 
 .actionBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: tools.pixelToRem(26);
+  height: tools.pixelToRem(26);
   border: 1px solid var(--card-border);
-  border-radius: 5px;
+  border-radius: tools.pixelToRem(5);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -136,16 +138,16 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: tools.pixelToRem(12);
   height: 100%;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: tools.pixelToRem(13);
 }
 
 .generatingSpinner {
-  width: 24px;
-  height: 24px;
-  border: 2.5px solid var(--card-border);
+  width: tools.pixelToRem(24);
+  height: tools.pixelToRem(24);
+  border: tools.pixelToRem(2.5) solid var(--card-border);
   border-top-color: var(--accent, #0052cc);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -164,8 +166,8 @@
 }
 
 .tab {
-  padding: 6px 14px;
-  font-size: 12px;
+  padding: tools.pixelToRem(6) tools.pixelToRem(14);
+  font-size: tools.pixelToRem(12);
   font-weight: 500;
   color: var(--text-secondary);
   background: none;
@@ -194,15 +196,15 @@
 
 .copyBtn {
   position: absolute;
-  top: 8px;
-  right: 10px;
+  top: tools.pixelToRem(8);
+  right: tools.pixelToRem(10);
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  font-size: 11px;
+  gap: tools.pixelToRem(4);
+  padding: tools.pixelToRem(3) tools.pixelToRem(8);
+  font-size: tools.pixelToRem(11);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: tools.pixelToRem(4);
   background: var(--card-bg);
   color: var(--text-secondary);
   cursor: pointer;
@@ -221,9 +223,9 @@
   resize: none;
   border: none;
   outline: none;
-  padding: 12px 16px;
-  padding-right: 80px; // leave room for Copy button
-  font-size: 12px;
+  padding: tools.pixelToRem(12) tools.pixelToRem(16);
+  padding-right: tools.pixelToRem(80); // leave room for Copy button
+  font-size: tools.pixelToRem(12);
   font-family: var(--font-mono, monospace);
   line-height: 1.55;
   color: var(--text-primary);
@@ -237,7 +239,7 @@
   }
 
   @media (max-width: 900px) {
-    font-size: 14px; // larger for mobile readability
+    font-size: tools.pixelToRem(14); // larger for mobile readability
   }
 }
 
@@ -276,8 +278,8 @@
 .footer {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: tools.pixelToRem(8);
+  padding: tools.pixelToRem(8) tools.pixelToRem(12);
   border-top: 1px solid var(--card-border);
   background: var(--card-bg);
   flex-shrink: 0;
@@ -287,7 +289,7 @@
 .footerRight {
   margin-left: auto;
   display: flex;
-  gap: 8px;
+  gap: tools.pixelToRem(8);
 }
 
 @keyframes slideUp {
@@ -296,11 +298,11 @@
 }
 
 .revertBtn {
-  padding: 5px 10px;
-  font-size: 12px;
+  padding: tools.pixelToRem(5) tools.pixelToRem(10);
+  font-size: tools.pixelToRem(12);
   font-weight: 500;
   border: none;
-  border-radius: 5px;
+  border-radius: tools.pixelToRem(5);
   background: none;
   color: var(--text-secondary);
   cursor: pointer;
@@ -309,11 +311,11 @@
 }
 
 .reviseBtn {
-  padding: 5px 12px;
-  font-size: 12px;
+  padding: tools.pixelToRem(5) tools.pixelToRem(12);
+  font-size: tools.pixelToRem(12);
   font-weight: 500;
   border: 1px solid var(--accent, #0052cc);
-  border-radius: 5px;
+  border-radius: tools.pixelToRem(5);
   background: none;
   color: var(--accent, #0052cc);
   cursor: pointer;
@@ -324,11 +326,11 @@
 }
 
 .updateBtn {
-  padding: 5px 12px;
-  font-size: 12px;
+  padding: tools.pixelToRem(5) tools.pixelToRem(12);
+  font-size: tools.pixelToRem(12);
   font-weight: 600;
   border: none;
-  border-radius: 5px;
+  border-radius: tools.pixelToRem(5);
   background: var(--accent, #0052cc);
   color: var(--btn-primary-text, #fff);
   cursor: pointer;
@@ -338,11 +340,11 @@
 }
 
 .discardBtn {
-  padding: 5px 12px;
-  font-size: 12px;
+  padding: tools.pixelToRem(5) tools.pixelToRem(12);
+  font-size: tools.pixelToRem(12);
   font-weight: 500;
   border: none;
-  border-radius: 5px;
+  border-radius: tools.pixelToRem(5);
   background: var(--badge-error-bg);
   color: var(--badge-error-text);
   cursor: pointer;
@@ -353,9 +355,9 @@
 .reviseInput {
   flex: 1;
   border: 1px solid var(--card-border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 13px;
+  border-radius: tools.pixelToRem(6);
+  padding: tools.pixelToRem(6) tools.pixelToRem(10);
+  font-size: tools.pixelToRem(13);
   outline: none;
   background: var(--input-bg, var(--content-bg));
   color: var(--text-primary);
@@ -377,10 +379,10 @@
 .discardPopover {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  min-width: 220px;
+  border-radius: tools.pixelToRem(8);
+  padding: tools.pixelToRem(16);
+  box-shadow: 0 tools.pixelToRem(4) tools.pixelToRem(16) rgba(0, 0, 0, 0.15);
+  min-width: tools.pixelToRem(220);
 }
 
 // ── Save button variant ──────────────────────────────────────────────────
@@ -410,10 +412,10 @@
 .artifactTab {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 10px;
-  min-height: 32px;
-  font-size: 12px;
+  gap: tools.pixelToRem(5);
+  padding: 0 tools.pixelToRem(10);
+  min-height: tools.pixelToRem(32);
+  font-size: tools.pixelToRem(12);
   color: var(--text-secondary);
   cursor: pointer;
   border-right: 1px solid var(--card-border);
@@ -431,19 +433,19 @@
 }
 
 .artifactTabLabel {
-  max-width: 120px;
+  max-width: tools.pixelToRem(120);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .artifactTabBadge {
-  font-size: 10px;
+  font-size: tools.pixelToRem(10);
   font-weight: 700;
   color: var(--accent, #0052cc);
   background: color-mix(in srgb, var(--accent, #0052cc) 12%, transparent);
-  border-radius: 8px;
-  padding: 0 5px;
-  min-width: 16px;
+  border-radius: tools.pixelToRem(8);
+  padding: 0 tools.pixelToRem(5);
+  min-width: tools.pixelToRem(16);
   text-align: center;
 }
 
@@ -451,14 +453,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: tools.pixelToRem(16);
+  height: tools.pixelToRem(16);
   border: none;
-  border-radius: 3px;
+  border-radius: tools.pixelToRem(3);
   background: none;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: tools.pixelToRem(14);
   line-height: 1;
   padding: 0;
   flex-shrink: 0;
@@ -471,7 +473,7 @@
 .versionNav {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: tools.pixelToRem(3);
   flex-shrink: 0;
 }
 
@@ -479,14 +481,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: tools.pixelToRem(22);
+  height: tools.pixelToRem(22);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: tools.pixelToRem(4);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: tools.pixelToRem(14);
   line-height: 1;
   padding: 0;
 
@@ -495,9 +497,9 @@
 }
 
 .versionLabel {
-  font-size: 11px;
+  font-size: tools.pixelToRem(11);
   font-weight: 600;
   color: var(--text-secondary);
-  min-width: 40px;
+  min-width: tools.pixelToRem(40);
   text-align: center;
 }

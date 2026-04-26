@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { onEnterKey } from "@myraui/utils";
 import { api } from "src/api/client";
 import s from "./ArtifactPanel.module.scss";
 
@@ -479,7 +480,7 @@ export default function ArtifactPanel({
             value={revisePrompt}
             onChange={(e) => setRevisePrompt(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && revisePrompt.trim()) handleSendRevision();
+              onEnterKey(e, () => { if (revisePrompt.trim()) handleSendRevision(); });
               if (e.key === "Escape") setShowReviseInput(false);
             }}
             autoFocus

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
+import { useAuth } from "src/common/contexts/AuthContext";
 import { api } from "src/api/client";
 import { UsageStats, PeriodStats, TimeseriesPoint, AnalyticsDepth, CacheEfficiency } from "src/api/types";
 import { fmtDateTime } from "src/common/utils/date";
@@ -244,7 +245,7 @@ function CacheEfficiencyCard({ data }: { data: CacheEfficiency }) {
         </span>
         {(data.compaction_tokens_saved ?? 0) > 0 && (
           <span style={{ marginLeft: "auto" }}>
-            🗜️ Compaction saved: <strong style={{ color: "var(--badge-success-text)" }}>{fmtTokens(data.compaction_tokens_saved)}</strong> tokens
+            Compaction saved: <strong style={{ color: "var(--badge-success-text)" }}>{fmtTokens(data.compaction_tokens_saved)}</strong> tokens
             {(data.compaction_cost_saved ?? 0) > 0 && (
               <> · <strong style={{ color: "var(--badge-success-text)" }}>{fmtCost(data.compaction_cost_saved)}</strong></>
             )}
@@ -257,6 +258,8 @@ function CacheEfficiencyCard({ data }: { data: CacheEfficiency }) {
 
 export default function Dashboard() {
   useDocumentTitle("Dashboard");
+  const { user: me } = useAuth();
+  const isMember = me?.role === "member" || me?.role === "viewer";
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [series, setSeries] = useState<SeriesData | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsDepth | null>(null);
@@ -290,6 +293,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (isMember) return;
     setAnalytics(null);
     const since = timeframeSince(timeframe);
     const until = timeframeUntil(timeframe);
@@ -299,7 +303,7 @@ export default function Dashboard() {
     api.get<AnalyticsDepth>(url)
       .then(setAnalytics)
       .catch(() => {});
-  }, [timeframe]);
+  }, [timeframe, isMember]);
 
   if (loading) return <div className={s.page}><p className={s.empty}>Loading…</p></div>;
 
@@ -324,8 +328,10 @@ export default function Dashboard() {
     <main className={s.page}>
       <div className={s["page-header"]}>
         <div>
-          <h1 className={s["page-title"]}>Dashboard</h1>
-          <p className={s["page-subtitle"]}>Real-time AI Gateway metrics</p>
+          <h1 className={s["page-title"]}>{isMember ? "My Usage" : "Dashboard"}</h1>
+          <p className={s["page-subtitle"]}>
+            {isMember ? "Your personal API usage" : "Real-time AI Gateway metrics"}
+          </p>
         </div>
       </div>
 
@@ -385,8 +391,8 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* By tenant */}
-      {(analytics?.by_tenant?.length ?? 0) > 0 && (
+      {/* By tenant — admin/tenant_admin only */}
+      {!isMember && (analytics?.by_tenant?.length ?? 0) > 0 && (
         <div className={s.card}>
           <div className={s["card-header"]}>
             <h2 className={s["card-title"]}>Usage by Tenant — {TIMEFRAMES.find(t => t.key === timeframe)?.label}</h2>
@@ -461,7 +467,7 @@ export default function Dashboard() {
           <h2 className={s["card-title"]}>Recent Requests</h2>
         </div>
         {(stats?.recent?.length ?? 0) === 0 ? (
-          <div className={s.empty}><div className={s["empty-icon"]}>📋</div>No requests yet</div>
+          <div className={s.empty}><div className={s["empty-icon"]}>—</div>No requests yet</div>
         ) : (
           <div className={s["table-wrapper"]}>
             <table className={s.table}>
@@ -509,8 +515,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Recent guardrail events */}
-      {(stats?.recent_blocked?.length ?? 0) > 0 && (
+      {/* Recent guardrail events — admin/tenant_admin only */}
+      {!isMember && (stats?.recent_blocked?.length ?? 0) > 0 && (
         <div className={s.card}>
           <div className={s["card-header"]}>
             <h2 className={s["card-title"]}>Recent Guardrail Events</h2>

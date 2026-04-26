@@ -75,7 +75,7 @@ export function SaveToProjectCard({ filename, content, projectId, onSaved }: Sin
 
   return (
     <div className={s["save-to-project-card"]}>
-      <span className={s["save-filename"]}>📄 {filename}</span>
+      <span className={s["save-filename"]}>{filename}</span>
       {state === "idle" && (
         <button
           className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`}

@@ -9,19 +9,19 @@ import tp from "./TracePanel.module.scss";
 
 // Step name → display label + color
 const STEP_META: Record<string, { label: string; color: string }> = {
-  request_received:    { label: "Received",         color: "#3b82f6" },
-  request_transformed: { label: "Transformed",      color: "#6366f1" },
-  routing_applied:     { label: "Routing",           color: "#8b5cf6" },
-  guardrail_result:    { label: "Guardrail",         color: "#f59e0b" },
-  upstream_request:    { label: "→ Provider",        color: "#6b7280" },
-  upstream_response:   { label: "← Provider",        color: "#10b981" },
-  upstream_error:      { label: "Provider Error",    color: "#ef4444" },
-  response_delivered:  { label: "Delivered",         color: "#14b8a6" },
-  leg2_response:       { label: "Leg-2 Response",    color: "#6b7280" },
+  request_received:    { label: "Received",         color: "var(--accent)" },
+  request_transformed: { label: "Transformed",      color: "var(--badge-neutral-text)" },
+  routing_applied:     { label: "Routing",           color: "var(--badge-neutral-text)" },
+  guardrail_result:    { label: "Guardrail",         color: "var(--badge-warning-text)" },
+  upstream_request:    { label: "→ Provider",        color: "var(--text-secondary)" },
+  upstream_response:   { label: "← Provider",        color: "var(--badge-success-text)" },
+  upstream_error:      { label: "Provider Error",    color: "var(--badge-error-text)" },
+  response_delivered:  { label: "Delivered",         color: "var(--badge-success-text)" },
+  leg2_response:       { label: "Leg-2 Response",    color: "var(--text-secondary)" },
 };
 
 function stepMeta(name: string) {
-  return STEP_META[name] ?? { label: name, color: "#6b7280" };
+  return STEP_META[name] ?? { label: name, color: "var(--text-secondary)" };
 }
 
 function statusBadgeClass(status: string): string {

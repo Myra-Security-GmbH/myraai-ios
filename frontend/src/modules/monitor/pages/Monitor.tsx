@@ -40,7 +40,7 @@ function PeriodCard({ label, data, fc }: { label: string; data: any; fc: (n: num
 }
 
 // Sparkline chart using canvas
-function Sparkline({ values, color = "#3edcfe" }: { values: number[]; color?: string }) {
+function Sparkline({ values, color }: { values: number[]; color?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current;
@@ -50,8 +50,9 @@ function Sparkline({ values, color = "#3edcfe" }: { values: number[]; color?: st
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
     const max = Math.max(...values, 1);
+    const resolvedColor = color ?? (getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#3edcfe");
     ctx.beginPath();
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = resolvedColor;
     ctx.lineWidth = 2;
     values.forEach((v, i) => {
       const x = (i / (values.length - 1)) * W;

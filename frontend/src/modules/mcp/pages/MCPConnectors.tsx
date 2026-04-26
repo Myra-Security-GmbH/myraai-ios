@@ -271,7 +271,7 @@ export default function MCPConnectors() {
               {connectors.map((c) => (
                 <tr key={c.id} data-cy="connector-row">
                   <td data-cy="connector-name">{c.name}</td>
-                  <td style={{ color: "var(--text-secondary)", fontFamily: "monospace", fontSize: 12 }}>
+                  <td className={s.mono} style={{ color: "var(--text-secondary)" }}>
                     {c.server_url}
                   </td>
                   <td>{authBadge(c.auth_type)}</td>

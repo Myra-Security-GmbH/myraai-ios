@@ -1,17 +1,10 @@
 import type { Artifact } from "./ArtifactPanel";
 import s from "../pages/Chat.module.scss";
 
-/** Pick a visual icon based on file extension */
+/** File extension badge — plain text, no emoji */
 function fileIcon(filename: string, lang: string): string {
   const ext = filename.split(".").pop()?.toLowerCase() ?? lang.toLowerCase();
-  if (["html", "htm", "svg", "xml"].includes(ext)) return "🌐";
-  if (["css", "scss", "sass", "less"].includes(ext)) return "🎨";
-  if (["json", "yaml", "yml", "toml", "ini", "env"].includes(ext)) return "⚙️";
-  if (["md", "markdown", "txt", "rst"].includes(ext)) return "📝";
-  if (["csv", "tsv", "xls", "xlsx", "ods"].includes(ext)) return "📊";
-  if (["sql"].includes(ext)) return "🗄️";
-  if (["sh", "bash", "zsh", "ps1"].includes(ext)) return "💻";
-  return "📄";
+  return ext ? ext.toUpperCase() : lang.toUpperCase() || "FILE";
 }
 
 function DownloadIcon() {
@@ -77,7 +70,7 @@ export function ArtifactCard({ filename, lang, code, isStreaming, onOpen }: Prop
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       data-cy="artifact-card"
     >
-      <span className={s["artifact-card-icon"]}>{icon}</span>
+      <span className={s["artifact-card-icon"]} style={{ fontSize: "10px", letterSpacing: 0 }}>{icon}</span>
       <div className={s["artifact-card-info"]}>
         <div className={s["artifact-card-filename"]}>{filename}</div>
         <div className={s["artifact-card-meta"]}>

@@ -46,6 +46,7 @@
   --text-muted:        var(--text-secondary);
   --text:              var(--text-primary);
   --btn-primary-text:  #ffffff;
+  --logo-bg:           #1b3a5c;
 }
 
 [data-theme="dark"] {
@@ -86,6 +87,7 @@
   /* Primary button: use dark text on the light cyan background */
   --btn-primary-text:   #071929;
   --bg-highlight:       rgba(255, 220, 0, 0.08);
+  --logo-bg:            #1b3a5c;
 }
 
 .sidebar {

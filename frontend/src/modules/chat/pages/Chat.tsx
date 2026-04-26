@@ -1,4 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+
+function GhostModeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 2C8.13 2 5 5.13 5 9v8l2-2 2 2 2-2 2 2 2-2 2 2V9c0-3.87-3.13-7-7-7z"/>
+      <line x1="2" y1="2" x2="22" y2="22"/>
+    </svg>
+  );
+}
+
+function PaperclipIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+    </svg>
+  );
+}
 import { useSearchParams } from "react-router-dom";
 import { api } from "src/api/client";
 import type {
@@ -1048,7 +1065,7 @@ export default function Chat() {
         if (att.mime_type.startsWith("image/")) {
           optimisticBlocks.push({ type: "image_url", image_url: { url: `data:${att.mime_type};base64,${att.data}` } });
         } else {
-          optimisticBlocks.push({ type: "text", text: `📎 ${att.filename}` });
+          optimisticBlocks.push({ type: "text", text: att.filename });
         }
       }
       const tempUserMsgOptimistic: ChatMessage = {
@@ -1553,7 +1570,7 @@ export default function Chat() {
                   // Extract filename from the open tag for the status message
                   const fnMatch = accumulated.slice(openWriteIdx).match(/filename="([^"]+)"/);
                   const fn = fnMatch ? fnMatch[1] : "file";
-                  setProcessingStatus(`📝 Writing ${fn}…`);
+                  setProcessingStatus(`Writing ${fn}…`);
                   setStreamingContent(accumulated.slice(0, openWriteIdx).trim());
                 } else {
                   setStreamingContent(accumulated);
@@ -1586,27 +1603,27 @@ export default function Chat() {
               if (chunk?.aig_status === "compacted") {
                 const tokensBefore = chunk.tokens_before as number | undefined;
                 if (tokensBefore && tokensBefore > 0) setCompactionBaseline(tokensBefore);
-                setProcessingStatus("🗜️ Context compacted — summary saved");
+                setProcessingStatus("Context compacted — summary saved");
               }
               // Gateway web-search status event (emitted by web_search.lua before fetching)
               if (chunk?.aig_status === "fetching") {
                 const n = chunk.count;
-                setProcessingStatus(`🔎 Fetching ${n ?? ""} URL${n !== 1 ? "s" : ""}…`.trim());
+                setProcessingStatus(`Fetching ${n ?? ""} URL${n !== 1 ? "s" : ""}…`.trim());
               }
               // Gateway url-fetch status event (emitted by url_fetch.lua before fetching)
               if (chunk?.aig_status === "fetching_url") {
                 const n = chunk.count;
-                setProcessingStatus(`🔗 Fetching ${n ?? ""} URL${n !== 1 ? "s" : ""}…`.trim());
+                setProcessingStatus(`Fetching ${n ?? ""} URL${n !== 1 ? "s" : ""}…`.trim());
               }
               // Server-side tool_loop status events
               if (chunk?.aig_status === "tool_call") {
                 const toolStatusLabels: Record<string, string> = {
-                  read_file:  "📄 Reading",
-                  write_file: "📝 Writing",
-                  fetch_url:  "🔗 Fetching",
-                  web_search: "🔎 Searching",
+                  read_file:  "Reading",
+                  write_file: "Writing",
+                  fetch_url:  "Fetching",
+                  web_search: "Searching",
                 };
-                const label = toolStatusLabels[chunk.tool as string] ?? `⚙️ ${chunk.tool}`;
+                const label = toolStatusLabels[chunk.tool as string] ?? `${chunk.tool}`;
                 const argStr = chunk.args?.filename ?? chunk.args?.url ?? chunk.args?.query ?? "";
                 setProcessingStatus(`${label}${argStr ? ` ${argStr}` : ""}…`);
               }
@@ -1615,7 +1632,7 @@ export default function Chat() {
                 if (tool === "write_file") {
                   // Append a visible note about the save
                   const fn = chunk.filename ?? "";
-                  if (fn) accumulated += `\n\n> ✅ File saved to project: \`${fn}\`\n`;
+                  if (fn) accumulated += `\n\n> File saved to project: \`${fn}\`\n`;
                 }
               }
               // PII masking event — gateway masked PII in the user message
@@ -1628,12 +1645,12 @@ export default function Chat() {
               // Native Anthropic tool-use event (forwarded by on_compat_chunk in upstream.lua)
               if (chunk?.aig_tool_call) {
                 const toolLabels: Record<string, string> = {
-                  web_search:     "🔎 Searching the web…",
-                  fetch_url:      "🔗 Fetching URL…",
-                  read_file:      "📄 Reading file…",
-                  write_file:     "📝 Writing file…",
-                  computer_use:   "🖥️ Using computer…",
-                  code_execution: "⚙️ Running code…",
+                  web_search:     "Searching the web…",
+                  fetch_url:      "Fetching URL…",
+                  read_file:      "Reading file…",
+                  write_file:     "Writing file…",
+                  computer_use:   "Using computer…",
+                  code_execution: "Running code…",
                 };
                 setProcessingStatus(toolLabels[chunk.aig_tool_call as string] ?? `⚙️ ${chunk.aig_tool_call}…`);
               }
@@ -2202,7 +2219,7 @@ export default function Chat() {
           style={ghostMode ? { color: "var(--accent, #0052cc)", opacity: 1 } : {}}
           data-cy="ghost-mode-toggle"
         >
-          👻
+          <GhostModeIcon />
         </button>
 
         <button
@@ -2249,7 +2266,7 @@ export default function Chat() {
 
       {ghostMode && (
         <div className={chatS["ghost-banner"]} data-cy="ghost-banner">
-          👻 Ghost mode — this conversation is not saved and will not be logged
+          <GhostModeIcon /> Ghost mode — this conversation is not saved and will not be logged
         </div>
       )}
       </div>{/* /top-bar */}
@@ -2352,7 +2369,7 @@ export default function Chat() {
                     onClick={() => setShowFilesPanel((v) => !v)}
                     title="View project files"
                   >
-                    📎 Files ({projectKnowledge.length})
+                    <PaperclipIcon /> Files ({projectKnowledge.length})
                   </button>
                 )}
                 <a href={`/projects/${activeProject.id}`} className={chatS["project-banner-link"]}>Open project</a>
@@ -2380,7 +2397,7 @@ export default function Chat() {
                     type="button"
                     data-cy="chat-file-item"
                   >
-                    <span className={chatS["files-panel-item-name"]}>📎 {f.filename}</span>
+                    <span className={chatS["files-panel-item-name"]}><PaperclipIcon /> {f.filename}</span>
                     <span className={chatS["files-panel-item-meta"]}>{f.token_count.toLocaleString()} tokens</span>
                   </button>
                 ))}
@@ -2390,7 +2407,7 @@ export default function Chat() {
           {isDragOver && (
             <div className={chatS["drop-overlay"]}>
               <div className={chatS["drop-zone"]}>
-                <span className={chatS["drop-icon"]}>📎</span>
+                <span className={chatS["drop-icon"]}><PaperclipIcon /></span>
                 <span className={chatS["drop-label"]}>Drop file here</span>
                 <span className={chatS["drop-hint"]}>
                   Images · PDF · DOCX · XLSX · ODS · CSV · TXT · MD

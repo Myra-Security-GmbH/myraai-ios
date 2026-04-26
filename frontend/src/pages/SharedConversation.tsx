@@ -192,9 +192,9 @@ function avatarStyle(role: string): React.CSSProperties {
     fontWeight: 700,
     flexShrink: 0,
     marginTop: 6,
-    background: role === "user" ? "#f0f2f5" : "none",
-    color: role === "user" ? "#333" : "#0052cc",
-    border: role === "user" ? "1px solid #dde1e7" : "none",
+    background: role === "user" ? "var(--section-bg)" : "none",
+    color: role === "user" ? "var(--text-primary)" : "var(--accent)",
+    border: role === "user" ? "1px solid var(--card-border)" : "none",
   };
 }
 
@@ -206,8 +206,8 @@ function bubbleStyle(role: string): React.CSSProperties {
     lineHeight: 1.65,
     color: "var(--text-primary, #111)",
     maxWidth: role === "user" ? "78%" : undefined,
-    background: role === "user" ? "#f0f2f5" : "transparent",
-    border: role === "user" ? "1px solid #dde1e7" : "none",
+    background: role === "user" ? "var(--section-bg)" : "transparent",
+    border: role === "user" ? "1px solid var(--card-border)" : "none",
     borderRadius: role === "user" ? "18px 18px 4px 18px" : 0,
     padding: role === "user" ? "10px 14px" : "2px 0",
   };
@@ -217,8 +217,8 @@ const continueStyle: React.CSSProperties = {
   padding: "8px 16px",
   fontSize: 14,
   fontWeight: 500,
-  background: "#0052cc",
-  color: "#fff",
+  background: "var(--accent)",
+  color: "var(--btn-primary-text, #fff)",
   border: "none",
   borderRadius: 6,
   cursor: "pointer",

@@ -249,8 +249,8 @@ export default function ProjectDetail({ projectId, initialProject, gateways, onU
                 </div>
                 <div className={s["form-group"]}>
                   <label className={s["form-label"]}>Project Instructions</label>
-                  <textarea className={s["form-input"]} value={editInst} onChange={(e) => setEditInst(e.target.value)} rows={6}
-                    style={{ resize: "vertical", fontFamily: "monospace", fontSize: 12 }} />
+                  <textarea className={`${s["form-input"]} ${s.mono}`} value={editInst} onChange={(e) => setEditInst(e.target.value)} rows={6}
+                    style={{ resize: "vertical" }} />
                 </div>
                 <div className={s["form-group"]}>
                     <label className={s["form-label"]}>Default Gateway</label>

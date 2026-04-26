@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { onEnterKey } from "@myraui/utils";
 import { api } from "src/api/client";
 import type { ChatProject, Gateway, Tenant } from "src/api/types";
 import { Modal } from "src/common/components/Modal";
@@ -93,7 +94,7 @@ export default function ProjectCreateModal({ tenants, gateways, defaultTenantId,
           className={s["form-input"]}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSave()}
+          onKeyDown={(e) => onEnterKey(e, handleSave)}
           placeholder="e.g. Research Project"
           data-cy="project-name-input"
         />
@@ -112,12 +113,12 @@ export default function ProjectCreateModal({ tenants, gateways, defaultTenantId,
       <div className={s["form-group"]}>
         <label className={s["form-label"]}>Project Instructions</label>
         <textarea
-          className={s["form-input"]}
+          className={`${s["form-input"]} ${s.mono}`}
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
           rows={4}
           placeholder="Custom system prompt for all conversations in this project (optional)"
-          style={{ resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+          style={{ resize: "vertical" }}
           data-cy="project-instructions-input"
         />
       </div>

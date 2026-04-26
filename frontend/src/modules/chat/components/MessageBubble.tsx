@@ -532,7 +532,7 @@ const MessageBubble = memo(function MessageBubble({
                       color: "var(--text-secondary)",
                     }}
                   >
-                    📄 {b.filename}
+                    {b.filename}
                   </span>
                 ))}
               </div>
