@@ -107,25 +107,30 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(navBtn.waitForExistence(timeout: 30),
                       "Dashboard did not appear after login")
 
-        // Open sidebar and tap the Chat link (React Router <Link> → <a> → XCUIElement.link)
+        // Open sidebar and tap the Chat link.
+        // The sidebar uses a CSS slide-in animation; waitForExistence returns true
+        // while the link is still off-screen.  Wait for isHittable instead.
         navBtn.tap()
         let chatLink = webView.links
             .matching(NSPredicate(format: "label == 'Chat'"))
             .firstMatch
-        XCTAssertTrue(chatLink.waitForExistence(timeout: 10), "Chat link not found in sidebar")
+        let hittable = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isHittable == true"),
+            object: chatLink
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [hittable], timeout: 8), .completed,
+                       "Chat link in sidebar is not hittable after 8 s")
+
+        // 3 — Sidebar open (captured before tapping Chat, while drawer is visible)
+        _ = XCTWaiter.wait(for: [expectation(description: "sidebar-paint")], timeout: 1)
+        capture("03_sidebar", to: creds.outputDir)
+
         chatLink.tap()
 
         // 2 — Chat screen
-        // Wait for the nav button to confirm we're on the chat page, then settle.
         XCTAssertTrue(navBtn.waitForExistence(timeout: 15), "Chat page did not load")
         _ = XCTWaiter.wait(for: [expectation(description: "chat-paint")], timeout: 2)
         capture("02_chat", to: creds.outputDir)
-
-        // 3 — Sidebar open
-        navBtn.tap()
-        XCTAssertTrue(chatLink.waitForExistence(timeout: 5), "Sidebar did not open")
-        _ = XCTWaiter.wait(for: [expectation(description: "sidebar-paint")], timeout: 1)
-        capture("03_sidebar", to: creds.outputDir)
     }
 
     // MARK: - Helpers
