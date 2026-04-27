@@ -127,7 +127,11 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
+        # Submission to Beta App Review is handled by the GitLab
+        # 'ios:submit-for-review' job, which tolerates ANOTHER_BUILD_IN_REVIEW
+        # as a soft warning. Letting Codemagic also submit causes both to race
+        # and Codemagic fails the build whenever a previous review is pending.
+        submit_to_testflight: false
         submit_to_app_store: false
       email:
         recipients:
