@@ -230,10 +230,10 @@ ios:build:
         echo "$(date +%H:%M:%S)  status=$STATUS"
         case "$STATUS" in
           finished)
-            BUILD_NUMBER=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build',{}).get('buildNumber',''))")
-            [ -z "$BUILD_NUMBER" ] && echo "FAIL: Codemagic returned no buildNumber" && exit 1
+            BUILD_NUMBER=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build',{}).get('index',''))")
+            [ -z "$BUILD_NUMBER" ] && echo "FAIL: Codemagic returned no build index" && exit 1
             echo "$BUILD_NUMBER" > codemagic_build_number.txt
-            echo "Build finished — pinned buildNumber=$BUILD_NUMBER"
+            echo "Build finished — pinned CFBundleVersion=$BUILD_NUMBER (Codemagic build index)"
             exit 0
             ;;
           failed|canceled|timeout) exit 1 ;;
