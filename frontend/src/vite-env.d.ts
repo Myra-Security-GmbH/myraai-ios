@@ -5,10 +5,13 @@ interface AndroidBridge {
   hapticFeedback(type: string): void;
   share(text: string, url: string): void;
   copyToClipboard(text: string): void;
+  getDeviceToken?(callbackName: string): void;
 }
 
 declare interface Window {
   Android?: AndroidBridge;
+  __MYRAFilePickerSupported?: boolean;
+  [key: string]: unknown;
 }
 
 interface ImportMetaEnv {

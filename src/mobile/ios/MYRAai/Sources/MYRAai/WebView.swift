@@ -115,14 +115,25 @@ struct WebView: UIViewRepresentable {
             },
             notifyScrollTop: function(scrolled) {
                 window.webkit.messageHandlers.notifyScrollTop.postMessage(scrolled);
+            },
+            getDeviceToken: function(callbackName) {
+                window.webkit.messageHandlers.getDeviceToken.postMessage(callbackName);
             }
         };
+        // File picker via WKUIDelegate is only available on iOS 18.4+.
+        // The frontend reads this flag to disable the attach button on older devices.
+        window.__MYRAFilePickerSupported = \(filePickerAvailable ? "true" : "false");
         var style = document.createElement('style');
         style.textContent = '* { -webkit-touch-callout: none; } ' +
             'input, textarea, [contenteditable] { -webkit-touch-callout: default; user-select: text; }';
         document.head.appendChild(style);
     })();
     """
+
+    private var filePickerAvailable: Bool {
+        if #available(iOS 18.4, *) { return true }
+        return false
+    }
 }
 
 // MARK: - Coordinator

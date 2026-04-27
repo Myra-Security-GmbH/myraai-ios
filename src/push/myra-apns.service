@@ -1,0 +1,16 @@
+[Unit]
+Description=MYRA AI APNs push notification microservice
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/myra-apns.env
+ExecStart=/opt/myra-apns/venv/bin/python3 /opt/myra-apns/apns_service.py
+Restart=on-failure
+RestartSec=5
+User=www-data
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

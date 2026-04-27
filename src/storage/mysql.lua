@@ -179,6 +179,7 @@ local MIGRATIONS = {
     { version = "0009", file = "0009_cache_write_1h.sql",             description = "1h cache write pricing in model_price and token split in request_log" },
     { version = "0010", file = "0010_provider_health.sql",            description = "Provider health status table for status-page polling" },
     { version = "0011", file = "0011_static_otp_for_reviewer.sql",    description = "static_otp_hash on user — bypass email OTP for service accounts" },
+    { version = "0012", file = "0012_device_tokens.sql",              description = "device_token table for APNs push notifications" },
 }
 
 -- Errors that mean "this change is already applied" — tolerated silently.
@@ -673,6 +674,41 @@ function M.delete_user(id)
     local db, err = get_conn()
     if not db then return err end
     local e = exec_one(db, "UPDATE `user` SET deleted_at = ? WHERE id = ?", os.time(), id)
+    release(db)
+    return e
+end
+
+-- Upsert a device push token for a user (insert or update updated_at on duplicate token).
+function M.upsert_device_token(user_id, token, platform)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id = uuid()
+    local now = os.time()
+    local e = exec_one(db, [[
+        INSERT INTO device_token (id, user_id, token, platform, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), updated_at = VALUES(updated_at)
+    ]], id, user_id, token, platform or "ios", now, now)
+    release(db)
+    return id, e
+end
+
+-- Return all device tokens for a user.
+function M.get_device_tokens(user_id)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local rows, e = query_all(db, [[
+        SELECT id, token, platform, created_at FROM device_token WHERE user_id = ?
+    ]], user_id)
+    release(db)
+    return rows or {}, e
+end
+
+-- Delete a specific device token by token string.
+function M.delete_device_token(token)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, "DELETE FROM device_token WHERE token = ?", token)
     release(db)
     return e
 end

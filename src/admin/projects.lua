@@ -1,4 +1,5 @@
 -- admin/projects.lua — Projects API routes
+local push = require("push")
 -- Routes are registered by calling M.register(route_fn) from admin/api.lua.
 -- All routes require an authenticated session (ngx.ctx.admin_user must be set).
 --
@@ -220,8 +221,14 @@ function M.register(route)
             send(400, { error = "role must be owner|editor|viewer" }); return
         end
 
+        local project, perr = storage.get_project(project_id, nil, true)
         local _, err = storage.add_project_member(project_id, body.user_id, role, ngx.ctx.admin_user.id)
         if err then send(500, { error = err }); return end
+        if not perr and project then
+            push.notify_user(body.user_id, "Added to project",
+                "You were added to \"" .. (project.name or "a project") .. "\"",
+                { type = "project_invite", project_id = project_id })
+        end
         send(201, { ok = true })
     end)
 

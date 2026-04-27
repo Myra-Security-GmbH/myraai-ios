@@ -4,6 +4,16 @@ import { CommandPicker } from "./CommandPicker";
 import { SlashCommand } from "src/api/types";
 import s from "../pages/Chat.module.scss";
 
+// On iOS WKWebView the native shim injects __MYRAFilePickerSupported.
+// false means iOS < 18.4 where WKUIDelegate file picker is unavailable.
+// undefined means a regular browser — file input works natively there.
+function isFilePickerAvailable(): boolean {
+  if (typeof window.__MYRAFilePickerSupported === "boolean") {
+    return window.__MYRAFilePickerSupported;
+  }
+  return true;
+}
+
 export interface ChatInputHandle {
   focus(): void;
 }
@@ -222,26 +232,32 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         )}
 
         <div className={s["input-row"]}>
-          {onAttach && (
-            <>
-              <button
-                className={s["icon-btn"]}
-                title={ATTACH_TITLE}
-                onClick={() => fileInputRef.current?.click()}
-                disabled={disabled || isStreaming}
-                type="button"
-              >
-                <AttachIcon />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ATTACH_ACCEPT}
-                style={{ display: "none" }}
-                onChange={handleFileChange}
-              />
-            </>
-          )}
+          {onAttach && (() => {
+            const pickerOk = isFilePickerAvailable();
+            return (
+              <>
+                <button
+                  className={s["icon-btn"]}
+                  title={pickerOk ? ATTACH_TITLE : "File attachments require iOS 18.4 or later"}
+                  onClick={() => pickerOk && fileInputRef.current?.click()}
+                  disabled={disabled || isStreaming || !pickerOk}
+                  type="button"
+                  aria-disabled={!pickerOk}
+                >
+                  <AttachIcon />
+                </button>
+                {pickerOk && (
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={ATTACH_ACCEPT}
+                    style={{ display: "none" }}
+                    onChange={handleFileChange}
+                  />
+                )}
+              </>
+            );
+          })()}
 
           <textarea
             ref={textareaRef}

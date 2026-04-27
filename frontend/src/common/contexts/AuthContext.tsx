@@ -1,6 +1,17 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { authApi, AdminUser } from "src/api/client";
+import { authApi, AdminUser, api } from "src/api/client";
+
+function registerPushTokenIfAvailable() {
+  if (!window.Android?.getDeviceToken) return;
+  const cb = "__myraOnPushToken_" + Date.now();
+  window[cb] = (token: string | null) => {
+    delete window[cb];
+    if (!token) return;
+    api.post("/me/device-token", { token, platform: "ios" }).catch(() => {});
+  };
+  window.Android.getDeviceToken(cb);
+}
 
 interface AuthContextValue {
   user: AdminUser | null;
@@ -23,13 +34,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     authApi.me()
-      .then(setUser)
+      .then((u) => { setUser(u); registerPushTokenIfAvailable(); })
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
   function login(userData: AdminUser) {
     setUser(userData);
+    registerPushTokenIfAvailable();
   }
 
   async function logout() {

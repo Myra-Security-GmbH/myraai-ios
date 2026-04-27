@@ -980,6 +980,49 @@ route("DELETE", "^/admin/v1/me/tokens/([^/]+)$", function(token_id)
     send(200, { ok = true })
 end)
 
+-- POST /admin/v1/me/device-token — register an APNs device token for push notifications
+-- Body: {"token":"<hex-or-base64>","platform":"ios"}
+route("POST", "^/admin/v1/me/device%-token$", function()
+    local me = ngx.ctx.admin_user
+    local b = read_body()
+    if not b or not b.token or b.token == "" then
+        return send(400, { error = "token required" })
+    end
+    local _, err = storage.upsert_device_token(me.id, b.token, b.platform or "ios")
+    if err then return send(500, { error = tostring(err) }) end
+    send(200, { ok = true })
+end)
+
+-- DELETE /admin/v1/me/device-token — unregister device token on logout/uninstall
+-- Body: {"token":"<token>"}
+route("DELETE", "^/admin/v1/me/device%-token$", function()
+    local me = ngx.ctx.admin_user
+    local b = read_body()
+    if not b or not b.token or b.token == "" then
+        return send(400, { error = "token required" })
+    end
+    local err = storage.delete_device_token(b.token)
+    if err then return send(500, { error = tostring(err) }) end
+    send(200, { ok = true })
+end)
+
+-- DELETE /admin/v1/me — self-service account deletion (soft-delete)
+-- Sets deleted_at on the authenticated user's account. The reviewer account is protected.
+route("DELETE", "^/admin/v1/me$", function()
+    local me = ngx.ctx.admin_user
+    local protected = {
+        ["apple-review@myrasecurity.com"]  = true,
+        ["google-review@myrasecurity.com"] = true,
+        ["sascha@schumann.net"]            = true,
+    }
+    if protected[me.email] then
+        return send(403, { error = "This account cannot be deleted" })
+    end
+    local err = storage.delete_user(me.id)
+    if err then return send(500, { error = tostring(err) }) end
+    send(200, { ok = true })
+end)
+
 route("DELETE", "^/admin/v1/users/([^/]+)/budget$", function(user_id)
     if not require_tenant_admin() then return end
     if not require_user_access(user_id) then return end

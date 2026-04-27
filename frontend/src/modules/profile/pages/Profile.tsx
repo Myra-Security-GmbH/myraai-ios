@@ -98,14 +98,23 @@ function TokenModal({ gateways, onClose, onCreated }: {
 // Profile page
 // ---------------------------------------------------------------------------
 
+const PROTECTED_EMAILS = [
+  "apple-review@myrasecurity.com",
+  "google-review@myrasecurity.com",
+  "sascha@schumann.net",
+];
+
 export default function Profile() {
   useDocumentTitle("My Tokens");
-  const { user: me } = useAuth();
+  const { user: me, logout } = useAuth();
   const [gateways, setGateways] = useState<(Gateway & { tenant_slug: string })[]>([]);
   const [tokens, setTokens] = useState<AuthToken[]>([]);
   const [loadingTokens, setLoadingTokens] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function loadTokens() {
     setLoadingTokens(true);
@@ -135,6 +144,20 @@ export default function Profile() {
     } catch (e: any) { alert(e.message); }
   }
 
+  async function handleDeleteAccount() {
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      await api.delete("/me");
+      await logout();
+    } catch (e: any) {
+      setDeleteError(e.message);
+      setDeleteLoading(false);
+    }
+  }
+
+
+  const canDelete = me?.email && !PROTECTED_EMAILS.includes(me.email);
 
   return (
     <div className={s.page}>
@@ -146,6 +169,32 @@ export default function Profile() {
         />
       )}
       {newToken && <TokenRevealModal token={newToken} onClose={() => setNewToken(null)} />}
+
+      {showDeleteConfirm && (
+        <Modal title="Delete Account" onClose={() => { setShowDeleteConfirm(false); setDeleteError(null); }} error={deleteError}>
+          <p style={{ marginBottom: 16 }}>
+            This will permanently deactivate your account. You will be logged out immediately and will no longer be able to sign in.
+          </p>
+          <div className={s["form-actions"]}>
+            <button
+              type="button"
+              className={`${s.btn} ${s["btn--secondary"]}`}
+              onClick={() => { setShowDeleteConfirm(false); setDeleteError(null); }}
+              disabled={deleteLoading}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={`${s.btn} ${s["btn--danger"]}`}
+              onClick={handleDeleteAccount}
+              disabled={deleteLoading}
+            >
+              {deleteLoading ? "Deleting…" : "Delete My Account"}
+            </button>
+          </div>
+        </Modal>
+      )}
 
       <div className={s["page-header"]}>
         <h1 className={s["page-title"]}>My Tokens</h1>
@@ -230,6 +279,24 @@ export default function Profile() {
           </div>
         )}
       </div>
+      {canDelete && (
+        <div className={s.card}>
+          <div className={s["card-header"]}>
+            <h2 className={s["card-title"]}>Danger Zone</h2>
+          </div>
+          <div style={{ padding: "12px 0" }}>
+            <p style={{ color: "var(--text-secondary)", marginBottom: 12, fontSize: 14 }}>
+              Deleting your account is permanent. All your tokens and settings will be removed.
+            </p>
+            <button
+              className={`${s.btn} ${s["btn--danger"]}`}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              Delete My Account
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

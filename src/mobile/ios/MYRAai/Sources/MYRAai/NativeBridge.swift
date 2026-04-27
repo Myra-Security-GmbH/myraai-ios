@@ -5,7 +5,10 @@ import UIKit
 
 final class NativeBridge: NSObject, WKScriptMessageHandler {
 
-    static let handlerNames = ["hapticFeedback", "share", "copyToClipboard", "notifyScrollTop"]
+    static let handlerNames = ["hapticFeedback", "share", "copyToClipboard", "notifyScrollTop", "getDeviceToken"]
+
+    // Set by AppDelegate once APNs registration succeeds.
+    static var pendingDeviceToken: String?
 
     func userContentController(_ userContentController: WKUserContentController,
                                 didReceive message: WKScriptMessage) {
@@ -15,6 +18,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "copyToClipboard":
             if let text = message.body as? String { UIPasteboard.general.string = text }
         case "notifyScrollTop": break
+        case "getDeviceToken":  handleGetDeviceToken(message)
         default: break
         }
     }
@@ -37,6 +41,20 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
                 let gen = UIImpactFeedbackGenerator(style: .light)
                 gen.prepare(); gen.impactOccurred()
             }
+        }
+    }
+
+    // MARK: - Device token (APNs)
+    // JS calls window.Android.getDeviceToken(callbackName) and expects
+    // window[callbackName](token) to be invoked with the hex token string.
+
+    private func handleGetDeviceToken(_ message: WKScriptMessage) {
+        guard let callbackName = message.body as? String,
+              let webView = (message.webView) else { return }
+        let token = NativeBridge.pendingDeviceToken ?? ""
+        let js = "\(callbackName)(\(token.isEmpty ? "null" : "\"\(token)\""));"
+        DispatchQueue.main.async {
+            webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }
 

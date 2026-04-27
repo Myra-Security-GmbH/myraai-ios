@@ -46,6 +46,8 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>MYRA AI uses Face ID to lock the app after inactivity.</string>
 	<!-- Required when file picker allows image selection -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>MYRA AI needs access to your photos to attach files to chat messages.</string>
