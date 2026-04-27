@@ -180,6 +180,7 @@ local MIGRATIONS = {
     { version = "0010", file = "0010_provider_health.sql",            description = "Provider health status table for status-page polling" },
     { version = "0011", file = "0011_static_otp_for_reviewer.sql",    description = "static_otp_hash on user — bypass email OTP for service accounts" },
     { version = "0012", file = "0012_device_tokens.sql",              description = "device_token table for APNs push notifications" },
+    { version = "0013", file = "0013_user_deleted_by_and_restore.sql", description = "Track who soft-deleted a user (audit for admin restore)" },
 }
 
 -- Errors that mean "this change is already applied" — tolerated silently.
@@ -670,10 +671,28 @@ function M.update_user(id, email, name, role, tenant_id)
     return e
 end
 
-function M.delete_user(id)
+-- Soft-delete a user account ("Delete Account"). Sets deleted_at and records
+-- the actor in deleted_by_id. The row and all child records are retained so
+-- an admin can restore the account later via M.restore_user.
+function M.delete_user(id, deleted_by_id)
     local db, err = get_conn()
     if not db then return err end
-    local e = exec_one(db, "UPDATE `user` SET deleted_at = ? WHERE id = ?", os.time(), id)
+    local e = exec_one(db,
+        "UPDATE `user` SET deleted_at = ?, deleted_by_id = ? WHERE id = ?",
+        os.time(), deleted_by_id, id)
+    release(db)
+    return e
+end
+
+-- Restore a soft-deleted user. Admin-only at the route layer. Clears
+-- deleted_at and the audit reference; returns nil on success or an error
+-- string on failure.
+function M.restore_user(id)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db,
+        "UPDATE `user` SET deleted_at = NULL, deleted_by_id = NULL WHERE id = ?",
+        id)
     release(db)
     return e
 end
@@ -1194,6 +1213,8 @@ function M.get_user(id)
         SELECT id, tenant_id, email, name, role,
                CASE WHEN deleted_at IS NOT NULL
                     THEN deleted_at END AS deleted_at,
+               CASE WHEN deleted_by_id IS NOT NULL
+                    THEN deleted_by_id END AS deleted_by_id,
                created_at,
                CASE WHEN last_login_at IS NOT NULL
                     THEN last_login_at END AS last_login_at
@@ -1220,6 +1241,9 @@ function M.list_users(tenant_id, opts)
     local dir = (opts.dir == "desc") and "DESC" or "ASC"
     assert(dir == "ASC" or dir == "DESC", "invalid sort direction")
     local order = col .. " " .. dir
+    -- include_deleted: when true, also return soft-deleted users so the
+    -- admin Users page can offer a restore action.
+    local deleted_filter = opts.include_deleted and "" or "AND u.deleted_at IS NULL"
     local rows
     if tenant_id then
         rows = query_all(db, string.format([[
@@ -1227,35 +1251,47 @@ function M.list_users(tenant_id, opts)
                    t.slug AS tenant_slug,
                    u.created_at,
                    CASE WHEN u.last_login_at IS NOT NULL
-                        THEN u.last_login_at END AS last_login_at
+                        THEN u.last_login_at END AS last_login_at,
+                   CASE WHEN u.deleted_at IS NOT NULL
+                        THEN u.deleted_at END AS deleted_at,
+                   CASE WHEN u.deleted_by_id IS NOT NULL
+                        THEN u.deleted_by_id END AS deleted_by_id
             FROM `user` u
             LEFT JOIN tenant t ON t.id = u.tenant_id
-            WHERE u.tenant_id = ? AND u.deleted_at IS NULL
+            WHERE u.tenant_id = ? %s
             ORDER BY %s
-        ]], order), tenant_id) or {}
+        ]], deleted_filter, order), tenant_id) or {}
     elseif tenant_id == false then
         rows = query_all(db, string.format([[
             SELECT u.id, u.tenant_id, u.email, u.name, u.role,
                    NULL AS tenant_slug,
                    u.created_at,
                    CASE WHEN u.last_login_at IS NOT NULL
-                        THEN u.last_login_at END AS last_login_at
+                        THEN u.last_login_at END AS last_login_at,
+                   CASE WHEN u.deleted_at IS NOT NULL
+                        THEN u.deleted_at END AS deleted_at,
+                   CASE WHEN u.deleted_by_id IS NOT NULL
+                        THEN u.deleted_by_id END AS deleted_by_id
             FROM `user` u
-            WHERE u.tenant_id IS NULL AND u.deleted_at IS NULL
+            WHERE u.tenant_id IS NULL %s
             ORDER BY %s
-        ]], order)) or {}
+        ]], deleted_filter, order)) or {}
     else
         rows = query_all(db, string.format([[
             SELECT u.id, u.tenant_id, u.email, u.name, u.role,
                    t.slug AS tenant_slug,
                    u.created_at,
                    CASE WHEN u.last_login_at IS NOT NULL
-                        THEN u.last_login_at END AS last_login_at
+                        THEN u.last_login_at END AS last_login_at,
+                   CASE WHEN u.deleted_at IS NOT NULL
+                        THEN u.deleted_at END AS deleted_at,
+                   CASE WHEN u.deleted_by_id IS NOT NULL
+                        THEN u.deleted_by_id END AS deleted_by_id
             FROM `user` u
             LEFT JOIN tenant t ON t.id = u.tenant_id
-            WHERE u.deleted_at IS NULL
+            WHERE 1=1 %s
             ORDER BY %s
-        ]], order)) or {}
+        ]], deleted_filter, order)) or {}
     end
     release(db)
     return rows

@@ -86,11 +86,21 @@ route("GET", "^/admin/auth/me$", function()
     local payload, err = jwt.verify(token)
     if not payload then return send(401, { error = err or "invalid token" }) end
 
+    -- Re-verify against the database on every /me call. A user's account may
+    -- have been soft-deleted ("Delete Account") since the JWT was issued;
+    -- treating the stale JWT as valid would let a deleted user appear
+    -- authenticated to the SPA. Always returns the freshest email/role/tenant too.
+    local user = storage.get_user(payload.sub)
+    if not user or user.deleted_at then
+        clear_session_cookie()
+        return send(401, { error = "account deleted" })
+    end
+
     send(200, {
-        id        = payload.sub,
-        email     = payload.email,
-        role      = payload.role,
-        tenant_id = payload.tenant,
+        id        = user.id,
+        email     = user.email,
+        role      = user.role,
+        tenant_id = user.tenant_id,
     })
 end)
 

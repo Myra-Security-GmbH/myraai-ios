@@ -770,19 +770,35 @@ end)
 -- ---------------------------------------------------------------------------
 -- User routes
 -- ---------------------------------------------------------------------------
+
+-- Email allowlist for accounts that must never be soft-deleted, even by an
+-- admin. Used by both DELETE /admin/v1/users/:id and DELETE /admin/v1/me.
+local PROTECTED_EMAILS = {
+    ["apple-review@myrasecurity.com"]  = true,
+    ["google-review@myrasecurity.com"] = true,
+    ["sascha@schumann.net"]            = true,
+}
+
 route("GET", "^/admin/v1/users$", function()
     local u = ngx.ctx.admin_user
     if u.role ~= "admin" then return send(403, { error = "forbidden" }) end
-    -- Returns users with no tenant (global admins)
+    -- Returns users with no tenant (global admins). Pass ?include_deleted=1
+    -- to also surface soft-deleted accounts so an admin can restore them.
     local args = ngx.req.get_uri_args()
-    send(200, storage.list_users(false, { sort = args.sort, dir = args.dir }))
+    send(200, storage.list_users(false, {
+        sort = args.sort, dir = args.dir,
+        include_deleted = args.include_deleted == "1" or args.include_deleted == "true",
+    }))
 end)
 
 route("GET", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
     if not require_tenant_admin() then return end
     if not auth.check_tenant(tenant_id) then return send(403, { error = "forbidden" }) end
     local args = ngx.req.get_uri_args()
-    send(200, storage.list_users(tenant_id, { sort = args.sort, dir = args.dir }))
+    send(200, storage.list_users(tenant_id, {
+        sort = args.sort, dir = args.dir,
+        include_deleted = args.include_deleted == "1" or args.include_deleted == "true",
+    }))
 end)
 
 route("POST", "^/admin/v1/tenants/([^/]+)/users$", function(tenant_id)
@@ -863,6 +879,9 @@ route("PATCH", "^/admin/v1/users/([^/]+)$", function(user_id)
     if not require_tenant_admin() then return end
     local existing = require_user_access(user_id)
     if not existing then return end
+    if existing.deleted_at then
+        return send(409, { error = "Account is deleted; restore it before editing" })
+    end
     local b = read_body()
     if not b then return send(400, { error = "invalid body" }) end
     if b.role then
@@ -892,9 +911,38 @@ end)
 
 route("DELETE", "^/admin/v1/users/([^/]+)$", function(user_id)
     if not require_tenant_admin() then return end
-    if not require_user_access(user_id) then return end
-    local err = storage.delete_user(user_id)
+    local existing = require_user_access(user_id)
+    if not existing then return end
+    if PROTECTED_EMAILS[existing.email] then
+        return send(403, { error = "This account cannot be deleted" })
+    end
+    if existing.deleted_at then
+        return send(200, { ok = true, already_deleted = true })
+    end
+    local me = ngx.ctx.admin_user
+    local err = storage.delete_user(user_id, me.id)
     if err then return send(500, { error = tostring(err) }) end
+    ngx.log(ngx.NOTICE, "user deleted (admin): id=", user_id,
+            " email=", existing.email, " by=", me.id)
+    send(200, { ok = true })
+end)
+
+-- POST /admin/v1/users/:id/restore — admin-initiated restore of a soft-deleted
+-- (in-app "Delete Account") user. Clears deleted_at and the audit reference.
+-- There is no self-service restore path; deleted users stay locked out until
+-- an admin restores them.
+route("POST", "^/admin/v1/users/([^/]+)/restore$", function(user_id)
+    if not require_tenant_admin() then return end
+    local existing = require_user_access(user_id)
+    if not existing then return end
+    if not existing.deleted_at then
+        return send(200, { ok = true, already_active = true })
+    end
+    local err = storage.restore_user(user_id)
+    if err then return send(500, { error = tostring(err) }) end
+    local me = ngx.ctx.admin_user
+    ngx.log(ngx.NOTICE, "user restored: id=", user_id,
+            " email=", existing.email, " by=", me.id)
     send(200, { ok = true })
 end)
 
@@ -1006,20 +1054,18 @@ route("DELETE", "^/admin/v1/me/device%-token$", function()
     send(200, { ok = true })
 end)
 
--- DELETE /admin/v1/me — self-service account deletion (soft-delete)
--- Sets deleted_at on the authenticated user's account. The reviewer account is protected.
+-- DELETE /admin/v1/me — self-service account deletion (soft-delete).
+-- Sets deleted_at on the authenticated user's account so the user is signed
+-- out and locked out. Data is retained so an admin can restore the account
+-- via POST /admin/v1/users/:id/restore. Reviewer accounts cannot be deleted.
 route("DELETE", "^/admin/v1/me$", function()
     local me = ngx.ctx.admin_user
-    local protected = {
-        ["apple-review@myrasecurity.com"]  = true,
-        ["google-review@myrasecurity.com"] = true,
-        ["sascha@schumann.net"]            = true,
-    }
-    if protected[me.email] then
+    if PROTECTED_EMAILS[me.email] then
         return send(403, { error = "This account cannot be deleted" })
     end
-    local err = storage.delete_user(me.id)
+    local err = storage.delete_user(me.id, me.id)
     if err then return send(500, { error = tostring(err) }) end
+    ngx.log(ngx.NOTICE, "user deleted (self): id=", me.id, " email=", me.email)
     send(200, { ok = true })
 end)
 
