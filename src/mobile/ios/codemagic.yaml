@@ -24,16 +24,18 @@ workflows:
           OUT="$CM_BUILD_DIR/screenshots/iphone_6_9"
           mkdir -p "$OUT"
 
+          # TEST_LOGIN_EMAIL and TEST_LOGIN_OTP come from the 'test' variable group
+          # and are already in the shell environment. Export SCREENSHOT_OUTPUT_DIR
+          # so the Swift test process can resolve the Mac-side output path.
+          export SCREENSHOT_OUTPUT_DIR="$OUT"
+
           xcodebuild test \
             -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -destination "platform=iOS Simulator,name=$SIM,OS=latest" \
             -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_app_store_screenshots \
             -resultBundlePath "$CM_BUILD_DIR/result_6_9.xcresult" \
-            CODE_SIGNING_ALLOWED=NO \
-            -testenv TEST_LOGIN_EMAIL="$TEST_LOGIN_EMAIL" \
-            -testenv TEST_LOGIN_OTP="$TEST_LOGIN_OTP" \
-            -testenv SCREENSHOT_OUTPUT_DIR="$OUT"
+            CODE_SIGNING_ALLOWED=NO
 
           echo "PNG files written:"
           ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — check XCTAttachments in xcresult)"
