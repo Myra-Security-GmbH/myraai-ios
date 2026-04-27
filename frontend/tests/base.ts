@@ -37,6 +37,14 @@ export const test = base.extend<{ workerSuffix: string; workerTenantId: string; 
     const i = workerInfo.parallelIndex % NUM_WORKERS;
     await use(path.join(AUTH_DIR, `worker-${i}-session.json`));
   },
+  // Auto-acknowledge the first-run AI disclosure modal so it doesn't intercept
+  // clicks in any UI test. The modal is verified by its own dedicated test.
+  context: async ({ context }, use) => {
+    await context.addInitScript(() => {
+      try { localStorage.setItem("aig:ai-disclosure-acknowledged-v1", "1"); } catch {}
+    });
+    await use(context);
+  },
   // Unique prefix for test data created in parallel; use to avoid cross-worker collisions.
   // Example: const name = `gw-${workerSuffix}-${Date.now()}`;
   workerSuffix: async ({}, use, workerInfo) => {

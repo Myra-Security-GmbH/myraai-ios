@@ -15,6 +15,7 @@ import ThinkingBlock from "./ThinkingBlock";
 import { SaveAllCard, type FileEntry } from "./SaveToProjectCard";
 import { ArtifactCard } from "./ArtifactCard";
 import type { Artifact } from "./ArtifactPanel";
+import ReportMessageModal from "./ReportMessageModal";
 import s from "../pages/Chat.module.scss";
 
 function fmtCost(usd: number | null) {
@@ -52,6 +53,15 @@ function RegenerateIcon() {
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <polyline points="1 4 1 10 7 10" />
       <path d="M3.51 15a9 9 0 1 0 .49-3" />
+    </svg>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M4 21V4h12l-1.5 4 1.5 4H4" />
+      <line x1="4" y1="21" x2="4" y2="13" />
     </svg>
   );
 }
@@ -406,6 +416,7 @@ const MessageBubble = memo(function MessageBubble({
   const [copied, setCopied] = useState(false);
   const [useIndividual, setUseIndividual] = useState(false);
   const [piiChipDismissed, setPiiChipDismissed] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   const blocks = parseContent(message.content);
   const docxBlocks = blocks.filter(
@@ -684,7 +695,26 @@ const MessageBubble = memo(function MessageBubble({
               {!isUser && isLast && onRegenerate && !isStreaming && (
                 <RegenerateButton onRegenerate={onRegenerate} />
               )}
+              {!isUser && !isStreaming && (
+                <button
+                  className={s["bubble-action-btn"]}
+                  onClick={() => setShowReport(true)}
+                  data-cy="report-message-btn"
+                  title="Report this response"
+                >
+                  <FlagIcon />
+                  Report
+                </button>
+              )}
             </div>
+            {showReport && (
+              <ReportMessageModal
+                messageId={message.id}
+                messageText={extractText(message.content)}
+                conversationId={message.conversation_id ?? null}
+                onClose={() => setShowReport(false)}
+              />
+            )}
           </>
         )}
       </div>

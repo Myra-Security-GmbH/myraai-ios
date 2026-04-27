@@ -1155,6 +1155,76 @@ route("PATCH", "^/admin/v1/app%-feedback/([^/]+)$", function(id)
     send(200, { ok = true })
 end)
 
+-- ---------------------------------------------------------------------------
+-- Content reports — users flagging inappropriate / inaccurate AI output.
+-- Required by Google Play's generative-AI policy (effective Jan 28 2026).
+-- ---------------------------------------------------------------------------
+
+-- POST /admin/v1/reports — any authenticated user may file a report.
+-- Body: { reason, conversation_id?, message_id?, message_text?, notes? }
+route("POST", "^/admin/v1/reports$", function()
+    local u = ngx.ctx.admin_user
+    local b = read_body()
+    if not b or not b.reason then
+        return send(400, { error = "reason required" })
+    end
+    if not storage.is_valid_content_report_reason(b.reason) then
+        return send(400, { error = "invalid reason" })
+    end
+    local report = {
+        user_id         = u.id,
+        tenant_id       = u.tenant_id,
+        conversation_id = b.conversation_id and tostring(b.conversation_id) or nil,
+        message_id      = b.message_id and tostring(b.message_id) or nil,
+        message_text    = b.message_text and tostring(b.message_text):sub(1, 16000) or nil,
+        reason          = b.reason,
+        notes           = b.notes and tostring(b.notes):sub(1, 2000) or nil,
+    }
+    local id, err = storage.insert_content_report(report)
+    if not id then return send(500, { error = err or "db error" }) end
+    ngx.log(ngx.NOTICE, "content report filed: id=", id, " by=", u.id,
+            " tenant=", tostring(u.tenant_id), " reason=", b.reason)
+    send(201, { id = id })
+end)
+
+-- GET /admin/v1/reports?status=open&limit=100&offset=0
+-- Admin sees all tenants; tenant_admin sees only their tenant.
+route("GET", "^/admin/v1/reports$", function()
+    local u = ngx.ctx.admin_user
+    if u.role ~= "admin" and u.role ~= "tenant_admin" then
+        return send(403, { error = "forbidden" })
+    end
+    local args = ngx.req.get_uri_args()
+    local opts = {
+        status = args.status,
+        limit  = tonumber(args.limit),
+        offset = tonumber(args.offset),
+    }
+    if u.role == "tenant_admin" then opts.tenant_id = u.tenant_id end
+    send(200, storage.list_content_reports(opts))
+end)
+
+-- PATCH /admin/v1/reports/:id  — { status: "triaged" | "dismissed" | "open" }
+route("PATCH", "^/admin/v1/reports/([^/]+)$", function(id)
+    local u = ngx.ctx.admin_user
+    if u.role ~= "admin" and u.role ~= "tenant_admin" then
+        return send(403, { error = "forbidden" })
+    end
+    local existing = storage.get_content_report(id)
+    if not existing then return send(404, { error = "report not found" }) end
+    if u.role == "tenant_admin" and existing.tenant_id ~= u.tenant_id then
+        return send(403, { error = "forbidden" })
+    end
+    local b = read_body()
+    local status = b and b.status
+    if status ~= "open" and status ~= "triaged" and status ~= "dismissed" then
+        return send(400, { error = "invalid status" })
+    end
+    local err = storage.update_content_report_status(id, status, u.id)
+    if err then return send(500, { error = tostring(err) }) end
+    send(200, { ok = true })
+end)
+
 -- GET /admin/v1/audit-log?limit=100&offset=0
 route("GET", "^/admin/v1/audit%-log$", function()
     local u = ngx.ctx.admin_user

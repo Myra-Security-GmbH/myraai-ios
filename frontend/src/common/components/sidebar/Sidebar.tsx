@@ -256,6 +256,7 @@ export default function Sidebar() {
             {user?.role === "admin" && (
               <NavItem to="/feedback" label="Feedback Inbox" icon={<FeedbackInboxIcon />} {...navProps} />
             )}
+            <NavItem to="/reports" label="Reports" icon={<FlagIcon />} {...navProps} />
           </>)}
 
           {(user?.role === "admin" || user?.role === "tenant_admin") && (<>

@@ -271,7 +271,7 @@ export default function PrivacyPolicy() {
         </p>
       </section>
 
-      <section style={sectionStyle}>
+      <section style={sectionStyle} id="delete">
         <h2 style={h2Style}>9. Deleting your account or requesting permanent erasure</h2>
 
         <p>

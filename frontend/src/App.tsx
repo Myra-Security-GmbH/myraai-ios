@@ -28,14 +28,17 @@ import MCPConnectors from "src/modules/mcp/pages/MCPConnectors";
 import Chat from "src/modules/chat/pages/Chat";
 import Projects from "src/modules/projects/pages/Projects";
 import AppFeedbackPage from "src/modules/feedback/pages/AppFeedbackPage";
+import ReportsPage from "src/modules/reports/pages/ReportsPage";
 import LoginPage from "src/pages/LoginPage";
 import SharedConversation from "src/pages/SharedConversation";
 import DebugPage from "src/pages/DebugPage";
 import PrivacyPolicy from "src/pages/PrivacyPolicy";
+import AIDisclosureModal from "src/common/components/AIDisclosureModal";
 
 function AppShell() {
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
+      <AIDisclosureModal />
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflowX: "hidden", backgroundColor: "var(--content-bg)" }}>
         <Routes>
@@ -61,6 +64,7 @@ function AppShell() {
           <Route path="/commands" element={<Commands />} />
           <Route path="/mcp" element={<MCPConnectors />} />
           <Route path="/feedback" element={<AppFeedbackPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
         </Routes>
       </div>
     </div>

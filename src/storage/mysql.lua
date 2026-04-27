@@ -181,6 +181,7 @@ local MIGRATIONS = {
     { version = "0011", file = "0011_static_otp_for_reviewer.sql",    description = "static_otp_hash on user — bypass email OTP for service accounts" },
     { version = "0012", file = "0012_device_tokens.sql",              description = "device_token table for APNs push notifications" },
     { version = "0013", file = "0013_user_deleted_by_and_restore.sql", description = "Track who soft-deleted a user (audit for admin restore)" },
+    { version = "0014", file = "0014_content_reports.sql",            description = "User-submitted reports of inappropriate or inaccurate model output" },
 }
 
 -- Errors that mean "this change is already applied" — tolerated silently.
@@ -3420,6 +3421,101 @@ function M.delete_mcp_connector(id)
     release(db)
     if e then return false, e end
     return true
+end
+
+-- ---------------------------------------------------------------------------
+-- Content reports — users flagging inappropriate / inaccurate AI output
+-- (Play Store generative-AI policy)
+-- ---------------------------------------------------------------------------
+
+local CONTENT_REPORT_REASONS = {
+    offensive   = true,
+    inaccurate  = true,
+    unsafe      = true,
+    other       = true,
+}
+
+function M.is_valid_content_report_reason(reason)
+    return reason and CONTENT_REPORT_REASONS[reason] == true
+end
+
+function M.insert_content_report(report)
+    local db, err = get_conn()
+    if not db then return nil, err end
+    local id = uuid()
+    local e = exec_one(db, [[
+        INSERT INTO content_report
+            (id, user_id, tenant_id, conversation_id, message_id, message_text,
+             reason, notes, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+    ]], id,
+        report.user_id, report.tenant_id, report.conversation_id, report.message_id,
+        report.message_text, report.reason, report.notes, os.time())
+    release(db)
+    if e then return nil, e end
+    return id
+end
+
+-- List content reports. opts: { tenant_id?, status?, limit?, offset? }.
+-- tenant_id=nil → all tenants (platform admin view). tenant_id=string → only that tenant.
+function M.list_content_reports(opts)
+    opts = opts or {}
+    local db, err = get_conn()
+    if not db then return {} end
+    local where = "WHERE 1=1"
+    local args = {}
+    if opts.tenant_id then
+        where = where .. " AND r.tenant_id = ?"
+        args[#args + 1] = opts.tenant_id
+    end
+    if opts.status then
+        where = where .. " AND r.status = ?"
+        args[#args + 1] = opts.status
+    end
+    local limit  = math.min(tonumber(opts.limit)  or 100, 500)
+    local offset = math.max(tonumber(opts.offset) or 0, 0)
+    local sql = string.format([[
+        SELECT r.id, r.user_id, r.tenant_id, r.conversation_id, r.message_id,
+               r.message_text, r.reason, r.notes, r.status,
+               r.created_at, r.triaged_at, r.triaged_by_id,
+               u.email AS user_email
+        FROM   content_report r
+        LEFT JOIN `user` u ON u.id = r.user_id
+        %s
+        ORDER BY r.created_at DESC
+        LIMIT %d OFFSET %d
+    ]], where, limit, offset)
+    local rows = query_all(db, sql, table.unpack(args)) or {}
+    release(db)
+    return rows
+end
+
+function M.get_content_report(id)
+    local db, err = get_conn()
+    if not db then return nil end
+    local row = query_one(db, [[
+        SELECT id, user_id, tenant_id, conversation_id, message_id,
+               message_text, reason, notes, status,
+               created_at, triaged_at, triaged_by_id
+        FROM   content_report WHERE id = ?
+    ]], id)
+    release(db)
+    return row
+end
+
+function M.update_content_report_status(id, status, triaged_by_id)
+    local db, err = get_conn()
+    if not db then return err end
+    local triaged_at = (status == "triaged" or status == "dismissed") and os.time() or nil
+    local e = exec_one(db, [[
+        UPDATE content_report
+        SET    status        = ?,
+               triaged_at    = ?,
+               triaged_by_id = ?
+        WHERE  id = ?
+    ]], status, triaged_at, triaged_by_id, id)
+    release(db)
+    return e
 end
 
 return M
