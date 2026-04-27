@@ -66,14 +66,17 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(webView.waitForExistence(timeout: 30), "WebView did not appear")
 
         // 1 — Login screen
+        // waitForExistence is satisfied before the WebView has finished painting.
+        // The extra 2 s lets React complete its render so the screenshot is sharp.
         let emailMethodBtn = webView.buttons
             .matching(NSPredicate(format: "label CONTAINS 'Email code'"))
             .firstMatch
         XCTAssertTrue(emailMethodBtn.waitForExistence(timeout: 30),
                       "Login page did not render")
+        _ = XCTWaiter.wait(for: [expectation(description: "login-paint")], timeout: 2)
         capture("01_login", to: creds.outputDir)
 
-        // Proceed through the login flow
+        // — Login flow —
         emailMethodBtn.tap()
 
         let emailField = webView.textFields.firstMatch
@@ -99,16 +102,29 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(signInBtn.waitForExistence(timeout: 10), "'Sign in' button not found")
         signInBtn.tap()
 
-        // 2 — Chat / main screen
+        // — Post-login: navigate to Chat —
         let navBtn = webView.buttons["Open navigation menu"]
         XCTAssertTrue(navBtn.waitForExistence(timeout: 30),
                       "Dashboard did not appear after login")
-        _ = XCTWaiter.wait(for: [expectation(description: "settle")], timeout: 2)
+
+        // Open sidebar and tap the Chat link (React Router <Link> → <a> → XCUIElement.link)
+        navBtn.tap()
+        let chatLink = webView.links
+            .matching(NSPredicate(format: "label == 'Chat'"))
+            .firstMatch
+        XCTAssertTrue(chatLink.waitForExistence(timeout: 10), "Chat link not found in sidebar")
+        chatLink.tap()
+
+        // 2 — Chat screen
+        // Wait for the nav button to confirm we're on the chat page, then settle.
+        XCTAssertTrue(navBtn.waitForExistence(timeout: 15), "Chat page did not load")
+        _ = XCTWaiter.wait(for: [expectation(description: "chat-paint")], timeout: 2)
         capture("02_chat", to: creds.outputDir)
 
-        // 3 — Sidebar / navigation drawer
+        // 3 — Sidebar open
         navBtn.tap()
-        _ = webView.staticTexts.firstMatch.waitForExistence(timeout: 5)
+        XCTAssertTrue(chatLink.waitForExistence(timeout: 5), "Sidebar did not open")
+        _ = XCTWaiter.wait(for: [expectation(description: "sidebar-paint")], timeout: 1)
         capture("03_sidebar", to: creds.outputDir)
     }
 
