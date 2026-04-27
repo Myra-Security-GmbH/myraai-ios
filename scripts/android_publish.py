@@ -3,13 +3,13 @@
 android_publish.py — Upload a signed Android AAB to Google Play and assign it to a track.
 
 Usage:
-    python3 scripts/android_publish.py [--track TRACK] [--aab PATH] [--release-notes TEXT]
+    python3 scripts/android_publish.py --key PATH [--track TRACK] [--aab PATH] [--release-notes TEXT]
 
 Options:
     --track       internal | alpha | beta | production  (default: internal)
     --aab         path to .aab file  (default: src/mobile/android/app/build/outputs/bundle/release/app-release.aab)
     --release-notes  plain-text release notes (optional)
-    --key         path to service account JSON key  (default: /home/sas/myraaigw-c2c6cbba0403.json)
+    --key         path to service account JSON key  (REQUIRED — no default)
     --package     Android package name  (default: eu.myra.myraai)
     --dry-run     validate and upload but do not commit the edit
 
@@ -25,7 +25,6 @@ import sys
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEFAULTS = {
-    "key":     "/home/sas/myraaigw-c2c6cbba0403.json",
     "aab":     os.path.join(REPO_ROOT, "src/mobile/android/app/build/outputs/bundle/release/app-release.aab"),
     "package": "eu.myra.myraai",
     "track":   "internal",
@@ -108,7 +107,8 @@ def main():
     p.add_argument("--track",         default=DEFAULTS["track"],
                    choices=["internal", "alpha", "beta", "production"])
     p.add_argument("--aab",           default=DEFAULTS["aab"])
-    p.add_argument("--key",           default=DEFAULTS["key"])
+    p.add_argument("--key",           required=True,
+                   help="Path to Google Play service account JSON")
     p.add_argument("--package",       default=DEFAULTS["package"])
     p.add_argument("--release-notes", default=None)
     p.add_argument("--dry-run",       action="store_true")

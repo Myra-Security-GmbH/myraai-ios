@@ -539,6 +539,49 @@ Config files used in Docker (selectable via build args):
 
 ---
 
+## Mobile releases
+
+Mobile builds run entirely in GitLab CI — no local scripts, no tokens on developer
+machines. All secrets live as masked + protected CI/CD variables on the
+`ai-gateway/ai-gateway-root` project.
+
+### Triggers
+
+| Action | Trigger | Result |
+|---|---|---|
+| Push to `master` with iOS source changes | auto | iOS app uploaded to App Store Connect, submitted to Beta App Review |
+| Push to `master` with Android source changes | auto | AAB uploaded to Play Store **internal** track |
+| Tag `vMAJOR.MINOR.PATCH` | auto | Both platforms re-released; Android AAB also lands on Play Store **production** track |
+
+### Pipeline stages
+
+| Stage | Job | What it does |
+|---|---|---|
+| `mobile` | `ios:mirror` | Push `src/mobile/ios/` to public GitHub mirror |
+| `mobile` | `ios:build` | Trigger Codemagic build via API; poll until finished |
+| `mobile` | `android:build` | Reconstruct keystore from CI variable; sign + bundle release AAB + APK |
+| `release` | `ios:submit-for-review` | Wait for VALID build in ASC; set whatsNew; POST `betaAppReviewSubmissions` |
+| `release` | `android:publish:internal` | Upload AAB to Play **internal** track (master only) |
+| `release` | `android:publish:production` | Upload AAB to Play **production** track (tags only) |
+
+### CI/CD variables required
+
+iOS:
+- `IOS_MIRROR_GITHUB_PAT` — GitHub PAT with repo write to `Myra-Security-GmbH/myraai-ios`
+- `CODEMAGIC_API_TOKEN`, `CODEMAGIC_APP_ID`
+- `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_PRIVATE_KEY` (file-type — the .p8 contents)
+
+Android:
+- `ANDROID_PLAY_SA_JSON` (file-type — Google Play service account JSON)
+- `ANDROID_KEYSTORE_BASE64` — `base64 -w0 release.jks`
+- `ANDROID_KEYSTORE_PASS`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASS`
+
+There are **no local secret-bearing scripts**. Don't recreate `publish-android-app.sh`,
+`push_ios_mirror.sh`, `trigger_codemagic_build.sh`, or `apple_app_store_manager.sh` —
+their previous versions hardcoded tokens and were retired.
+
+---
+
 ## Git hygiene
 
 **Never commit:**

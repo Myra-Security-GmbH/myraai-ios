@@ -2,17 +2,41 @@
 #
 # Stages:
 #   build   — compile the React frontend (all branches + tags)
+#   mobile  — push iOS to GitHub mirror; build & sign Android
 #   package — build the Docker image and push on master / git tags
+#   release — publish iOS to TestFlight, Android to Play Store
 #
-# Required CI/CD variables  (Settings → CI/CD → Variables):
-#   REGISTRY_USER   username for int-docker-reg.myra.security
-#   REGISTRY_PASS   password / token  ← mark as "Masked"
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#
+#   Server image:
+#     REGISTRY_USER             username for int-docker-reg.myra.security
+#     REGISTRY_PASS             password / token  ← Masked
+#
+#   iOS release:
+#     IOS_MIRROR_GITHUB_PAT     GitHub PAT with repo write to myraai-ios  ← Masked
+#     CODEMAGIC_API_TOKEN       Codemagic personal access token  ← Masked
+#     CODEMAGIC_APP_ID          Codemagic app ID
+#     ASC_ISSUER_ID             App Store Connect API issuer ID
+#     ASC_KEY_ID                App Store Connect API key ID  ← Masked
+#     ASC_PRIVATE_KEY           ASC API .p8 contents  ← File-type variable
+#
+#   Android release:
+#     ANDROID_PLAY_SA_JSON      Google Play service account JSON  ← File-type variable
+#     ANDROID_KEYSTORE_BASE64   base64-encoded release.jks
+#     ANDROID_KEYSTORE_PASS     keystore password  ← Masked
+#     ANDROID_KEY_ALIAS         signing key alias
+#     ANDROID_KEY_PASS          key password  ← Masked
 #
 # Optional variable overrides (add in CI/CD → Variables to customise):
 #   VITE_ADMIN_URL      default: https://ai-api-admin.myra.eu/admin/v1
 #   VITE_AUTH_URL       default: https://ai-api-admin.myra.eu/admin/auth
 #   VITE_GATEWAY_URL    default: https://ai-api.myra.eu
 #   VITE_DOCS_URL       default: https://ai-docs.myra.eu
+#
+# Mobile release flow (zero manual steps):
+#   - Push to master with iOS changes  → iOS app is uploaded + submitted to TestFlight Beta App Review
+#   - Push to master with Android changes → AAB built + uploaded to Play Store internal track
+#   - Tag v*.*.*                       → AAB uploaded to Play Store production track
 #
 # On the production server, to deploy a new image:
 #   docker compose pull && docker compose up -d
@@ -25,7 +49,9 @@ variables:
 
 stages:
   - build
+  - mobile
   - package
+  - release
 
 # ── Build the React frontend ─────────────────────────────────────────────────
 build:frontend:
@@ -98,3 +124,238 @@ build:docker:
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_COMMIT_TAG
+
+# ── iOS: push src/mobile/ios/ to public GitHub mirror (Codemagic clones from there) ──
+ios:mirror:
+  stage: mobile
+  image: alpine/git
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - src/mobile/ios/**/*
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  script:
+    - apk add --no-cache bash
+    - |
+      TMP=$(mktemp -d)
+      git init "$TMP"
+      git -C "$TMP" checkout -b main
+      cp -r src/mobile/ios/. "$TMP/"
+      git -C "$TMP" config user.email "ci@myra.security"
+      git -C "$TMP" config user.name  "GitLab CI"
+      git -C "$TMP" add .
+      git -C "$TMP" commit -m "sync: $CI_COMMIT_SHORT_SHA — $CI_COMMIT_TITLE"
+      git -C "$TMP" push --force \
+        "https://${IOS_MIRROR_GITHUB_PAT}@github.com/Myra-Security-GmbH/myraai-ios.git" main
+
+# ── iOS: trigger Codemagic build (Codemagic clones the GitHub mirror, archives, uploads) ──
+ios:build:
+  stage: mobile
+  image: python:3.12-alpine
+  needs:
+    - job: ios:mirror
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - src/mobile/ios/**/*
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  script:
+    - apk add --no-cache curl
+    - |
+      RESP=$(curl -sS -X POST https://api.codemagic.io/builds \
+        -H "x-auth-token: $CODEMAGIC_API_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"appId\": \"$CODEMAGIC_APP_ID\", \"workflowId\": \"ios-app-store\", \"branch\": \"main\"}")
+      BUILD_ID=$(echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('buildId') or d.get('build',{}).get('_id',''))")
+      [ -z "$BUILD_ID" ] && echo "FAIL: $RESP" && exit 1
+      echo "Codemagic build: https://codemagic.io/app/$CODEMAGIC_APP_ID/build/$BUILD_ID"
+      echo "$BUILD_ID" > codemagic_build_id.txt
+    # Poll until Codemagic is done — finished = uploaded + processed in App Store Connect.
+    - |
+      BUILD_ID=$(cat codemagic_build_id.txt)
+      while :; do
+        STATUS=$(curl -sS -H "x-auth-token: $CODEMAGIC_API_TOKEN" \
+          "https://api.codemagic.io/builds/$BUILD_ID" |
+          python3 -c "import json,sys; print(json.load(sys.stdin).get('build',{}).get('status','unknown'))")
+        echo "$(date +%H:%M:%S)  status=$STATUS"
+        case "$STATUS" in
+          finished) exit 0 ;;
+          failed|canceled|timeout) exit 1 ;;
+        esac
+        sleep 30
+      done
+  artifacts:
+    paths:
+      - codemagic_build_id.txt
+    expire_in: 1 day
+
+# ── iOS: submit the new build to Beta App Review (zero clicks, zero waiting on humans) ──
+ios:submit-for-review:
+  stage: release
+  image: python:3.12-alpine
+  needs:
+    - job: ios:build
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - src/mobile/ios/**/*
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  script:
+    - pip install --quiet cryptography
+    - |
+      python3 <<'PYEOF'
+      import os, time, base64, json
+      from urllib.request import urlopen, Request
+      from urllib.error import HTTPError
+      from cryptography.hazmat.primitives.serialization import load_pem_private_key
+      from cryptography.hazmat.primitives.asymmetric.ec import ECDSA
+      from cryptography.hazmat.primitives.hashes import SHA256
+      from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
+      issuer = os.environ["ASC_ISSUER_ID"]
+      key_id = os.environ["ASC_KEY_ID"]
+      with open(os.environ["ASC_PRIVATE_KEY"], "rb") as f:
+          priv_pem = f.read()
+
+      now = int(time.time())
+      header  = base64.urlsafe_b64encode(json.dumps({"alg":"ES256","kid":key_id,"typ":"JWT"}).encode()).rstrip(b"=")
+      payload = base64.urlsafe_b64encode(json.dumps({"iss":issuer,"iat":now,"exp":now+1200,"aud":"appstoreconnect-v1"}).encode()).rstrip(b"=")
+      msg = header + b"." + payload
+      key = load_pem_private_key(priv_pem.strip(), password=None)
+      sig = key.sign(msg, ECDSA(SHA256()))
+      r, s = decode_dss_signature(sig)
+      raw_sig = r.to_bytes(32,"big") + s.to_bytes(32,"big")
+      token = (msg + b"." + base64.urlsafe_b64encode(raw_sig).rstrip(b"=")).decode()
+
+      BASE = "https://api.appstoreconnect.apple.com"
+      hdrs = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+      def call(method, path, body=None):
+          data = json.dumps(body).encode() if body else None
+          req = Request(f"{BASE}{path}", data=data, headers=hdrs, method=method)
+          try:
+              with urlopen(req) as r:
+                  c = r.read()
+                  return json.loads(c) if c else {}
+          except HTTPError as e:
+              print(f"  HTTP {e.code}: {e.read().decode()}")
+              return None
+
+      APP_ID = "6764008556"
+
+      # Wait until ASC has a VALID build (Codemagic upload + processing finished moments ago)
+      build_id = None
+      for attempt in range(20):
+          builds = call("GET", f"/v1/apps/{APP_ID}/builds?limit=10")
+          valid = [b for b in builds.get("data", []) if b["attributes"].get("processingState") == "VALID"]
+          if valid:
+              build_id = valid[0]["id"]
+              break
+          print(f"  waiting for VALID build (attempt {attempt+1}/20)…")
+          time.sleep(30)
+      if not build_id:
+          raise SystemExit("FAIL: no VALID build appeared in App Store Connect")
+
+      print(f"Build: {build_id}")
+
+      # whatsNew on the build's beta localization
+      bbl = call("GET", f"/v1/builds/{build_id}/betaBuildLocalizations")
+      whats_new = "Initial beta release. Please test the core chat functionality and report any issues."
+      if bbl and bbl.get("data"):
+          bbl_id = bbl["data"][0]["id"]
+          call("PATCH", f"/v1/betaBuildLocalizations/{bbl_id}", {
+              "data": {"type": "betaBuildLocalizations", "id": bbl_id,
+                       "attributes": {"whatsNew": whats_new}}
+          })
+      else:
+          call("POST", "/v1/betaBuildLocalizations", {
+              "data": {"type": "betaBuildLocalizations",
+                       "attributes": {"locale": "en-GB", "whatsNew": whats_new},
+                       "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}
+          })
+
+      # Submit to Beta App Review
+      r = call("POST", "/v1/betaAppReviewSubmissions", {
+          "data": {"type": "betaAppReviewSubmissions",
+                   "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}
+      })
+      if not r:
+          raise SystemExit("FAIL: betaAppReviewSubmissions POST failed")
+      print(f"OK: submitted — betaReviewState: {r['data']['attributes']['betaReviewState']}")
+      PYEOF
+
+# ── Android: build and sign release AAB + APK ────────────────────────────────
+android:build:
+  stage: mobile
+  image: gradle:8.4-jdk17
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - src/mobile/android/**/*
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  variables:
+    ANDROID_HOME: /opt/android-sdk
+    ANDROID_SDK_ROOT: /opt/android-sdk
+  before_script:
+    # Install Android SDK command-line tools + platform 35
+    - apt-get update -qq && apt-get install -y -qq curl unzip
+    - mkdir -p $ANDROID_HOME/cmdline-tools
+    - curl -sSL -o /tmp/cli.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+    - unzip -q /tmp/cli.zip -d $ANDROID_HOME/cmdline-tools && mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+    - export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+    - yes | sdkmanager --licenses >/dev/null 2>&1 || true
+    - sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" >/dev/null
+    # Reconstruct keystore from base64-encoded CI variable
+    - echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/release.jks
+    # Build local.properties for gradle
+    - |
+      cat > src/mobile/android/local.properties <<EOF
+      sdk.dir=$ANDROID_HOME
+      RELEASE_STORE_FILE=/tmp/release.jks
+      RELEASE_KEY_ALIAS=$ANDROID_KEY_ALIAS
+      RELEASE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASS
+      RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASS
+      EOF
+  script:
+    - cd src/mobile/android
+    - chmod +x gradlew
+    - ./gradlew --no-daemon bundleRelease assembleRelease
+  artifacts:
+    paths:
+      - src/mobile/android/app/build/outputs/bundle/release/app-release.aab
+      - src/mobile/android/app/build/outputs/apk/release/app-release.apk
+    expire_in: 1 week
+
+# ── Android: publish AAB to Play Store ───────────────────────────────────────
+.android-publish-base:
+  stage: release
+  image: python:3.12-alpine
+  needs:
+    - job: android:build
+      artifacts: true
+  before_script:
+    - pip install --quiet google-auth google-api-python-client
+  script:
+    - |
+      python3 scripts/android_publish.py \
+        --track "$PLAY_TRACK" \
+        --aab src/mobile/android/app/build/outputs/bundle/release/app-release.aab \
+        --key "$ANDROID_PLAY_SA_JSON" \
+        --release-notes "$CI_COMMIT_TITLE"
+
+android:publish:internal:
+  extends: .android-publish-base
+  variables:
+    PLAY_TRACK: internal
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - src/mobile/android/**/*
+
+android:publish:production:
+  extends: .android-publish-base
+  variables:
+    PLAY_TRACK: production
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
