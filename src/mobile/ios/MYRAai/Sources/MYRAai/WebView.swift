@@ -101,7 +101,7 @@ struct WebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
-    private let jsShim = """
+    private var jsShim: String { """
     (function() {
         window.Android = {
             hapticFeedback: function(type) {
@@ -147,7 +147,7 @@ struct WebView: UIViewRepresentable {
             { childList: true, subtree: true });
         injectPrivacyLink();
     })();
-    """
+    """ }
 
     private var filePickerAvailable: Bool {
         if #available(iOS 18.4, *) { return true }
