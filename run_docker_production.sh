@@ -54,11 +54,12 @@ fi
 
 # ── Build frontend (uses private @myraui packages — must run on host) ─────────
 # ── Build Android APK first — copy to public so it's bundled into the image ──
-log_cmd bash -c "cd '$(dirname "$0")/src/mobile/android' && \
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+log_cmd bash -c "cd '$REPO_ROOT/src/mobile/android' && \
   ./gradlew assembleRelease && \
   cp app/build/outputs/apk/release/app-release.apk \
-     '$(dirname "$0")/frontend/public/android.apk'"
-log_cmd bash -c "cd '$(dirname "$0")/frontend' && \
+     '$REPO_ROOT/frontend/public/android.apk'"
+log_cmd bash -c "cd '$REPO_ROOT/frontend' && \
   VITE_ADMIN_URL='https://ai-api-admin.myra.eu/admin/v1' \
   VITE_AUTH_URL='https://ai-api-admin.myra.eu/admin/auth' \
   VITE_GATEWAY_URL='https://ai-api.myra.eu' \
