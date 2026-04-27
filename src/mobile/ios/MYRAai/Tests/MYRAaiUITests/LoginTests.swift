@@ -2,8 +2,8 @@ import XCTest
 
 /// End-to-end login smoke test.
 ///
-/// Validates the entire user-visible product path: form rendering,
-/// /otp/request, /otp/verify, session creation, post-login navigation.
+/// Validates the entire user-visible product path: form rendering, /otp/request,
+/// /otp/verify, session creation, post-login navigation.
 ///
 /// Credentials are NEVER hardcoded; they come in via environment variables that
 /// Codemagic injects from its "test" CI/CD variable group at `xcodebuild test`
