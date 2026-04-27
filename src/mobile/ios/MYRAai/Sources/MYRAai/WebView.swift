@@ -1,23 +1,58 @@
 import WebKit
 import SwiftUI
+import Network
 
 // MARK: - State
 
+@MainActor
 final class WebViewState: ObservableObject {
     @Published var isLoaded = false
     @Published var showOffline = false
 
     weak var webView: WKWebView?
+    private var networkMonitor: NWPathMonitor?
+    private var wasOffline = false
+
+    func startNetworkMonitor() {
+        let monitor = NWPathMonitor()
+        networkMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            Task { @MainActor in
+                if path.status == .satisfied && self.wasOffline {
+                    self.wasOffline = false
+                    self.reload()
+                } else if path.status != .satisfied {
+                    self.wasOffline = true
+                }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "network.monitor"))
+    }
 
     func reload() {
         showOffline = false
         isLoaded = false
-        webView?.reload()
+        if let webView {
+            webView.reload()
+        } else {
+            webView?.load(URLRequest(url: URL(string: "https://ai.myra.eu")!))
+        }
     }
 
-    func load() {
-        let url = URL(string: "https://ai.myra.eu")!
-        webView?.load(URLRequest(url: url))
+    deinit {
+        networkMonitor?.cancel()
+    }
+}
+
+// MARK: - Weak proxy to break WKScriptMessageHandler retain cycle
+
+private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+    init(_ delegate: WKScriptMessageHandler) { self.delegate = delegate }
+    func userContentController(_ controller: WKUserContentController,
+                                didReceive message: WKScriptMessage) {
+        delegate?.userContentController(controller, didReceive: message)
     }
 }
 
@@ -34,18 +69,20 @@ struct WebView: UIViewRepresentable {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.defaultWebpagePreferences.preferredContentMode = .mobile
+        // Appends to default UA — no async required, no race condition
+        config.applicationNameForUserAgent = "MYRAai-iOS/1.0"
 
-        // Register message handlers for JS bridge
-        let bridge = context.coordinator.bridge
+        // Register message handlers via weak proxy to break retain cycle
+        let proxy = WeakScriptMessageHandler(context.coordinator.bridge)
         for handler in NativeBridge.handlerNames {
-            config.userContentController.add(bridge, name: handler)
+            config.userContentController.add(proxy, name: handler)
         }
 
-        // Inject window.Android shim + long-press suppression at document start
+        // Inject window.Android shim + long-press suppression — main frame only
         let shim = WKUserScript(
             source: jsShim,
             injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
+            forMainFrameOnly: true  // must be true: prevents injection into iframes
         )
         config.userContentController.addUserScript(shim)
 
@@ -58,25 +95,18 @@ struct WebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.allowsBackForwardNavigationGestures = false
 
-        // Custom User-Agent
-        webView.evaluateJavaScript("navigator.userAgent") { result, _ in
-            if let ua = result as? String {
-                webView.customUserAgent = "\(ua) MYRAai-iOS/1.0"
-            }
-        }
-
         state.webView = webView
+        state.startNetworkMonitor()
         webView.load(URLRequest(url: URL(string: "https://ai.myra.eu")!))
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
-    // MARK: - JS shim injected into every page
+    // MARK: - JS shim injected into every page (main frame only)
 
     private let jsShim = """
     (function() {
-        // Map window.Android to iOS WKScriptMessageHandler so web app needs no changes
         window.Android = {
             hapticFeedback: function(type) {
                 window.webkit.messageHandlers.hapticFeedback.postMessage(type);
@@ -91,7 +121,6 @@ struct WebView: UIViewRepresentable {
                 window.webkit.messageHandlers.notifyScrollTop.postMessage(scrolled);
             }
         };
-        // Suppress long-press text selection on non-input elements
         var style = document.createElement('style');
         style.textContent = '* { -webkit-touch-callout: none; } input, textarea, [contenteditable] { -webkit-touch-callout: default; user-select: text; }';
         document.head.appendChild(style);
@@ -99,19 +128,22 @@ struct WebView: UIViewRepresentable {
     """
 }
 
-// MARK: - Coordinator (Navigation + UI delegate)
+// MARK: - Coordinator
 
 extension WebView {
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate,
+                              UIDocumentPickerDelegate {
         let state: WebViewState
         let bridge: NativeBridge
+        private var filePickerCompletion: (([URL]?) -> Void)?
 
         init(state: WebViewState) {
             self.state = state
             self.bridge = NativeBridge()
         }
 
-        // External link interception
+        // MARK: External link interception
+
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -129,50 +161,64 @@ extension WebView {
             }
         }
 
-        // Page loaded — dismiss launch overlay
+        // MARK: Page lifecycle
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.state.isLoaded = true
                 self.state.showOffline = false
             }
         }
 
-        // Offline / error
         func webView(_ webView: WKWebView,
                      didFailProvisionalNavigation navigation: WKNavigation!,
                      withError error: Error) {
             let nsError = error as NSError
-            // Ignore cancelled navigations (e.g. redirects)
             guard nsError.code != NSURLErrorCancelled else { return }
-            DispatchQueue.main.async {
-                self.state.showOffline = true
-            }
+            Task { @MainActor in self.state.showOffline = true }
         }
 
         func webView(_ webView: WKWebView,
                      didFail navigation: WKNavigation!,
                      withError error: Error) {
-            DispatchQueue.main.async {
-                self.state.showOffline = true
-            }
+            Task { @MainActor in self.state.showOffline = true }
         }
 
-        // File picker
+        // MARK: File picker (WKUIDelegate)
+        // UIDocumentPickerViewController uses delegate pattern — no completionHandler property
+
         func webView(_ webView: WKWebView,
                      runOpenPanelWith parameters: WKOpenPanelParameters,
                      initiatedByFrame frame: WKFrameInfo,
                      completionHandler: @escaping ([URL]?) -> Void) {
-            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data, .image, .pdf, .text])
+            filePickerCompletion = completionHandler
+            let picker = UIDocumentPickerViewController(
+                forOpeningContentTypes: [.data, .image, .pdf, .text]
+            )
             picker.allowsMultipleSelection = false
-            picker.completionHandler = completionHandler
-            if let root = UIApplication.shared.connectedScenes
+            picker.delegate = self
+            guard let root = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene })
                 .flatMap({ $0.windows })
-                .first(where: { $0.isKeyWindow })?.rootViewController {
-                root.present(picker, animated: true)
-            } else {
+                .first(where: { $0.isKeyWindow })?.rootViewController else {
                 completionHandler(nil)
+                filePickerCompletion = nil
+                return
             }
+            root.present(picker, animated: true)
+        }
+
+        // MARK: UIDocumentPickerDelegate
+
+        func documentPicker(_ controller: UIDocumentPickerViewController,
+                            didPickDocumentsAt urls: [URL]) {
+            filePickerCompletion?(urls)
+            filePickerCompletion = nil
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            filePickerCompletion?(nil)
+            filePickerCompletion = nil
         }
     }
 }

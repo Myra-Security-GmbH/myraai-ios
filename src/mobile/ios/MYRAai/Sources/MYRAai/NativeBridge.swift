@@ -1,6 +1,5 @@
 import WebKit
 import UIKit
-import CoreHaptics
 
 // MARK: - Native Bridge (WKScriptMessageHandler)
 
@@ -20,7 +19,6 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
                 UIPasteboard.general.string = text
             }
         case "notifyScrollTop":
-            // Reserved for future use on iOS (no pull-to-refresh to gate)
             break
         default:
             break
@@ -54,13 +52,13 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             items.append(url)
         }
         DispatchQueue.main.async {
-            let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
-            if let root = UIApplication.shared.connectedScenes
+            let activityVC = UIActivityViewController(activityItems: items,
+                                                      applicationActivities: nil)
+            guard let root = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene })
                 .flatMap({ $0.windows })
-                .first(where: { $0.isKeyWindow })?.rootViewController {
-                root.present(vc, animated: true)
-            }
+                .first(where: { $0.isKeyWindow })?.rootViewController else { return }
+            root.present(activityVC, animated: true)
         }
     }
 }
