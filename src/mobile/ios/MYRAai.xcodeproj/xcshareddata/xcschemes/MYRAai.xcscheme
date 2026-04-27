@@ -6,8 +6,20 @@
         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A6000001" BuildableName="MYRAai.app" BlueprintName="MYRAai" ReferencedContainer="container:MYRAai.xcodeproj">
         </BuildableReference>
       </BuildActionEntry>
+      <BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="YES">
+        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="B6000001" BuildableName="MYRAaiUITests.xctest" BlueprintName="MYRAaiUITests" ReferencedContainer="container:MYRAai.xcodeproj">
+        </BuildableReference>
+      </BuildActionEntry>
     </BuildActionEntries>
   </BuildAction>
+  <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES">
+    <Testables>
+      <TestableReference skipped="NO">
+        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="B6000001" BuildableName="MYRAaiUITests.xctest" BlueprintName="MYRAaiUITests" ReferencedContainer="container:MYRAai.xcodeproj">
+        </BuildableReference>
+      </TestableReference>
+    </Testables>
+  </TestAction>
   <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES">
     <BuildableProductRunnable runnableDebuggingMode="0">
       <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A6000001" BuildableName="MYRAai.app" BlueprintName="MYRAai" ReferencedContainer="container:MYRAai.xcodeproj">

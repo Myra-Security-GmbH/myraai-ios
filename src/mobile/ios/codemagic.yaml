@@ -9,6 +9,8 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: eu.myra.myraai
+      groups:
+        - test  # provides TEST_LOGIN_EMAIL and TEST_LOGIN_OTP for UI tests; never logged in build output
       vars:
         XCODE_PROJECT: "MYRAai.xcodeproj"
         XCODE_SCHEME: "MYRAai"
@@ -20,6 +22,20 @@ workflows:
       - name: Verify project readable
         script: |
           xcodebuild -list -project "$CM_BUILD_DIR/$XCODE_PROJECT"
+      - name: Smoke test in iOS Simulator
+        script: |
+          set -e
+          # Picks the newest available iPhone simulator name to avoid hardcoding
+          # a specific iPhone model that may not exist on this Mac mini.
+          SIM_NAME=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone [0-9]+ /{print $0; exit}' | sed 's/ *(.*//;s/^ *//')
+          [ -z "$SIM_NAME" ] && SIM_NAME="iPhone 15"
+          echo "Using simulator: $SIM_NAME"
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "platform=iOS Simulator,name=$SIM_NAME,OS=latest" \
+            -only-testing:MYRAaiUITests \
+            CODE_SIGNING_ALLOWED=NO
       - name: Archive
         script: |
           xcodebuild archive \
