@@ -109,8 +109,7 @@ final class ScreenshotTests: XCTestCase {
 
         // Open sidebar and navigate to Chat.
         // WKWebView nav links are found via accessibility but report isHittable=false
-        // due to hit-test clipping in the web layer.  Use coordinate(withNormalizedOffset:)
-        // to synthesise the tap directly at the element centre, bypassing the check.
+        // due to hit-test clipping in the web layer.
         navBtn.tap()
         let chatLink = webView.links
             .matching(NSPredicate(format: "label == 'Chat'"))
@@ -121,7 +120,12 @@ final class ScreenshotTests: XCTestCase {
         _ = XCTWaiter.wait(for: [expectation(description: "sidebar-paint")], timeout: 1)
         capture("03_sidebar", to: creds.outputDir)
 
-        chatLink.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // chatLink bounds are text-only (~33×18 at x=0); the sidebar panel is 240pt wide.
+        // Tap at x=120 (sidebar horizontal centre) to reliably trigger React Router navigation.
+        let chatLinkY = chatLink.frame.midY
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            .withOffset(CGVector(dx: 120, dy: chatLinkY))
+            .tap()
 
         // 2 — Chat screen
         XCTAssertTrue(navBtn.waitForExistence(timeout: 15), "Chat page did not load")
