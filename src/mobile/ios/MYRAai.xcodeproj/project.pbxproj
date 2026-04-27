@@ -13,6 +13,7 @@
 		A1000004 /* NativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004; };
 		A1000005 /* OfflineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000005; };
 		A1000006 /* LaunchOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006; };
+		A1000009 /* UIApplication+KeyWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009; };
 		A1000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000007; };
 		A1000008 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A2000008; };
 /* End PBXBuildFile section */
@@ -24,6 +25,7 @@
 		A2000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeBridge.swift; path = MYRAai/Sources/MYRAai/NativeBridge.swift; sourceTree = SOURCE_ROOT; };
 		A2000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OfflineView.swift; path = MYRAai/Sources/MYRAai/OfflineView.swift; sourceTree = SOURCE_ROOT; };
 		A2000006 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LaunchOverlay.swift; path = MYRAai/Sources/MYRAai/LaunchOverlay.swift; sourceTree = SOURCE_ROOT; };
+		A2000009 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UIApplication+KeyWindow.swift; path = MYRAai/Sources/MYRAai/UIApplication+KeyWindow.swift; sourceTree = SOURCE_ROOT; };
 		A2000007 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = MYRAai/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		A2000008 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = MYRAai/Resources/PrivacyInfo.xcprivacy; sourceTree = SOURCE_ROOT; };
 		A2000009 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = MYRAai/Resources/Info.plist; sourceTree = SOURCE_ROOT; };

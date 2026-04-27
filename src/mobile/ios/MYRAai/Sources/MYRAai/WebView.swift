@@ -77,9 +77,7 @@ struct WebView: UIViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-        // Disable rubber-band bounce — reveals empty navy background, wrong for a chat app
         webView.scrollView.bounces = false
-        // Allow drag-to-dismiss keyboard — standard iOS chat gesture
         webView.scrollView.keyboardDismissMode = .interactive
         webView.backgroundColor = UIColor(red: 13/255, green: 27/255, blue: 42/255, alpha: 1)
         webView.isOpaque = false
@@ -142,8 +140,8 @@ extension WebView {
             filePickerCompletion?(nil)
         }
 
-        // MARK: Keyboard — handled entirely in UIKit to match keyboard animation curve
-        // and avoid the double-scroll that SwiftUI view-level padding causes.
+        // MARK: Keyboard — entirely in UIKit to match system animation curve precisely
+        // and avoid SwiftUI layout shifts that cause double-scroll in the chat input.
 
         func setupKeyboardObservers() {
             NotificationCenter.default.addObserver(
@@ -160,15 +158,14 @@ extension WebView {
                   let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double,
                   let curveInt = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int
             else { return }
-            // Subtract the bottom safe area so we don't over-push on devices with home indicator
             let safeBottom = webView.safeAreaInsets.bottom
             let inset = max(0, frame.height - safeBottom)
             UIView.animate(
                 withDuration: duration, delay: 0,
                 options: UIView.AnimationOptions(rawValue: UInt(curveInt << 16))
-            ) {
-                webView.scrollView.contentInset.bottom = inset
-                webView.scrollView.verticalScrollIndicatorInsets.bottom = inset
+            ) { [weak webView] in
+                webView?.scrollView.contentInset.bottom = inset
+                webView?.scrollView.verticalScrollIndicatorInsets.bottom = inset
             }
         }
 
@@ -180,9 +177,9 @@ extension WebView {
             UIView.animate(
                 withDuration: duration, delay: 0,
                 options: UIView.AnimationOptions(rawValue: UInt(curveInt << 16))
-            ) {
-                webView.scrollView.contentInset.bottom = 0
-                webView.scrollView.verticalScrollIndicatorInsets.bottom = 0
+            ) { [weak webView] in
+                webView?.scrollView.contentInset.bottom = 0
+                webView?.scrollView.verticalScrollIndicatorInsets.bottom = 0
             }
         }
 
@@ -195,8 +192,8 @@ extension WebView {
                   let host = url.host else {
                 decisionHandler(.allow); return
             }
-            let owned = ["ai.myra.eu", "ai-api.myra.eu", "ai-api-admin.myra.eu"]
-            if owned.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) {
+            let ownedHosts = ["ai.myra.eu", "ai-api.myra.eu", "ai-api-admin.myra.eu"]
+            if ownedHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) {
                 decisionHandler(.allow)
             } else {
                 UIApplication.shared.open(url)
@@ -225,7 +222,7 @@ extension WebView {
             Task { @MainActor in self.state.showOffline = true }
         }
 
-        // MARK: File picker — iOS 16.4+
+        // MARK: File picker — iOS 16.4+ (WKUIDelegate)
 
         @available(iOS 16.4, *)
         func webView(_ webView: WKWebView,
@@ -237,10 +234,9 @@ extension WebView {
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: types)
             picker.allowsMultipleSelection = false
             picker.delegate = self
-            guard let root = keyWindow()?.rootViewController else {
+            guard let root = UIApplication.shared.keyWindow?.rootViewController else {
                 completionHandler(nil); filePickerCompletion = nil; return
             }
-            // iPad requires popover anchor
             if let popover = picker.popoverPresentationController {
                 popover.sourceView = root.view
                 popover.sourceRect = CGRect(x: root.view.bounds.midX,
@@ -259,15 +255,6 @@ extension WebView {
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
             filePickerCompletion?(nil); filePickerCompletion = nil
-        }
-
-        // MARK: Helpers
-
-        private func keyWindow() -> UIWindow? {
-            UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .flatMap({ $0.windows })
-                .first(where: { $0.isKeyWindow })
         }
     }
 }

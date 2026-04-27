@@ -25,12 +25,12 @@ struct ContentView: View {
         .animation(.easeOut(duration: 0.3), value: webViewState.isLoaded)
         .animation(.easeOut(duration: 0.2), value: webViewState.showOffline)
         .preferredColorScheme(nil)
-        .onChange(of: scenePhase) { phase in
-            switch phase {
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
             case .background:
                 backgroundedAt = Date()
             case .active:
-                if let bg = backgroundedAt, Date().timeIntervalSince(bg) > 30 * 60 {
+                if let date = backgroundedAt, Date().timeIntervalSince(date) > 30 * 60 {
                     webViewState.reload()
                 }
                 backgroundedAt = nil

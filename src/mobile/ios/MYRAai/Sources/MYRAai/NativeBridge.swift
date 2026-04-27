@@ -10,18 +10,12 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
     func userContentController(_ userContentController: WKUserContentController,
                                 didReceive message: WKScriptMessage) {
         switch message.name {
-        case "hapticFeedback":
-            handleHaptic(message.body as? String ?? "light")
-        case "share":
-            handleShare(message.body as? [String: Any] ?? [:])
+        case "hapticFeedback": handleHaptic(message.body as? String ?? "light")
+        case "share":          handleShare(message.body as? [String: Any] ?? [:])
         case "copyToClipboard":
-            if let text = message.body as? String {
-                UIPasteboard.general.string = text
-            }
-        case "notifyScrollTop":
-            break
-        default:
-            break
+            if let text = message.body as? String { UIPasteboard.general.string = text }
+        case "notifyScrollTop": break
+        default: break
         }
     }
 
@@ -51,7 +45,6 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
     private func handleShare(_ body: [String: Any]) {
         let text = body["text"] as? String ?? ""
         let urlStr = body["url"] as? String ?? ""
-        // Guard against empty share — would show a confusing empty sheet
         guard !text.isEmpty || !urlStr.isEmpty else { return }
         var items: [Any] = []
         if !text.isEmpty { items.append(text) }
@@ -59,23 +52,14 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         Task { @MainActor in
             let activityVC = UIActivityViewController(activityItems: items,
                                                       applicationActivities: nil)
-            guard let root = keyWindow()?.rootViewController else { return }
-            // iPad requires a popover source — without this it crashes on iPad
+            guard let root = UIApplication.shared.keyWindow?.rootViewController else { return }
             if let popover = activityVC.popoverPresentationController {
                 popover.sourceView = root.view
                 popover.sourceRect = CGRect(x: root.view.bounds.midX,
-                                            y: root.view.bounds.midY,
-                                            width: 1, height: 1)
+                                            y: root.view.bounds.midY, width: 1, height: 1)
                 popover.permittedArrowDirections = []
             }
             root.present(activityVC, animated: true)
         }
-    }
-
-    private func keyWindow() -> UIWindow? {
-        UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .flatMap({ $0.windows })
-            .first(where: { $0.isKeyWindow })
     }
 }
