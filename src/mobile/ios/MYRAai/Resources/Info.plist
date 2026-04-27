@@ -48,11 +48,6 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>MYRA AI uses Face ID to lock the app after inactivity.</string>
-	<!-- Required when file picker allows image selection -->
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>MYRA AI needs access to your photos to attach files to chat messages.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>MYRA AI needs camera access to take photos for chat attachments.</string>
 	<!-- Light status bar text — required on dark navy background -->
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>

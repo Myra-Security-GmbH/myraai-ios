@@ -4,11 +4,13 @@
 	"objectVersion": "56",
 	"objects": {
 		"B1000001": {"isa": "PBXBuildFile", "fileRef": "B2000001"},
+		"B1000002": {"isa": "PBXBuildFile", "fileRef": "B2000002"},
 		"B2000001": {"isa": "PBXFileReference", "lastKnownFileType": "sourcecode.swift", "name": "LoginTests.swift", "path": "MYRAai/Tests/MYRAaiUITests/LoginTests.swift", "sourceTree": "SOURCE_ROOT"},
+		"B2000002": {"isa": "PBXFileReference", "lastKnownFileType": "sourcecode.swift", "name": "ScreenshotTests.swift", "path": "MYRAai/Tests/MYRAaiUITests/ScreenshotTests.swift", "sourceTree": "SOURCE_ROOT"},
 		"B3000001": {"isa": "PBXFileReference", "explicitFileType": "wrapper.cfbundle", "includeInIndex": "0", "path": "MYRAaiUITests.xctest", "sourceTree": "BUILT_PRODUCTS_DIR"},
 		"B4000001": {"isa": "PBXFrameworksBuildPhase", "buildActionMask": "2147483647", "files": [], "runOnlyForDeploymentPostprocessing": "0"},
-		"B5000001": {"isa": "PBXGroup", "children": ["B2000001"], "name": "MYRAaiUITests", "path": "MYRAai/Tests/MYRAaiUITests", "sourceTree": "<group>"},
-		"B7000001": {"isa": "PBXSourcesBuildPhase", "buildActionMask": "2147483647", "files": ["B1000001"], "runOnlyForDeploymentPostprocessing": "0"},
+		"B5000001": {"isa": "PBXGroup", "children": ["B2000001", "B2000002"], "name": "MYRAaiUITests", "path": "MYRAai/Tests/MYRAaiUITests", "sourceTree": "<group>"},
+		"B7000001": {"isa": "PBXSourcesBuildPhase", "buildActionMask": "2147483647", "files": ["B1000001", "B1000002"], "runOnlyForDeploymentPostprocessing": "0"},
 		"B6000001": {
 			"isa": "PBXNativeTarget",
 			"buildConfigurationList": "B9000001",
