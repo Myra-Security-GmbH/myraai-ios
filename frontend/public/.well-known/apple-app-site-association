@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["A4C54HLPJ7.eu.myra.myraai"],
+        "components": [
+          { "/": "/*" }
+        ]
+      }
+    ]
+  }
+}
