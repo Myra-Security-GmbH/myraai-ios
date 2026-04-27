@@ -4,7 +4,7 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     integrations:
-      app_store_connect: codemagic   # App Store Connect API key configured in Codemagic UI
+      app_store_connect: codemagic
     environment:
       ios_signing:
         distribution_type: app_store
@@ -12,20 +12,32 @@ workflows:
       vars:
         XCODE_PROJECT: "MYRAai.xcodeproj"
         XCODE_SCHEME: "MYRAai"
-        BUNDLE_ID: "eu.myra.myraai"
+        DEVELOPMENT_TEAM: "A4C54HLPJ7"
+        SIGN_ID: "Apple Distribution: SASCHA SCHUMANN (A4C54HLPJ7)"
+        PROFILE_NAME: "MYRAai Distribution"
       xcode: latest
     scripts:
-      - name: Set build number from Codemagic build number
+      - name: Set build number
         script: |
           cd $CM_BUILD_DIR
           agvtool new-version -all $BUILD_NUMBER
-      - name: Set up code signing
-        script: xcode-project use-profiles
-      - name: Build IPA
+      - name: Archive
         script: |
-          xcode-project build-ipa \
-            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME"
+          xcodebuild archive \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -archivePath "$CM_BUILD_DIR/MYRAai.xcarchive" \
+            CODE_SIGN_STYLE=Manual \
+            "CODE_SIGN_IDENTITY=$SIGN_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM"
+      - name: Export IPA
+        script: |
+          xcodebuild -exportArchive \
+            -archivePath "$CM_BUILD_DIR/MYRAai.xcarchive" \
+            -exportPath "$CM_BUILD_DIR/build/ios/ipa" \
+            -exportOptionsPlist "$CM_BUILD_DIR/ExportOptions.plist"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log

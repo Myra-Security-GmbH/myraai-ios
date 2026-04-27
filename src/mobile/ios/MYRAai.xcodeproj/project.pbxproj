@@ -30,7 +30,7 @@
 		A2000009 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UIApplication+KeyWindow.swift; path = MYRAai/Sources/MYRAai/UIApplication+KeyWindow.swift; sourceTree = SOURCE_ROOT; };
 		A2000007 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = MYRAai/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		A2000008 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = MYRAai/Resources/PrivacyInfo.xcprivacy; sourceTree = SOURCE_ROOT; };
-		A2000009 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = MYRAai/Resources/Info.plist; sourceTree = SOURCE_ROOT; };
+		A200000F = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = MYRAai/Resources/Info.plist; sourceTree = SOURCE_ROOT; };
 		A200000B = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = MYRAai.entitlements; path = MYRAai/Resources/MYRAai.entitlements; sourceTree = SOURCE_ROOT; };
 		A300000A = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MYRAai.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A200000C = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = MYRAai/Resources/LaunchScreen.storyboard; sourceTree = SOURCE_ROOT; };
@@ -54,13 +54,13 @@
 		};
 		A5000001 = {
 			isa = PBXGroup;
-			children = (A2000001, A2000002, A2000003, A2000004, A2000005, A2000006);
+			children = (A2000001, A2000002, A2000003, A2000004, A2000005, A2000006, A2000009);
 			name = Sources;
 			sourceTree = "<group>";
 		};
 		A5000002 = {
 			isa = PBXGroup;
-			children = (A2000007, A2000008, A2000009, A200000B, A200000C, A200000D);
+			children = (A2000007, A2000008, A200000F, A200000B, A200000C, A200000D);
 			name = Resources;
 			sourceTree = "<group>";
 		};
@@ -123,7 +123,7 @@
 		A7000001 = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A1000001, A1000002, A1000003, A1000004, A1000005, A1000006);
+			files = (A1000001, A1000002, A1000003, A1000004, A1000005, A1000006, A1000009);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
