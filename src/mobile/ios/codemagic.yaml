@@ -1,4 +1,52 @@
 workflows:
+  screenshots:
+    name: App Store Screenshots
+    # Trigger manually from the Codemagic UI — not part of every push.
+    # Produces PNG files as build artefacts ready to upload to App Store Connect.
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - test   # provides TEST_LOGIN_EMAIL and TEST_LOGIN_OTP
+      vars:
+        XCODE_PROJECT: "MYRAai.xcodeproj"
+        XCODE_SCHEME: "MYRAai"
+      xcode: latest
+    scripts:
+      - name: Capture screenshots — iPhone 16 Pro Max (6.9")
+        script: |
+          set -e
+          # Pick the newest available Pro Max simulator; fall back to a plain large iPhone.
+          SIM=$(xcrun simctl list devices available | grep -oE "iPhone 1[6-9]+ Pro Max|iPhone 1[0-9]+ Pro Max" | head -1)
+          [ -z "$SIM" ] && SIM="iPhone 16 Pro Max"
+          echo "Simulator: $SIM"
+
+          OUT="$CM_BUILD_DIR/screenshots/iphone_6_9"
+          mkdir -p "$OUT"
+
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "platform=iOS Simulator,name=$SIM,OS=latest" \
+            -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_app_store_screenshots \
+            -resultBundlePath "$CM_BUILD_DIR/result_6_9.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            -testenv TEST_LOGIN_EMAIL="$TEST_LOGIN_EMAIL" \
+            -testenv TEST_LOGIN_OTP="$TEST_LOGIN_OTP" \
+            -testenv SCREENSHOT_OUTPUT_DIR="$OUT"
+
+          echo "PNG files written:"
+          ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — check XCTAttachments in xcresult)"
+    artifacts:
+      - screenshots/**/*.png
+    publishing:
+      email:
+        recipients:
+          - sascha@schumann.net
+        notify:
+          success: true
+          failure: true
+
   ios-app-store:
     name: MYRAai App Store
     max_build_duration: 60
@@ -36,6 +84,23 @@ workflows:
             -destination "platform=iOS Simulator,name=$SIM_NAME,OS=latest" \
             -only-testing:MYRAaiUITests \
             CODE_SIGNING_ALLOWED=NO
+      - name: Inspect installed provisioning profile
+        script: |
+          for PROFILE in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo "=== $PROFILE ==="
+            security cms -D -i "$PROFILE" | python3 -c "
+          import sys, plistlib
+          p = plistlib.load(sys.stdin.buffer)
+          ent = p.get('Entitlements') or {}
+          print('  Name:           ', p.get('Name'))
+          print('  UUID:            ', p.get('UUID'))
+          print('  CreationDate:    ', p.get('CreationDate'))
+          print('  AppIDName:       ', p.get('AppIDName'))
+          print('  application-id:  ', ent.get('application-identifier'))
+          print('  aps-environment: ', ent.get('aps-environment'))
+          print('  All entitlement keys:', sorted(ent.keys()))
+          "
+          done
       - name: Archive
         script: |
           xcodebuild archive \
@@ -62,7 +127,7 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: false
+        submit_to_testflight: true
         submit_to_app_store: false
       email:
         recipients:
