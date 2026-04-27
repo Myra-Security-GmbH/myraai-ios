@@ -56,8 +56,7 @@ final class ScreenshotTests: XCTestCase {
 
     func test_capture_app_store_screenshots() throws {
         guard let creds = loadCreds() else {
-            XCTFail("Credentials not available (\(credsDiagnostic())) — check Codemagic variable group 'test'")
-            return
+            throw XCTSkip("Credentials not available (\(credsDiagnostic())) — set TEST_LOGIN_EMAIL/OTP or run the screenshots workflow")
         }
 
         let app = XCUIApplication()
