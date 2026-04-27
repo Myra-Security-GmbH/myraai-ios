@@ -17,10 +17,9 @@ workflows:
         PROFILE_NAME: "MYRAai Distribution"
       xcode: latest
     scripts:
-      - name: Set build number
+      - name: Verify project readable
         script: |
-          cd $CM_BUILD_DIR
-          agvtool new-version -all $BUILD_NUMBER
+          xcodebuild -list -project "$CM_BUILD_DIR/$XCODE_PROJECT"
       - name: Archive
         script: |
           xcodebuild archive \
@@ -31,7 +30,9 @@ workflows:
             CODE_SIGN_STYLE=Manual \
             "CODE_SIGN_IDENTITY=$SIGN_ID" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM"
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
+            -verbose
       - name: Export IPA
         script: |
           xcodebuild -exportArchive \
@@ -45,7 +46,7 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
+        submit_to_testflight: false
         submit_to_app_store: false
       email:
         recipients:

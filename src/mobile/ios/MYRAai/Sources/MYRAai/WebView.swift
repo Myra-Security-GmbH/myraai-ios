@@ -1,3 +1,4 @@
+import SwiftUI
 import WebKit
 import UIKit
 import Network
@@ -90,8 +91,10 @@ struct WebView: UIViewRepresentable {
         context.coordinator.webView = webView
         context.coordinator.setupKeyboardObservers()
 
-        state.webView = webView
-        state.startNetworkMonitor()
+        MainActor.assumeIsolated {
+            state.webView = webView
+            state.startNetworkMonitor()
+        }
         webView.load(URLRequest(url: URL(string: "https://ai.myra.eu")!))
         return webView
     }
@@ -228,7 +231,7 @@ extension WebView {
 
         // MARK: File picker — iOS 16.4+ (WKUIDelegate)
 
-        @available(iOS 16.4, *)
+        @available(iOS 18.4, *)
         func webView(_ webView: WKWebView,
                      runOpenPanelWith parameters: WKOpenPanelParameters,
                      initiatedByFrame frame: WKFrameInfo,
