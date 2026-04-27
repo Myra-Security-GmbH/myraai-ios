@@ -391,6 +391,130 @@ ios:submit-for-review:
       print(f"OK: submitted — betaReviewState: {result['data']['attributes']['betaReviewState']}")
       PYEOF
 
+# ── iOS: submit the tagged version to App Store review ───────────────────────
+# Runs only on vX.Y.Z tags — after ios:submit-for-review has confirmed the
+# build is VALID in ASC.  Finds the appStoreVersion in PREPARE_FOR_SUBMISSION
+# state, associates the build, then posts appStoreVersionSubmissions.
+ios:submit-to-appstore:
+  stage: release
+  tags: [preprod]
+  image: python:3.12-alpine
+  needs:
+    - job: ios:build
+      artifacts: true
+    - job: ios:submit-for-review
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+    - if: $RUN_IOS_APPSTORE == "true"
+  script:
+    - pip install --quiet cryptography
+    - |
+      python3 <<'PYEOF'
+      import os, time, base64, json
+      from urllib.request import urlopen, Request
+      from urllib.error import HTTPError
+      from cryptography.hazmat.primitives.serialization import load_pem_private_key
+      from cryptography.hazmat.primitives.asymmetric.ec import ECDSA
+      from cryptography.hazmat.primitives.hashes import SHA256
+      from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
+      issuer  = os.environ["ASC_ISSUER_ID"]
+      key_id  = os.environ["ASC_KEY_ID"]
+      with open(os.environ["ASC_PRIVATE_KEY"], "rb") as f:
+          priv_pem = f.read()
+
+      def jwt():
+          now = int(time.time())
+          hdr = base64.urlsafe_b64encode(json.dumps({"alg":"ES256","kid":key_id,"typ":"JWT"}).encode()).rstrip(b"=")
+          pay = base64.urlsafe_b64encode(json.dumps({"iss":issuer,"iat":now,"exp":now+1200,"aud":"appstoreconnect-v1"}).encode()).rstrip(b"=")
+          msg = hdr + b"." + pay
+          key = load_pem_private_key(priv_pem.strip(), password=None)
+          sig = key.sign(msg, ECDSA(SHA256()))
+          r, s = decode_dss_signature(sig)
+          raw = r.to_bytes(32,"big") + s.to_bytes(32,"big")
+          return (msg + b"." + base64.urlsafe_b64encode(raw).rstrip(b"=")).decode()
+
+      BASE = "https://api.appstoreconnect.apple.com"
+
+      def call(method, path, body=None):
+          data = json.dumps(body).encode() if body else None
+          hdrs = {"Authorization": f"Bearer {jwt()}", "Content-Type": "application/json"}
+          req  = Request(f"{BASE}{path}", data=data, headers=hdrs, method=method)
+          try:
+              with urlopen(req) as r:
+                  c = r.read()
+                  return (json.loads(c) if c else {}, None)
+          except HTTPError as e:
+              body = e.read().decode()
+              print(f"  HTTP {e.code}: {body[:300]}")
+              return (None, body)
+
+      APP_ID = "6764008556"
+
+      # Read the build number pinned by ios:build
+      try:
+          with open("codemagic_build_number.txt") as f:
+              target_version = f.read().strip()
+      except FileNotFoundError:
+          raise SystemExit("FAIL: codemagic_build_number.txt missing")
+      if not target_version:
+          raise SystemExit("FAIL: codemagic_build_number.txt is empty")
+      print(f"Target build version: {target_version}")
+
+      # Find the VALID build in ASC
+      build_id = None
+      for attempt in range(10):
+          builds, _ = call("GET", f"/v1/apps/{APP_ID}/builds?limit=20")
+          match = [b for b in (builds or {}).get("data", [])
+                   if b["attributes"].get("version") == target_version
+                   and b["attributes"].get("processingState") == "VALID"]
+          if match:
+              build_id = match[0]["id"]
+              break
+          print(f"  waiting for build {target_version} to be VALID (attempt {attempt+1}/10)…")
+          time.sleep(30)
+      if not build_id:
+          raise SystemExit(f"FAIL: build {target_version} never became VALID")
+      print(f"Build ID: {build_id}")
+
+      # Find the appStoreVersion in PREPARE_FOR_SUBMISSION state
+      vers, _ = call("GET", f"/v1/apps/{APP_ID}/appStoreVersions?filter[platform]=IOS&filter[appStoreState]=PREPARE_FOR_SUBMISSION")
+      versions = (vers or {}).get("data", [])
+      if not versions:
+          # Already submitted or in review — check
+          vers2, _ = call("GET", f"/v1/apps/{APP_ID}/appStoreVersions?filter[platform]=IOS&filter[appStoreState]=WAITING_FOR_REVIEW,IN_REVIEW")
+          if (vers2 or {}).get("data"):
+              state = vers2["data"][0]["attributes"]["appStoreState"]
+              print(f"OK: version already in review — appStoreState: {state}")
+              raise SystemExit(0)
+          raise SystemExit("FAIL: no appStoreVersion in PREPARE_FOR_SUBMISSION state found")
+      version_id = versions[0]["id"]
+      ver_num    = versions[0]["attributes"].get("versionString", "?")
+      print(f"App Store version: {ver_num} (id={version_id})")
+
+      # Associate build with the version
+      res, err = call("PATCH", f"/v1/appStoreVersions/{version_id}", {"data": {
+          "type": "appStoreVersions",
+          "id":   version_id,
+          "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}
+      }})
+      if err:
+          raise SystemExit(f"FAIL: could not associate build with version: {err}")
+      print("Build associated with App Store version")
+
+      # Submit to App Store review
+      res, err = call("POST", "/v1/appStoreVersionSubmissions", {"data": {
+          "type": "appStoreVersionSubmissions",
+          "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}}
+      }})
+      if err and ("ALREADY_SUBMITTED" in err or "state is invalid" in err.lower()):
+          print(f"OK: already submitted for review")
+          raise SystemExit(0)
+      if err:
+          raise SystemExit(f"FAIL: appStoreVersionSubmissions POST failed: {err}")
+      print(f"OK: submitted to App Store review — version {ver_num}, build {target_version}")
+      PYEOF
+
 # ── Android: build and sign release AAB + APK ────────────────────────────────
 android:build:
   stage: mobile
