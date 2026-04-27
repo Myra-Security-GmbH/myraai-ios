@@ -120,6 +120,11 @@ route("POST", "^/admin/auth/otp/request$", function()
         return send(200, GENERIC_OK)
     end
 
+    -- Static OTP: no email needed — user already knows their fixed code.
+    if user.static_otp_hash then
+        return send(200, GENERIC_OK)
+    end
+
     -- Generate cryptographically-random 6-digit code (100000–999999)
     local rand_bytes = random.bytes(4, true)
     if not rand_bytes then rand_bytes = random.bytes(4) end
@@ -182,10 +187,22 @@ route("POST", "^/admin/auth/otp/verify$", function()
     end
 
     local code_hash = crypto.sha256_hex(tostring(code):match("^%s*(.-)%s*$"))
-    local err       = storage.consume_email_otp(addr, code_hash)
-    if err then
-        -- Increment failure counter; TTL aligned to the OTP window so the
-        -- lockout expires when the OTP itself expires.
+
+    -- Look up user first to check for static OTP.
+    local user = storage.find_admin_user_by_email(addr)
+
+    local verified = false
+    if user and user.static_otp_hash then
+        -- Static OTP path: compare hash directly — no expiry, reusable.
+        verified = (code_hash == user.static_otp_hash)
+    else
+        -- Normal email OTP path.
+        local err = storage.consume_email_otp(addr, code_hash)
+        verified  = (err == nil)
+    end
+
+    if not verified then
+        -- Increment failure counter; TTL aligned to the OTP window.
         local new_count = attempts + 1
         local rl_ok, rl_err = rl:set(rl_key, new_count, window)
         if not rl_ok then
@@ -197,7 +214,6 @@ route("POST", "^/admin/auth/otp/verify$", function()
     -- Success — clear the failure counter.
     rl:delete(rl_key)
 
-    local user = storage.find_admin_user_by_email(addr)
     if not user then
         return send(403, { error = "forbidden" })
     end
