@@ -2,6 +2,10 @@
 data/
 *.db
 
+# Local debug helpers (contain tokens — never commit)
+apple_debug.sh
+gitlab_debug.sh
+
 # Downloaded test corpus files
 tests/false_positives/corpus/
 
