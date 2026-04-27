@@ -19,8 +19,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            guard granted else { return }
+        // Start with provisional (silent, no dialog) so the OS token is available immediately.
+        // The web layer calls window.Android.requestFullPushPermission() after the user has
+        // experienced value (e.g. after receiving a project invite notification).
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge, .provisional]) { _, _ in
             DispatchQueue.main.async {
                 UIApplication.shared.registerForRemoteNotifications()
             }

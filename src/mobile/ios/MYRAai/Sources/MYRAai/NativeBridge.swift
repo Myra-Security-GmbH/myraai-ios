@@ -5,7 +5,7 @@ import UIKit
 
 final class NativeBridge: NSObject, WKScriptMessageHandler {
 
-    static let handlerNames = ["hapticFeedback", "share", "copyToClipboard", "notifyScrollTop", "getDeviceToken"]
+    static let handlerNames = ["hapticFeedback", "share", "copyToClipboard", "notifyScrollTop", "getDeviceToken", "requestFullPushPermission"]
 
     // Set by AppDelegate once APNs registration succeeds.
     static var pendingDeviceToken: String?
@@ -19,6 +19,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             if let text = message.body as? String { UIPasteboard.general.string = text }
         case "notifyScrollTop": break
         case "getDeviceToken":  handleGetDeviceToken(message)
+        case "requestFullPushPermission": handleRequestFullPushPermission()
         default: break
         }
     }
@@ -42,6 +43,11 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
                 gen.prepare(); gen.impactOccurred()
             }
         }
+    }
+
+    // MARK: - Full push permission upgrade (called after user sees value)
+    private func handleRequestFullPushPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
     // MARK: - Device token (APNs)

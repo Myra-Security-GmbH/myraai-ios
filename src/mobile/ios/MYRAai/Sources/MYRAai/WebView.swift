@@ -118,15 +118,34 @@ struct WebView: UIViewRepresentable {
             },
             getDeviceToken: function(callbackName) {
                 window.webkit.messageHandlers.getDeviceToken.postMessage(callbackName);
+            },
+            requestFullPushPermission: function() {
+                window.webkit.messageHandlers.requestFullPushPermission.postMessage(null);
             }
         };
-        // File picker via WKUIDelegate is only available on iOS 18.4+.
+        // Inject a privacy policy link visible before login, and a flag for the file picker.
+        // The link attaches to the login form so users can review privacy terms before signing up.
         // The frontend reads this flag to disable the attach button on older devices.
         window.__MYRAFilePickerSupported = \(filePickerAvailable ? "true" : "false");
         var style = document.createElement('style');
         style.textContent = '* { -webkit-touch-callout: none; } ' +
-            'input, textarea, [contenteditable] { -webkit-touch-callout: default; user-select: text; }';
+            'input, textarea, [contenteditable] { -webkit-touch-callout: default; user-select: text; } ' +
+            '#myra-privacy-link { display:block; text-align:center; margin-top:16px; font-size:12px; color:#8899aa; } ' +
+            '#myra-privacy-link a { color:#8899aa; text-decoration:underline; }';
         document.head.appendChild(style);
+        function injectPrivacyLink() {
+            if (document.getElementById('myra-privacy-link')) return;
+            var form = document.querySelector('form');
+            if (!form) return;
+            var div = document.createElement('div');
+            div.id = 'myra-privacy-link';
+            div.innerHTML = '<a href="https://ai.myra.eu/privacy" target="_blank">Privacy Policy</a>';
+            form.parentNode.insertBefore(div, form.nextSibling);
+        }
+        var _privacyObserver = new MutationObserver(injectPrivacyLink);
+        _privacyObserver.observe(document.body || document.documentElement,
+            { childList: true, subtree: true });
+        injectPrivacyLink();
     })();
     """
 
