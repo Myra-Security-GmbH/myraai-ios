@@ -1,0 +1,10 @@
+<resources>
+    <!-- API 27+: force white navigation-bar icons so they're readable on the navy background -->
+    <style name="Theme.MYRAai.App" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/myra_navy</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

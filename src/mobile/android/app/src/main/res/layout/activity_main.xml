@@ -35,36 +35,48 @@
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:gravity="center"
-        android:padding="32dp"
+        android:padding="40dp"
+        android:background="@color/offline_bg"
         android:visibility="gone">
 
+        <ImageView
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:src="@mipmap/myraai_launcher"
+            android:contentDescription="@string/app_name"
+            android:layout_marginBottom="28dp" />
+
         <TextView
+            android:id="@+id/offline_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/offline_title"
-            android:textColor="@color/myra_white"
+            android:textColor="@color/offline_text"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:layout_marginBottom="12dp" />
+            android:layout_marginBottom="10dp" />
 
         <TextView
+            android:id="@+id/offline_message"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/offline_message"
-            android:textColor="@color/myra_light_text"
+            android:textColor="@color/offline_text_muted"
             android:textSize="14sp"
             android:gravity="center"
-            android:layout_marginBottom="24dp" />
+            android:lineSpacingMultiplier="1.4"
+            android:layout_marginBottom="32dp" />
 
         <Button
             android:id="@+id/retry_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/retry"
-            android:backgroundTint="@color/myra_blue"
-            android:textColor="@color/myra_navy"
-            android:minWidth="120dp"
-            android:minHeight="44dp" />
+            android:backgroundTint="@color/myra_navy"
+            android:textColor="@color/myra_white"
+            android:minWidth="140dp"
+            android:minHeight="48dp"
+            android:contentDescription="@string/retry" />
 
     </LinearLayout>
 

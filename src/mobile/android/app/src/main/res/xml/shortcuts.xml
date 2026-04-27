@@ -5,11 +5,31 @@
         android:shortcutId="new_chat"
         android:shortcutShortLabel="@string/shortcut_new_chat"
         android:shortcutLongLabel="@string/shortcut_new_chat_long"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/myraai_launcher">
         <intent
             android:action="android.intent.action.VIEW"
             android:data="https://ai.myra.eu/chat" />
         <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="projects"
+        android:shortcutShortLabel="@string/shortcut_projects"
+        android:shortcutLongLabel="@string/shortcut_projects_long"
+        android:icon="@mipmap/myraai_launcher">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="https://ai.myra.eu/projects" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="dashboard"
+        android:shortcutShortLabel="@string/shortcut_dashboard"
+        android:shortcutLongLabel="@string/shortcut_dashboard_long"
+        android:icon="@mipmap/myraai_launcher">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="https://ai.myra.eu/dashboard" />
     </shortcut>
 
 </shortcuts>

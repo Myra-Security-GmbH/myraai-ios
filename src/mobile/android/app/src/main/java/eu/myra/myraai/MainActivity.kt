@@ -10,6 +10,8 @@ import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -18,7 +20,10 @@ import android.view.ViewGroup
 import android.webkit.*
 import android.widget.Button
 import android.widget.ProgressBar
+import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
+import android.accounts.AccountManager
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -33,9 +38,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var offlineView: View
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var progressBar: ProgressBar
+    private lateinit var retryButton: Button
+    private lateinit var offlineTitleView: TextView
+    private lateinit var offlineMessageView: TextView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var isPageLoaded = false
-    @Volatile private var isScrolledDown = false
+    private var splashExpired = false
+
+    private lateinit var hintLauncher: ActivityResultLauncher<Intent>
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -49,26 +59,46 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
-        splashScreen.setKeepOnScreenCondition { !isPageLoaded }
+
+        // Dismiss the splash after 5 s at the latest so a slow first load doesn't
+        // leave the user on a frozen splash screen with no feedback.
+        Handler(Looper.getMainLooper()).postDelayed({
+            splashExpired = true
+        }, SPLASH_TIMEOUT_MS)
+        splashScreen.setKeepOnScreenCondition { !isPageLoaded && !splashExpired }
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_main)
 
-        webView     = findViewById(R.id.webview)
-        offlineView = findViewById(R.id.offline_view)
-        swipeRefresh = findViewById(R.id.swipe_refresh)
-        progressBar = findViewById(R.id.progress_bar)
+        webView          = findViewById(R.id.webview)
+        offlineView      = findViewById(R.id.offline_view)
+        swipeRefresh     = findViewById(R.id.swipe_refresh)
+        progressBar      = findViewById(R.id.progress_bar)
+        retryButton      = findViewById(R.id.retry_button)
+        offlineTitleView = findViewById(R.id.offline_title)
+        offlineMessageView = findViewById(R.id.offline_message)
+
+        hintLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+                    ?.let { injectEmailWhenReady(it) }
+            }
+        }
 
         swipeRefresh.setColorSchemeColors(getColor(R.color.myra_blue))
-        // Only allow pull-to-refresh when the WebView is truly at the top; otherwise
-        // swipe-up to scroll through chat history would trigger a page reload instead.
-        swipeRefresh.setOnChildScrollUpCallback { _, _ -> webView.canScrollVertically(-1) || isScrolledDown }
+        // Only allow pull-to-refresh when the WebView is truly at the top.
+        // canScrollVertically(-1) is the reliable native check — no JS bridge needed.
+        swipeRefresh.setOnChildScrollUpCallback { _, _ -> webView.canScrollVertically(-1) }
         swipeRefresh.setOnRefreshListener {
             isPageLoaded = false
             webView.reload()
         }
 
-        findViewById<Button>(R.id.retry_button).setOnClickListener {
+        retryButton.setOnClickListener {
+            retryButton.isEnabled = false
+            retryButton.text = getString(R.string.retrying)
             offlineView.visibility = View.GONE
             swipeRefresh.visibility = View.VISIBLE
             isPageLoaded = false
@@ -119,14 +149,16 @@ class MainActivity : AppCompatActivity() {
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            allowFileAccess = true
-            userAgentString = "$userAgentString MYRAai-Android/1.0"
+            allowFileAccess = false  // app only loads https://ai.myra.eu — no local file access needed
+            userAgentString = "$userAgentString MYRAai-Android/${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
             // Respect the device accessibility font-size setting.
             textZoom = (resources.configuration.fontScale * 100).toInt()
         }
 
         // Remove the blue edge-glow overscroll effect — the web app has its own.
         webView.overScrollMode = View.OVER_SCROLL_NEVER
+
+        webView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
 
         // Prevent Android from algorithmically force-darkening web content; the web
         // app manages its own theme via localStorage so OS darkening would conflict.
@@ -137,8 +169,8 @@ class MainActivity : AppCompatActivity() {
             webView.settings.forceDark = WebSettings.FORCE_DARK_OFF
         }
 
-        // Suppress the WebView built-in long-press context menu (shows "Open in new
-        // tab" which is meaningless with no tab bar).
+        // Suppress the WebView built-in long-press context menu for links/images
+        // (shows "Open in new tab" which is meaningless with no tab bar).
         webView.setOnLongClickListener {
             val result = webView.hitTestResult
             result.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
@@ -166,8 +198,11 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 isPageLoaded = true
-                isScrolledDown = false
                 swipeRefresh.isRefreshing = false
+                // Reset retry button so it's ready for the next failure
+                retryButton.isEnabled = true
+                retryButton.text = getString(R.string.retry)
+                if (url.contains("/login")) showEmailHint()
             }
 
             override fun onReceivedError(
@@ -176,6 +211,25 @@ class MainActivity : AppCompatActivity() {
                 error: WebResourceError
             ) {
                 if (request.isForMainFrame) {
+                    val (title, message) = when (error.errorCode) {
+                        WebViewClient.ERROR_HOST_LOOKUP -> {
+                            getString(R.string.offline_title_dns) to
+                                getString(R.string.offline_message_dns)
+                        }
+                        WebViewClient.ERROR_CONNECT,
+                        WebViewClient.ERROR_TIMEOUT -> {
+                            getString(R.string.offline_title_server) to
+                                getString(R.string.offline_message_server)
+                        }
+                        else -> {
+                            getString(R.string.offline_title) to
+                                getString(R.string.offline_message)
+                        }
+                    }
+                    offlineTitleView.text = title
+                    offlineMessageView.text = message
+                    retryButton.isEnabled = true
+                    retryButton.text = getString(R.string.retry)
                     swipeRefresh.visibility = View.GONE
                     offlineView.visibility = View.VISIBLE
                     swipeRefresh.isRefreshing = false
@@ -209,6 +263,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showEmailHint() {
+        try {
+            @Suppress("DEPRECATION")
+            val intent = AccountManager.newChooseAccountIntent(
+                null, null, arrayOf("com.google"),
+                null, null, null, null
+            )
+            hintLauncher.launch(intent)
+        } catch (_: Exception) {
+            // No Google accounts or system unavailable — silent no-op
+        }
+    }
+
+    private fun injectEmailWhenReady(email: String) {
+        val safe = email.replace("\\", "\\\\").replace("\"", "\\\"")
+        val js = """
+            (function(email) {
+                function fill() {
+                    var el = document.getElementById('login-email');
+                    if (!el) return false;
+                    el.value = email;
+                    el.dispatchEvent(new Event('input', {bubbles:true}));
+                    return true;
+                }
+                if (fill()) return;
+                var obs = new MutationObserver(function() {
+                    if (fill()) obs.disconnect();
+                });
+                obs.observe(document.body, {childList:true, subtree:true});
+            })("$safe");
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+    }
+
     private fun registerNetworkCallback() {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
@@ -238,6 +326,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val HOME_URL = "https://ai.myra.eu"
+        private const val SPLASH_TIMEOUT_MS = 5_000L
     }
 
     inner class NativeBridge(private val ctx: MainActivity) {
@@ -275,8 +364,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        @Suppress("UNUSED_PARAMETER")
         fun notifyScrollTop(scrolled: Boolean) {
-            ctx.isScrolledDown = scrolled
+            // Kept for web app compatibility. Pull-to-refresh guard now relies solely
+            // on WebView.canScrollVertically(-1) which is more reliable.
         }
 
         @JavascriptInterface

@@ -150,8 +150,23 @@ export default function LoginPage() {
             </button>
           </form>
         )}
+
+        <AndroidBuildBadge />
       </div>
     </div>
+  );
+}
+
+function AndroidBuildBadge() {
+  const match = navigator.userAgent.match(/MYRAai-Android\/([\d.]+)/);
+  if (!match) return null;
+  const versionName = match[1];
+  const vcMatch = navigator.userAgent.match(/MYRAai-Android\/[\d.]+ \((\d+)\)/);
+  const label = vcMatch ? `Android ${versionName} (${vcMatch[1]})` : `Android ${versionName}`;
+  return (
+    <p style={{ textAlign: "center", fontSize: 11, color: "var(--text-muted, #aaa)", margin: "16px 0 0", letterSpacing: "0.02em" }}>
+      {label}
+    </p>
   );
 }
 

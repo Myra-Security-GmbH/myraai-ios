@@ -2,7 +2,16 @@
     <string name="app_name">MYRA AI</string>
     <string name="offline_title">No connection</string>
     <string name="offline_message">Check your internet connection and try again.</string>
+    <string name="offline_title_dns">Server not found</string>
+    <string name="offline_message_dns">Cannot resolve the server address. Check your connection and try again.</string>
+    <string name="offline_title_server">Server unavailable</string>
+    <string name="offline_message_server">The server is temporarily unreachable. Please try again shortly.</string>
     <string name="retry">Retry</string>
+    <string name="retrying">Retrying…</string>
     <string name="shortcut_new_chat">New Chat</string>
     <string name="shortcut_new_chat_long">Start a new MYRA AI chat</string>
+    <string name="shortcut_projects">Projects</string>
+    <string name="shortcut_projects_long">Open MYRA AI Projects</string>
+    <string name="shortcut_dashboard">Dashboard</string>
+    <string name="shortcut_dashboard_long">Open MYRA AI Dashboard</string>
 </resources>
