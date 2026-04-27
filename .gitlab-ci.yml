@@ -132,6 +132,7 @@ ios:mirror:
   stage: mobile
   tags: [preprod]
   image: alpine/git
+  needs: []  # independent of build:frontend — iOS doesn't need the React bundle
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
       changes:
@@ -156,6 +157,7 @@ ios:build:
   stage: mobile
   tags: [preprod]
   image: python:3.12-alpine
+  timeout: 30 minutes  # Codemagic build typically completes in 5-10 min; 30 is plenty of headroom
   needs:
     - job: ios:mirror
   rules:
@@ -295,6 +297,7 @@ android:build:
   stage: mobile
   tags: [preprod]
   image: gradle:8.4-jdk17
+  needs: []  # independent of build:frontend — Android doesn't need the React bundle
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
       changes:
