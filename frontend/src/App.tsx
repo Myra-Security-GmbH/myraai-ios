@@ -18,6 +18,7 @@ import Tenants from "src/modules/tenants/pages/Tenants";
 import Gateways from "src/modules/gateways/pages/Gateways";
 import Logs from "src/modules/logs/pages/Logs";
 import ModelPrices from "src/modules/prices/pages/ModelPrices";
+import Providers  from "src/modules/providers/pages/Providers";
 import Playground from "src/modules/playground/pages/Playground";
 import Users from "src/modules/users/pages/Users";
 import TenantAnalytics from "src/modules/analytics/pages/TenantAnalytics";
@@ -54,6 +55,7 @@ function AppShell() {
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:projectId" element={<Projects />} />
           <Route path="/model-prices" element={<ModelPrices />} />
+          <Route path="/providers"    element={<Providers />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/commands" element={<Commands />} />
           <Route path="/mcp" element={<MCPConnectors />} />

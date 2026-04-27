@@ -514,6 +514,17 @@ export interface ProviderMeta {
   requires_key: boolean;
 }
 
+export interface ProviderHealth {
+  name: string;
+  requires_key: boolean;
+  configured: boolean | null;   // null = no key required (vllm, ollama)
+  status: "ok" | "degraded" | "down" | "unknown";
+  message: string | null;
+  latency_ms: number | null;
+  checked_at: number | null;    // unix seconds; null if never polled
+  has_status_page: boolean;
+}
+
 export interface LatencyPercentiles {
   p50: number | null;
   p95: number | null;

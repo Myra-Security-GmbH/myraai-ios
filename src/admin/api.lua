@@ -56,7 +56,8 @@ local json         = require("utils.json")
 local storage      = require("storage")
 local byok         = require("auth.byok")
 local crypto       = require("utils.crypto")
-local providers_mod = require("providers")
+local providers_mod    = require("providers")
+local provider_health  = require("admin.provider_health")
 local auth         = require("admin.auth")
 local email        = require("utils.email")
 
@@ -492,6 +493,10 @@ end)
 -- Model price routes
 -- ---------------------------------------------------------------------------
 route("GET", "^/admin/v1/model%-prices$", function()
+    local u = ngx.ctx.admin_user
+    if u.role ~= "admin" and u.role ~= "tenant_admin" then
+        return send(403, { error = "forbidden" })
+    end
     send(200, storage.list_model_prices())
 end)
 
@@ -558,6 +563,46 @@ end)
 -- Returns provider metadata: name + whether an API key is required.
 route("GET", "^/admin/v1/providers$", function()
     send(200, providers_mod.list())
+end)
+
+-- GET /admin/v1/providers/health
+-- Returns all providers merged with configured status and live health from status-page polling.
+route("GET", "^/admin/v1/providers/health$", function()
+    local u = ngx.ctx.admin_user
+    if not u then return send(401, { error = "unauthenticated" }) end
+
+    local all_providers   = providers_mod.list()
+    local configured_set  = storage.list_configured_providers()
+    local health_rows     = storage.get_provider_health_all()
+    local health_map      = {}
+    for _, h in ipairs(health_rows) do
+        health_map[h.provider] = h
+    end
+
+    local status_pages = provider_health.STATUS_PAGES
+    local result = {}
+    for _, p in ipairs(all_providers) do
+        local h = health_map[p.name] or {}
+        local configured
+        if not p.requires_key then
+            configured = json.null
+        elseif configured_set[p.name] then
+            configured = true
+        else
+            configured = false
+        end
+        result[#result + 1] = {
+            name            = p.name,
+            requires_key    = p.requires_key,
+            configured      = configured,
+            status          = h.status     or "unknown",
+            message         = h.message,
+            latency_ms      = h.latency_ms,
+            checked_at      = (h.checked_at and h.checked_at ~= 0) and h.checked_at or json.null,
+            has_status_page = (status_pages[p.name] ~= nil),
+        }
+    end
+    send(200, result)
 end)
 
 -- ---------------------------------------------------------------------------
@@ -851,6 +896,31 @@ route("DELETE", "^/admin/v1/users/([^/]+)$", function(user_id)
     local err = storage.delete_user(user_id)
     if err then return send(500, { error = tostring(err) }) end
     send(200, { ok = true })
+end)
+
+-- PUT /admin/v1/users/:id/static-otp  — set a fixed static OTP code for a user
+-- Body: {"code":"123456"}  — sets static code; {"code":null} — clears it (restores email OTP)
+-- Admin-only. Returns {"ok":true,"code":"..."} when setting, {"ok":true} when clearing.
+route("PUT", "^/admin/v1/users/([^/]+)/static%-otp$", function(user_id)
+    local u = ngx.ctx.admin_user
+    if u.role ~= "admin" then return send(403, { error = "admin only" }) end
+    local b = read_body()
+    local code = b and b.code
+    local hash = nil
+    if code ~= nil and code ~= json.null then
+        code = tostring(code):match("^%s*(.-)%s*$")
+        if #code < 4 or #code > 32 then
+            return send(400, { error = "code must be 4–32 characters" })
+        end
+        hash = crypto.sha256_hex(code)
+    end
+    local err = storage.set_user_static_otp(user_id, hash)
+    if err then return send(500, { error = tostring(err) }) end
+    if hash then
+        send(200, { ok = true, code = code })
+    else
+        send(200, { ok = true })
+    end
 end)
 
 route("GET", "^/admin/v1/users/([^/]+)/tokens$", function(user_id)

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
+import { useAuth } from "src/common/contexts/AuthContext";
 import { api } from "src/api/client";
 import { ModelPrice } from "src/api/types";
 import { fmtDate } from "src/common/utils/date";
@@ -95,6 +97,8 @@ function PriceModal({ price, onClose, onSaved }: {
 
 export default function ModelPrices() {
   useDocumentTitle("Model Prices");
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [prices, setPrices] = useState<ModelPrice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +116,13 @@ export default function ModelPrices() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, []);
+  useEffect(() => {
+    if (user && user.role !== "admin" && user.role !== "tenant_admin") {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+    load();
+  }, [user]);
 
   async function deletePrice(p: ModelPrice) {
     if (!confirm(`Delete pricing for ${p.provider}/${p.model}?`)) return;
