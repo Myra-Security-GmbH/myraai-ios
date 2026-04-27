@@ -24,26 +24,19 @@ workflows:
           OUT="$CM_BUILD_DIR/screenshots/iphone_6_9"
           mkdir -p "$OUT"
 
-          # Verify credentials are in scope before proceeding.
+          # Fail loudly if the 'test' variable group didn't inject credentials.
           echo "TEST_LOGIN_EMAIL set: $([ -n "$TEST_LOGIN_EMAIL" ] && echo yes || echo NO)"
+          if [ -z "$TEST_LOGIN_EMAIL" ] || [ -z "$TEST_LOGIN_OTP" ]; then
+            echo "ERROR: TEST_LOGIN_EMAIL or TEST_LOGIN_OTP is empty — check the Codemagic variable group 'test'"
+            exit 1
+          fi
 
-          # Xcode 26 does not forward TEST_RUNNER_* build settings nor the shell
-          # environment to the XCUITest runner process.  Write a JSON sidecar file
-          # to a fixed path on the Mac host; the Swift test reads it from there.
-          # python3 handles JSON escaping correctly for any credential value.
-          python3 -c "
-import json, os, sys
-creds = {
-    'email':      os.environ.get('TEST_LOGIN_EMAIL', ''),
-    'otp':        os.environ.get('TEST_LOGIN_OTP', ''),
-    'output_dir': sys.argv[1],
-}
-if not creds['email'] or not creds['otp']:
-    sys.exit('ERROR: TEST_LOGIN_EMAIL or TEST_LOGIN_OTP is empty — check the Codemagic variable group')
-with open('/tmp/myra_screenshot_creds.json', 'w') as f:
-    json.dump(creds, f)
-print('Credentials written to /tmp/myra_screenshot_creds.json')
-" "$OUT"
+          # Xcode 26 does not forward the shell environment into the XCUITest runner
+          # process.  Write a JSON sidecar that the Swift test reads from /tmp.
+          printf '{"email":"%s","otp":"%s","output_dir":"%s"}' \
+            "$TEST_LOGIN_EMAIL" "$TEST_LOGIN_OTP" "$OUT" \
+            > /tmp/myra_screenshot_creds.json
+          echo "Credentials written to /tmp/myra_screenshot_creds.json"
 
           xcodebuild test \
             -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
