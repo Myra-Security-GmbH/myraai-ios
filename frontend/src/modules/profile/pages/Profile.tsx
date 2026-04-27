@@ -172,8 +172,14 @@ export default function Profile() {
 
       {showDeleteConfirm && (
         <Modal title="Delete Account" onClose={() => { setShowDeleteConfirm(false); setDeleteError(null); }} error={deleteError}>
-          <p style={{ marginBottom: 16 }}>
-            This will permanently deactivate your account. You will be logged out immediately and will no longer be able to sign in.
+          <p style={{ marginBottom: 12 }}>
+            This deletes your account. You will be logged out immediately and will no longer be able to sign in.
+          </p>
+          <p style={{ marginBottom: 16, color: "var(--text-secondary)", fontSize: 14 }}>
+            Your conversations and other data are retained per our{" "}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer">privacy policy</a>.
+            Only an administrator can restore the account; you cannot reactivate it yourself.
+            To request permanent erasure of your data, email us — see the privacy policy.
           </p>
           <div className={s["form-actions"]}>
             <button
@@ -190,7 +196,7 @@ export default function Profile() {
               onClick={handleDeleteAccount}
               disabled={deleteLoading}
             >
-              {deleteLoading ? "Deleting…" : "Delete My Account"}
+              {deleteLoading ? "Deleting…" : "Delete Account"}
             </button>
           </div>
         </Modal>
@@ -286,13 +292,16 @@ export default function Profile() {
           </div>
           <div style={{ padding: "12px 0" }}>
             <p style={{ color: "var(--text-secondary)", marginBottom: 12, fontSize: 14 }}>
-              Deleting your account is permanent. All your tokens and settings will be removed.
+              Deleting your account signs you out and locks you out of MYRA AI.
+              Your data is retained per our{" "}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer">privacy policy</a>;
+              only an administrator can restore the account.
             </p>
             <button
               className={`${s.btn} ${s["btn--danger"]}`}
               onClick={() => setShowDeleteConfirm(true)}
             >
-              Delete My Account
+              Delete Account
             </button>
           </div>
         </div>

@@ -472,6 +472,7 @@ export default function Users() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [filterTenantId, setFilterTenantId] = useState("");
+  const [showDeleted, setShowDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -485,7 +486,7 @@ export default function Users() {
 
   function loadUsers(tenantId?: string, sort = sortField, dir = sortDir) {
     setLoading(true);
-    const qs = `?sort=${sort}&dir=${dir}`;
+    const qs = `?sort=${sort}&dir=${dir}${showDeleted ? "&include_deleted=1" : ""}`;
     if (!tenantId) {
       const targetTenants = me?.role === "admin" ? tenants : tenants.filter((t) => t.id === me?.tenant_id);
       if (targetTenants.length === 0) {
@@ -525,7 +526,16 @@ export default function Users() {
     // Without me in deps, loadUsers() would run with me=null if /tenants
     // responds before /admin/auth/me, causing it to bail with an empty list.
     if (me && tenants.length > 0) loadUsers(filterTenantId || undefined);
-  }, [me, tenants, filterTenantId, sortField, sortDir]);
+  }, [me, tenants, filterTenantId, showDeleted, sortField, sortDir]);
+
+  async function restoreUser(userId: string) {
+    try {
+      await api.post(`/users/${userId}/restore`, {});
+      loadUsers(filterTenantId || undefined);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
 
   const selected = users.find((u) => u.id === userId) ?? null;
 
@@ -564,7 +574,16 @@ export default function Users() {
           <h1 className={s["page-title"]}>Users</h1>
           <p className={s["page-subtitle"]}>{users.length} user{users.length !== 1 ? "s" : ""}</p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: "var(--text-secondary)", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={showDeleted}
+              onChange={(e) => setShowDeleted(e.target.checked)}
+              data-cy="show-deleted"
+            />
+            Show deleted
+          </label>
           {me?.role === "admin" && (
             <select
               className={s["form-select"]}
@@ -605,25 +624,50 @@ export default function Users() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/users/${u.id}`)}>
-                  <td>{u.email}</td>
-                  <td style={{ color: u.name ? undefined : "var(--text-secondary)" }}>{u.name ?? "—"}</td>
-                  <td><StatusBadge value={u.role} variant={roleVariant(u.role)} /></td>
-                  <td><span className={s.code}>{tenants.find((t) => t.id === u.tenant_id)?.slug ?? "—"}</span></td>
-                  <td className={s.mono} style={{ fontSize: 12 }}>
-                    {u.last_login_at
-                      ? fmtDate(u.last_login_at)
-                      : <span style={{ color: "var(--text-secondary)" }}>never</span>}
-                  </td>
-                  <td className={s.mono}>{fmtDate(u.created_at)}</td>
-                  <td>
-                    <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/users/${u.id}`); }}>
-                      Open →
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {users.map((u) => {
+                const deleted = !!u.deleted_at;
+                return (
+                  <tr
+                    key={u.id}
+                    data-cy={deleted ? "user-row-deleted" : "user-row"}
+                    style={{ cursor: "pointer", opacity: deleted ? 0.55 : 1 }}
+                    onClick={() => navigate(`/users/${u.id}`)}
+                  >
+                    <td>
+                      {u.email}
+                      {deleted && (
+                        <span style={{ marginLeft: 8 }}>
+                          <StatusBadge value="Deleted" variant="neutral" />
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ color: u.name ? undefined : "var(--text-secondary)" }}>{u.name ?? "—"}</td>
+                    <td><StatusBadge value={u.role} variant={roleVariant(u.role)} /></td>
+                    <td><span className={s.code}>{tenants.find((t) => t.id === u.tenant_id)?.slug ?? "—"}</span></td>
+                    <td className={s.mono} style={{ fontSize: 12 }}>
+                      {u.last_login_at
+                        ? fmtDate(u.last_login_at)
+                        : <span style={{ color: "var(--text-secondary)" }}>never</span>}
+                    </td>
+                    <td className={s.mono}>{fmtDate(u.created_at)}</td>
+                    <td>
+                      {deleted ? (
+                        <button
+                          className={`${s.btn} ${s["btn--primary"]} ${s["btn--sm"]}`}
+                          data-cy="restore-user"
+                          onClick={(e) => { e.stopPropagation(); restoreUser(u.id); }}
+                        >
+                          Restore
+                        </button>
+                      ) : (
+                        <button className={`${s.btn} ${s["btn--secondary"]} ${s["btn--sm"]}`} onClick={(e) => { e.stopPropagation(); navigate(`/users/${u.id}`); }}>
+                          Open →
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

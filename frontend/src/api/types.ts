@@ -226,6 +226,8 @@ export interface User {
   role: "admin" | "tenant_admin" | "member" | "viewer";
   created_at: number;
   last_login_at: number | null;
+  deleted_at?: number | null;
+  deleted_by_id?: string | null;
 }
 
 export interface AuthToken {

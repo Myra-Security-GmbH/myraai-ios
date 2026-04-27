@@ -31,6 +31,7 @@ import AppFeedbackPage from "src/modules/feedback/pages/AppFeedbackPage";
 import LoginPage from "src/pages/LoginPage";
 import SharedConversation from "src/pages/SharedConversation";
 import DebugPage from "src/pages/DebugPage";
+import PrivacyPolicy from "src/pages/PrivacyPolicy";
 
 function AppShell() {
   return (
@@ -74,6 +75,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/debug" element={<DebugPage />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/shared/:token" element={<SharedConversation />} />
             <Route path="/*" element={
               <AuthGuard>
