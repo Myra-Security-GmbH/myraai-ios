@@ -177,6 +177,8 @@ local MIGRATIONS = {
     { version = "0007", file = "0007_add_mcp_and_cache_deletion.sql", description = "Add mcp_connector table and cache_deletion_tokens column" },
     { version = "0008", file = "0008_anthropic_usage.sql",            description = "Tenant-scoped provider keys and Anthropic usage snapshots" },
     { version = "0009", file = "0009_cache_write_1h.sql",             description = "1h cache write pricing in model_price and token split in request_log" },
+    { version = "0010", file = "0010_provider_health.sql",            description = "Provider health status table for status-page polling" },
+    { version = "0011", file = "0011_static_otp_for_reviewer.sql",    description = "static_otp_hash on user — bypass email OTP for service accounts" },
 }
 
 -- Errors that mean "this change is already applied" — tolerated silently.
@@ -1025,8 +1027,69 @@ function M.list_tenants_with_anthropic_admin_key()
 end
 
 -- ---------------------------------------------------------------------------
--- Anthropic usage snapshot helpers
+-- Provider health (status-page polling)
 -- ---------------------------------------------------------------------------
+
+function M.upsert_provider_health(provider, status, message, latency_ms)
+    local db, err = get_conn()
+    if not db then return end
+    exec_one(db, [[
+        INSERT INTO provider_health (provider, status, message, latency_ms, checked_at)
+        VALUES (?, ?, ?, ?, UNIX_TIMESTAMP())
+        ON DUPLICATE KEY UPDATE
+            status     = VALUES(status),
+            message    = VALUES(message),
+            latency_ms = VALUES(latency_ms),
+            checked_at = VALUES(checked_at)
+    ]], provider, status, message, latency_ms)
+    release(db)
+end
+
+function M.get_provider_health_all()
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows = query_all(db, [[
+        SELECT provider, status, message, latency_ms, checked_at
+        FROM   provider_health
+    ]]) or {}
+    release(db)
+    return rows
+end
+
+-- Deletes provider_health rows for providers whose names are NOT keys in active_set.
+-- Called after each poll so the table stays in sync with the current STATUS_PAGES map.
+function M.cleanup_provider_health(active_set)
+    local db, err = get_conn()
+    if not db then return end
+    local placeholders = {}
+    local params = {}
+    for provider in pairs(active_set) do
+        placeholders[#placeholders + 1] = "?"
+        params[#params + 1] = provider
+    end
+    if #placeholders == 0 then
+        exec_one(db, "DELETE FROM provider_health")
+    else
+        exec_one(db,
+            "DELETE FROM provider_health WHERE provider NOT IN (" ..
+            table.concat(placeholders, ",") .. ")",
+            table.unpack(params)
+        )
+    end
+    release(db)
+end
+
+-- Returns a set (table keyed by provider name) of providers that have at least
+-- one key configured on any gateway or tenant.
+function M.list_configured_providers()
+    local db, err = get_conn()
+    if not db then return {} end
+    local rows = query_all(db, "SELECT DISTINCT provider FROM provider_config") or {}
+    release(db)
+    local set = {}
+    for _, r in ipairs(rows) do set[r.provider] = true end
+    return set
+end
 
 function M.upsert_anthropic_usage(row)
     local db, err = get_conn()
@@ -1964,7 +2027,7 @@ function M.find_admin_user_by_email(email)
     local db, err = get_conn()
     if not db then return nil end
     local row = query_one(db, [[
-        SELECT id, email, name, role, tenant_id
+        SELECT id, email, name, role, tenant_id, static_otp_hash
         FROM `user`
         WHERE email = ? AND deleted_at IS NULL
         LIMIT 1
@@ -2028,6 +2091,16 @@ function M.consume_email_otp(email, code_hash)
     exec_one(db, "UPDATE email_otp SET used_at = UNIX_TIMESTAMP() WHERE id = ?", row.id)
     release(db)
     return nil
+end
+
+function M.set_user_static_otp(user_id, code_hash)
+    local db, err = get_conn()
+    if not db then return err end
+    local e = exec_one(db, [[
+        UPDATE `user` SET static_otp_hash = ? WHERE id = ?
+    ]], code_hash, user_id)
+    release(db)
+    return e
 end
 
 -- ---------------------------------------------------------------------------
