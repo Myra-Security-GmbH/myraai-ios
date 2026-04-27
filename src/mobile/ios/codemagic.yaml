@@ -89,8 +89,8 @@ workflows:
           for PROFILE in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
             echo "=== $PROFILE ==="
             security cms -D -i "$PROFILE" | python3 -c "
-          import sys, plistlib
-          p = plistlib.load(sys.stdin.buffer)
+          import sys, plistlib, io
+          p = plistlib.load(io.BytesIO(sys.stdin.buffer.read()))
           ent = p.get('Entitlements') or {}
           print('  Name:           ', p.get('Name'))
           print('  UUID:            ', p.get('UUID'))
