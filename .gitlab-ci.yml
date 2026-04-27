@@ -352,39 +352,42 @@ ios:submit-for-review:
                        "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}
           })
 
-      # Helper: cancel any pending betaAppReviewSubmissions for this app.
-      # Apple permits only one in-flight external review per app at a time;
-      # an old WAITING_FOR_REVIEW would block the new one with
-      # ANOTHER_BUILD_IN_REVIEW. CI semantics: latest push wins.
-      def supersede_pending_submissions():
-          subs, err = call("GET", f"/v1/betaAppReviewSubmissions?filter[build]={build_id}")
-          # Note: filter[build] only returns submissions for the target build
-          # itself, not other builds. To find ALL pending submissions on the
-          # app, we list per-build. We only care about WAITING_FOR_REVIEW.
-          pending_subs = []
+      # Check if our target build already has a pending submission (idempotent
+      # case: a previous run of this same pipeline already submitted it).
+      our_sub, _ = call("GET", f"/v1/builds/{build_id}/betaAppReviewSubmission")
+      if our_sub and our_sub.get("data") and our_sub["data"]["attributes"].get("betaReviewState") in ("WAITING_FOR_REVIEW","IN_REVIEW","APPROVED"):
+          state = our_sub["data"]["attributes"]["betaReviewState"]
+          print(f"OK: build version {target_version} already submitted — betaReviewState: {state}")
+          raise SystemExit(0)
+
+      # Submit to Beta App Review.
+      result, err = call("POST", "/v1/betaAppReviewSubmissions", {
+          "data": {"type": "betaAppReviewSubmissions",
+                   "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}
+      })
+
+      if err and "ANOTHER_BUILD_IN_REVIEW" in err:
+          # Apple only allows one external review at a time per app and the
+          # API does not support cancelling a pending submission (DELETE is
+          # forbidden — manual cancel via App Store Connect web UI only).
+          # CI semantic: log a soft warning, succeed. Internal testers get
+          # this build immediately regardless. Next push retries.
+          # Identify which build is currently blocking.
           builds_resp, _ = call("GET", f"/v1/apps/{APP_ID}/builds?limit=20")
+          blocking = None
           for b in (builds_resp or {}).get("data", []):
               s, _ = call("GET", f"/v1/builds/{b['id']}/betaAppReviewSubmission")
               if s and s.get("data") and s["data"]["attributes"].get("betaReviewState") == "WAITING_FOR_REVIEW":
-                  pending_subs.append((s["data"]["id"], b["attributes"].get("version")))
-          for sid, ver in pending_subs:
-              print(f"  cancelling pending submission {sid} (build version {ver})")
-              call("DELETE", f"/v1/betaAppReviewSubmissions/{sid}")
+                  blocking = b["attributes"].get("version")
+                  break
+          print(f"NOTE: build {target_version} not submitted — version {blocking} is still WAITING_FOR_REVIEW.")
+          print("      Apple permits only one external review at a time and does not support API cancellation.")
+          print("      Internal testers see this build now; external testers will get it after the next successful push,")
+          print("      once the blocking review completes (or is cancelled manually in App Store Connect).")
+          raise SystemExit(0)
 
-      # Submit to Beta App Review; on conflict, supersede pending and retry.
-      def submit():
-          return call("POST", "/v1/betaAppReviewSubmissions", {
-              "data": {"type": "betaAppReviewSubmissions",
-                       "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}
-          })
-
-      result, err = submit()
-      if err and "ANOTHER_BUILD_IN_REVIEW" in (err or ""):
-          print("Pending submission blocking — superseding and retrying…")
-          supersede_pending_submissions()
-          result, err = submit()
       if not result:
-          raise SystemExit("FAIL: betaAppReviewSubmissions POST failed even after supersede")
+          raise SystemExit("FAIL: betaAppReviewSubmissions POST failed")
       print(f"OK: submitted — betaReviewState: {result['data']['attributes']['betaReviewState']}")
       PYEOF
 
