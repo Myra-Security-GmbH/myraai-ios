@@ -25,28 +25,23 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         }
     }
 
-    // MARK: - Haptic
-    // Generators are retained in local vars before firing — required for reliable haptics
+    // MARK: - Haptic (generators retained before firing for reliable response)
 
     private func handleHaptic(_ type: String) {
         Task { @MainActor in
             switch type {
             case "light":
                 let gen = UIImpactFeedbackGenerator(style: .light)
-                gen.prepare()
-                gen.impactOccurred()
+                gen.prepare(); gen.impactOccurred()
             case "medium":
                 let gen = UIImpactFeedbackGenerator(style: .medium)
-                gen.prepare()
-                gen.impactOccurred()
+                gen.prepare(); gen.impactOccurred()
             case "success":
                 let gen = UINotificationFeedbackGenerator()
-                gen.prepare()
-                gen.notificationOccurred(.success)
+                gen.prepare(); gen.notificationOccurred(.success)
             default:
                 let gen = UIImpactFeedbackGenerator(style: .light)
-                gen.prepare()
-                gen.impactOccurred()
+                gen.prepare(); gen.impactOccurred()
             }
         }
     }
@@ -56,18 +51,31 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
     private func handleShare(_ body: [String: Any]) {
         let text = body["text"] as? String ?? ""
         let urlStr = body["url"] as? String ?? ""
-        var items: [Any] = [text]
-        if !urlStr.isEmpty, let url = URL(string: urlStr) {
-            items.append(url)
-        }
+        // Guard against empty share — would show a confusing empty sheet
+        guard !text.isEmpty || !urlStr.isEmpty else { return }
+        var items: [Any] = []
+        if !text.isEmpty { items.append(text) }
+        if !urlStr.isEmpty, let url = URL(string: urlStr) { items.append(url) }
         Task { @MainActor in
             let activityVC = UIActivityViewController(activityItems: items,
                                                       applicationActivities: nil)
-            guard let root = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .flatMap({ $0.windows })
-                .first(where: { $0.isKeyWindow })?.rootViewController else { return }
+            guard let root = keyWindow()?.rootViewController else { return }
+            // iPad requires a popover source — without this it crashes on iPad
+            if let popover = activityVC.popoverPresentationController {
+                popover.sourceView = root.view
+                popover.sourceRect = CGRect(x: root.view.bounds.midX,
+                                            y: root.view.bounds.midY,
+                                            width: 1, height: 1)
+                popover.permittedArrowDirections = []
+            }
             root.present(activityVC, animated: true)
         }
+    }
+
+    private func keyWindow() -> UIWindow? {
+        UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow })
     }
 }

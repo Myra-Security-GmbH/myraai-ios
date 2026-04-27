@@ -61,7 +61,6 @@ struct WebView: UIViewRepresentable {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.defaultWebpagePreferences.preferredContentMode = .mobile
-        // Appends to default WKWebView UA — no async, no race condition
         config.applicationNameForUserAgent = "MYRAai-iOS/1.0"
 
         let proxy = WeakScriptMessageHandler(context.coordinator.bridge)
@@ -69,7 +68,6 @@ struct WebView: UIViewRepresentable {
             config.userContentController.add(proxy, name: name)
         }
 
-        // Main frame only — prevents shim injecting into third-party iframes
         let shim = WKUserScript(source: jsShim,
                                 injectionTime: .atDocumentStart,
                                 forMainFrameOnly: true)
@@ -79,10 +77,16 @@ struct WebView: UIViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-        webView.scrollView.bounces = true
+        // Disable rubber-band bounce — reveals empty navy background, wrong for a chat app
+        webView.scrollView.bounces = false
+        // Allow drag-to-dismiss keyboard — standard iOS chat gesture
+        webView.scrollView.keyboardDismissMode = .interactive
         webView.backgroundColor = UIColor(red: 13/255, green: 27/255, blue: 42/255, alpha: 1)
         webView.isOpaque = false
         webView.allowsBackForwardNavigationGestures = false
+
+        context.coordinator.webView = webView
+        context.coordinator.setupKeyboardObservers()
 
         state.webView = webView
         state.startNetworkMonitor()
@@ -125,6 +129,7 @@ extension WebView {
                               UIDocumentPickerDelegate {
         let state: WebViewState
         let bridge: NativeBridge
+        weak var webView: WKWebView?
         private var filePickerCompletion: (([URL]?) -> Void)?
 
         init(state: WebViewState) {
@@ -133,7 +138,52 @@ extension WebView {
         }
 
         deinit {
+            NotificationCenter.default.removeObserver(self)
             filePickerCompletion?(nil)
+        }
+
+        // MARK: Keyboard — handled entirely in UIKit to match keyboard animation curve
+        // and avoid the double-scroll that SwiftUI view-level padding causes.
+
+        func setupKeyboardObservers() {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(keyboardWillChange(_:)),
+                name: UIResponder.keyboardWillShowNotification, object: nil)
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(keyboardWillHide(_:)),
+                name: UIResponder.keyboardWillHideNotification, object: nil)
+        }
+
+        @objc private func keyboardWillChange(_ notification: Notification) {
+            guard let webView,
+                  let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+                  let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double,
+                  let curveInt = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int
+            else { return }
+            // Subtract the bottom safe area so we don't over-push on devices with home indicator
+            let safeBottom = webView.safeAreaInsets.bottom
+            let inset = max(0, frame.height - safeBottom)
+            UIView.animate(
+                withDuration: duration, delay: 0,
+                options: UIView.AnimationOptions(rawValue: UInt(curveInt << 16))
+            ) {
+                webView.scrollView.contentInset.bottom = inset
+                webView.scrollView.verticalScrollIndicatorInsets.bottom = inset
+            }
+        }
+
+        @objc private func keyboardWillHide(_ notification: Notification) {
+            guard let webView,
+                  let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double,
+                  let curveInt = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int
+            else { return }
+            UIView.animate(
+                withDuration: duration, delay: 0,
+                options: UIView.AnimationOptions(rawValue: UInt(curveInt << 16))
+            ) {
+                webView.scrollView.contentInset.bottom = 0
+                webView.scrollView.verticalScrollIndicatorInsets.bottom = 0
+            }
         }
 
         // MARK: External link interception
@@ -143,11 +193,10 @@ extension WebView {
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = navigationAction.request.url,
                   let host = url.host else {
-                decisionHandler(.allow)
-                return
+                decisionHandler(.allow); return
             }
-            let ownedHosts = ["ai.myra.eu", "ai-api.myra.eu", "ai-api-admin.myra.eu"]
-            if ownedHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) {
+            let owned = ["ai.myra.eu", "ai-api.myra.eu", "ai-api-admin.myra.eu"]
+            if owned.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) {
                 decisionHandler(.allow)
             } else {
                 UIApplication.shared.open(url)
@@ -167,18 +216,16 @@ extension WebView {
         func webView(_ webView: WKWebView,
                      didFailProvisionalNavigation navigation: WKNavigation!,
                      withError error: Error) {
-            let nsError = error as NSError
-            guard nsError.code != NSURLErrorCancelled else { return }
+            guard (error as NSError).code != NSURLErrorCancelled else { return }
             Task { @MainActor in self.state.showOffline = true }
         }
 
         func webView(_ webView: WKWebView,
-                     didFail navigation: WKNavigation!,
-                     withError error: Error) {
+                     didFail navigation: WKNavigation!, withError error: Error) {
             Task { @MainActor in self.state.showOffline = true }
         }
 
-        // MARK: File picker — iOS 16.4+ (WKUIDelegate)
+        // MARK: File picker — iOS 16.4+
 
         @available(iOS 16.4, *)
         func webView(_ webView: WKWebView,
@@ -186,18 +233,19 @@ extension WebView {
                      initiatedByFrame frame: WKFrameInfo,
                      completionHandler: @escaping ([URL]?) -> Void) {
             filePickerCompletion = completionHandler
-            let types: [UTType] = [.data, .image, .pdf, .plainText,
-                                   .spreadsheet, .presentation]
+            let types: [UTType] = [.data, .image, .pdf, .plainText, .spreadsheet, .presentation]
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: types)
             picker.allowsMultipleSelection = false
             picker.delegate = self
-            guard let root = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .flatMap({ $0.windows })
-                .first(where: { $0.isKeyWindow })?.rootViewController else {
-                completionHandler(nil)
-                filePickerCompletion = nil
-                return
+            guard let root = keyWindow()?.rootViewController else {
+                completionHandler(nil); filePickerCompletion = nil; return
+            }
+            // iPad requires popover anchor
+            if let popover = picker.popoverPresentationController {
+                popover.sourceView = root.view
+                popover.sourceRect = CGRect(x: root.view.bounds.midX,
+                                            y: root.view.bounds.midY, width: 1, height: 1)
+                popover.permittedArrowDirections = []
             }
             root.present(picker, animated: true)
         }
@@ -206,13 +254,20 @@ extension WebView {
 
         func documentPicker(_ controller: UIDocumentPickerViewController,
                             didPickDocumentsAt urls: [URL]) {
-            filePickerCompletion?(urls)
-            filePickerCompletion = nil
+            filePickerCompletion?(urls); filePickerCompletion = nil
         }
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            filePickerCompletion?(nil)
-            filePickerCompletion = nil
+            filePickerCompletion?(nil); filePickerCompletion = nil
+        }
+
+        // MARK: Helpers
+
+        private func keyWindow() -> UIWindow? {
+            UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap({ $0.windows })
+                .first(where: { $0.isKeyWindow })
         }
     }
 }

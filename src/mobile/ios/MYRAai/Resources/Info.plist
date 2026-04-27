@@ -51,6 +51,11 @@
 	<string>MYRA AI needs access to your photos to attach files to chat messages.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>MYRA AI needs camera access to take photos for chat attachments.</string>
+	<!-- Light status bar text — required on dark navy background -->
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

@@ -2,39 +2,41 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var webViewState = WebViewState()
-    @State private var keyboardHeight: CGFloat = 0
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var backgroundedAt: Date?
 
     var body: some View {
         ZStack {
             WebView(state: webViewState)
                 .ignoresSafeArea()
-                .padding(.bottom, keyboardHeight)
-                .animation(.easeOut(duration: 0.25), value: keyboardHeight)
 
             if webViewState.showOffline {
-                OfflineView {
-                    webViewState.reload()
-                }
-                .ignoresSafeArea()
+                OfflineView { webViewState.reload() }
+                    .ignoresSafeArea()
+                    .transition(.opacity)
             }
 
             if !webViewState.isLoaded && !webViewState.showOffline {
                 LaunchOverlay()
                     .ignoresSafeArea()
+                    .transition(.opacity)
             }
         }
+        .animation(.easeOut(duration: 0.3), value: webViewState.isLoaded)
+        .animation(.easeOut(duration: 0.2), value: webViewState.showOffline)
         .preferredColorScheme(nil)
-        .onReceive(
-            NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)
-        ) { notification in
-            guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
-                    as? CGRect else { return }
-            keyboardHeight = frame.height
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)
-        ) { _ in
-            keyboardHeight = 0
+        .onChange(of: scenePhase) { phase in
+            switch phase {
+            case .background:
+                backgroundedAt = Date()
+            case .active:
+                if let bg = backgroundedAt, Date().timeIntervalSince(bg) > 30 * 60 {
+                    webViewState.reload()
+                }
+                backgroundedAt = nil
+            default:
+                break
+            }
         }
     }
 }

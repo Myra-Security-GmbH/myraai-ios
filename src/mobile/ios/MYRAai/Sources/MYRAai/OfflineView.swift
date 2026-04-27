@@ -10,21 +10,26 @@ struct OfflineView: View {
                 Image(systemName: "wifi.slash")
                     .font(.system(size: 56, weight: .thin))
                     .foregroundColor(Color(red: 0.49, green: 0.70, blue: 0.83))
-                Text("No Connection")
+                    .accessibilityLabel(String(localized: "No internet connection"))
+
+                Text("No Connection", comment: "Offline screen headline")
                     .font(.title2).fontWeight(.semibold)
                     .foregroundColor(.white)
-                Text("Check your internet connection\nand try again.")
+
+                Text("Check your internet connection\nand try again.",
+                     comment: "Offline screen body text")
                     .font(.body)
                     .multilineTextAlignment(.center)
                     .foregroundColor(Color(red: 0.62, green: 0.69, blue: 0.75))
+
                 Button(action: onRetry) {
-                    Text("Retry")
+                    Text("Retry", comment: "Retry button")
                         .font(.body).fontWeight(.semibold)
                         .foregroundColor(.white)
                         .padding(.horizontal, 32)
                         .padding(.vertical, 12)
                         .background(Color(red: 0.36, green: 0.77, blue: 0.92))
-                        .cornerRadius(10)
+                        .clipShape(.rect(cornerRadius: 10))  // replaces deprecated .cornerRadius
                 }
                 .padding(.top, 8)
             }
