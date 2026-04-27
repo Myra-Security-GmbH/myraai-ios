@@ -1,10 +1,12 @@
 package eu.myra.myraai
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
@@ -25,12 +27,15 @@ import androidx.activity.OnBackPressedCallback
 import android.accounts.AccountManager
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.firebase.messaging.FirebaseMessaging
 
 class MainActivity : AppCompatActivity() {
 
@@ -47,6 +52,21 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var hintLauncher: ActivityResultLauncher<Intent>
 
+    // Set when NativeBridge.requestNotificationPermission is called; consulted
+    // by notificationPermissionLauncher to relay the system-prompt result back
+    // to the web layer.
+    private var pendingPermissionCallback: String? = null
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val cb = pendingPermissionCallback ?: return@registerForActivityResult
+        pendingPermissionCallback = null
+        runOnUiThread {
+            webView.evaluateJavascript("$cb($granted);", null)
+        }
+    }
+
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -59,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        activeInstance = this
 
         // Dismiss the splash after 5 s at the latest so a slow first load doesn't
         // leave the user on a frozen splash screen with no feedback.
@@ -324,9 +345,59 @@ class MainActivity : AppCompatActivity() {
         intent.data?.toString()?.let { webView.loadUrl(it) }
     }
 
+    override fun onDestroy() {
+        if (activeInstance === this) activeInstance = null
+        super.onDestroy()
+    }
+
+    /**
+     * Show our rationale, then trigger the system POST_NOTIFICATIONS prompt.
+     * Called from NativeBridge.requestNotificationPermission(callbackName).
+     * Pre-Android 13 callers don't reach here — that case is short-circuited
+     * in the bridge.
+     */
+    fun requestNotificationPermissionFromBridge(callbackName: String) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            == PackageManager.PERMISSION_GRANTED) {
+            webView.evaluateJavascript("$callbackName(true);", null)
+            return
+        }
+        pendingPermissionCallback = callbackName
+        AlertDialog.Builder(this)
+            .setTitle(R.string.notification_rationale_title)
+            .setMessage(R.string.notification_rationale_message)
+            .setPositiveButton(R.string.notification_rationale_allow) { _, _ ->
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            .setNegativeButton(R.string.notification_rationale_skip) { _, _ ->
+                pendingPermissionCallback = null
+                webView.evaluateJavascript("$callbackName(false);", null)
+            }
+            .setCancelable(false)
+            .show()
+    }
+
     companion object {
         private const val HOME_URL = "https://ai.myra.eu"
         private const val SPLASH_TIMEOUT_MS = 5_000L
+
+        // Weak-style reference to the foreground MainActivity, used by
+        // MyraFirebaseMessagingService to push token updates into the WebView
+        // immediately on rotation. Cleared in onDestroy.
+        @Volatile
+        private var activeInstance: MainActivity? = null
+
+        /** Called from MyraFirebaseMessagingService.onNewToken. */
+        fun notifyDeviceTokenChanged(token: String) {
+            val act = activeInstance ?: return
+            val escaped = token.replace("\\", "\\\\").replace("\"", "\\\"")
+            act.runOnUiThread {
+                act.webView.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('aig-device-token', { detail: \"$escaped\" }));",
+                    null,
+                )
+            }
+        }
     }
 
     inner class NativeBridge(private val ctx: MainActivity) {
@@ -374,6 +445,70 @@ class MainActivity : AppCompatActivity() {
         fun copyToClipboard(text: String) {
             (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                 .setPrimaryClip(ClipData.newPlainText("", text))
+        }
+
+        /**
+         * Return the latest FCM registration token to the web layer. Mirrors
+         * the iOS NativeBridge.getDeviceToken contract: web calls
+         *   window.Android.getDeviceToken("__myCallback")
+         * and we evaluate `__myCallback("<token>")` (or `__myCallback(null)`
+         * if no token is available yet — Firebase isn't initialised, no
+         * google-services.json, or registration in flight).
+         */
+        @JavascriptInterface
+        fun getDeviceToken(callbackName: String) {
+            val cached = MyraFirebaseMessagingService.latestToken
+            if (cached != null && cached.isNotEmpty()) {
+                ctx.runOnUiThread {
+                    val escaped = cached.replace("\\", "\\\\").replace("\"", "\\\"")
+                    ctx.webView.evaluateJavascript("$callbackName(\"$escaped\");", null)
+                }
+                return
+            }
+            // No cached token — ask Firebase. This is async and may fail
+            // (e.g. when Firebase isn't initialised).
+            try {
+                FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                    val token = if (task.isSuccessful) task.result ?: "" else ""
+                    if (token.isNotEmpty()) {
+                        MyraFirebaseMessagingService.latestToken = token
+                    }
+                    ctx.runOnUiThread {
+                        val js = if (token.isEmpty()) {
+                            "$callbackName(null);"
+                        } else {
+                            val escaped = token.replace("\\", "\\\\").replace("\"", "\\\"")
+                            "$callbackName(\"$escaped\");"
+                        }
+                        ctx.webView.evaluateJavascript(js, null)
+                    }
+                }
+            } catch (e: Throwable) {
+                ctx.runOnUiThread {
+                    ctx.webView.evaluateJavascript("$callbackName(null);", null)
+                }
+            }
+        }
+
+        /**
+         * Trigger the runtime POST_NOTIFICATIONS permission flow on Android
+         * 13+. The web layer should call this after the user signs in so
+         * the prompt appears with context. The callback is invoked with a
+         * boolean (true = granted, false = denied or skipped). On older
+         * Android versions notifications are auto-allowed and the callback
+         * fires immediately with true.
+         */
+        @JavascriptInterface
+        fun requestNotificationPermission(callbackName: String) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                ctx.runOnUiThread {
+                    ctx.webView.evaluateJavascript("$callbackName(true);", null)
+                }
+                return
+            }
+            ctx.runOnUiThread {
+                ctx.requestNotificationPermissionFromBridge(callbackName)
+            }
         }
     }
 }

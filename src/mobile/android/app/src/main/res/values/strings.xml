@@ -14,4 +14,18 @@
     <string name="shortcut_projects_long">Open MYRA AI Projects</string>
     <string name="shortcut_dashboard">Dashboard</string>
     <string name="shortcut_dashboard_long">Open MYRA AI Dashboard</string>
+
+    <!-- Notification channels (also used as default channel id meta in manifest). -->
+    <string name="notification_channel_general">general</string>
+    <string name="notification_channel_general_name">General</string>
+    <string name="notification_channel_general_description">App-wide announcements and project invitations.</string>
+    <string name="notification_channel_chat">chat_replies</string>
+    <string name="notification_channel_chat_name">Chat replies</string>
+    <string name="notification_channel_chat_description">A long-running response is ready, or a teammate replied in a shared conversation.</string>
+
+    <!-- Runtime permission rationale shown before the system POST_NOTIFICATIONS prompt. -->
+    <string name="notification_rationale_title">Stay updated</string>
+    <string name="notification_rationale_message">MYRA AI uses notifications to let you know when a long-running response is ready or when a teammate adds you to a project. You can change this any time in Settings.</string>
+    <string name="notification_rationale_allow">Allow</string>
+    <string name="notification_rationale_skip">Not now</string>
 </resources>

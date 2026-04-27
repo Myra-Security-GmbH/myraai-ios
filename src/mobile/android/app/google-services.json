@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "482012125326",
+    "project_id": "myra-ai-6a474",
+    "storage_bucket": "myra-ai-6a474.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:482012125326:android:db38a916fad5a982cc51df",
+        "android_client_info": {
+          "package_name": "eu.myra.myraai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxYUShekCXpLh4D0eYQyjG3NcINjoXE8I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

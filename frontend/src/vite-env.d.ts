@@ -6,6 +6,7 @@ interface AndroidBridge {
   share(text: string, url: string): void;
   copyToClipboard(text: string): void;
   getDeviceToken?(callbackName: string): void;
+  requestNotificationPermission?(callbackName: string): void;
 }
 
 declare interface Window {

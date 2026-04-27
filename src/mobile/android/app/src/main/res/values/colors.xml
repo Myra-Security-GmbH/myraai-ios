@@ -7,4 +7,6 @@
     <color name="offline_bg">#F5F7FA</color>
     <color name="offline_text">#1A202C</color>
     <color name="offline_text_muted">#64748B</color>
+    <!-- Tint applied to the notification small icon by FCM when no per-notification colour is set. -->
+    <color name="notification_color">#5CC5EB</color>
 </resources>

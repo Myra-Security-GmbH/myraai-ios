@@ -4,13 +4,38 @@ import { authApi, AdminUser, api } from "src/api/client";
 
 function registerPushTokenIfAvailable() {
   if (!window.Android?.getDeviceToken) return;
-  const cb = "__myraOnPushToken_" + Date.now();
-  window[cb] = (token: string | null) => {
-    delete window[cb];
-    if (!token) return;
-    api.post("/me/device-token", { token, platform: "ios" }).catch(() => {});
+
+  // Both iOS and Android expose the bridge under window.Android. The Android
+  // WebView appends "MYRAai-Android" to the user-agent so we can tell which
+  // OS we're talking to and tag tokens correctly server-side.
+  const isAndroid = /MYRAai-Android/.test(navigator.userAgent);
+  const platform = isAndroid ? "android" : "ios";
+
+  const fetchAndPostToken = () => {
+    const cb = "__myraOnPushToken_" + Date.now();
+    window[cb] = (token: string | null) => {
+      delete window[cb];
+      if (!token) return;
+      api.post("/me/device-token", { token, platform }).catch(() => {});
+    };
+    window.Android!.getDeviceToken!(cb);
   };
-  window.Android.getDeviceToken(cb);
+
+  // On Android 13+ POST_NOTIFICATIONS is a runtime permission. The native
+  // bridge shows a rationale dialog, then triggers the system prompt, then
+  // calls our callback with the result. On older Android and on iOS this
+  // is a no-op (the bridge returns granted=true immediately on Android <13;
+  // iOS uses a separate flow).
+  if (isAndroid && window.Android?.requestNotificationPermission) {
+    const cb = "__myraOnNotifPerm_" + Date.now();
+    window[cb] = (granted: boolean) => {
+      delete window[cb];
+      if (granted) fetchAndPostToken();
+    };
+    window.Android.requestNotificationPermission(cb);
+  } else {
+    fetchAndPostToken();
+  }
 }
 
 interface AuthContextValue {

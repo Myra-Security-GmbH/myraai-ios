@@ -4,8 +4,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Required on Android 13+ to display notifications. We request the
+         runtime permission lazily (after the user signs in), via NativeBridge. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
+        android:name=".MyraApplication"
         android:allowBackup="false"
         android:icon="@mipmap/myraai_launcher"
         android:roundIcon="@mipmap/myraai_launcher_round"
@@ -13,6 +17,29 @@
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.MYRAai">
+
+        <!-- Firebase Cloud Messaging service. Wired even when google-services
+             is not configured at build time — Firebase simply won't initialise
+             at runtime, and onNewToken / onMessageReceived are never called. -->
+        <service
+            android:name=".MyraFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Default notification icon + colour shown by FCM when our
+             onMessageReceived doesn't handle the payload (defensive). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_color" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/notification_channel_general" />
 
         <activity
             android:name=".MainActivity"

@@ -3,6 +3,17 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// Apply the Google Services plugin only when google-services.json is present.
+// Without it the Firebase SDK still compiles in but is uninitialised at runtime,
+// so the app keeps building and running without push for local-dev / CI builds
+// that haven't been configured for Firebase yet. See FIREBASE_SETUP.md.
+def googleServicesJson = file('google-services.json')
+if (googleServicesJson.exists()) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    logger.warn("⚠ google-services.json not found at ${googleServicesJson} — building without FCM. See FIREBASE_SETUP.md.")
+}
+
 def keystoreProps = new Properties()
 def keystoreFile = rootProject.file("local.properties")
 if (keystoreFile.exists()) keystoreProps.load(new FileInputStream(keystoreFile))
@@ -63,4 +74,11 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
     implementation 'com.google.android.gms:play-services-auth:21.2.0'
+
+    // Firebase Cloud Messaging — pinned via BOM for cross-module version lock.
+    // The SDK is included unconditionally so MyraFirebaseMessagingService
+    // compiles; Firebase is only initialised at runtime when the
+    // google-services plugin has been applied (see top of this file).
+    implementation platform('com.google.firebase:firebase-bom:33.5.0')
+    implementation 'com.google.firebase:firebase-messaging-ktx'
 }
