@@ -1,0 +1,16 @@
+[Unit]
+Description=MYRA AI FCM push notification microservice
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/myra-fcm.env
+ExecStart=/opt/myra-fcm/venv/bin/python3 /opt/myra-fcm/fcm_service.py
+Restart=on-failure
+RestartSec=5
+User=www-data
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
