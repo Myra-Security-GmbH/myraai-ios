@@ -3,40 +3,52 @@ import XCTest
 /// Captures App Store screenshots by driving a full login flow and photographing
 /// three key screens.  Skipped silently when credentials are absent (local dev).
 ///
-/// In CI the `screenshots` Codemagic workflow passes two env vars:
-///   TEST_LOGIN_EMAIL  — reviewer account email
-///   TEST_LOGIN_OTP    — static OTP for that account
-///   SCREENSHOT_OUTPUT_DIR — Mac-side path where PNGs are written
-///
-/// PNGs are also attached as XCTAttachments (lifetime = keepAlways) so they
-/// appear in the Xcode test report and in the Codemagic build artefacts.
+/// In CI the `screenshots` Codemagic workflow writes a JSON sidecar file at
+/// /tmp/myra_screenshot_creds.json before invoking xcodebuild, because Xcode 26
+/// does not forward TEST_RUNNER_* build settings or shell env vars into the
+/// XCUITest runner process.  The sidecar format is:
+///   {"email":"...", "otp":"...", "output_dir":"..."}
 final class ScreenshotTests: XCTestCase {
 
-    private var loginEmail: String {
-        ProcessInfo.processInfo.environment["TEST_LOGIN_EMAIL"] ?? ""
+    private struct Creds {
+        let email: String
+        let otp: String
+        let outputDir: String
     }
-    private var loginOTP: String {
-        ProcessInfo.processInfo.environment["TEST_LOGIN_OTP"] ?? ""
-    }
-    private var outputDir: String {
-        ProcessInfo.processInfo.environment["SCREENSHOT_OUTPUT_DIR"]
-            ?? (NSTemporaryDirectory() + "myra_screenshots")
+
+    private func loadCreds() -> Creds? {
+        // 1. Shell environment (works when -testenv or TEST_RUNNER_ forwarding is available)
+        let env = ProcessInfo.processInfo.environment
+        if let email = env["TEST_LOGIN_EMAIL"], !email.isEmpty,
+           let otp   = env["TEST_LOGIN_OTP"],   !otp.isEmpty {
+            let dir = env["SCREENSHOT_OUTPUT_DIR"] ?? (NSTemporaryDirectory() + "myra_screenshots")
+            return Creds(email: email, otp: otp, outputDir: dir)
+        }
+        // 2. Sidecar file written by the Codemagic shell script
+        guard let data = FileManager.default.contents(atPath: "/tmp/myra_screenshot_creds.json"),
+              let obj  = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              let email = obj["email"], !email.isEmpty,
+              let otp   = obj["otp"],   !otp.isEmpty else { return nil }
+        let dir = obj["output_dir"] ?? (NSTemporaryDirectory() + "myra_screenshots")
+        return Creds(email: email, otp: otp, outputDir: dir)
     }
 
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
-        try? FileManager.default.createDirectory(
-            atPath: outputDir,
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
+        if let creds = loadCreds() {
+            try? FileManager.default.createDirectory(
+                atPath: creds.outputDir,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+        }
     }
 
     // MARK: - Main capture test
 
     func test_capture_app_store_screenshots() throws {
-        guard !loginEmail.isEmpty, !loginOTP.isEmpty else {
+        guard let creds = loadCreds() else {
             throw XCTSkip("TEST_LOGIN_EMAIL / TEST_LOGIN_OTP not set — screenshot capture skipped")
         }
 
@@ -52,7 +64,7 @@ final class ScreenshotTests: XCTestCase {
             .firstMatch
         XCTAssertTrue(emailMethodBtn.waitForExistence(timeout: 30),
                       "Login page did not render")
-        capture("01_login")
+        capture("01_login", to: creds.outputDir)
 
         // Proceed through the login flow
         emailMethodBtn.tap()
@@ -60,7 +72,7 @@ final class ScreenshotTests: XCTestCase {
         let emailField = webView.textFields.firstMatch
         XCTAssertTrue(emailField.waitForExistence(timeout: 10), "Email field not found")
         emailField.tap()
-        emailField.typeText(loginEmail)
+        emailField.typeText(creds.email)
 
         let sendBtn = webView.buttons
             .matching(NSPredicate(format: "label CONTAINS 'Send code'"))
@@ -72,7 +84,7 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(codeField.waitForExistence(timeout: 30),
                       "OTP field did not appear after email submit")
         codeField.tap()
-        codeField.typeText(loginOTP)
+        codeField.typeText(creds.otp)
 
         let signInBtn = webView.buttons
             .matching(NSPredicate(format: "label CONTAINS 'Sign in'"))
@@ -84,19 +96,18 @@ final class ScreenshotTests: XCTestCase {
         let navBtn = webView.buttons["Open navigation menu"]
         XCTAssertTrue(navBtn.waitForExistence(timeout: 30),
                       "Dashboard did not appear after login")
-        // Brief settle for any loading spinners to clear
         _ = XCTWaiter.wait(for: [expectation(description: "settle")], timeout: 2)
-        capture("02_chat")
+        capture("02_chat", to: creds.outputDir)
 
         // 3 — Sidebar / navigation drawer
         navBtn.tap()
         _ = webView.staticTexts.firstMatch.waitForExistence(timeout: 5)
-        capture("03_sidebar")
+        capture("03_sidebar", to: creds.outputDir)
     }
 
     // MARK: - Helpers
 
-    private func capture(_ name: String) {
+    private func capture(_ name: String, to outputDir: String) {
         let screenshot = XCUIScreen.main.screenshot()
 
         let attachment = XCTAttachment(screenshot: screenshot)

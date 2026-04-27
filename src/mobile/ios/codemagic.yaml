@@ -24,20 +24,20 @@ workflows:
           OUT="$CM_BUILD_DIR/screenshots/iphone_6_9"
           mkdir -p "$OUT"
 
-          # Xcode's test runner is a separate process and does not inherit the
-          # shell environment.  Pass credentials via TEST_RUNNER_ build settings,
-          # which Xcode forwards to ProcessInfo.processInfo.environment in the
-          # XCUITest process.
+          # Xcode 26 does not forward TEST_RUNNER_* build settings nor the shell
+          # environment to the XCUITest runner process.  Write a JSON sidecar file
+          # to a fixed path on the Mac host; the Swift test reads it from there.
+          printf '{"email":"%s","otp":"%s","output_dir":"%s"}' \
+            "$TEST_LOGIN_EMAIL" "$TEST_LOGIN_OTP" "$OUT" \
+            > /tmp/myra_screenshot_creds.json
+
           xcodebuild test \
             -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -destination "platform=iOS Simulator,name=$SIM,OS=latest" \
             -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_app_store_screenshots \
             -resultBundlePath "$CM_BUILD_DIR/result_6_9.xcresult" \
-            CODE_SIGNING_ALLOWED=NO \
-            TEST_RUNNER_TEST_LOGIN_EMAIL="$TEST_LOGIN_EMAIL" \
-            TEST_RUNNER_TEST_LOGIN_OTP="$TEST_LOGIN_OTP" \
-            TEST_RUNNER_SCREENSHOT_OUTPUT_DIR="$OUT"
+            CODE_SIGNING_ALLOWED=NO
 
           echo "PNG files written:"
           ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — check XCTAttachments in xcresult)"
