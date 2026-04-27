@@ -171,6 +171,45 @@ ios:build:
     - if: $RUN_IOS == "true"
   script:
     - apk add --no-cache curl
+    # Layer 1: cancel any in-flight Codemagic builds for this workflow before
+    # triggering a new one. Stale builds from superseded pipelines just hog
+    # the Mac mini and never produce useful output.
+    - |
+      python3 - <<'PYEOF'
+      import os, json
+      from urllib.request import urlopen, Request
+      from urllib.error import HTTPError
+
+      token = os.environ["CODEMAGIC_API_TOKEN"]
+      app   = os.environ["CODEMAGIC_APP_ID"]
+      hdrs  = {"x-auth-token": token}
+
+      try:
+          r = urlopen(Request(f"https://api.codemagic.io/builds?appId={app}", headers=hdrs))
+          data = json.loads(r.read())
+      except HTTPError as e:
+          print(f"WARN: list builds failed: {e.code}: {e.read().decode()}")
+          raise SystemExit(0)  # don't block trigger if list fails
+
+      builds = data if isinstance(data, list) else data.get("builds", [])
+      in_flight = {"queued","preparing","fetching","testing","building","publishing"}
+      cancelled = 0
+      for b in builds:
+          if b.get("workflowId") != "ios-app-store":
+              continue
+          if b.get("status") not in in_flight:
+              continue
+          bid = b.get("_id")
+          try:
+              urlopen(Request(f"https://api.codemagic.io/builds/{bid}/cancel",
+                              method="POST", headers=hdrs))
+              print(f"  cancelled stale build {bid} (was {b.get('status')})")
+              cancelled += 1
+          except HTTPError as e:
+              print(f"  WARN: cancel {bid} failed: {e.code}: {e.read().decode()}")
+      print(f"Cancelled {cancelled} in-flight build(s) before triggering")
+      PYEOF
+    # Trigger the new build.
     - |
       RESP=$(curl -sS -X POST https://api.codemagic.io/builds \
         -H "x-auth-token: $CODEMAGIC_API_TOKEN" \
@@ -180,16 +219,23 @@ ios:build:
       [ -z "$BUILD_ID" ] && echo "FAIL: $RESP" && exit 1
       echo "Codemagic build: https://codemagic.io/app/$CODEMAGIC_APP_ID/build/$BUILD_ID"
       echo "$BUILD_ID" > codemagic_build_id.txt
-    # Poll until Codemagic is done — finished = uploaded + processed in App Store Connect.
+    # Poll until terminal. On finished, capture the buildNumber Codemagic used —
+    # that's the CFBundleVersion that landed in App Store Connect (Layer 2).
     - |
       BUILD_ID=$(cat codemagic_build_id.txt)
       while :; do
-        STATUS=$(curl -sS -H "x-auth-token: $CODEMAGIC_API_TOKEN" \
-          "https://api.codemagic.io/builds/$BUILD_ID" |
-          python3 -c "import json,sys; print(json.load(sys.stdin).get('build',{}).get('status','unknown'))")
+        BODY=$(curl -sS -H "x-auth-token: $CODEMAGIC_API_TOKEN" \
+          "https://api.codemagic.io/builds/$BUILD_ID")
+        STATUS=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build',{}).get('status','unknown'))")
         echo "$(date +%H:%M:%S)  status=$STATUS"
         case "$STATUS" in
-          finished) exit 0 ;;
+          finished)
+            BUILD_NUMBER=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build',{}).get('buildNumber',''))")
+            [ -z "$BUILD_NUMBER" ] && echo "FAIL: Codemagic returned no buildNumber" && exit 1
+            echo "$BUILD_NUMBER" > codemagic_build_number.txt
+            echo "Build finished — pinned buildNumber=$BUILD_NUMBER"
+            exit 0
+            ;;
           failed|canceled|timeout) exit 1 ;;
         esac
         sleep 30
@@ -197,6 +243,7 @@ ios:build:
   artifacts:
     paths:
       - codemagic_build_id.txt
+      - codemagic_build_number.txt
     expire_in: 1 day
 
 # ── iOS: submit the new build to Beta App Review (zero clicks, zero waiting on humans) ──
@@ -256,20 +303,35 @@ ios:submit-for-review:
 
       APP_ID = "6764008556"
 
-      # Wait until ASC has a VALID build (Codemagic upload + processing finished moments ago)
+      # Layer 2: read the pinned buildNumber that ios:build captured. Submit
+      # that exact ASC build, not "latest VALID" — avoids race conditions when
+      # a stale Codemagic build from a superseded pipeline finishes mid-flight.
+      try:
+          with open("codemagic_build_number.txt") as f:
+              target_version = f.read().strip()
+      except FileNotFoundError:
+          raise SystemExit("FAIL: codemagic_build_number.txt artifact missing — ios:build must run first")
+      if not target_version:
+          raise SystemExit("FAIL: codemagic_build_number.txt is empty")
+      print(f"Target build version (CFBundleVersion): {target_version}")
+
+      # ASC processing happens after Codemagic upload finishes — the build may
+      # not be VALID yet for a few seconds. Poll for both presence + VALID.
       build_id = None
       for attempt in range(20):
-          builds = call("GET", f"/v1/apps/{APP_ID}/builds?limit=10")
-          valid = [b for b in builds.get("data", []) if b["attributes"].get("processingState") == "VALID"]
-          if valid:
-              build_id = valid[0]["id"]
+          builds = call("GET", f"/v1/apps/{APP_ID}/builds?limit=20")
+          match = [b for b in builds.get("data", [])
+                   if b["attributes"].get("version") == target_version
+                   and b["attributes"].get("processingState") == "VALID"]
+          if match:
+              build_id = match[0]["id"]
               break
-          print(f"  waiting for VALID build (attempt {attempt+1}/20)…")
+          print(f"  waiting for ASC build version {target_version} to be VALID (attempt {attempt+1}/20)…")
           time.sleep(30)
       if not build_id:
-          raise SystemExit("FAIL: no VALID build appeared in App Store Connect")
+          raise SystemExit(f"FAIL: build version {target_version} did not become VALID in ASC within 10 min")
 
-      print(f"Build: {build_id}")
+      print(f"Build: {build_id} (version {target_version})")
 
       # whatsNew on the build's beta localization
       bbl = call("GET", f"/v1/builds/{build_id}/betaBuildLocalizations")
