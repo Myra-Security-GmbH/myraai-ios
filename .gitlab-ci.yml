@@ -290,16 +290,19 @@ ios:submit-for-review:
       BASE = "https://api.appstoreconnect.apple.com"
       hdrs = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-      def call(method, path, body=None):
+      def call(method, path, body=None, raise_on_error=False):
           data = json.dumps(body).encode() if body else None
           req = Request(f"{BASE}{path}", data=data, headers=hdrs, method=method)
           try:
               with urlopen(req) as r:
                   c = r.read()
-                  return json.loads(c) if c else {}
+                  return (json.loads(c) if c else {}, None)
           except HTTPError as e:
-              print(f"  HTTP {e.code}: {e.read().decode()}")
-              return None
+              body = e.read().decode()
+              if raise_on_error:
+                  raise
+              print(f"  HTTP {e.code}: {body}")
+              return (None, body)
 
       APP_ID = "6764008556"
 
@@ -319,7 +322,7 @@ ios:submit-for-review:
       # not be VALID yet for a few seconds. Poll for both presence + VALID.
       build_id = None
       for attempt in range(20):
-          builds = call("GET", f"/v1/apps/{APP_ID}/builds?limit=20")
+          builds, _ = call("GET", f"/v1/apps/{APP_ID}/builds?limit=20")
           match = [b for b in builds.get("data", [])
                    if b["attributes"].get("version") == target_version
                    and b["attributes"].get("processingState") == "VALID"]
@@ -334,8 +337,8 @@ ios:submit-for-review:
       print(f"Build: {build_id} (version {target_version})")
 
       # whatsNew on the build's beta localization
-      bbl = call("GET", f"/v1/builds/{build_id}/betaBuildLocalizations")
-      whats_new = "Initial beta release. Please test the core chat functionality and report any issues."
+      bbl, _ = call("GET", f"/v1/builds/{build_id}/betaBuildLocalizations")
+      whats_new = "Latest build. Please test the core chat functionality and report any issues."
       if bbl and bbl.get("data"):
           bbl_id = bbl["data"][0]["id"]
           call("PATCH", f"/v1/betaBuildLocalizations/{bbl_id}", {
@@ -349,14 +352,40 @@ ios:submit-for-review:
                        "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}
           })
 
-      # Submit to Beta App Review
-      r = call("POST", "/v1/betaAppReviewSubmissions", {
-          "data": {"type": "betaAppReviewSubmissions",
-                   "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}
-      })
-      if not r:
-          raise SystemExit("FAIL: betaAppReviewSubmissions POST failed")
-      print(f"OK: submitted — betaReviewState: {r['data']['attributes']['betaReviewState']}")
+      # Helper: cancel any pending betaAppReviewSubmissions for this app.
+      # Apple permits only one in-flight external review per app at a time;
+      # an old WAITING_FOR_REVIEW would block the new one with
+      # ANOTHER_BUILD_IN_REVIEW. CI semantics: latest push wins.
+      def supersede_pending_submissions():
+          subs, err = call("GET", f"/v1/betaAppReviewSubmissions?filter[build]={build_id}")
+          # Note: filter[build] only returns submissions for the target build
+          # itself, not other builds. To find ALL pending submissions on the
+          # app, we list per-build. We only care about WAITING_FOR_REVIEW.
+          pending_subs = []
+          builds_resp, _ = call("GET", f"/v1/apps/{APP_ID}/builds?limit=20")
+          for b in (builds_resp or {}).get("data", []):
+              s, _ = call("GET", f"/v1/builds/{b['id']}/betaAppReviewSubmission")
+              if s and s.get("data") and s["data"]["attributes"].get("betaReviewState") == "WAITING_FOR_REVIEW":
+                  pending_subs.append((s["data"]["id"], b["attributes"].get("version")))
+          for sid, ver in pending_subs:
+              print(f"  cancelling pending submission {sid} (build version {ver})")
+              call("DELETE", f"/v1/betaAppReviewSubmissions/{sid}")
+
+      # Submit to Beta App Review; on conflict, supersede pending and retry.
+      def submit():
+          return call("POST", "/v1/betaAppReviewSubmissions", {
+              "data": {"type": "betaAppReviewSubmissions",
+                       "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}
+          })
+
+      result, err = submit()
+      if err and "ANOTHER_BUILD_IN_REVIEW" in (err or ""):
+          print("Pending submission blocking — superseding and retrying…")
+          supersede_pending_submissions()
+          result, err = submit()
+      if not result:
+          raise SystemExit("FAIL: betaAppReviewSubmissions POST failed even after supersede")
+      print(f"OK: submitted — betaReviewState: {result['data']['attributes']['betaReviewState']}")
       PYEOF
 
 # ── Android: build and sign release AAB + APK ────────────────────────────────
