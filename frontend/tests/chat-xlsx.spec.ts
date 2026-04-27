@@ -270,3 +270,137 @@ test.describe("Chat page — .xlsx upload and analysis", () => {
     await expect(errorBanner).toBeVisible({ timeout: 8000 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Multi-sheet xlsx tests — use vLLM/qwen3 to exercise the CSV conversion path
+// (Claude uses the Anthropic Files API and sees xlsx natively; qwen3 converts
+//  to CSV, so sheet-separator rows emitted by the backend are what the model sees)
+// ---------------------------------------------------------------------------
+
+const QWEN_TENANT  = "myratest";
+const QWEN_GATEWAY = "prod-pii";
+const QWEN_MODEL   = "qwen3-30b-a3b";
+const MULTI_FIXTURE = path.resolve(__dirname, "fixtures/q1-multi-sheet.xlsx");
+
+async function selectQwenGateway(page: Page): Promise<boolean> {
+  const tenantSel = page.locator("select").first();
+  await tenantSel.waitFor({ state: "visible", timeout: 5000 });
+  await expect(tenantSel).toContainText(QWEN_TENANT, { timeout: 10_000 });
+  await tenantSel.selectOption({ label: QWEN_TENANT });
+  await expect(page.locator("select, [data-testid='config-preset-btn']").nth(1)).toBeVisible({ timeout: 5000 });
+
+  const hasGatewaySelect = await page.locator("select").nth(1)
+    .isVisible({ timeout: 2000 }).catch(() => false);
+  if (hasGatewaySelect) {
+    const gatewaySel = page.locator("select").nth(1);
+    await expect(gatewaySel).toContainText(QWEN_GATEWAY, { timeout: 10_000 });
+    await gatewaySel.selectOption({ label: QWEN_GATEWAY });
+    await expect(page.locator("[aria-haspopup='listbox']")).toBeVisible({ timeout: 5000 });
+    const modelBtn = page.locator("[aria-haspopup='listbox']");
+    await modelBtn.click();
+    const searchInput = page.locator("[role='listbox'] input[type='text'], [role='listbox'] input[type='search']");
+    const hasSearch = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
+    if (hasSearch) await searchInput.fill(QWEN_MODEL);
+    const option = page.locator("[role='listbox'] [role='option']")
+      .filter({ hasText: new RegExp(`^\\s*${QWEN_MODEL}\\s*$`) }).first();
+    const visible = await option.isVisible({ timeout: 5000 }).catch(() => false);
+    if (!visible) return false;
+    await option.click();
+  } else {
+    const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
+    if (!tenantsResp.ok()) return false;
+    const tenantList = await tenantsResp.json() as Array<{
+      id: string; slug: string;
+      chat_presets?: Array<{ id: string; name: string; model: string; gateway_id: string }>;
+    }>;
+    const tenant = tenantList.find((t) => t.slug === QWEN_TENANT);
+    if (!tenant) return false;
+    const preset = (tenant.chat_presets ?? []).find((p) => p.model === QWEN_MODEL);
+    if (!preset) return false;
+    const presetBtn = page.locator("button").filter({ hasText: new RegExp(`^\\s*${preset.name}\\s*$`) });
+    if (!(await presetBtn.isVisible({ timeout: 3000 }).catch(() => false))) return false;
+    await presetBtn.click();
+  }
+  await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
+  return true;
+}
+
+test.describe("Chat — multi-sheet xlsx sheet names (CSV path via qwen3)", () => {
+  let convIds: string[] = [];
+  test.setTimeout(120_000);
+
+  test.beforeEach(async ({ page }) => {
+    await gotoChatPage(page);
+  });
+
+  test.afterEach(async ({ page }) => {
+    const id = captureConvId(page);
+    if (id) convIds.push(id);
+    await deleteConversations(page, convIds);
+    convIds = [];
+  });
+
+  test("multi-sheet xlsx upload: model can identify all three sheet names", async ({ page }) => {
+    const ok = await selectQwenGateway(page);
+    if (!ok) {
+      throw new Error("Required gateway or model not available — check that prod-pii/qwen3-30b-a3b is configured for myratest");
+    }
+
+    await page.getByRole("button", { name: /new chat/i }).click();
+    await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
+
+    const fileInput = page.locator("input[type='file']");
+    await fileInput.setInputFiles(MULTI_FIXTURE);
+    await expect(page.locator("[class*='input-area']").getByText(/q1-multi-sheet\.xlsx/i)).toBeVisible({ timeout: 5000 });
+
+    const textarea = page.locator("[class*='chat-textarea']");
+    await textarea.fill("What are the names of the sheets (tabs) in this file? List them.");
+    await page.locator("button[title='Send message']").click();
+
+    await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 10_000 });
+    await page.locator("button[title='Stop generating']").waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+    await page.locator("button[title='Send message']").waitFor({ state: "visible", timeout: 90_000 });
+
+    const assistantBubble = page.locator("[class*='bubble-row']:not([class*='user-row'])").last();
+    await expect(assistantBubble).toBeVisible({ timeout: 5_000 });
+    const response = (await assistantBubble.textContent()) ?? "";
+    expect(response.trim().length, "Expected a non-empty assistant response").toBeGreaterThan(10);
+    expect(response).toMatch(/Q1 Summary/i);
+    expect(response).toMatch(/Product Details/i);
+    expect(response).toMatch(/Monthly/i);
+
+    await expect(page.getByText(/failed to fetch|error processing/i).first()).not.toBeVisible();
+  });
+
+  test("single-sheet xlsx upload: no spurious sheet separator in CSV output", async ({ page }) => {
+    const ok = await selectQwenGateway(page);
+    if (!ok) {
+      throw new Error("Required gateway or model not available — check that prod-pii/qwen3-30b-a3b is configured for myratest");
+    }
+
+    await page.getByRole("button", { name: /new chat/i }).click();
+    await expect(page.locator("[class*='chat-textarea']")).toBeEnabled({ timeout: 5000 });
+
+    const fileInput = page.locator("input[type='file']");
+    const singleFixture = path.resolve(__dirname, "fixtures/q1-sales.xlsx");
+    await fileInput.setInputFiles(singleFixture);
+    await expect(page.locator("[class*='input-area']").getByText(/q1-sales\.xlsx/i)).toBeVisible({ timeout: 5000 });
+
+    const textarea = page.locator("[class*='chat-textarea']");
+    await textarea.fill("What is the total revenue in this file?");
+    await page.locator("button[title='Send message']").click();
+
+    await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 10_000 });
+    await page.locator("button[title='Stop generating']").waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+    await page.locator("button[title='Send message']").waitFor({ state: "visible", timeout: 90_000 });
+
+    const assistantBubble = page.locator("[class*='bubble-row']:not([class*='user-row'])").last();
+    await expect(assistantBubble).toBeVisible({ timeout: 5_000 });
+    const response = (await assistantBubble.textContent()) ?? "";
+    expect(response.trim().length).toBeGreaterThan(10);
+    expect(response).not.toMatch(/--- Sheet:/);
+    expect(response).toMatch(/36[,.]?550|36550/);
+
+    await expect(page.getByText(/failed to fetch|error processing/i).first()).not.toBeVisible();
+  });
+});

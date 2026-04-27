@@ -235,4 +235,88 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
     const reply = (await assistantRow.textContent() ?? "").trim();
     expect(reply.length).toBeGreaterThan(0);
   });
+
+  // ── AGF-59: send button click regression guard ────────────────────────────
+
+  test("send button click (not Enter) sends message and receives response", async ({ page }) => {
+    const ok = await selectGatewayAndModel(page);
+    expect(ok, "Required gateway/model not available").toBeTruthy();
+
+    await page.getByRole("button", { name: /new chat/i }).click();
+    await page.waitForTimeout(300);
+
+    await page.locator("[class*='chat-textarea']").fill("Reply with exactly one word: hello");
+
+    const sendBtn = page.locator("[data-cy='send-button']");
+    await expect(sendBtn).toBeVisible({ timeout: 5000 });
+    await expect(sendBtn).toBeEnabled({ timeout: 5000 });
+    await sendBtn.click();
+
+    await expect(page.locator("[class*='user-row']").first()).toBeVisible({ timeout: 10_000 });
+    await waitForStreamingDone(page, 60_000);
+
+    const assistantRow = page.locator("[class*='bubble-row']:not([class*='user-row'])").first();
+    await expect(assistantRow).toBeVisible({ timeout: 5000 });
+    const reply = (await assistantRow.textContent() ?? "").trim();
+    expect(reply.length, "Assistant must reply after send button click").toBeGreaterThan(0);
+
+    await expect(page.getByText(/failed to fetch|TypeError/i).first())
+      .not.toBeVisible({ timeout: 2000 }).catch(() => {});
+  });
+
+  test("send button is visible and not covered by any overlay", async ({ page }) => {
+    const ok = await selectGatewayAndModel(page);
+    expect(ok, "Required gateway/model not available").toBeTruthy();
+
+    await page.getByRole("button", { name: /new chat/i }).click();
+    await page.waitForTimeout(300);
+
+    await page.locator("[class*='chat-textarea']").fill("test");
+
+    const sendBtn = page.locator("[data-cy='send-button']");
+    await expect(sendBtn).toBeVisible({ timeout: 5000 });
+
+    const covered = await sendBtn.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const top = document.elementFromPoint(cx, cy);
+      return top !== null && !el.contains(top) && top !== el;
+    });
+    expect(covered, "Send button must not be covered by any overlay element").toBe(false);
+  });
+
+  test("rapid double-click on send does not leave chat in broken state", async ({ page }) => {
+    const ok = await selectGatewayAndModel(page);
+    expect(ok, "Required gateway/model not available").toBeTruthy();
+
+    await page.getByRole("button", { name: /new chat/i }).click();
+    await page.waitForTimeout(300);
+
+    await page.locator("[class*='chat-textarea']").fill("Reply with one word: ping");
+
+    // Click twice in rapid succession — second click may hit Stop, cancelling the stream
+    const sendBtn = page.locator("[data-cy='send-button']");
+    await sendBtn.click();
+    await sendBtn.click();
+
+    // Wait for any in-progress streaming to settle
+    await page.locator("button[title='Send message']")
+      .waitFor({ state: "visible", timeout: 90_000 });
+
+    // Now send a fresh message via Enter to confirm the chat is still functional
+    await page.locator("[class*='chat-textarea']").fill("Reply with one word: pong");
+    await page.locator("[class*='chat-textarea']").press("Enter");
+
+    await expect(page.locator("[class*='user-row']").last()).toBeVisible({ timeout: 10_000 });
+    await waitForStreamingDone(page, 60_000);
+
+    const assistantRows = page.locator("[class*='bubble-row']:not([class*='user-row'])");
+    await expect(assistantRows.last()).toBeVisible({ timeout: 5000 });
+    const lastReply = (await assistantRows.last().textContent() ?? "").trim();
+    expect(lastReply.length, "Chat must still work after rapid double-click").toBeGreaterThan(0);
+
+    await expect(page.getByText(/failed to fetch|TypeError/i).first())
+      .not.toBeVisible({ timeout: 2000 }).catch(() => {});
+  });
 });

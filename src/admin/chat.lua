@@ -907,6 +907,8 @@ except Exception:
 import sys, zipfile, csv, re
 import xml.etree.ElementTree as ET
 NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+NS_PKG = 'http://schemas.openxmlformats.org/package/2006/relationships'
 def col_index(ref):
     col = re.sub(r'\d+', '', ref)
     result = 0
@@ -922,10 +924,34 @@ try:
             for si in root.findall('{' + NS + '}si'):
                 parts = [t.text or '' for t in si.iter('{' + NS + '}t')]
                 shared.append(''.join(parts))
-        sheets = sorted([n for n in names if re.match(r'xl/worksheets/sheet\d+\.xml', n)])
+        rid_to_path = {}
+        if 'xl/_rels/workbook.xml.rels' in names:
+            rel_root = ET.fromstring(z.read('xl/_rels/workbook.xml.rels'))
+            for rel in rel_root.findall('{' + NS_PKG + '}Relationship'):
+                rid = rel.get('Id', '')
+                target = rel.get('Target', '')
+                if 'worksheets/' in target:
+                    fp = target.lstrip('/')
+                    if not fp.startswith('xl/'):
+                        fp = 'xl/' + fp
+                    rid_to_path[rid] = fp
+        sheet_order = []
+        if 'xl/workbook.xml' in names:
+            wb_root = ET.fromstring(z.read('xl/workbook.xml'))
+            for sh in wb_root.findall('.//{' + NS + '}sheet'):
+                dname = sh.get('name', '')
+                rid = sh.get('{' + NS_R + '}id', '')
+                fp = rid_to_path.get(rid, '')
+                if fp and fp in names:
+                    sheet_order.append((dname, fp))
+        if not sheet_order:
+            flist = sorted([n for n in names if re.match(r'xl/worksheets/sheet\d+\.xml', n)])
+            sheet_order = [('Sheet ' + str(i+1), f) for i, f in enumerate(flist)]
+        multi = len(sheet_order) > 1
         w = csv.writer(sys.stdout, lineterminator='\n')
-        for sp in sheets:
+        for dname, sp in sheet_order:
             root = ET.fromstring(z.read(sp))
+            sheet_rows = []
             for row in root.findall('.//{' + NS + '}row'):
                 cmap = {}
                 for cell in row.findall('{' + NS + '}c'):
@@ -949,7 +975,12 @@ try:
                     while rd and rd[-1] == '':
                         rd.pop()
                     if rd:
-                        w.writerow(rd)
+                        sheet_rows.append(rd)
+            if sheet_rows:
+                if multi:
+                    w.writerow(['--- Sheet: ' + dname + ' ---'])
+                for rd in sheet_rows:
+                    w.writerow(rd)
 except Exception:
     sys.exit(1)
 ]])
