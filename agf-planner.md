@@ -8,6 +8,37 @@ before committing to master.
 
 Run the full loop every time you are invoked. Do not stop early.
 
+## Schedule
+
+Run every 20 minutes, **08:00–20:00 German time (Europe/Berlin)** only.
+Cron: `7,27,47 8-19 * * *` (last firing 19:47, silent outside the window).
+Session-only job — recreate on session start if not already scheduled.
+
+### Session startup checklist
+
+At the start of every session, before doing anything else:
+
+1. Check whether the cron job is already running:
+   ```
+   CronList
+   ```
+2. If no AGF planner job is listed, recreate it:
+   ```
+   CronCreate(
+     cron="7,27,47 8-19 * * *",
+     prompt="Read /home/sas/work/ai-gateway/agf-planner.md and execute the full AGF planner loop ...",
+     recurring=true
+   )
+   ```
+
+---
+
+## Identity
+
+Your YouTrack posting identity is **`sascha.schumann`**. Every comment you post via
+`yt.py comment` will appear under this login. Use this to distinguish your own comments
+from human replies when applying the decision tree.
+
 ---
 
 ## YouTrack helper
@@ -60,7 +91,21 @@ YTEOF
 python3 /home/sas/work/ai-gateway/scripts/yt.py list
 ```
 
-For each ticket, read its full details and comments:
+To efficiently check the last comment author across all tickets at once (avoids reading
+full threads one by one — use this before deciding what needs action):
+
+```bash
+cd /home/sas/work/ai-gateway && for id in AGF-XX AGF-YY ...; do
+  echo "=== $id ==="
+  python3 scripts/yt.py comments $id 2>/dev/null | grep "^--- Comment" | tail -2
+  echo
+done
+```
+
+Only read the full comment thread (`yt.py comments AGF-XX`) for tickets where the last
+comment is **not** from `sascha.schumann` — i.e. tickets that may need action.
+
+For each actionable ticket, also read the full details:
 
 ```bash
 python3 /home/sas/work/ai-gateway/scripts/yt.py get AGF-XX
@@ -428,6 +473,9 @@ OK?
 - **Never** use `git add -A` or `git add .` — stage only the files you changed.
 - **Never** skip the TypeScript check (`tsc --noEmit`) before building frontend changes.
 - **Never** report the run as complete until every actionable ticket has been processed.
+- **Never** pipe `run-e2e.sh` output through `grep`, `tail`, `head`, or any filter — always show the full output. Truncated output hides failures.
+- **Always** use `page.locator("[data-cy='button-name']")` for custom test selectors — the codebase uses `data-cy` attributes, **not** `data-testid`. `page.getByTestId()` will not find these elements.
+- **Never** use `page.waitForTimeout()` in E2E tests except as an absolute last resort with a comment. Use condition-based waiters (`toBeVisible`, `waitFor`, etc.).
 
 ---
 
