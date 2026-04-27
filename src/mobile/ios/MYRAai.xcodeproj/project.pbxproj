@@ -16,6 +16,8 @@
 		A1000009 /* UIApplication+KeyWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009; };
 		A1000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000007; };
 		A1000008 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A2000008; };
+		A100000C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A200000C; };
+		A100000D /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A200000D; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +33,8 @@
 		A2000009 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = MYRAai/Resources/Info.plist; sourceTree = SOURCE_ROOT; };
 		A200000B = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = MYRAai.entitlements; path = MYRAai/Resources/MYRAai.entitlements; sourceTree = SOURCE_ROOT; };
 		A300000A = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MYRAai.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A200000C = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = MYRAai/Resources/LaunchScreen.storyboard; sourceTree = SOURCE_ROOT; };
+		A200000D = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = MYRAai/Resources/en.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,7 +60,7 @@
 		};
 		A5000002 = {
 			isa = PBXGroup;
-			children = (A2000007, A2000008, A2000009, A200000B);
+			children = (A2000007, A2000008, A2000009, A200000B, A200000C, A200000D);
 			name = Resources;
 			sourceTree = "<group>";
 		};
@@ -110,7 +114,7 @@
 		A7000002 = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A1000007, A1000008);
+			files = (A1000007, A1000008, A100000C, A100000D);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */

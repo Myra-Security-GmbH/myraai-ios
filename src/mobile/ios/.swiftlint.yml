@@ -1,0 +1,3 @@
+disabled_rules:
+  - vertical_parameter_alignment   # Apple protocol signatures cannot be reformatted
+  - line_length                     # long WKWebView delegate signatures are unavoidable

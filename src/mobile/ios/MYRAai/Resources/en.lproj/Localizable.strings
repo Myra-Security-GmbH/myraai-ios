@@ -1,0 +1,11 @@
+/* Offline screen — accessibility label on wifi icon */
+"No internet connection" = "No internet connection";
+
+/* Offline screen — headline */
+"No Connection" = "No Connection";
+
+/* Offline screen — body text */
+"Check your internet connection\nand try again." = "Check your internet connection\nand try again.";
+
+/* Offline screen — retry button */
+"Retry" = "Retry";

@@ -37,6 +37,10 @@ final class WebViewState: ObservableObject {
         isLoaded = false
         webView?.reload()
     }
+
+    deinit {
+        networkMonitor?.cancel()
+    }
 }
 
 // MARK: - Weak proxy — breaks WKScriptMessageHandler retain cycle
