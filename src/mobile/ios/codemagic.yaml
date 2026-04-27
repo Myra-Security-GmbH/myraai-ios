@@ -24,18 +24,20 @@ workflows:
           OUT="$CM_BUILD_DIR/screenshots/iphone_6_9"
           mkdir -p "$OUT"
 
-          # TEST_LOGIN_EMAIL and TEST_LOGIN_OTP come from the 'test' variable group
-          # and are already in the shell environment. Export SCREENSHOT_OUTPUT_DIR
-          # so the Swift test process can resolve the Mac-side output path.
-          export SCREENSHOT_OUTPUT_DIR="$OUT"
-
+          # Xcode's test runner is a separate process and does not inherit the
+          # shell environment.  Pass credentials via TEST_RUNNER_ build settings,
+          # which Xcode forwards to ProcessInfo.processInfo.environment in the
+          # XCUITest process.
           xcodebuild test \
             -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -destination "platform=iOS Simulator,name=$SIM,OS=latest" \
             -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_app_store_screenshots \
             -resultBundlePath "$CM_BUILD_DIR/result_6_9.xcresult" \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            TEST_RUNNER_TEST_LOGIN_EMAIL="$TEST_LOGIN_EMAIL" \
+            TEST_RUNNER_TEST_LOGIN_OTP="$TEST_LOGIN_OTP" \
+            TEST_RUNNER_SCREENSHOT_OUTPUT_DIR="$OUT"
 
           echo "PNG files written:"
           ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — check XCTAttachments in xcresult)"
