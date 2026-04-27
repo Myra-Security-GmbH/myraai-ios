@@ -33,6 +33,13 @@ final class ScreenshotTests: XCTestCase {
         return Creds(email: email, otp: otp, outputDir: dir)
     }
 
+    private func credsDiagnostic() -> String {
+        let env = ProcessInfo.processInfo.environment
+        let hasEnv = !(env["TEST_LOGIN_EMAIL"] ?? "").isEmpty
+        let hasSidecar = FileManager.default.fileExists(atPath: "/tmp/myra_screenshot_creds.json")
+        return "env-vars:\(hasEnv) sidecar:\(hasSidecar)"
+    }
+
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
@@ -49,7 +56,8 @@ final class ScreenshotTests: XCTestCase {
 
     func test_capture_app_store_screenshots() throws {
         guard let creds = loadCreds() else {
-            throw XCTSkip("TEST_LOGIN_EMAIL / TEST_LOGIN_OTP not set — screenshot capture skipped")
+            XCTFail("Credentials not available (\(credsDiagnostic())) — check Codemagic variable group 'test'")
+            return
         }
 
         let app = XCUIApplication()
