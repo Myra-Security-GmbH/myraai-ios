@@ -26,18 +26,27 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
     }
 
     // MARK: - Haptic
+    // Generators are retained in local vars before firing — required for reliable haptics
 
     private func handleHaptic(_ type: String) {
-        DispatchQueue.main.async {
+        Task { @MainActor in
             switch type {
             case "light":
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                let gen = UIImpactFeedbackGenerator(style: .light)
+                gen.prepare()
+                gen.impactOccurred()
             case "medium":
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                let gen = UIImpactFeedbackGenerator(style: .medium)
+                gen.prepare()
+                gen.impactOccurred()
             case "success":
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                let gen = UINotificationFeedbackGenerator()
+                gen.prepare()
+                gen.notificationOccurred(.success)
             default:
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                let gen = UIImpactFeedbackGenerator(style: .light)
+                gen.prepare()
+                gen.impactOccurred()
             }
         }
     }
@@ -51,7 +60,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         if !urlStr.isEmpty, let url = URL(string: urlStr) {
             items.append(url)
         }
-        DispatchQueue.main.async {
+        Task { @MainActor in
             let activityVC = UIActivityViewController(activityItems: items,
                                                       applicationActivities: nil)
             guard let root = UIApplication.shared.connectedScenes

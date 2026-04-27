@@ -15,20 +15,24 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- SwiftUI @main manages scenes; no UISceneConfigurations needed -->
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
 	<key>UILaunchScreen</key>
-	<dict/>
-	<key>UIRequiresFullScreen</key>
-	<false/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>AppLogo</string>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -42,6 +46,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Required when file picker allows image selection -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>MYRA AI needs access to your photos to attach files to chat messages.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>MYRA AI needs camera access to take photos for chat attachments.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

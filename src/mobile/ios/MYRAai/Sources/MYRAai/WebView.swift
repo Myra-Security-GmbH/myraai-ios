@@ -1,6 +1,7 @@
 import WebKit
-import SwiftUI
+import UIKit
 import Network
+import UniformTypeIdentifiers
 
 // MARK: - State
 
@@ -18,7 +19,8 @@ final class WebViewState: ObservableObject {
         networkMonitor = monitor
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 if path.status == .satisfied && self.wasOffline {
                     self.wasOffline = false
                     self.reload()
@@ -27,25 +29,17 @@ final class WebViewState: ObservableObject {
                 }
             }
         }
-        monitor.start(queue: DispatchQueue(label: "network.monitor"))
+        monitor.start(queue: DispatchQueue(label: "eu.myra.myraai.network"))
     }
 
     func reload() {
         showOffline = false
         isLoaded = false
-        if let webView {
-            webView.reload()
-        } else {
-            webView?.load(URLRequest(url: URL(string: "https://ai.myra.eu")!))
-        }
-    }
-
-    deinit {
-        networkMonitor?.cancel()
+        webView?.reload()
     }
 }
 
-// MARK: - Weak proxy to break WKScriptMessageHandler retain cycle
+// MARK: - Weak proxy — breaks WKScriptMessageHandler retain cycle
 
 private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
     weak var delegate: WKScriptMessageHandler?
@@ -56,34 +50,29 @@ private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
-// MARK: - WebView (UIViewRepresentable)
+// MARK: - WebView
 
 struct WebView: UIViewRepresentable {
     @ObservedObject var state: WebViewState
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(state: state)
-    }
+    func makeCoordinator() -> Coordinator { Coordinator(state: state) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.defaultWebpagePreferences.preferredContentMode = .mobile
-        // Appends to default UA — no async required, no race condition
+        // Appends to default WKWebView UA — no async, no race condition
         config.applicationNameForUserAgent = "MYRAai-iOS/1.0"
 
-        // Register message handlers via weak proxy to break retain cycle
         let proxy = WeakScriptMessageHandler(context.coordinator.bridge)
-        for handler in NativeBridge.handlerNames {
-            config.userContentController.add(proxy, name: handler)
+        for name in NativeBridge.handlerNames {
+            config.userContentController.add(proxy, name: name)
         }
 
-        // Inject window.Android shim + long-press suppression — main frame only
-        let shim = WKUserScript(
-            source: jsShim,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true  // must be true: prevents injection into iframes
-        )
+        // Main frame only — prevents shim injecting into third-party iframes
+        let shim = WKUserScript(source: jsShim,
+                                injectionTime: .atDocumentStart,
+                                forMainFrameOnly: true)
         config.userContentController.addUserScript(shim)
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -103,8 +92,6 @@ struct WebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
-    // MARK: - JS shim injected into every page (main frame only)
-
     private let jsShim = """
     (function() {
         window.Android = {
@@ -122,7 +109,8 @@ struct WebView: UIViewRepresentable {
             }
         };
         var style = document.createElement('style');
-        style.textContent = '* { -webkit-touch-callout: none; } input, textarea, [contenteditable] { -webkit-touch-callout: default; user-select: text; }';
+        style.textContent = '* { -webkit-touch-callout: none; } ' +
+            'input, textarea, [contenteditable] { -webkit-touch-callout: default; user-select: text; }';
         document.head.appendChild(style);
     })();
     """
@@ -131,7 +119,9 @@ struct WebView: UIViewRepresentable {
 // MARK: - Coordinator
 
 extension WebView {
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate,
+    final class Coordinator: NSObject,
+                              WKNavigationDelegate,
+                              WKUIDelegate,
                               UIDocumentPickerDelegate {
         let state: WebViewState
         let bridge: NativeBridge
@@ -140,6 +130,10 @@ extension WebView {
         init(state: WebViewState) {
             self.state = state
             self.bridge = NativeBridge()
+        }
+
+        deinit {
+            filePickerCompletion?(nil)
         }
 
         // MARK: External link interception
@@ -184,17 +178,17 @@ extension WebView {
             Task { @MainActor in self.state.showOffline = true }
         }
 
-        // MARK: File picker (WKUIDelegate)
-        // UIDocumentPickerViewController uses delegate pattern — no completionHandler property
+        // MARK: File picker — iOS 16.4+ (WKUIDelegate)
 
+        @available(iOS 16.4, *)
         func webView(_ webView: WKWebView,
                      runOpenPanelWith parameters: WKOpenPanelParameters,
                      initiatedByFrame frame: WKFrameInfo,
                      completionHandler: @escaping ([URL]?) -> Void) {
             filePickerCompletion = completionHandler
-            let picker = UIDocumentPickerViewController(
-                forOpeningContentTypes: [.data, .image, .pdf, .text]
-            )
+            let types: [UTType] = [.data, .image, .pdf, .plainText,
+                                   .spreadsheet, .presentation]
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: types)
             picker.allowsMultipleSelection = false
             picker.delegate = self
             guard let root = UIApplication.shared.connectedScenes
