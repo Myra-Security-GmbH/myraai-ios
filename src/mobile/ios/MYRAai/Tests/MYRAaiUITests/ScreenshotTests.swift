@@ -107,25 +107,21 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(navBtn.waitForExistence(timeout: 30),
                       "Dashboard did not appear after login")
 
-        // Open sidebar and tap the Chat link.
-        // The sidebar uses a CSS slide-in animation; waitForExistence returns true
-        // while the link is still off-screen.  Wait for isHittable instead.
+        // Open sidebar and navigate to Chat.
+        // WKWebView nav links are found via accessibility but report isHittable=false
+        // due to hit-test clipping in the web layer.  Use coordinate(withNormalizedOffset:)
+        // to synthesise the tap directly at the element centre, bypassing the check.
         navBtn.tap()
         let chatLink = webView.links
             .matching(NSPredicate(format: "label == 'Chat'"))
             .firstMatch
-        let hittable = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "isHittable == true"),
-            object: chatLink
-        )
-        XCTAssertEqual(XCTWaiter().wait(for: [hittable], timeout: 8), .completed,
-                       "Chat link in sidebar is not hittable after 8 s")
+        XCTAssertTrue(chatLink.waitForExistence(timeout: 8), "Chat link not found in sidebar")
 
         // 3 — Sidebar open (captured before tapping Chat, while drawer is visible)
         _ = XCTWaiter.wait(for: [expectation(description: "sidebar-paint")], timeout: 1)
         capture("03_sidebar", to: creds.outputDir)
 
-        chatLink.tap()
+        chatLink.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
         // 2 — Chat screen
         XCTAssertTrue(navBtn.waitForExistence(timeout: 15), "Chat page did not load")
