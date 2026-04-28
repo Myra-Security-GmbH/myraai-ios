@@ -9,11 +9,10 @@ import XCTest
 /// XCUITest runner process.  The sidecar format is:
 ///   {"email":"...", "otp":"...", "output_dir":"..."}
 ///
-/// Navigation hooks: the hamburger button is portaled to document.body via React
-/// createPortal, so XCUITest touch synthesis and AXPress both fail to fire its
-/// onClick in Xcode 26.  ContentView.swift injects invisible native SwiftUI buttons
-/// (only when launched with SCREENSHOT_MODE) that call evaluateJavaScript to click
-/// DOM elements directly inside the browser's event system.
+/// Sidebar navigation: the hamburger button uses position:fixed and was previously
+/// portaled to document.body, which prevented XCUITest touch events from bubbling
+/// through the React root and firing the onClick.  The button is now kept inside
+/// the React root so coordinate().tap() correctly triggers React's event delegation.
 final class ScreenshotTests: XCTestCase {
 
     private struct Creds {
@@ -66,9 +65,6 @@ final class ScreenshotTests: XCTestCase {
         }
 
         let app = XCUIApplication()
-        // SCREENSHOT_MODE causes ContentView to render invisible native SwiftUI buttons
-        // that call evaluateJavaScript for sidebar open and Chat navigation.
-        app.launchArguments = ["SCREENSHOT_MODE"]
         app.launch()
 
         let webView = app.webViews.firstMatch
@@ -111,25 +107,22 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(signInBtn.waitForExistence(timeout: 10), "'Sign in' button not found")
         signInBtn.tap()
 
-        // — Post-login: wait for dashboard —
-        // The hamburger appears once the React app has mounted the sidebar.
+        // — Post-login: navigate to Chat —
         let navBtn = webView.buttons["Open navigation menu"]
         XCTAssertTrue(navBtn.waitForExistence(timeout: 30),
                       "Dashboard did not appear after login")
 
-        // — Open sidebar via native JS hook —
-        // XCUITest touch synthesis and AXPress both fail to fire onClick on the
-        // hamburger button because it is portaled to document.body via createPortal
-        // (Xcode 26 / iOS 26 WKWebView limitation).  The native hook button calls
-        // evaluateJavaScript which fires the click directly in the browser.
-        let sidebarHook = app.buttons["screenshot_open_sidebar"]
-        XCTAssertTrue(sidebarHook.waitForExistence(timeout: 5), "SCREENSHOT_MODE sidebar hook not found")
-        sidebarHook.tap()
+        // Open sidebar.
+        // The hamburger has position:fixed and reports isHittable=false due to WKWebView
+        // hit-test handling for fixed-position elements.  coordinate().tap() bypasses
+        // the hittability check and synthesises a touch event.  Because the button is now
+        // inside the React root (not portaled to document.body), the touch event bubbles
+        // through #root and React's event delegation fires the onClick → setMobileOpen(true).
+        navBtn.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
-        // Confirm the sidebar opened: the hamburger gets display:none when mobileOpen=true,
-        // removing it from the accessibility tree entirely.
+        // Confirm sidebar opened: hamburger gets display:none when mobileOpen=true.
         XCTAssertTrue(navBtn.waitForNonExistence(timeout: 5),
-                      "Sidebar did not open — hamburger still visible after JS click hook")
+                      "Sidebar did not open — hamburger still visible after tap")
 
         // Allow the 0.25 s CSS slide-in transition to finish before capturing.
         _ = XCTWaiter.wait(for: [expectation(description: "sidebar-open")], timeout: 1)
@@ -137,13 +130,18 @@ final class ScreenshotTests: XCTestCase {
         // 3 — Sidebar open
         capture("03_sidebar", to: creds.outputDir)
 
-        // — Navigate to Chat via native JS hook —
-        let chatNavHook = app.buttons["screenshot_nav_chat"]
-        XCTAssertTrue(chatNavHook.waitForExistence(timeout: 5), "SCREENSHOT_MODE chat nav hook not found")
-        chatNavHook.tap()
+        // Navigate to Chat.
+        // nav-item has width:100% (full 240pt) — tap at sidebar horizontal centre (x=120).
+        let chatLink = webView.links
+            .matching(NSPredicate(format: "label == 'Chat'"))
+            .firstMatch
+        XCTAssertTrue(chatLink.waitForExistence(timeout: 5), "Chat link not found in sidebar")
+        let chatLinkY = chatLink.frame.midY
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            .withOffset(CGVector(dx: 120, dy: chatLinkY))
+            .tap()
 
         // 2 — Chat screen
-        // The hamburger reappears once the sidebar closes and Chat page mounts.
         XCTAssertTrue(navBtn.waitForExistence(timeout: 15), "Chat page did not load")
         _ = XCTWaiter.wait(for: [expectation(description: "chat-paint")], timeout: 2)
         capture("02_chat", to: creds.outputDir)

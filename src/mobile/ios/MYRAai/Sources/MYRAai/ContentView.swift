@@ -43,44 +43,6 @@ struct ContentView: View {
                 .ignoresSafeArea()
             }
 
-            // XCUITest screenshot hooks — only rendered when launched with SCREENSHOT_MODE.
-            // XCUITest touch synthesis and AXPress both fail to fire onClick on React elements
-            // portaled to document.body (Xcode 26 / iOS 26 WKWebView limitation).
-            // Native SwiftUI buttons call evaluateJavaScript so the click fires directly
-            // into the browser event system, bypassing the UIKit→WebKit touch pipeline.
-            if ProcessInfo.processInfo.arguments.contains("SCREENSHOT_MODE") {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Button("open-sidebar-hook") {
-                            Task { @MainActor in
-                                webViewState.webView?.evaluateJavaScript(
-                                    "document.querySelector(\"button[aria-label='Open navigation menu']\")?.click()",
-                                    completionHandler: nil
-                                )
-                            }
-                        }
-                        .accessibilityIdentifier("screenshot_open_sidebar")
-                        .frame(width: 44, height: 44)
-                        .opacity(0.001)
-
-                        Spacer()
-
-                        Button("nav-chat-hook") {
-                            Task { @MainActor in
-                                webViewState.webView?.evaluateJavaScript(
-                                    "document.querySelector(\"a[href='/chat']\")?.click()",
-                                    completionHandler: nil
-                                )
-                            }
-                        }
-                        .accessibilityIdentifier("screenshot_nav_chat")
-                        .frame(width: 44, height: 44)
-                        .opacity(0.001)
-                    }
-                }
-                .ignoresSafeArea()
-            }
         }
         .animation(.easeOut(duration: 0.3), value: webViewState.isLoaded)
         .animation(.easeOut(duration: 0.2), value: webViewState.showOffline)

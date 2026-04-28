@@ -168,18 +168,18 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Hamburger trigger — portaled to body so it is never clipped by the sidebar's transform */}
-      {createPortal(
-        <button
-          className={styles["mobile-trigger"]}
-          onClick={() => setMobileOpen(true)}
-          aria-label="Open navigation menu"
-          style={mobileOpen ? { display: "none" } : undefined}
-        >
-          <HamburgerIcon />
-        </button>,
-        document.body
-      )}
+      {/* Hamburger trigger — not portaled: keeping it inside the React root ensures
+          XCUITest touch events bubble through #root and React's onClick fires.
+          position:fixed gives it the same visual position as before; no ancestor
+          has a CSS transform, so fixed positioning is relative to the viewport. */}
+      <button
+        className={styles["mobile-trigger"]}
+        onClick={() => setMobileOpen(true)}
+        aria-label="Open navigation menu"
+        style={mobileOpen ? { display: "none" } : undefined}
+      >
+        <HamburgerIcon />
+      </button>
 
       {/* Dim overlay — tapping it closes the sidebar */}
       {mobileOpen && createPortal(
