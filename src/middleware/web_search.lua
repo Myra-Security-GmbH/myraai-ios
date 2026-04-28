@@ -48,6 +48,7 @@ local OPENAI_FORMAT_PROVIDERS = {
     azure      = true,
     cloudflare = true,
     cohere     = true,
+    vllm       = true,
 }
 
 -- ── Tool definitions ──────────────────────────────────────────────────────────
@@ -95,8 +96,34 @@ local function inject_tool(ctx)
     ctx.raw_request_body    = json.encode(rb)
 end
 
+-- Parse vLLM XML-format tool calls from a content string.
+-- vLLM emits: <tool_call>\n<function=NAME>\n<parameter=PARAM>VALUE</parameter>\n</function>\n</tool_call>
+-- Returns array of {name, params={key=value}} or nil.
+local function parse_vllm_xml_tools(content)
+    if not content or not content:find("<tool_call>", 1, true) then return nil end
+    local calls = {}
+    local pos = 1
+    while pos <= #content do
+        local ts = content:find("<tool_call>", pos, true)
+        if not ts then break end
+        local te = content:find("</tool_call>", ts, true)
+        if not te then break end
+        local block = content:sub(ts + 11, te - 1)
+        local fname = block:match("<function=([^>%s]+)")
+        if fname then
+            local params = {}
+            for pname, pval in block:gmatch("<parameter=([^>%s]+)>(.-)</parameter>") do
+                params[pname] = pval:match("^%s*(.-)%s*$") or pval
+            end
+            calls[#calls + 1] = { name = fname, params = params }
+        end
+        pos = te + 12
+    end
+    return #calls > 0 and calls or nil
+end
+
 -- Detect tool_use in a raw Leg 1 provider response.
--- Returns array of {id, query}, or nil if no search needed.
+-- Returns array of {id, query[, vllm_xml=true]}, or nil if no search needed.
 -- response_is_anthropic: true when the provider returns Anthropic-format JSON.
 local function extract_tool_calls(body_str, response_is_anthropic)
     local body = json.decode(body_str)
@@ -115,19 +142,41 @@ local function extract_tool_calls(body_str, response_is_anthropic)
         end
         return #calls > 0 and calls or nil
     else
-        -- OpenAI format
+        -- OpenAI format: standard tool_calls array
         local choice = body.choices and body.choices[1]
         if not choice then return nil end
-        if choice.finish_reason ~= "tool_calls" then return nil end
-        local calls = {}
-        for _, tc in ipairs((choice.message and choice.message.tool_calls) or {}) do
-            if tc.type == "function" and tc["function"]
-               and tc["function"].name == "web_search" then
-                local args = json.decode(tc["function"].arguments or "{}") or {}
-                calls[#calls + 1] = { id = tc.id, query = args.query or "" }
+        if choice.finish_reason == "tool_calls" then
+            local calls = {}
+            for _, tc in ipairs((choice.message and choice.message.tool_calls) or {}) do
+                if tc.type == "function" and tc["function"]
+                   and tc["function"].name == "web_search" then
+                    local args = json.decode(tc["function"].arguments or "{}") or {}
+                    calls[#calls + 1] = { id = tc.id, query = args.query or "" }
+                end
+            end
+            return #calls > 0 and calls or nil
+        end
+        -- vLLM XML tool call path: finish_reason="stop" with XML in content
+        if choice.finish_reason == "stop" then
+            local content = choice.message and choice.message.content
+            if type(content) == "string" then
+                local xml_calls = parse_vllm_xml_tools(content)
+                if xml_calls then
+                    local calls = {}
+                    for _, xc in ipairs(xml_calls) do
+                        if xc.name == "web_search" then
+                            calls[#calls + 1] = {
+                                id       = "",
+                                query    = xc.params.query or "",
+                                vllm_xml = true,
+                            }
+                        end
+                    end
+                    return #calls > 0 and calls or nil
+                end
             end
         end
-        return #calls > 0 and calls or nil
+        return nil
     end
 end
 
@@ -153,6 +202,25 @@ local function inject_results(ctx, leg1_body_str, tool_calls, results, inject_as
         rb.messages[#rb.messages + 1] = { role = "user",      content = tool_results }
         -- Prevent recursive search in Leg 2
         rb.tool_choice = { type = "none" }
+    elseif tool_calls[1] and tool_calls[1].vllm_xml then
+        -- vLLM XML tool call path: the Leg 1 assistant message contained XML in
+        -- its content field (not in tool_calls[]).  Replay assistant turn + inject
+        -- results as a user message so the model can answer without further tool use.
+        local choice = leg1.choices and leg1.choices[1]
+        local leg1_content = choice and choice.message and choice.message.content
+        if type(leg1_content) == "string" and leg1_content ~= "" then
+            rb.messages[#rb.messages + 1] = { role = "assistant", content = leg1_content }
+        end
+        local parts = {}
+        for i, tc in ipairs(tool_calls) do
+            parts[#parts + 1] = "Web search results for query: " .. (tc.query or "") ..
+                                 "\n\n" .. (results[i] or "No results found.")
+        end
+        rb.messages[#rb.messages + 1] = {
+            role    = "user",
+            content = table.concat(parts, "\n\n---\n\n"),
+        }
+        rb.tool_choice = "none"
     else
         -- Append OpenAI-format assistant message + tool role messages
         local choice        = leg1.choices and leg1.choices[1]

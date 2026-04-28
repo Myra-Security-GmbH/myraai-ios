@@ -549,9 +549,10 @@ function M.run(ctx)
         tool_names[#tool_names + 1] = "fetch_url"
     end
 
-    -- web_search
+    -- web_search — skip if web_search.lua already handled this request
     local ws = ctx.gateway_config.web_search
-    if type(ws) == "table" and ws.enabled and ws.api_key then
+    if type(ws) == "table" and ws.enabled and ws.api_key
+       and not ctx.web_search_done and not ctx.web_search_leg2 then
         local activate = (ws.mode == "always")
         if not activate then
             local h = headers["x-aig-web-search"]

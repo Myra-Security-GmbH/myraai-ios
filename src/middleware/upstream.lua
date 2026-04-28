@@ -843,6 +843,10 @@ end
 function M.run(ctx)
     -- (tool_loop no longer sets tool_loop_done — it streams through upstream)
 
+    -- A prior middleware (web_search, url_fetch, cache_check) may have already
+    -- produced the response.  send_response.lua will deliver ctx.response_body.
+    if ctx.response_body then return end
+
     -- Compaction savings: if the client sends X-AIG-Compaction-Baseline, it means
     -- a prior compaction reduced the context from that token count to the current size.
     -- We estimate the current context size and compute tokens_saved for the log phase.

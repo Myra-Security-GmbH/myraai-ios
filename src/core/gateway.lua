@@ -22,6 +22,7 @@ local CONTENT_PIPELINE = {
     "middleware.transform",
     "middleware.routing",
     "middleware.byok",
+    "middleware.web_search",
     "middleware.tool_loop",
     "middleware.upstream",
     "middleware.guardrails_response", -- guardrail pipeline (response phase)
