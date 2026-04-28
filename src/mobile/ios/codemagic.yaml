@@ -13,15 +13,16 @@ workflows:
         XCODE_SCHEME: "MYRAai"
       xcode: latest
     scripts:
-      - name: Capture screenshots — iPhone 16 Pro Max (6.9")
+      - name: Capture screenshots — iPhone 14 Plus (6.7", 1284×2778 — required by ASC)
         script: |
           set -e
-          # Pick the newest available Pro Max simulator; fall back to a plain large iPhone.
-          SIM=$(xcrun simctl list devices available | grep -oE "iPhone 1[6-9]+ Pro Max|iPhone 1[0-9]+ Pro Max" | head -1)
-          [ -z "$SIM" ] && SIM="iPhone 16 Pro Max"
+          # ASC requires 1284×2778 (6.7") or 1242×2688 (6.5") screenshots.
+          # iPhone 14 Plus and iPhone 13 Pro Max both produce 1284×2778 at 3x.
+          SIM=$(xcrun simctl list devices available | grep -oE "iPhone (14 Plus|13 Pro Max)" | head -1)
+          [ -z "$SIM" ] && SIM="iPhone 14 Plus"
           echo "Simulator: $SIM"
 
-          OUT="$CM_BUILD_DIR/screenshots/iphone_6_9"
+          OUT="$CM_BUILD_DIR/screenshots/iphone_6_7"
           mkdir -p "$OUT"
 
           # Fail loudly if the 'test' variable group didn't inject credentials.
@@ -43,7 +44,7 @@ workflows:
             -scheme "$XCODE_SCHEME" \
             -destination "platform=iOS Simulator,name=$SIM,OS=latest" \
             -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_app_store_screenshots \
-            -resultBundlePath "$CM_BUILD_DIR/result_6_9.xcresult" \
+            -resultBundlePath "$CM_BUILD_DIR/result_6_7.xcresult" \
             CODE_SIGNING_ALLOWED=NO
 
           echo "PNG files written:"
