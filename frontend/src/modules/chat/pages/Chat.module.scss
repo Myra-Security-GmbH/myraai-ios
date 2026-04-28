@@ -158,6 +158,7 @@
 @media (pointer: coarse) {
   .config-bar {
     padding-left: 62px; // 12px edge + 40px button + 10px gap
+    padding-top: max(8px, env(safe-area-inset-top));
     gap: 6px;
   }
 

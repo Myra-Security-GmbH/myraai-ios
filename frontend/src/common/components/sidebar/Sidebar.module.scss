@@ -140,6 +140,12 @@
   flex-shrink: 0;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+  // On touch devices the sidebar is position:fixed from top:0 — push content
+  // below the status bar / Dynamic Island using the safe area inset.
+  @media (pointer: coarse) {
+    padding-top: max(#{tools.pixelToRem(16)}, calc(env(safe-area-inset-top) + #{tools.pixelToRem(4)}));
+  }
 }
 
 .header-logo {
@@ -278,7 +284,7 @@
     align-items: center;
     justify-content: center;
     position: fixed;
-    top: tools.pixelToRem(12);
+    top: max(#{tools.pixelToRem(12)}, env(safe-area-inset-top));
     left: tools.pixelToRem(12);
     z-index: 300;
     width: tools.pixelToRem(40);

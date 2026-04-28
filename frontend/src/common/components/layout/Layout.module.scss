@@ -7,8 +7,12 @@
   min-height: 100vh;
 
   @media (max-width: 768px) {
-    // 64px top clears the fixed hamburger button; 16px sides
-    padding: tools.pixelToRem(64) tools.pixelToRem(16) tools.pixelToRem(16);
+    // Top: hamburger top + 40px height + 12px gap, accounting for safe area.
+    // Bottom: home indicator safe area.
+    padding-top: calc(max(#{tools.pixelToRem(12)}, env(safe-area-inset-top)) + #{tools.pixelToRem(52)});
+    padding-right: tools.pixelToRem(16);
+    padding-bottom: max(#{tools.pixelToRem(16)}, env(safe-area-inset-bottom));
+    padding-left: tools.pixelToRem(16);
   }
 }
 
