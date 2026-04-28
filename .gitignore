@@ -68,3 +68,7 @@ Thumbs.db
 .env.production
 run-docker-gw.sh
 results/
+
+# Android: local.properties contains absolute paths to the developer's
+# release keystore and is generated per-machine (or by CI). Never commit.
+src/mobile/android/local.properties

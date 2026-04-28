@@ -541,14 +541,12 @@ android:build:
     - sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" >/dev/null
     # Reconstruct keystore from base64-encoded CI variable
     - echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/release.jks
-    # Diagnostic + write local.properties — combined into one shell block so
-    # the cd persists for the heredoc, and so we can see exactly what's in
-    # the android source dir on the runner.
+    # Generate local.properties for gradle. Single shell block so the cd
+    # persists for the heredoc. `rm -f` first as a defense in case anyone
+    # ever re-introduces a stale local.properties symlink in the repo.
     - |
-      set -x
       cd "$CI_PROJECT_DIR/src/mobile/android"
-      pwd
-      ls -la
+      rm -f local.properties
       cat > local.properties <<EOF
       sdk.dir=$ANDROID_HOME
       RELEASE_STORE_FILE=/tmp/release.jks
@@ -556,8 +554,6 @@ android:build:
       RELEASE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASS
       RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASS
       EOF
-      echo "--- wrote local.properties ---"
-      cat local.properties
   script:
     - cd src/mobile/android
     - chmod +x gradlew
