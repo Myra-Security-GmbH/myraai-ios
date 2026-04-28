@@ -144,7 +144,7 @@
   // On touch devices the sidebar is position:fixed from top:0 — push content
   // below the status bar / Dynamic Island using the safe area inset.
   @media (pointer: coarse) {
-    padding-top: max(#{tools.pixelToRem(16)}, calc(env(safe-area-inset-top) + #{tools.pixelToRem(4)}));
+    padding-top: calc(var(--aig-safe-top) + #{tools.pixelToRem(16)});
   }
 }
 
@@ -284,8 +284,8 @@
     align-items: center;
     justify-content: center;
     position: fixed;
-    top: max(#{tools.pixelToRem(12)}, env(safe-area-inset-top));
-    left: tools.pixelToRem(12);
+    top: calc(var(--aig-safe-top) + #{tools.pixelToRem(12)});
+    left: calc(var(--aig-safe-left) + #{tools.pixelToRem(12)});
     z-index: 300;
     width: tools.pixelToRem(40);
     height: tools.pixelToRem(40);

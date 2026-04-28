@@ -7,12 +7,13 @@
   min-height: 100vh;
 
   @media (max-width: 768px) {
-    // Top: hamburger top + 40px height + 12px gap, accounting for safe area.
-    // Bottom: home indicator safe area.
-    padding-top: calc(max(#{tools.pixelToRem(12)}, env(safe-area-inset-top)) + #{tools.pixelToRem(52)});
-    padding-right: tools.pixelToRem(16);
-    padding-bottom: max(#{tools.pixelToRem(16)}, env(safe-area-inset-bottom));
-    padding-left: tools.pixelToRem(16);
+    // Top: safe area + 12 px gap + 40 px hamburger + 12 px gap.
+    // Bottom: safe area (home indicator) + 16 px.
+    // Sides: safe area (landscape cutout) + 16 px.
+    padding-top: calc(var(--aig-safe-top) + #{tools.pixelToRem(64)});
+    padding-right: calc(var(--aig-safe-right) + #{tools.pixelToRem(16)});
+    padding-bottom: calc(var(--aig-safe-bottom) + #{tools.pixelToRem(16)});
+    padding-left: calc(var(--aig-safe-left) + #{tools.pixelToRem(16)});
   }
 }
 

@@ -9,7 +9,7 @@
 import { Core } from "@myraui/core";
 import { Route, Routes, Navigate } from "react-router-dom";
 import { ThemeProvider } from "src/common/contexts/ThemeContext";
-import { AuthProvider } from "src/common/contexts/AuthContext";
+import { AuthProvider, useAuth } from "src/common/contexts/AuthContext";
 import AuthGuard from "src/common/components/AuthGuard";
 import Sidebar from "src/common/components/sidebar/Sidebar";
 import Dashboard from "src/modules/dashboard/pages/Dashboard";
@@ -35,6 +35,12 @@ import DebugPage from "src/pages/DebugPage";
 import PrivacyPolicy from "src/pages/PrivacyPolicy";
 import AIDisclosureModal from "src/common/components/AIDisclosureModal";
 
+function StartRedirect() {
+  const { user } = useAuth();
+  const dest = (user?.role === "member" || user?.role === "viewer") ? "/chat" : "/dashboard";
+  return <Navigate to={dest} replace />;
+}
+
 function AppShell() {
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
@@ -42,7 +48,7 @@ function AppShell() {
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflowX: "hidden", backgroundColor: "var(--content-bg)" }}>
         <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<StartRedirect />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/monitor" element={<Monitor />} />
           <Route path="/tenants" element={<Tenants />} />

@@ -6,6 +6,12 @@ import App from "./App";
 import { ErrorBoundary } from "src/common/components/ErrorBoundary";
 import { reportError } from "src/common/utils/reportError";
 
+// Tag <html> for the Android WebView so safe-area CSS variables
+// resolve to 0 — see global.scss for the full reasoning.
+if (/MYRAai-Android/.test(navigator.userAgent)) {
+  document.documentElement.classList.add("aig-android");
+}
+
 window.addEventListener("error", (e) => {
   reportError(e.message ?? "Uncaught error", e.error?.stack);
 });
