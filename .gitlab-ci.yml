@@ -541,9 +541,12 @@ android:build:
     - sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" >/dev/null
     # Reconstruct keystore from base64-encoded CI variable
     - echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/release.jks
-    # Build local.properties for gradle
+    # Build local.properties for gradle. Use an absolute path because the
+    # working directory at this stage is not guaranteed to be $CI_PROJECT_DIR
+    # (the gradle:8.4-jdk17 image's WORKDIR can take precedence in some
+    # runner configurations, breaking the relative redirect).
     - |
-      cat > src/mobile/android/local.properties <<EOF
+      cat > "$CI_PROJECT_DIR/src/mobile/android/local.properties" <<EOF
       sdk.dir=$ANDROID_HOME
       RELEASE_STORE_FILE=/tmp/release.jks
       RELEASE_KEY_ALIAS=$ANDROID_KEY_ALIAS
