@@ -10,7 +10,11 @@ services:
         VITE_ADMIN_URL: "https://ai-api-admin-int.myra.eu/admin/v1"
         VITE_AUTH_URL:  "https://ai-api-admin-int.myra.eu/admin/auth"
     ports:
+      # 4443: external LB at ai-int.myra.eu (2a02:cb40:200::39a) forwards here.
+      # 443:  /etc/hosts → 172.17.0.1 + default https:443 for local E2E tests.
+      # No collision with prod (IPv6-only on [2a02:cb43:3014::505a:f89]:443).
       - "172.17.0.1:4443:443"
+      - "172.17.0.1:443:443"
     environment:
       # --- launch guard (set by run_docker_integration.sh) ---
       AIG_LAUNCHED_BY_SCRIPT:    "${AIG_LAUNCHED_BY_SCRIPT}"
