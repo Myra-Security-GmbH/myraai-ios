@@ -127,22 +127,13 @@ build:docker:
     # tag (as :<tag> + :<sha>).  Feature branch builds validate the image
     # builds cleanly but nothing is pushed.
     #
-    # Registry push is best-effort — REGISTRY_USER / REGISTRY_PASS must be
-    # configured as CI/CD variables.  Without them the build still validates
-    # the Dockerfile but the archive step is skipped.  Production deploys
-    # run from local source via run_docker_production.sh, not via registry
-    # pulls, so a missing registry archive is non-fatal.
+    # docker:24 refuses interactive login on a non-TTY runner; pipe the
+    # password via stdin instead.
+    - echo "$REGISTRY_PASS" | docker login -u "$REGISTRY_USER" --password-stdin "$REGISTRY"
+
+    # Push to the registry only on master (as :latest + :<sha>) or on a
+    # git tag (as :<tag> + :<sha>).
     - |
-      if [ -z "$REGISTRY_USER" ] || [ -z "$REGISTRY_PASS" ]; then
-        echo "REGISTRY_USER / REGISTRY_PASS not set — skipping registry push."
-        echo "(Set them in GitLab Settings → CI/CD → Variables to enable pushes.)"
-        exit 0
-      fi
-
-      # docker:24 refuses interactive login on a non-TTY runner; pipe the
-      # password via stdin instead.
-      echo "$REGISTRY_PASS" | docker login -u "$REGISTRY_USER" --password-stdin "$REGISTRY"
-
       if [ "$CI_COMMIT_BRANCH" = "master" ]; then
         docker tag "${IMAGE}:${CI_COMMIT_SHORT_SHA}" "${IMAGE}:latest"
         docker push "${IMAGE}:${CI_COMMIT_SHORT_SHA}"
@@ -159,8 +150,13 @@ build:docker:
         echo "Branch build — image built but not pushed (${CI_COMMIT_BRANCH})"
       fi
   rules:
-    - if: $CI_COMMIT_BRANCH
-    - if: $CI_COMMIT_TAG
+    # Registry push needs REGISTRY_USER + REGISTRY_PASS to be configured
+    # (Settings → CI/CD → Variables).  When they're absent the production
+    # deploy path still works — run_docker_production.sh builds locally
+    # and `docker cp`s into the running container, no registry pulls — so
+    # we simply skip the job rather than fail it.
+    - if: $CI_COMMIT_BRANCH && $REGISTRY_USER && $REGISTRY_PASS
+    - if: $CI_COMMIT_TAG && $REGISTRY_USER && $REGISTRY_PASS
 
 # ── iOS: push src/mobile/ios/ to public GitHub mirror (Codemagic clones from there) ──
 ios:mirror:
