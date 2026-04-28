@@ -63,8 +63,10 @@ struct WebView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(state: state) }
 
     func makeUIView(context: Context) -> WKWebView {
+        let isTestEnvironment = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
+        // Under XCTest use a throwaway store so old cached JS bundles never interfere.
+        config.websiteDataStore = isTestEnvironment ? .nonPersistent() : .default()
         config.defaultWebpagePreferences.preferredContentMode = .mobile
         config.applicationNameForUserAgent = "MYRAai-iOS/1.0"
 
@@ -77,6 +79,15 @@ struct WebView: UIViewRepresentable {
                                 injectionTime: .atDocumentStart,
                                 forMainFrameOnly: true)
         config.userContentController.addUserScript(shim)
+
+        if isTestEnvironment {
+            let screenshotScript = WKUserScript(
+                source: "window.__myraScreenshotMode = true;",
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+            config.userContentController.addUserScript(screenshotScript)
+        }
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator

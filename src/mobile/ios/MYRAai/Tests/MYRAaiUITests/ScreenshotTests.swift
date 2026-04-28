@@ -112,17 +112,21 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(navBtn.waitForExistence(timeout: 30),
                       "Dashboard did not appear after login")
 
-        // Open sidebar.
-        // The hamburger has position:fixed and reports isHittable=false due to WKWebView
-        // hit-test handling for fixed-position elements.  coordinate().tap() bypasses
-        // the hittability check and synthesises a touch event.  Because the button is now
-        // inside the React root (not portaled to document.body), the touch event bubbles
-        // through #root and React's event delegation fires the onClick → setMobileOpen(true).
-        navBtn.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // Open sidebar via the invisible screenshot trigger button.
+        // The hamburger sits at top:12pt — inside the iPhone 16 Pro Max Dynamic Island
+        // safe area (~59pt) where touch events never reach WKWebView.  The trigger button
+        // is at top:100pt (right:10pt), well below the safe area.  The WebView injects
+        // window.__myraScreenshotMode=true via WKUserScript so Sidebar renders it.
+        // WKWebsiteDataStore.nonPersistent() ensures the fresh JS bundle (not a cached
+        // copy with the portaled hamburger) is always loaded under XCTest.
+        let sidebarTrigger = webView.buttons["screenshot-open-sidebar"]
+        XCTAssertTrue(sidebarTrigger.waitForExistence(timeout: 10),
+                      "Screenshot sidebar trigger not found — check __myraScreenshotMode injection")
+        sidebarTrigger.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
         // Confirm sidebar opened: hamburger gets display:none when mobileOpen=true.
         XCTAssertTrue(navBtn.waitForNonExistence(timeout: 5),
-                      "Sidebar did not open — hamburger still visible after tap")
+                      "Sidebar did not open after tapping screenshot-open-sidebar")
 
         // Allow the 0.25 s CSS slide-in transition to finish before capturing.
         _ = XCTWaiter.wait(for: [expectation(description: "sidebar-open")], timeout: 1)
@@ -130,16 +134,11 @@ final class ScreenshotTests: XCTestCase {
         // 3 — Sidebar open
         capture("03_sidebar", to: creds.outputDir)
 
-        // Navigate to Chat.
-        // nav-item has width:100% (full 240pt) — tap at sidebar horizontal centre (x=120).
-        let chatLink = webView.links
-            .matching(NSPredicate(format: "label == 'Chat'"))
-            .firstMatch
-        XCTAssertTrue(chatLink.waitForExistence(timeout: 5), "Chat link not found in sidebar")
-        let chatLinkY = chatLink.frame.midY
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-            .withOffset(CGVector(dx: 120, dy: chatLinkY))
-            .tap()
+        // Navigate to Chat via the screenshot trigger button (top:155pt, right:10pt).
+        let chatTrigger = webView.buttons["screenshot-nav-chat"]
+        XCTAssertTrue(chatTrigger.waitForExistence(timeout: 5),
+                      "Screenshot chat trigger not found")
+        chatTrigger.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
         // 2 — Chat screen
         XCTAssertTrue(navBtn.waitForExistence(timeout: 15), "Chat page did not load")

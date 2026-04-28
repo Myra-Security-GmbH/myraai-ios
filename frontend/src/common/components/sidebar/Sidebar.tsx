@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { getCyDataId } from "@myraui/utils";
 import { useTheme } from "src/common/contexts/ThemeContext";
 import { useAuth } from "src/common/contexts/AuthContext";
 import { docsUrl } from "src/common/components/DocLink";
 import { AppFeedbackWidget } from "src/common/components/AppFeedbackWidget";
 import styles from "./Sidebar.module.scss";
+
+declare global { interface Window { __myraScreenshotMode?: boolean } }
 
 const cyId = getCyDataId("sidebar");
 
@@ -139,6 +141,7 @@ function NavItem({ to, label, icon, collapsed, onMobileClose }: { to: string; la
 export default function Sidebar() {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("aig-sidebar-collapsed") === "true"
   );
@@ -293,6 +296,25 @@ export default function Sidebar() {
       </nav>
 
       <AppFeedbackWidget open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+
+      {/* Invisible trigger buttons for XCUITest screenshot automation.
+          Positioned at y=100pt and y=155pt — well below the iPhone 16 Pro Max
+          Dynamic Island safe area (~59pt) so touch events reach WKWebView.
+          Only rendered when the WebView injects __myraScreenshotMode=true via WKUserScript. */}
+      {window.__myraScreenshotMode && (
+        <>
+          <button
+            aria-label="screenshot-open-sidebar"
+            onClick={() => setMobileOpen(true)}
+            style={{ position: "fixed", top: 100, right: 10, width: 44, height: 44, opacity: 0.001, zIndex: 9999, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+          />
+          <button
+            aria-label="screenshot-nav-chat"
+            onClick={() => { setMobileOpen(false); navigate("/chat"); }}
+            style={{ position: "fixed", top: 155, right: 10, width: 44, height: 44, opacity: 0.001, zIndex: 9999, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+          />
+        </>
+      )}
     </>
   );
 }
