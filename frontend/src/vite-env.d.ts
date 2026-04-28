@@ -11,7 +11,6 @@ interface AndroidBridge {
 
 declare interface Window {
   Android?: AndroidBridge;
-  __MYRAFilePickerSupported?: boolean;
   __myraApnsToken?: string;
   [key: string]: unknown;
 }
