@@ -5,7 +5,7 @@ struct LaunchOverlay: View {
 
     var body: some View {
         ZStack {
-            Color(red: 13/255, green: 27/255, blue: 42/255)
+            Color.brandBackground
             VStack(spacing: 24) {
                 Image("AppLogo")
                     .resizable()
@@ -18,7 +18,7 @@ struct LaunchOverlay: View {
                 if showSpinner {
                     ProgressView()
                         .progressViewStyle(.circular)
-                        .tint(Color(red: 0.36, green: 0.77, blue: 0.92))
+                        .tint(Color.brandAccent)
                         .transition(.opacity)
                 }
             }

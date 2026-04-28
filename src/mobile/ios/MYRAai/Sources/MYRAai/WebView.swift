@@ -19,8 +19,7 @@ final class WebViewState: ObservableObject {
         let monitor = NWPathMonitor()
         networkMonitor = monitor
         monitor.pathUpdateHandler = { [weak self] path in
-            guard let self else { return }
-            Task { @MainActor [weak self] in
+            Task { @MainActor in
                 guard let self else { return }
                 if path.status == .satisfied && self.wasOffline {
                     self.wasOffline = false
@@ -98,17 +97,16 @@ struct WebView: UIViewRepresentable {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
         webView.scrollView.keyboardDismissMode = .interactive
-        webView.backgroundColor = UIColor(red: 13/255, green: 27/255, blue: 42/255, alpha: 1)
+        webView.backgroundColor = .brandBackground
         webView.isOpaque = false
         webView.allowsBackForwardNavigationGestures = false
 
         context.coordinator.webView = webView
         context.coordinator.setupKeyboardObservers()
+        context.coordinator.observeApnsToken()
 
-        MainActor.assumeIsolated {
-            state.webView = webView
-            state.startNetworkMonitor()
-        }
+        state.webView = webView
+        state.startNetworkMonitor()
         webView.load(URLRequest(url: URL(string: "https://ai.myra.eu")!))
         return webView
     }
@@ -129,42 +127,18 @@ struct WebView: UIViewRepresentable {
             },
             notifyScrollTop: function(scrolled) {
                 window.webkit.messageHandlers.notifyScrollTop.postMessage(scrolled);
-            },
-            getDeviceToken: function(callbackName) {
-                window.webkit.messageHandlers.getDeviceToken.postMessage(callbackName);
-            },
-            requestFullPushPermission: function() {
-                window.webkit.messageHandlers.requestFullPushPermission.postMessage(null);
             }
         };
-        // Inject a privacy policy link visible before login, and a flag for the file picker.
-        // The link attaches to the login form so users can review privacy terms before signing up.
-        // The frontend reads this flag to disable the attach button on older devices.
         window.__MYRAFilePickerSupported = \(filePickerAvailable ? "true" : "false");
         var style = document.createElement('style');
         style.textContent = '* { -webkit-touch-callout: none; } ' +
-            'input, textarea, [contenteditable] { -webkit-touch-callout: default; user-select: text; } ' +
-            '#myra-privacy-link { display:block; text-align:center; margin-top:16px; font-size:12px; color:#8899aa; } ' +
-            '#myra-privacy-link a { color:#8899aa; text-decoration:underline; }';
+            'input, textarea, [contenteditable] { -webkit-touch-callout: default; user-select: text; }';
         document.head.appendChild(style);
-        function injectPrivacyLink() {
-            if (document.getElementById('myra-privacy-link')) return;
-            var form = document.querySelector('form');
-            if (!form) return;
-            var div = document.createElement('div');
-            div.id = 'myra-privacy-link';
-            div.innerHTML = '<a href="https://ai.myra.eu/privacy" target="_blank">Privacy Policy</a>';
-            form.parentNode.insertBefore(div, form.nextSibling);
-        }
-        var _privacyObserver = new MutationObserver(injectPrivacyLink);
-        _privacyObserver.observe(document.body || document.documentElement,
-            { childList: true, subtree: true });
-        injectPrivacyLink();
     })();
     """ }
 
     private var filePickerAvailable: Bool {
-        if #available(iOS 18.4, *) { return true }
+        if #available(iOS 16.4, *) { return true }
         return false
     }
 }
@@ -180,6 +154,7 @@ extension WebView {
         let bridge: NativeBridge
         weak var webView: WKWebView?
         private var filePickerCompletion: (([URL]?) -> Void)?
+        private var apnsObserver: NSObjectProtocol?
 
         init(state: WebViewState) {
             self.state = state
@@ -188,6 +163,7 @@ extension WebView {
 
         deinit {
             NotificationCenter.default.removeObserver(self)
+            if let apnsObserver { NotificationCenter.default.removeObserver(apnsObserver) }
             filePickerCompletion?(nil)
         }
 
@@ -236,6 +212,8 @@ extension WebView {
 
         // MARK: External link interception
 
+        private static let ownedHosts = ["ai.myra.eu", "ai-api.myra.eu", "ai-api-admin.myra.eu"]
+
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -243,8 +221,7 @@ extension WebView {
                   let host = url.host else {
                 decisionHandler(.allow); return
             }
-            let ownedHosts = ["ai.myra.eu", "ai-api.myra.eu", "ai-api-admin.myra.eu"]
-            if ownedHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) {
+            if Self.ownedHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) {
                 decisionHandler(.allow)
             } else {
                 UIApplication.shared.open(url)
@@ -258,6 +235,9 @@ extension WebView {
             Task { @MainActor in
                 self.state.isLoaded = true
                 self.state.showOffline = false
+            }
+            if let token = AppDelegate.apnsToken {
+                Self.dispatchApnsToken(token, into: webView)
             }
         }
 
@@ -273,9 +253,27 @@ extension WebView {
             Task { @MainActor in self.state.showOffline = true }
         }
 
+        // MARK: APNs token forwarding
+
+        func observeApnsToken() {
+            apnsObserver = NotificationCenter.default.addObserver(
+                forName: .apnsTokenReceived, object: nil, queue: .main
+            ) { [weak self] note in
+                guard let token = note.object as? String, let webView = self?.webView else { return }
+                Self.dispatchApnsToken(token, into: webView)
+            }
+        }
+
+        private static func dispatchApnsToken(_ token: String, into webView: WKWebView) {
+            // Token is 64 hex chars from APNs — safe to interpolate.
+            let script = "window.__myraApnsToken='\(token)';" +
+                         "window.dispatchEvent(new CustomEvent('myra:apns-token',{detail:{token:'\(token)'}}));"
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
+
         // MARK: File picker — iOS 16.4+ (WKUIDelegate)
 
-        @available(iOS 18.4, *)
+        @available(iOS 16.4, *)
         func webView(_ webView: WKWebView,
                      runOpenPanelWith parameters: WKOpenPanelParameters,
                      initiatedByFrame frame: WKFrameInfo,

@@ -19,10 +19,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        // Start with provisional (silent, no dialog) so the OS token is available immediately.
-        // The web layer calls window.Android.requestFullPushPermission() after the user has
-        // experienced value (e.g. after receiving a project invite notification).
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge, .provisional]) { _, _ in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
             DispatchQueue.main.async {
                 UIApplication.shared.registerForRemoteNotifications()
             }
@@ -30,11 +27,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return true
     }
 
+    static var apnsToken: String?
+
     func application(_ application: UIApplication,
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
-        NativeBridge.pendingDeviceToken = hex
-        // Notify the web layer so it can register via the admin API.
+        AppDelegate.apnsToken = hex
         NotificationCenter.default.post(name: .apnsTokenReceived, object: hex)
     }
 

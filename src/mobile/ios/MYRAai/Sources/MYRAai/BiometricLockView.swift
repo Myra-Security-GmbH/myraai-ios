@@ -9,7 +9,7 @@ struct BiometricLockView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 13/255, green: 27/255, blue: 42/255)
+            Color.brandBackground
                 .ignoresSafeArea()
 
             VStack(spacing: 32) {
@@ -31,7 +31,7 @@ struct BiometricLockView: View {
                 if let msg = errorMessage {
                     Text(msg)
                         .font(.footnote)
-                        .foregroundColor(Color(red: 0.9, green: 0.4, blue: 0.4))
+                        .foregroundColor(.brandError)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                 }
@@ -44,10 +44,10 @@ struct BiometricLockView: View {
                         Text("Unlock")
                     }
                     .font(.body.weight(.medium))
-                    .foregroundColor(Color(red: 13/255, green: 27/255, blue: 42/255))
+                    .foregroundColor(.brandBackground)
                     .padding(.horizontal, 32)
                     .padding(.vertical, 14)
-                    .background(Color(red: 0.36, green: 0.77, blue: 0.92))
+                    .background(Color.brandAccent)
                     .clipShape(Capsule())
                 }
                 .disabled(isAuthenticating)
@@ -61,7 +61,7 @@ struct BiometricLockView: View {
         let ctx = LAContext()
         var err: NSError?
         guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
-            // No biometrics and no passcode set — unlock immediately
+            // No biometrics + no passcode → unlock; chat-app, not a vault.
             onUnlocked()
             return
         }

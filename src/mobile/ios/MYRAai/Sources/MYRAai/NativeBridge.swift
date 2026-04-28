@@ -5,10 +5,7 @@ import UIKit
 
 final class NativeBridge: NSObject, WKScriptMessageHandler {
 
-    static let handlerNames = ["hapticFeedback", "share", "copyToClipboard", "notifyScrollTop", "getDeviceToken", "requestFullPushPermission"]
-
-    // Set by AppDelegate once APNs registration succeeds.
-    static var pendingDeviceToken: String?
+    static let handlerNames = ["hapticFeedback", "share", "copyToClipboard", "notifyScrollTop"]
 
     func userContentController(_ userContentController: WKUserContentController,
                                 didReceive message: WKScriptMessage) {
@@ -17,50 +14,22 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "share":          handleShare(message.body as? [String: Any] ?? [:])
         case "copyToClipboard":
             if let text = message.body as? String { UIPasteboard.general.string = text }
-        case "notifyScrollTop": break
-        case "getDeviceToken":  handleGetDeviceToken(message)
-        case "requestFullPushPermission": handleRequestFullPushPermission()
         default: break
         }
     }
 
-    // MARK: - Haptic (generators retained before firing for reliable response)
+    // MARK: - Haptic
 
     private func handleHaptic(_ type: String) {
         Task { @MainActor in
             switch type {
-            case "light":
-                let gen = UIImpactFeedbackGenerator(style: .light)
-                gen.prepare(); gen.impactOccurred()
-            case "medium":
-                let gen = UIImpactFeedbackGenerator(style: .medium)
-                gen.prepare(); gen.impactOccurred()
             case "success":
-                let gen = UINotificationFeedbackGenerator()
-                gen.prepare(); gen.notificationOccurred(.success)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            case "medium":
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             default:
-                let gen = UIImpactFeedbackGenerator(style: .light)
-                gen.prepare(); gen.impactOccurred()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
-        }
-    }
-
-    // MARK: - Full push permission upgrade (called after user sees value)
-    private func handleRequestFullPushPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
-    }
-
-    // MARK: - Device token (APNs)
-    // JS calls window.Android.getDeviceToken(callbackName) and expects
-    // window[callbackName](token) to be invoked with the hex token string.
-
-    private func handleGetDeviceToken(_ message: WKScriptMessage) {
-        guard let callbackName = message.body as? String,
-              let webView = (message.webView) else { return }
-        let token = NativeBridge.pendingDeviceToken ?? ""
-        let js = "\(callbackName)(\(token.isEmpty ? "null" : "\"\(token)\""));"
-        DispatchQueue.main.async {
-            webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }
 

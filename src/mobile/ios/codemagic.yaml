@@ -84,7 +84,7 @@ workflows:
       - name: Verify project readable
         script: |
           xcodebuild -list -project "$CM_BUILD_DIR/$XCODE_PROJECT"
-      - name: Smoke test in iOS Simulator
+      - name: UI test suite
         script: |
           set -e
           # Picks the newest available iPhone simulator name to avoid hardcoding

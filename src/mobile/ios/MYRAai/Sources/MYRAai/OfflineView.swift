@@ -5,11 +5,11 @@ struct OfflineView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 13/255, green: 27/255, blue: 42/255)
+            Color.brandBackground
             VStack(spacing: 24) {
                 Image(systemName: "wifi.slash")
                     .font(.system(size: 56, weight: .thin))
-                    .foregroundColor(Color(red: 0.49, green: 0.70, blue: 0.83))
+                    .foregroundColor(.brandSubtle)
                     .accessibilityLabel(String(localized: "No internet connection"))
 
                 Text("No Connection", comment: "Offline screen headline")
@@ -20,7 +20,7 @@ struct OfflineView: View {
                      comment: "Offline screen body text")
                     .font(.body)
                     .multilineTextAlignment(.center)
-                    .foregroundColor(Color(red: 0.62, green: 0.69, blue: 0.75))
+                    .foregroundColor(.brandMuted)
 
                 Button(action: onRetry) {
                     Text("Retry", comment: "Retry button")
@@ -28,8 +28,8 @@ struct OfflineView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 32)
                         .padding(.vertical, 12)
-                        .background(Color(red: 0.36, green: 0.77, blue: 0.92))
-                        .clipShape(.rect(cornerRadius: 10))  // replaces deprecated .cornerRadius
+                        .background(Color.brandAccent)
+                        .clipShape(.rect(cornerRadius: 10))
                 }
                 .padding(.top, 8)
             }
