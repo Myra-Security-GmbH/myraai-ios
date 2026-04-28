@@ -90,12 +90,12 @@ final class RegressionGuards: XCTestCase {
         )
     }
 
-    /// T-4: File attach button opens the document picker on iOS 16.4+.
-    /// Catches: the `@available(iOS 18.4, *)` gate creeping back in (it locked
-    /// out iOS 16.4–18.3 users from a working API).
+    /// T-4: File attach button opens the document picker on iOS 18.4+.
+    /// Catches: regression of the @available gate (WKOpenPanelParameters
+    /// itself is iOS 18.4+ on iOS; can't be lowered).
     func test_file_picker_opens_when_attach_tapped() throws {
-        guard #available(iOS 16.4, *) else {
-            throw XCTSkip("File picker requires iOS 16.4+")
+        guard #available(iOS 18.4, *) else {
+            throw XCTSkip("File picker requires iOS 18.4+ (WKOpenPanelParameters)")
         }
         guard !loginEmail.isEmpty, !loginOTP.isEmpty else {
             throw XCTSkip("TEST_LOGIN_EMAIL / TEST_LOGIN_OTP not set — file picker test needs an authenticated session")

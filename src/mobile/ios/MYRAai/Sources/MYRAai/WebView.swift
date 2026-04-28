@@ -129,18 +129,12 @@ struct WebView: UIViewRepresentable {
                 window.webkit.messageHandlers.notifyScrollTop.postMessage(scrolled);
             }
         };
-        window.__MYRAFilePickerSupported = \(filePickerAvailable ? "true" : "false");
         var style = document.createElement('style');
         style.textContent = '* { -webkit-touch-callout: none; } ' +
             'input, textarea, [contenteditable] { -webkit-touch-callout: default; user-select: text; }';
         document.head.appendChild(style);
     })();
     """ }
-
-    private var filePickerAvailable: Bool {
-        if #available(iOS 16.4, *) { return true }
-        return false
-    }
 }
 
 // MARK: - Coordinator
@@ -271,9 +265,9 @@ extension WebView {
             webView.evaluateJavaScript(script, completionHandler: nil)
         }
 
-        // MARK: File picker — iOS 16.4+ (WKUIDelegate)
+        // MARK: File picker — iOS 18.4+ (WKOpenPanelParameters availability)
 
-        @available(iOS 16.4, *)
+        @available(iOS 18.4, *)
         func webView(_ webView: WKWebView,
                      runOpenPanelWith parameters: WKOpenPanelParameters,
                      initiatedByFrame frame: WKFrameInfo,

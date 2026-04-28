@@ -48,6 +48,10 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>MYRA AI uses Face ID to lock the app after inactivity.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>MYRA AI uses the camera so you can take a photo and attach it to a chat message.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>MYRA AI accesses your photo library so you can attach images to a chat message.</string>
 	<!-- Light status bar text — required on dark navy background -->
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
