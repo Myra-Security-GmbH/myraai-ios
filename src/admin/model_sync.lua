@@ -1,10 +1,32 @@
--- admin/model_sync.lua — Automatic model list updater
+-- admin/model_sync.lua — Daily model + price catalog refresh.
 --
--- Fetches model lists from provider APIs and upserts into model_price
--- with pricing inferred from model family patterns.
+-- Source of truth for pricing is, in priority order:
 --
--- Runs daily via ngx.timer (started from init_worker on worker 0).
--- Also callable via POST /admin/v1/model-prices/sync.
+--   1. LiteLLM's `model_prices_and_context_window.json` on GitHub. The de-facto
+--      industry catalog, ~2700 models, MIT-licensed, updated within hours of
+--      every new model release. Covers Anthropic, OpenAI, Mistral, Groq,
+--      DeepSeek, xAI, Perplexity, Together, Fireworks, Cohere — every primary
+--      provider we route to. No auth required.
+--
+--   2. OpenRouter's /api/v1/models. Authoritative for OR-routed models because
+--      OR is the entity billing us — they know the price they charge. Returns
+--      pricing inline; LiteLLM's coverage of OR is partial (~91 of ~300
+--      models) so we sync OR separately and let it overwrite LiteLLM's OR
+--      rows.
+--
+-- We do NOT guess prices from model-name patterns anymore. Earlier versions of
+-- this file inferred pricing via hard-coded regex tiers (e.g. "^claude-opus-4-[56]"
+-- catches 4.5 and 4.6, anything else falls through to legacy 4.0/4.1 pricing).
+-- That approach silently mis-priced every new model the moment Anthropic
+-- released it — see the claude-opus-4-7 incident on 2026-04-28 where every
+-- request was billed at 3× the correct rate for 8 days. If a model is missing
+-- from both LiteLLM and OpenRouter, we leave the row absent rather than guess;
+-- cost_table.calculate then returns nil and the request is recorded with
+-- cost_usd=0 (untracked) — better to under-report a tracking gap than to
+-- over-bill at 3× until someone notices.
+--
+-- Invocation: ngx.timer.every(86400) from nginx init_worker (worker 0 only via
+-- the existing init guards), and POST /admin/v1/model-prices/sync from the UI.
 
 local storage = require("storage")
 local crypto  = require("utils.crypto")
@@ -13,85 +35,27 @@ local cjson   = require("cjson.safe")
 
 local M = {}
 
--- ---------------------------------------------------------------------------
--- Provider models-endpoint registry
--- ---------------------------------------------------------------------------
-local PROVIDERS = {
-    anthropic  = { url = "https://api.anthropic.com/v1/models",            auth = "anthropic" },
-    openai     = { url = "https://api.openai.com/v1/models",              auth = "bearer" },
-    mistral    = { url = "https://api.mistral.ai/v1/models",              auth = "bearer" },
-    groq       = { url = "https://api.groq.com/openai/v1/models",         auth = "bearer" },
-    deepseek   = { url = "https://api.deepseek.com/v1/models",            auth = "bearer" },
-    xai        = { url = "https://api.x.ai/v1/models",                    auth = "bearer" },
-    together   = { url = "https://api.together.xyz/v1/models",            auth = "bearer" },
-    fireworks  = { url = "https://api.fireworks.ai/inference/v1/models",   auth = "bearer" },
-    perplexity = { url = "https://api.perplexity.ai/v1/models",           auth = "bearer" },
-    openrouter = { url = "https://openrouter.ai/api/v1/models",           auth = "bearer" },
-}
+local LITELLM_URL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
 
--- Stable iteration order
-local PROVIDER_ORDER = {
-    "anthropic", "openai", "mistral", "groq", "deepseek",
-    "xai", "together", "fireworks", "perplexity", "openrouter",
-}
-
--- ---------------------------------------------------------------------------
--- Pricing tiers — first match wins (check more specific patterns first)
--- i = input_per_1k, o = output_per_1k, cw = cache_write_per_1k (5m), cr = cache_read_per_1k, cw1h = cache_write_1h_per_1k
--- ---------------------------------------------------------------------------
-local PRICING_TIERS = {
-    -- ── Anthropic ────────────────────────────────────────────────────────────
-    { p = "anthropic", pat = "^claude%-opus%-4%-[56]",             i = 0.005,   o = 0.025,   cw = 0.00625,  cr = 0.0005,  cw1h = 0.01     },
-    { p = "anthropic", pat = "^claude%-opus%-4",                   i = 0.015,   o = 0.075,   cw = 0.01875,  cr = 0.0015,  cw1h = 0.03     },
-    { p = "anthropic", pat = "^claude%-4%-opus",                   i = 0.015,   o = 0.075,   cw = 0.01875,  cr = 0.0015,  cw1h = 0.03     },
-    { p = "anthropic", pat = "^claude%-sonnet%-4",                 i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
-    { p = "anthropic", pat = "^claude%-4%-sonnet",                 i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
-    { p = "anthropic", pat = "^claude%-haiku%-4",                  i = 0.001,   o = 0.005,   cw = 0.00125,  cr = 0.0001,  cw1h = 0.002    },
-    { p = "anthropic", pat = "^claude%-3%-7%-sonnet",              i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
-    { p = "anthropic", pat = "^claude%-3%-5%-sonnet",              i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
-    { p = "anthropic", pat = "^claude%-3%-5%-haiku",               i = 0.0008,  o = 0.004,   cw = 0.001,    cr = 0.00008, cw1h = 0.0016   },
-    { p = "anthropic", pat = "^claude%-3%-opus",                   i = 0.015,   o = 0.075,   cw = 0.01875,  cr = 0.0015,  cw1h = 0.03     },
-    { p = "anthropic", pat = "^claude%-3%-sonnet",                 i = 0.003,   o = 0.015,   cw = 0.00375,  cr = 0.0003,  cw1h = 0.006    },
-    { p = "anthropic", pat = "^claude%-3%-haiku",                  i = 0.00025, o = 0.00125, cw = 0.0003,   cr = 0.00003, cw1h = 0.00048  },
-
-    -- ── OpenAI ───────────────────────────────────────────────────────────────
-    { p = "openai", pat = "^gpt%-4%.1%-mini",    i = 0.0004,  o = 0.0016 },
-    { p = "openai", pat = "^gpt%-4%.1%-nano",    i = 0.0001,  o = 0.0004 },
-    { p = "openai", pat = "^gpt%-4%.1",          i = 0.002,   o = 0.008 },
-    { p = "openai", pat = "^gpt%-4o%-mini",      i = 0.00015, o = 0.0006 },
-    { p = "openai", pat = "^gpt%-4o",            i = 0.0025,  o = 0.01 },
-    { p = "openai", pat = "^o4%-mini",           i = 0.0011,  o = 0.0044 },
-    { p = "openai", pat = "^o3%-mini",           i = 0.0011,  o = 0.0044 },
-    { p = "openai", pat = "^o3%-pro",            i = 0.02,    o = 0.08 },
-    { p = "openai", pat = "^o3",                 i = 0.01,    o = 0.04 },
-    { p = "openai", pat = "^o1%-mini",           i = 0.0011,  o = 0.0044 },
-    { p = "openai", pat = "^o1%-pro",            i = 0.02,    o = 0.08 },
-    { p = "openai", pat = "^o1",                 i = 0.015,   o = 0.06 },
-
-    -- ── Mistral ──────────────────────────────────────────────────────────────
-    { p = "mistral", pat = "^mistral%-large",    i = 0.002,   o = 0.006 },
-    { p = "mistral", pat = "^mistral%-medium",   i = 0.0004,  o = 0.002 },
-    { p = "mistral", pat = "^mistral%-small",    i = 0.0001,  o = 0.0003 },
-    { p = "mistral", pat = "^pixtral%-large",    i = 0.002,   o = 0.006 },
-    { p = "mistral", pat = "^pixtral",           i = 0.0001,  o = 0.0003 },
-    { p = "mistral", pat = "^codestral",         i = 0.0003,  o = 0.0009 },
-    { p = "mistral", pat = "^ministral",         i = 0.00004, o = 0.00004 },
-
-    -- ── DeepSeek ─────────────────────────────────────────────────────────────
-    { p = "deepseek", pat = "^deepseek%-chat",       i = 0.00027, o = 0.0011 },
-    { p = "deepseek", pat = "^deepseek%-reasoner",   i = 0.00055, o = 0.0022 },
-
-    -- ── Groq ─────────────────────────────────────────────────────────────────
-    { p = "groq", pat = "^llama%-3%.3%-70b",     i = 0.00059, o = 0.00079 },
-    { p = "groq", pat = "^llama%-3%.1%-8b",      i = 0.00005, o = 0.00008 },
-    { p = "groq", pat = "^llama%-3%.1%-70b",     i = 0.00059, o = 0.00079 },
-    { p = "groq", pat = "^gemma2%-9b",           i = 0.0002,  o = 0.0002 },
-    { p = "groq", pat = "^mistral%-saba",        i = 0.0002,  o = 0.0006 },
-
-    -- ── xAI ──────────────────────────────────────────────────────────────────
-    { p = "xai", pat = "^grok%-3%-mini",  i = 0.0003, o = 0.0005 },
-    { p = "xai", pat = "^grok%-3",        i = 0.003,  o = 0.015 },
-    { p = "xai", pat = "^grok%-2",        i = 0.002,  o = 0.01 },
+-- LiteLLM `litellm_provider` value → our internal provider name.
+-- We deliberately omit OpenRouter here — its models are synced via the
+-- authoritative OR API in M.sync_openrouter() which overwrites whatever
+-- LiteLLM happened to ship. We also skip Bedrock/Vertex/Azure variants since
+-- those are aliased into the named providers above (e.g. an Anthropic model
+-- on Bedrock is still an "anthropic" model from the gateway's POV — matched
+-- on the model_id prefix at the route layer).
+local PROVIDER_MAP = {
+    anthropic    = "anthropic",
+    openai       = "openai",
+    mistral      = "mistral",
+    groq         = "groq",
+    deepseek     = "deepseek",
+    xai          = "xai",
+    perplexity   = "perplexity",
+    together_ai  = "together",
+    fireworks_ai = "fireworks",
+    cohere       = "cohere",
+    cerebras     = "cerebras",
 }
 
 -- ---------------------------------------------------------------------------
@@ -99,6 +63,7 @@ local PRICING_TIERS = {
 -- ---------------------------------------------------------------------------
 
 --- Get a decrypted API key for a provider (first available across gateways).
+--- Used by sync_openrouter; LiteLLM doesn't need a key.
 function M.get_api_key(provider)
     local gw_id, enc_key, _, key_err = storage.get_first_provider_key(provider)
     if not gw_id then
@@ -111,131 +76,106 @@ function M.get_api_key(provider)
     return plaintext
 end
 
---- Fetch model list from a provider's API.
---- Returns array of model ID strings, or nil + error.
-function M.fetch_models(provider, api_key)
-    local spec = PROVIDERS[provider]
-    if not spec then return nil, "unknown provider: " .. provider end
-
-    local headers = { ["Accept"] = "application/json" }
-    if spec.auth == "anthropic" then
-        headers["x-api-key"] = api_key
-        headers["anthropic-version"] = "2023-06-01"
-    else
-        headers["Authorization"] = "Bearer " .. api_key
-    end
-
+local function http_get_json(url, headers, timeout_ms)
     local httpc = require("resty.http").new()
-    httpc:set_timeout(15000)
-    local res, err = httpc:request_uri(spec.url, {
-        method     = "GET",
-        headers    = headers,
-        ssl_verify = true,
+    httpc:set_timeout(timeout_ms or 30000)
+    local res, err = httpc:request_uri(url, {
+        method = "GET", headers = headers or {}, ssl_verify = true,
     })
     if not res then return nil, "HTTP error: " .. tostring(err) end
     if res.status >= 400 then
         return nil, "HTTP " .. res.status .. ": " .. (res.body or ""):sub(1, 200)
     end
-
     local body = cjson.decode(res.body)
-    if not body or not body.data then
-        return nil, "unexpected response format"
-    end
-
-    local models = {}
-    for _, m in ipairs(body.data) do
-        local id = m.id
-        if id and type(id) == "string" then
-            -- Filter out OpenAI fine-tuned models and system models
-            local dominated_by = m.owned_by or ""
-            if provider ~= "openai" or (dominated_by == "openai" or dominated_by == "system" or dominated_by == "") then
-                models[#models + 1] = id
-            end
-        end
-    end
-    return models
+    if not body then return nil, "JSON decode failed (body " .. #(res.body or "") .. " bytes)" end
+    return body
 end
 
---- Match a model ID against pricing tiers for a provider.
---- Returns { input, output, cache_write, cache_read, cache_write_1h } or nil.
-function M.infer_pricing(provider, model_id)
-    for _, tier in ipairs(PRICING_TIERS) do
-        if tier.p == provider and model_id:find(tier.pat) then
-            return {
-                input          = tier.i,
-                output         = tier.o,
-                cache_write    = tier.cw,
-                cache_read     = tier.cr,
-                cache_write_1h = tier.cw1h,
-            }
-        end
+--- Round to 10 decimal places (matches LiteLLM's precision).
+local function r10(n) return math.floor(n * 1e10 + 0.5) / 1e10 end
+
+-- Compare two pricing rows; treat nil and 0 as equal so a row that LiteLLM
+-- doesn't carry cache_write for doesn't constantly look "changed".
+local function pricing_equal(a, b)
+    local function eq(x, y)
+        x = x or 0; y = y or 0
+        return math.abs(x - y) < 1e-12
     end
-    return nil
+    return eq(a.input_per_1k,         b.input_per_1k)
+       and eq(a.output_per_1k,        b.output_per_1k)
+       and eq(a.cache_write_per_1k,   b.cache_write_per_1k)
+       and eq(a.cache_read_per_1k,    b.cache_read_per_1k)
+       and eq(a.cache_write_1h_per_1k, b.cache_write_1h_per_1k)
 end
 
---- Sync one provider: fetch models → infer pricing → upsert new ones.
-function M.sync_provider(provider)
-    local result = { provider = provider, added = 0, updated = 0, skipped = 0, errors = {} }
+-- ---------------------------------------------------------------------------
+-- LiteLLM sync — primary source for everything except OpenRouter
+-- ---------------------------------------------------------------------------
 
-    local api_key, key_err = M.get_api_key(provider)
-    if not api_key then
-        result.errors[#result.errors + 1] = key_err
+function M.sync_litellm()
+    local result = { provider = "litellm", added = 0, updated = 0, skipped = 0, errors = {} }
+
+    local data, err = http_get_json(LITELLM_URL, nil, 30000)
+    if not data then
+        result.errors[#result.errors + 1] = "fetch LiteLLM JSON: " .. tostring(err)
         return result
     end
 
-    local models, fetch_err = M.fetch_models(provider, api_key)
-    if not models then
-        result.errors[#result.errors + 1] = fetch_err
-        return result
-    end
-
-    -- Load existing models for this provider to detect new vs. existing
+    -- Pre-load existing rows once so we can diff in memory rather than hammer
+    -- the DB with one read per model.
     local existing = {}
-    local all = storage.list_models(provider)
-    for _, row in ipairs(all) do
-        existing[row.model] = row
+    for _, our_provider in pairs(PROVIDER_MAP) do
+        if not existing[our_provider] then
+            existing[our_provider] = {}
+            local rows = storage.list_models(our_provider) or {}
+            for _, row in ipairs(rows) do existing[our_provider][row.model] = row end
+        end
     end
 
-    for _, model_id in ipairs(models) do
-        local pricing = M.infer_pricing(provider, model_id)
-        if not pricing then
-            -- Unknown pricing — add with zero so it appears in the list
-            pricing = { input = 0, output = 0, cache_write = nil, cache_read = nil, cache_write_1h = nil }
-        end
+    for model_id, info in pairs(data) do
+        if type(info) == "table" then
+            local litellm_provider = info.litellm_provider
+            local our_provider     = PROVIDER_MAP[litellm_provider]
+            if our_provider then
+                local input_cost  = info.input_cost_per_token
+                local output_cost = info.output_cost_per_token
+                if type(input_cost) == "number" and type(output_cost) == "number" then
+                    local cw = info.cache_creation_input_token_cost
+                    local cr = info.cache_read_input_token_cost
+                    local pricing = {
+                        input_per_1k          = r10(input_cost  * 1000),
+                        output_per_1k         = r10(output_cost * 1000),
+                        cache_write_per_1k    = cw and r10(cw * 1000) or nil,
+                        cache_read_per_1k     = cr and r10(cr * 1000) or nil,
+                        -- LiteLLM doesn't expose a separate 1h rate; Anthropic
+                        -- charges 2× the 5m rate for 1h. Default in line.
+                        cache_write_1h_per_1k = cw and r10(cw * 1000 * 1.6) or nil,
+                    }
 
-        local ex = existing[model_id]
-        if ex then
-            -- Model exists — only update if current pricing matches a tier
-            -- (preserves manual edits)
-            local ex_pricing = M.infer_pricing(provider, model_id)
-            if ex_pricing
-                and ex.input_per_1k == ex_pricing.input
-                and ex.output_per_1k == ex_pricing.output then
-                -- Pricing matches tier — safe to update
-                local upsert_err = storage.upsert_model_price(
-                    provider, model_id,
-                    pricing.input, pricing.output,
-                    pricing.cache_write, pricing.cache_read, pricing.cache_write_1h
-                )
-                if upsert_err then
-                    result.errors[#result.errors + 1] = model_id .. ": " .. tostring(upsert_err)
-                else
-                    result.updated = result.updated + 1
+                    local ex = existing[our_provider] and existing[our_provider][model_id]
+                    if ex and pricing_equal(ex, pricing) then
+                        result.skipped = result.skipped + 1
+                    else
+                        local ue = storage.upsert_model_price(
+                            our_provider, model_id,
+                            pricing.input_per_1k, pricing.output_per_1k,
+                            pricing.cache_write_per_1k, pricing.cache_read_per_1k,
+                            pricing.cache_write_1h_per_1k
+                        )
+                        if ue then
+                            result.errors[#result.errors + 1] = model_id .. ": " .. tostring(ue)
+                        elseif ex then
+                            result.updated = result.updated + 1
+                            ngx.log(ngx.NOTICE, "model_sync: updated ", our_provider, "/", model_id,
+                                " input=", pricing.input_per_1k, " output=", pricing.output_per_1k,
+                                " (was input=", ex.input_per_1k, " output=", ex.output_per_1k, ")")
+                        else
+                            result.added = result.added + 1
+                            ngx.log(ngx.NOTICE, "model_sync: added ", our_provider, "/", model_id,
+                                " input=", pricing.input_per_1k, " output=", pricing.output_per_1k)
+                        end
+                    end
                 end
-            else
-                result.skipped = result.skipped + 1
-            end
-        else
-            -- New model — insert
-            local upsert_err = storage.upsert_model_price(
-                provider, model_id,
-                pricing.input, pricing.output,
-                pricing.cache_write, pricing.cache_read
-            )
-            if upsert_err then
-                result.errors[#result.errors + 1] = model_id .. ": " .. tostring(upsert_err)
-            else
-                result.added = result.added + 1
             end
         end
     end
@@ -243,28 +183,100 @@ function M.sync_provider(provider)
     return result
 end
 
---- Sync all providers (or a single one if only_provider is given).
---- Returns { results = [ {provider, added, updated, skipped, errors}, ... ] }
-function M.sync_all(only_provider)
-    local results = {}
-    for _, provider in ipairs(PROVIDER_ORDER) do
-        if not only_provider or only_provider == provider then
-            local ok, result = pcall(M.sync_provider, provider)
-            if ok then
-                results[#results + 1] = result
-                local n = result.added
-                if n > 0 then
-                    ngx.log(ngx.NOTICE, "model_sync: ", provider, " — ", n, " new models added")
-                end
+-- ---------------------------------------------------------------------------
+-- OpenRouter sync — authoritative for OR-routed models
+-- ---------------------------------------------------------------------------
+
+function M.sync_openrouter()
+    local result = { provider = "openrouter", added = 0, updated = 0, skipped = 0, errors = {} }
+
+    local api_key, key_err = M.get_api_key("openrouter")
+    if not api_key then
+        -- Not an error — just nothing to sync if no OR gateway is configured.
+        result.errors[#result.errors + 1] = key_err
+        return result
+    end
+
+    local body, err = http_get_json("https://openrouter.ai/api/v1/models",
+                                    { ["Authorization"] = "Bearer " .. api_key }, 15000)
+    if not body or not body.data then
+        result.errors[#result.errors + 1] = "fetch OpenRouter models: " .. tostring(err or "unexpected response")
+        return result
+    end
+
+    local existing = {}
+    for _, row in ipairs(storage.list_models("openrouter") or {}) do
+        existing[row.model] = row
+    end
+
+    for _, m in ipairs(body.data) do
+        local model_id = m.id
+        local p = m.pricing or {}
+        local prompt = tonumber(p.prompt)
+        local completion = tonumber(p.completion)
+        if model_id and prompt and completion then
+            -- OR's pricing fields are USD per token (string). Cache fields are
+            -- present for some models, absent for others.
+            local cw = tonumber(p.input_cache_write or p.cache_write_5m or p.cache_write)
+            local cr = tonumber(p.input_cache_read  or p.cache_read)
+            local pricing = {
+                input_per_1k          = r10(prompt * 1000),
+                output_per_1k         = r10(completion * 1000),
+                cache_write_per_1k    = cw and r10(cw * 1000) or nil,
+                cache_read_per_1k     = cr and r10(cr * 1000) or nil,
+                cache_write_1h_per_1k = cw and r10(cw * 1000 * 1.6) or nil,
+            }
+
+            local ex = existing[model_id]
+            if ex and pricing_equal(ex, pricing) then
+                result.skipped = result.skipped + 1
             else
-                results[#results + 1] = {
-                    provider = provider,
-                    added = 0, updated = 0, skipped = 0,
-                    errors = { tostring(result) },
-                }
-                ngx.log(ngx.WARN, "model_sync: ", provider, " failed: ", tostring(result))
+                local ue = storage.upsert_model_price(
+                    "openrouter", model_id,
+                    pricing.input_per_1k, pricing.output_per_1k,
+                    pricing.cache_write_per_1k, pricing.cache_read_per_1k,
+                    pricing.cache_write_1h_per_1k
+                )
+                if ue then
+                    result.errors[#result.errors + 1] = model_id .. ": " .. tostring(ue)
+                elseif ex then
+                    result.updated = result.updated + 1
+                else
+                    result.added = result.added + 1
+                end
             end
         end
+    end
+
+    return result
+end
+
+-- ---------------------------------------------------------------------------
+-- Public entry points
+-- ---------------------------------------------------------------------------
+
+--- Sync model_price from LiteLLM + OpenRouter.
+--- Returns { results = [ {provider, added, updated, skipped, errors}, ... ] }
+--- The `only_source` arg accepts "litellm" or "openrouter" to limit the sync;
+--- any other value (including legacy provider names like "anthropic") runs
+--- both syncs — keeps the existing /admin/v1/model-prices/sync endpoint
+--- backwards-compatible whether or not the caller passes a query arg.
+function M.sync_all(only_source)
+    if only_source ~= "litellm" and only_source ~= "openrouter" then
+        only_source = nil
+    end
+    local results = {}
+    if not only_source or only_source == "litellm" then
+        local ok, r = pcall(M.sync_litellm)
+        if ok then results[#results + 1] = r
+        else results[#results + 1] = { provider = "litellm", added = 0, updated = 0, skipped = 0,
+                                        errors = { tostring(r) } } end
+    end
+    if not only_source or only_source == "openrouter" then
+        local ok, r = pcall(M.sync_openrouter)
+        if ok then results[#results + 1] = r
+        else results[#results + 1] = { provider = "openrouter", added = 0, updated = 0, skipped = 0,
+                                        errors = { tostring(r) } } end
     end
     return { results = results }
 end
