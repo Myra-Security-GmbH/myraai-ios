@@ -26,7 +26,14 @@ android {
         applicationId "eu.myra.myraai"
         minSdk 26
         targetSdk 35
-        versionCode 6
+        // versionCode must be strictly increasing per Play Store upload —
+        // re-using a value gets rejected with "Version code N has already
+        // been used". CI sets ANDROID_VERSION_CODE to $CI_PIPELINE_IID
+        // (project-local monotonic counter, see .gitlab-ci.yml). Local
+        // builds get a high sentinel so an accidental upload from a dev
+        // machine still won't collide with the next CI value (CI is at ~172
+        // and grows by 1 per push).
+        versionCode (System.getenv("ANDROID_VERSION_CODE")?.toInteger() ?: 99999)
         versionName "1.0.4"
     }
 

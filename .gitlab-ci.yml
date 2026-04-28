@@ -115,7 +115,10 @@ build:docker:
     - job: build:frontend
       artifacts: true
   before_script:
-    - docker login -u "$REGISTRY_USER" -p "$REGISTRY_PASS" "$REGISTRY"
+    # docker:24 refuses interactive login on a non-TTY runner; pipe the
+    # password via stdin instead. Plain `-p` was producing
+    # "Cannot perform an interactive login from a non TTY device".
+    - echo "$REGISTRY_PASS" | docker login -u "$REGISTRY_USER" --password-stdin "$REGISTRY"
   script:
     # docs/out/ must exist for the COPY in the Dockerfile to succeed.
     # If you want docs included in the image, replace this with the actual
@@ -601,6 +604,11 @@ android:build:
     - |
       cd "$CI_PROJECT_DIR/src/mobile/android"
       chmod +x gradlew
+      # Pin Android versionCode to the GitLab pipeline IID so each upload to
+      # Play has a strictly-increasing value. build.gradle reads
+      # System.getenv("ANDROID_VERSION_CODE"); local builds fall back to a
+      # high sentinel so an accidental local upload can't collide with CI.
+      export ANDROID_VERSION_CODE="$CI_PIPELINE_IID"
       ./gradlew --no-daemon bundleRelease assembleRelease
   artifacts:
     paths:
