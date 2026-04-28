@@ -18,6 +18,14 @@ test.use({
   deviceScaleFactor: 2,
 });
 
+// Pre-acknowledge the AIDisclosureModal so it never renders during a screenshot
+// pass — its overlay (z-index 1000) would otherwise intercept every click.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    try { localStorage.setItem("aig:ai-disclosure-acknowledged-v1", "1"); } catch {}
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Output directory
 // ---------------------------------------------------------------------------

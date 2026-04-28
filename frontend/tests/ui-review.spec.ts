@@ -47,12 +47,17 @@ async function applyMode(page: Page, mode: Mode) {
 }
 
 async function newCtx(browser: Browser, mode: Mode) {
-  return browser.newContext({
+  const ctx = await browser.newContext({
     colorScheme: mode,
     storageState: SESSION,
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 2,
   });
+  // Pre-acknowledge the AIDisclosureModal so its overlay does not block clicks.
+  await ctx.addInitScript(() => {
+    try { localStorage.setItem("aig:ai-disclosure-acknowledged-v1", "1"); } catch {}
+  });
+  return ctx;
 }
 
 async function selectMyratest(page: Page) {

@@ -22,12 +22,30 @@ import type {
   TestError,
 } from "@playwright/test/reporter";
 
-function formatEta(elapsedMs: number, done: number, total: number): string {
+function formatEta(
+  elapsedMs: number,
+  done: number,
+  total: number,
+  cumulativeCpuMs: number,
+  workers: number,
+): string {
   if (done === 0 || done >= total) return "";
-  const avgMs = elapsedMs / done;
-  const etaMs = avgMs * (total - done);
-  const s = Math.round(etaMs / 1000);
-  if (s < 2)  return "~1s left";
+  const remaining = total - done;
+  // Wall-clock extrapolation — correct only if the observed rate continues
+  // unchanged. Overestimates during the serial setup phase before the
+  // parallel `int` project kicks in.
+  const wallEta = (elapsedMs / done) * remaining;
+  // Parallelism-aware extrapolation — assumes the remaining work is spread
+  // across the configured worker pool at the average per-test CPU cost.
+  // Underestimates if upcoming tests are slower than past ones, but recovers
+  // as more samples come in.
+  const avgCpuMs = cumulativeCpuMs / done;
+  const parallelEta = (avgCpuMs * remaining) / Math.max(1, workers);
+  // Use the smaller of the two: parallel-eta is the optimistic floor once
+  // workers ramp up; wall-eta becomes the binding bound if parallelism never
+  // materialises.
+  const etaMs = Math.min(wallEta, parallelEta);
+  const s = Math.max(1, Math.round(etaMs / 1000));
   if (s < 60) return `~${s}s left`;
   const m = Math.floor(s / 60);
   const r = s % 60;
@@ -110,16 +128,22 @@ class ProgressReporter implements Reporter {
   private failures: Array<{ test: TestCase; result: TestResult }> = [];
   private lineActive = false;
   private startTime = 0;
+  private tty = false;
+  private workers = 1;
+  private cumulativeCpuMs = 0;
 
-  onBegin(_config: FullConfig, suite: Suite): void {
+  onBegin(config: FullConfig, suite: Suite): void {
     this.total = suite.allTests().length;
     this.startTime = Date.now();
+    this.tty = !!process.stdout.isTTY;
+    this.workers = Math.max(1, (config as { workers?: number }).workers ?? 1);
     process.stdout.write(`\nRunning ${this.total} tests\n\n`);
-    this.renderBar();
+    if (this.tty) this.renderBar();
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
     this.done++;
+    this.cumulativeCpuMs += result.duration;
 
     const isRetry = result.retry > 0;
     const title = test.titlePath().join(" › ");
@@ -150,13 +174,23 @@ class ProgressReporter implements Reporter {
       this.failures.push({ test, result });
     }
 
-    this.clearBar();
-    process.stdout.write(formatTestLine(test, result) + "\n");
-    this.renderBar();
+    if (this.tty) {
+      this.clearBar();
+      process.stdout.write(formatTestLine(test, result) + "\n");
+      this.renderBar();
+    } else {
+      // Non-TTY (captured logs): emit exactly one line per test, prefixed
+      // with running counter and ETA. No carriage-return tricks.
+      const eta = formatEta(Date.now() - this.startTime, this.done, this.total, this.cumulativeCpuMs, this.workers);
+      const prefix = eta
+        ? `[${this.done}/${this.total}] ${eta}  `
+        : `[${this.done}/${this.total}]  `;
+      process.stdout.write(prefix + formatTestLine(test, result).trimStart() + "\n");
+    }
   }
 
   onEnd(result: FullResult): void {
-    this.clearBar();
+    if (this.tty) this.clearBar();
 
     // Print full failure details after all tests have completed
     for (const { test, result: r } of this.failures) {
@@ -189,7 +223,7 @@ class ProgressReporter implements Reporter {
   private renderBar(): void {
     const elapsed = Date.now() - this.startTime;
     const pct = this.total === 0 ? 100 : Math.round((this.done / this.total) * 100);
-    const eta = formatEta(elapsed, this.done, this.total);
+    const eta = formatEta(elapsed, this.done, this.total, this.cumulativeCpuMs, this.workers);
     const pass  = `\x1b[32m✓ ${this.passed}\x1b[0m`;
     const fail  = this.failed > 0 ? `\x1b[31m✘ ${this.failed}\x1b[0m` : `✘ 0`;
     const flaky = this.flaky > 0  ? `\x1b[33m~ ${this.flaky}\x1b[0m`  : "";

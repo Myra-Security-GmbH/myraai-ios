@@ -70,7 +70,8 @@ async function loginAs(page: any, email: string, sessionPath: string) {
   await expect(page.getByLabel("6-digit code")).toBeVisible();
   await page.getByLabel("6-digit code").fill(OTP_CODE);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/(dashboard|$)/, { timeout: 5000 });
+  // Members and viewers land on /chat; admin / tenant_admin on /dashboard.
+  await expect(page).toHaveURL(/\/(dashboard|chat|$)/, { timeout: 5000 });
 
   await page.context().storageState({ path: sessionPath });
 }
