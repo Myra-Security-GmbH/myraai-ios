@@ -63,10 +63,13 @@ struct WebView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(state: state) }
 
     func makeUIView(context: Context) -> WKWebView {
-        let isTestEnvironment = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        // XCTestConfigurationFilePath is set only in the test runner process, not in the app
+        // process. ScreenshotTests sets launchEnvironment["SCREENSHOT_MODE"]="1" instead,
+        // which IS forwarded to the app process by XCUIApplication.launch().
+        let isScreenshotMode = ProcessInfo.processInfo.environment["SCREENSHOT_MODE"] == "1"
         let config = WKWebViewConfiguration()
-        // Under XCTest use a throwaway store so old cached JS bundles never interfere.
-        config.websiteDataStore = isTestEnvironment ? .nonPersistent() : .default()
+        // Under screenshot runs use a throwaway store so no cached JS bundles interfere.
+        config.websiteDataStore = isScreenshotMode ? .nonPersistent() : .default()
         config.defaultWebpagePreferences.preferredContentMode = .mobile
         config.applicationNameForUserAgent = "MYRAai-iOS/1.0"
 
@@ -80,7 +83,7 @@ struct WebView: UIViewRepresentable {
                                 forMainFrameOnly: true)
         config.userContentController.addUserScript(shim)
 
-        if isTestEnvironment {
+        if isScreenshotMode {
             let screenshotScript = WKUserScript(
                 source: "window.__myraScreenshotMode = true;",
                 injectionTime: .atDocumentStart,

@@ -65,6 +65,10 @@ final class ScreenshotTests: XCTestCase {
         }
 
         let app = XCUIApplication()
+        // SCREENSHOT_MODE is forwarded to the app process by XCUIApplication.launch().
+        // WebView.swift reads it to activate nonPersistent data store and inject
+        // window.__myraScreenshotMode=true so Sidebar renders the trigger buttons.
+        app.launchEnvironment["SCREENSHOT_MODE"] = "1"
         app.launch()
 
         let webView = app.webViews.firstMatch
