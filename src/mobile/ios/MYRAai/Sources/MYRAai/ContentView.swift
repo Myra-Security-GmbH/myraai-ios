@@ -52,10 +52,13 @@ struct ContentView: View {
                 VStack {
                     Spacer()
                     HStack {
-                        Button("") {
-                            webViewState.webView?.evaluateJavaScript(
-                                "document.querySelector(\"button[aria-label='Open navigation menu']\")?.click()"
-                            ) { _, _ in }
+                        Button("open-sidebar-hook") {
+                            Task { @MainActor in
+                                webViewState.webView?.evaluateJavaScript(
+                                    "document.querySelector(\"button[aria-label='Open navigation menu']\")?.click()",
+                                    completionHandler: nil
+                                )
+                            }
                         }
                         .accessibilityIdentifier("screenshot_open_sidebar")
                         .frame(width: 44, height: 44)
@@ -63,10 +66,13 @@ struct ContentView: View {
 
                         Spacer()
 
-                        Button("") {
-                            webViewState.webView?.evaluateJavaScript(
-                                "document.querySelector(\"a[href='/chat']\")?.click()"
-                            ) { _, _ in }
+                        Button("nav-chat-hook") {
+                            Task { @MainActor in
+                                webViewState.webView?.evaluateJavaScript(
+                                    "document.querySelector(\"a[href='/chat']\")?.click()",
+                                    completionHandler: nil
+                                )
+                            }
                         }
                         .accessibilityIdentifier("screenshot_nav_chat")
                         .frame(width: 44, height: 44)
