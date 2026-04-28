@@ -555,9 +555,10 @@ android:build:
       RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASS
       EOF
   script:
-    - cd src/mobile/android
-    - chmod +x gradlew
-    - ./gradlew --no-daemon bundleRelease assembleRelease
+    - |
+      cd "$CI_PROJECT_DIR/src/mobile/android"
+      chmod +x gradlew
+      ./gradlew --no-daemon bundleRelease assembleRelease
   artifacts:
     paths:
       - src/mobile/android/app/build/outputs/bundle/release/app-release.aab
