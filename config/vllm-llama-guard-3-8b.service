@@ -66,8 +66,7 @@ ExecStart=/home/vllm/.vllm/bin/vllm serve meta-llama/Llama-Guard-3-8B \
     # Misc
     --download-dir /opt/models/huggingface/hub \
     --compilation-config '{"cache_dir":"/opt/models/cache/vllm"}' \
-    --enforce-eager \
-    --disable-log-requests
+    --enforce-eager
 
 # ── Process limits ────────────────────────────────────────────────────────────
 LimitNOFILE=65536
