@@ -129,6 +129,12 @@ class MainActivity : AppCompatActivity() {
         // Use margins on swipeRefresh (not padding) so the web viewport adjusts for
         // system bars and the IME. Moving the view boundary is the only way to signal
         // the WebView about available space.
+        //
+        // Return WindowInsetsCompat.CONSUMED so the WebView (descendant of swipeRefresh)
+        // does not also receive these insets. The margin shift above already places the
+        // WebView entirely inside the safe area, so propagating insets would double-
+        // count: the WebView would report env(safe-area-inset-top) > 0 under
+        // viewport-fit=cover even though its own frame has no system-bar overlap.
         ViewCompat.setOnApplyWindowInsetsListener(swipeRefresh) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
@@ -148,7 +154,7 @@ class MainActivity : AppCompatActivity() {
                 topMargin = topInset
             }
             progressBar.requestLayout()
-            insets
+            WindowInsetsCompat.CONSUMED
         }
 
         // Predictive back gesture (Android 13+) and back-in-webview on older devices.
