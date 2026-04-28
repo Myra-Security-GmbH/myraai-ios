@@ -107,21 +107,29 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(navBtn.waitForExistence(timeout: 30),
                       "Dashboard did not appear after login")
 
-        // Open sidebar and navigate to Chat.
-        // WKWebView nav links are found via accessibility but report isHittable=false
-        // due to hit-test clipping in the web layer.
-        navBtn.tap()
+        // Open sidebar.
+        // The hamburger is portaled to document.body at position:fixed; z-index:300.
+        // Like the nav links, it reports isHittable=false due to WKWebView hit-test clipping.
+        // Use coordinate(withNormalizedOffset:).tap() to bypass the hittability check.
+        navBtn.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        // Confirm the sidebar opened: the hamburger gets display:none when mobileOpen=true,
+        // removing it from the accessibility tree entirely.
+        XCTAssertTrue(navBtn.waitForNonExistence(timeout: 5),
+                      "Sidebar did not open — hamburger still visible after tap")
+
+        // Allow the 0.25 s CSS slide-in transition to finish before capturing.
+        _ = XCTWaiter.wait(for: [expectation(description: "sidebar-open")], timeout: 1)
+
+        // 3 — Sidebar open
+        capture("03_sidebar", to: creds.outputDir)
+
+        // Navigate to Chat.
+        // nav-item has width:100% (full 240pt) — tap at sidebar horizontal centre (x=120).
         let chatLink = webView.links
             .matching(NSPredicate(format: "label == 'Chat'"))
             .firstMatch
-        XCTAssertTrue(chatLink.waitForExistence(timeout: 8), "Chat link not found in sidebar")
-
-        // 3 — Sidebar open (captured before tapping Chat, while drawer is visible)
-        _ = XCTWaiter.wait(for: [expectation(description: "sidebar-paint")], timeout: 1)
-        capture("03_sidebar", to: creds.outputDir)
-
-        // chatLink bounds are text-only (~33×18 at x=0); the sidebar panel is 240pt wide.
-        // Tap at x=120 (sidebar horizontal centre) to reliably trigger React Router navigation.
+        XCTAssertTrue(chatLink.waitForExistence(timeout: 5), "Chat link not found in sidebar")
         let chatLinkY = chatLink.frame.midY
         app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
             .withOffset(CGVector(dx: 120, dy: chatLinkY))
