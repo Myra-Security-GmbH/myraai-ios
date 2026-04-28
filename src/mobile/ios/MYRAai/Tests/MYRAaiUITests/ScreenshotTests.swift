@@ -74,6 +74,16 @@ final class ScreenshotTests: XCTestCase {
         let webView = app.webViews.firstMatch
         XCTAssertTrue(webView.waitForExistence(timeout: 30), "WebView did not appear")
 
+        // Dismiss the OS push-permission dialog so it doesn't occlude the login UI
+        // in the captured screenshot. Tapping "Allow" matches what most users will
+        // actually do — and the underlying login form was already painted behind
+        // the alert by the time it appears.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allowPush = springboard.buttons["Allow"]
+        if allowPush.waitForExistence(timeout: 5) {
+            allowPush.tap()
+        }
+
         // 1 — Login screen
         // waitForExistence is satisfied before the WebView has finished painting.
         // The extra 2 s lets React complete its render so the screenshot is sharp.
