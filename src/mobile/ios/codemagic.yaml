@@ -11,15 +11,16 @@ workflows:
       vars:
         XCODE_PROJECT: "MYRAai.xcodeproj"
         XCODE_SCHEME: "MYRAai"
-      xcode: "16"  # Xcode 16 (iOS 18) has iPhone 14 Plus simulator; Xcode 26 only has iPhone 17 series
+      xcode: "16"  # Xcode 16 (iOS 18) — has iPhone 15/16 series; iPhone 14 not available
     scripts:
-      - name: Capture screenshots — iPhone 14 Plus (6.7", 1284×2778 — required by ASC)
+      - name: Capture screenshots — iPhone 15 Plus → resize to 1284×2778 (ASC 6.7")
         script: |
           set -e
-          # ASC requires 1284×2778 (6.7") or 1242×2688 (6.5") screenshots.
-          # iPhone 14 Plus and iPhone 13 Pro Max both produce 1284×2778 at 3x.
-          SIM=$(xcrun simctl list devices available | grep -oE "iPhone (14 Plus|13 Pro Max)" | head -1)
-          [ -z "$SIM" ] && SIM="iPhone 14 Plus"
+          # ASC requires 1284×2778 (6.7") or 1242×2688 (6.5").
+          # iPhone 15 Plus (available in Xcode 16) produces 1290×2796 at 3x.
+          # After capture we resize to 1284×2778 with sips (aspect ratio is identical).
+          SIM=$(xcrun simctl list devices available | grep -oE "iPhone (15 Plus|16 Plus)" | head -1)
+          [ -z "$SIM" ] && SIM="iPhone 15 Plus"
           echo "Simulator: $SIM"
 
           OUT="$CM_BUILD_DIR/screenshots/iphone_6_7"
@@ -47,17 +48,17 @@ workflows:
             -resultBundlePath "$CM_BUILD_DIR/result_6_7.xcresult" \
             CODE_SIGNING_ALLOWED=NO
 
+          # Resize to exact ASC-required dimensions (1290×2796 → 1284×2778).
+          echo "Resizing PNGs to 1284×2778..."
+          for f in "$OUT"/*.png; do
+            sips -z 2778 1284 "$f"
+            echo "  $(basename "$f"): $(sips -g pixelWidth -g pixelHeight "$f" | grep pixel | tr '\n' ' ')"
+          done
+
           echo "PNG files written:"
           ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — check XCTAttachments in xcresult)"
     artifacts:
       - screenshots/**/*.png
-    publishing:
-      email:
-        recipients:
-          - sascha@schumann.net
-        notify:
-          success: true
-          failure: true
 
   ios-app-store:
     name: MYRAai App Store
