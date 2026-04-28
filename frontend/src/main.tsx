@@ -12,6 +12,11 @@ if (/MYRAai-Android/.test(navigator.userAgent)) {
   document.documentElement.classList.add("aig-android");
 }
 
+// Record app-start timestamp so clientContext.collect() can report uptime_sec.
+// Set as early as possible — before React renders — so the value is
+// meaningful in feedback submitted shortly after launch.
+window.__myraAppStart = performance.now();
+
 window.addEventListener("error", (e) => {
   reportError(e.message ?? "Uncaught error", e.error?.stack);
 });

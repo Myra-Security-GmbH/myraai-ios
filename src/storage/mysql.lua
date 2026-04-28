@@ -182,6 +182,7 @@ local MIGRATIONS = {
     { version = "0012", file = "0012_device_tokens.sql",              description = "device_token table for APNs push notifications" },
     { version = "0013", file = "0013_user_deleted_by_and_restore.sql", description = "Track who soft-deleted a user (audit for admin restore)" },
     { version = "0014", file = "0014_content_reports.sql",            description = "User-submitted reports of inappropriate or inaccurate model output" },
+    { version = "0015", file = "0015_feedback_client_context.sql",    description = "client_context JSON on app_feedback and content_report for diagnostic context (route, viewport, app/OS version, etc.)" },
 }
 
 -- Errors that mean "this change is already applied" — tolerated silently.
@@ -3169,10 +3170,10 @@ function M.insert_app_feedback(entry)
     local db, err = get_conn()
     if not db then return nil, err end
     local e = exec_one(db, [[
-        INSERT INTO app_feedback (id, user_id, type, summary, description, url, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO app_feedback (id, user_id, type, summary, description, url, client_context, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ]], entry.id, entry.user_id, entry.type or "other",
-        entry.summary, entry.description, entry.url,
+        entry.summary, entry.description, entry.url, entry.client_context,
         math.floor(ngx.now()))
     release(db)
     if e then return nil, e end
@@ -3188,6 +3189,7 @@ function M.list_app_feedback(limit, offset, type_filter)
     if type_filter and type_filter ~= "" then
         rows = query_all(db, string.format([[
             SELECT f.id, f.user_id, f.type, f.summary, f.description, f.url,
+                   f.client_context,
                    f.created_at,
                    f.processed,
                    u.email AS user_email
@@ -3199,6 +3201,7 @@ function M.list_app_feedback(limit, offset, type_filter)
     else
         rows = query_all(db, string.format([[
             SELECT f.id, f.user_id, f.type, f.summary, f.description, f.url,
+                   f.client_context,
                    f.created_at,
                    f.processed,
                    u.email AS user_email
@@ -3446,11 +3449,11 @@ function M.insert_content_report(report)
     local e = exec_one(db, [[
         INSERT INTO content_report
             (id, user_id, tenant_id, conversation_id, message_id, message_text,
-             reason, notes, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+             reason, notes, client_context, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
     ]], id,
         report.user_id, report.tenant_id, report.conversation_id, report.message_id,
-        report.message_text, report.reason, report.notes, os.time())
+        report.message_text, report.reason, report.notes, report.client_context, os.time())
     release(db)
     if e then return nil, e end
     return id
@@ -3476,7 +3479,7 @@ function M.list_content_reports(opts)
     local offset = math.max(tonumber(opts.offset) or 0, 0)
     local sql = string.format([[
         SELECT r.id, r.user_id, r.tenant_id, r.conversation_id, r.message_id,
-               r.message_text, r.reason, r.notes, r.status,
+               r.message_text, r.reason, r.notes, r.client_context, r.status,
                r.created_at, r.triaged_at, r.triaged_by_id,
                u.email AS user_email
         FROM   content_report r
@@ -3495,7 +3498,7 @@ function M.get_content_report(id)
     if not db then return nil end
     local row = query_one(db, [[
         SELECT id, user_id, tenant_id, conversation_id, message_id,
-               message_text, reason, notes, status,
+               message_text, reason, notes, client_context, status,
                created_at, triaged_at, triaged_by_id
         FROM   content_report WHERE id = ?
     ]], id)

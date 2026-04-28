@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { Modal } from "src/common/components/Modal";
 import { api } from "src/api/client";
+import { collectWithBridge } from "src/common/utils/clientContext";
 import s from "src/common/components/layout/Layout.module.scss";
 
 type Reason = "offensive" | "inaccurate" | "unsafe" | "other";
@@ -30,12 +31,14 @@ export default function ReportMessageModal({ messageId, messageText, conversatio
     setSubmitting(true);
     setError(null);
     try {
+      const client_context = await collectWithBridge();
       await api.post("/reports", {
         conversation_id: conversationId ?? null,
         message_id:      messageId,
         message_text:    messageText.slice(0, 16000),
         reason,
         notes:           notes.trim() || null,
+        client_context,
       });
       setDone(true);
     } catch (e: any) {

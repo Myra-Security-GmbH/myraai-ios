@@ -1120,6 +1120,19 @@ route("POST", "^/admin/v1/app%-feedback$", function()
     end
     local t = tostring(b.type or "other")
     if t ~= "bug" and t ~= "feature" and t ~= "other" then t = "other" end
+    -- client_context: validate, sanitise, enrich with server-side identity
+    -- envelope, then store as JSON. Errors here are 4xx because the client
+    -- must repair the payload (size cap exceeded, malformed schema_version).
+    local fctx = require("utils.feedback_context")
+    local ctx_json, ctx_err = fctx.process(b.client_context, {
+        request_id = ngx.ctx.request_id or ngx.var.request_id,
+        client_ip  = ngx.var.remote_addr,
+        tenant_id  = u.tenant_id,
+        user_id    = u.id,
+        user_role  = u.role,
+        received_at = math.floor(ngx.now()),
+    })
+    if ctx_err then return send(400, { error = ctx_err }) end
     local entry = {
         id          = require("utils.uuid").v4(),
         user_id     = u.id,
@@ -1127,6 +1140,7 @@ route("POST", "^/admin/v1/app%-feedback$", function()
         summary     = tostring(b.summary):sub(1, 255),
         description = b.description and tostring(b.description):sub(1, 4000) or nil,
         url         = b.url and tostring(b.url):sub(1, 1024) or nil,
+        client_context = ctx_json,
     }
     local id, err = storage.insert_app_feedback(entry)
     if not id then return send(500, { error = err or "db error" }) end
@@ -1171,6 +1185,18 @@ route("POST", "^/admin/v1/reports$", function()
     if not storage.is_valid_content_report_reason(b.reason) then
         return send(400, { error = "invalid reason" })
     end
+    -- client_context: same envelope as app-feedback. Stored on every report so
+    -- triage has the diagnostic context the user's device was in at the time.
+    local fctx = require("utils.feedback_context")
+    local ctx_json, ctx_err = fctx.process(b.client_context, {
+        request_id = ngx.ctx.request_id or ngx.var.request_id,
+        client_ip  = ngx.var.remote_addr,
+        tenant_id  = u.tenant_id,
+        user_id    = u.id,
+        user_role  = u.role,
+        received_at = math.floor(ngx.now()),
+    })
+    if ctx_err then return send(400, { error = ctx_err }) end
     local report = {
         user_id         = u.id,
         tenant_id       = u.tenant_id,
@@ -1179,6 +1205,7 @@ route("POST", "^/admin/v1/reports$", function()
         message_text    = b.message_text and tostring(b.message_text):sub(1, 16000) or nil,
         reason          = b.reason,
         notes           = b.notes and tostring(b.notes):sub(1, 2000) or nil,
+        client_context  = ctx_json,
     }
     local id, err = storage.insert_content_report(report)
     if not id then return send(500, { error = err or "db error" }) end
