@@ -1,0 +1,112 @@
+[Unit]
+Description=vLLM – Qwen3.6-35B-A3B FP8 262K ctx (1x H200 NVL GPU 0, port 8003)
+Documentation=https://docs.vllm.ai
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=vllm
+Group=vllm
+WorkingDirectory=/home/vllm
+
+# ── Model cache and Python environment ────────────────────────────────────────
+Environment=HF_HOME=/opt/models/huggingface
+Environment=PATH=/home/vllm/.vllm/bin:/usr/local/cuda/bin:/usr/bin:/bin
+
+# ── GPU selection: H200 NVL (144 GB) ─────────────────────────────────────────
+# GPU 0 (PCI order) is the H200 NVL. dev-ollama/qwen3 services use GPU 1+2 (Blackwell).
+Environment=CUDA_VISIBLE_DEVICES=0
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+
+# ── Multi-GPU process management ──────────────────────────────────────────────
+Environment=VLLM_WORKER_MULTIPROC_METHOD=spawn
+
+# ── NCCL tuning ───────────────────────────────────────────────────────────────
+Environment=NCCL_P2P_DISABLE=0
+Environment=NCCL_IB_DISABLE=1
+Environment=NCCL_SHM_DISABLE=0
+Environment=GLOO_SOCKET_IFNAME=lo
+
+# ── HuggingFace download ──────────────────────────────────────────────────────
+Environment=HF_HUB_DISABLE_XET=1
+
+# ── Compilation cache — H200 Hopper arch (sm_90a) ────────────────────────────
+Environment=TORCHINDUCTOR_CACHE_DIR=/opt/models/cache/inductor-h200
+Environment=VLLM_CACHE_ROOT=/opt/models/cache/vllm-h200
+
+# ── Loading optimizations ─────────────────────────────────────────────────────
+Environment=OMP_NUM_THREADS=16
+Environment=SAFETENSORS_FAST_GPU=1
+Environment=PYTORCH_ALLOC_CONF=max_split_size_mb:1024,expandable_segments:True
+
+# ── vLLM serve ────────────────────────────────────────────────────────────────
+ExecStart=/home/vllm/.vllm/bin/vllm serve Qwen/Qwen3.6-35B-A3B-FP8 \
+    \
+    # Parallelism — single GPU is sufficient (3.5B active params)
+    --tensor-parallel-size 1 \
+    --enable-expert-parallel \
+    \
+    # Quantization — official Qwen FP8 checkpoint; H200 executes natively (sm_90a).
+    # No awq_marlin needed; FP8 tensor cores give higher throughput than AWQ on Hopper.
+    --quantization fp8 \
+    --dtype bfloat16 \
+    --load-format safetensors \
+    --kv-cache-dtype fp8 \
+    \
+    # Memory — 0.84 × 139.8 GiB = 117.4 GiB reserved.
+    # FP8 weights ~35 GiB → ~82 GiB for KV cache.
+    # Previous AWQ had ~16 GiB weights + ~100 GiB KV; trade-off is higher quality
+    # weights in exchange for ~18 GiB less KV budget (negligible at 262K context).
+    --gpu-memory-utilization 0.84 \
+    \
+    # Context — 262K is the native max_position_embeddings for Qwen3.6-35B-A3B.
+    # No YaRN / hf-overrides needed (unlike the Qwen3-30B which was trained at 40K).
+    # At fp8 KV, a full 262K sequence costs ~12–14 GiB; 32 concurrent is safe.
+    --max-model-len 262144 \
+    \
+    # Throughput
+    --max-num-seqs 32 \
+    --enable-chunked-prefill \
+    --max-num-batched-tokens 65536 \
+    \
+    # API
+    --host 0.0.0.0 \
+    --port 8003 \
+    --served-model-name qwen3.6-35b-a3b \
+    \
+    # Misc
+    --download-dir /opt/models/huggingface/hub \
+    --trust-remote-code \
+    --compilation-config '{"cache_dir": "/opt/models/cache/vllm-h200"}' \
+    # GDN linear attention backend — triton avoids JIT compile delay on first request
+    --gdn-prefill-backend triton \
+    \
+    # Reasoning — separate thinking tokens into delta.reasoning so they are
+    # never forwarded to gateway clients (openai.parse_sse_chunk ignores that field).
+    --reasoning-parser qwen3 \
+    \
+    # Tool calling
+    --enable-auto-tool-choice \
+    --tool-call-parser hermes
+
+# ── Process limits ────────────────────────────────────────────────────────────
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+
+# ── Restart policy ────────────────────────────────────────────────────────────
+Restart=on-failure
+RestartSec=30
+
+# FP8 on H200 loads faster than AWQ (no dequant overhead at load time).
+# First run still needs Triton/inductor kernel compilation (~10–15 min).
+TimeoutStartSec=900
+TimeoutStopSec=60
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vllm-qwen3.6-a3b
+
+[Install]
+WantedBy=multi-user.target

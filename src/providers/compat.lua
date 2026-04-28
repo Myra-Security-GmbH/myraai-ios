@@ -82,7 +82,7 @@ local MODEL_EXACT_MAP = {
     ["DeepSeek-R1"]                                     = "sambanova",
     -- vLLM local models
     ["qwen3-235b"]                                      = "vllm",
-    ["qwen3-30b-a3b"]                                   = "vllm",
+    ["qwen3.6-35b-a3b"]                                 = "vllm",
 }
 
 -- Model prefix → provider mapping (fallback when exact match fails).

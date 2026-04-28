@@ -114,7 +114,7 @@ client = AigClient(
 )
 
 response = client.chat.completions.create(
-    model="qwen3-30b-a3b",
+    model="qwen3.6-35b-a3b",
     messages=[{"role": "user", "content": "Summarise Q1 2026 earnings."}],
     stream=True,
 )
@@ -266,7 +266,7 @@ test.describe("Chat — PDF export (API level)", () => {
 
     // Code block content
     expect(text).toContain("AigClient");
-    expect(text).toContain("qwen3-30b-a3b");
+    expect(text).toContain("qwen3.6-35b-a3b");
 
     // Blockquote text
     expect(text).toMatch(/sovereignty.first/i);

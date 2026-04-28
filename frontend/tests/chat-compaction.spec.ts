@@ -27,7 +27,7 @@ const ANTHROPIC_GATEWAY = "prod";
 const ANTHROPIC_PRESET  = "UNSAFE claude-sonnet-4-6";
 const QWEN3_TENANT      = "myratest";
 const QWEN3_GATEWAY     = "prod-pii";
-const QWEN3_MODEL       = "qwen3-30b-a3b";
+const QWEN3_MODEL       = "qwen3.6-35b-a3b";
 
 // ---------------------------------------------------------------------------
 // Helpers

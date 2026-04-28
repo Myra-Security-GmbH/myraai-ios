@@ -1,12 +1,12 @@
 import { test, expect, type Page } from "./base";
 
-// Uses tenant=myratest / gateway=prod / model=qwen3-30b-a3b
-// vllm serves qwen3-30b-a3b at 172.28.0.1:8003 (MODEL_PORTS hardcoded in vllm.lua)
+// Uses tenant=myratest / gateway=prod / model=qwen3.6-35b-a3b
+// vllm serves qwen3.6-35b-a3b at 172.28.0.1:8003 (MODEL_PORTS hardcoded in vllm.lua)
 // — no API key required, works in both local and int environments.
 
 const TENANT_SLUG = "myratest";
 const GATEWAY_SLUG = "prod";
-const MODEL = "qwen3-30b-a3b";
+const MODEL = "qwen3.6-35b-a3b";
 const PROMPT = "Reply with exactly one word: hello";
 
 const WEB_SEARCH_PROMPT = 'do web search for "myra security gmbh", summarize findings';
@@ -87,7 +87,7 @@ test.describe("Playground — vllm e2e", () => {
     expect(text).toMatch(/2/);
   });
 
-  test("sends message to qwen3-30b-a3b and receives a response", async ({ page }) => {
+  test("sends message to qwen3.6-35b-a3b and receives a response", async ({ page }) => {
     test.setTimeout(60_000);
     await setup(page);
     await pickModel(page);
@@ -114,7 +114,7 @@ test.describe("Playground — vllm e2e", () => {
 
 test.describe("Playground — Web Search e2e", () => {
 
-  test("qwen3-30b-a3b web search returns non-empty streamed content (no-content regression)", async ({ page }) => {
+  test("qwen3.6-35b-a3b web search returns non-empty streamed content (no-content regression)", async ({ page }) => {
     test.setTimeout(180_000);
     await setup(page);
     await pickModel(page);
@@ -143,7 +143,7 @@ test.describe("Playground — Web Search e2e", () => {
     expect(text.length).toBeGreaterThan(10);
   });
 
-  test("qwen3-30b-a3b current weather munich — web search executes", async ({ page }) => {
+  test("qwen3.6-35b-a3b current weather munich — web search executes", async ({ page }) => {
     test.setTimeout(180_000);
     await setup(page);
     await pickModel(page);
@@ -169,7 +169,7 @@ test.describe("Playground — Web Search e2e", () => {
     await expect(response).not.toContainText("SERVER ERROR");
   });
 
-  test("qwen3-30b-a3b performs live web search and returns grounded results", async ({ page }) => {
+  test("qwen3.6-35b-a3b performs live web search and returns grounded results", async ({ page }) => {
     test.setTimeout(180_000);
     await setup(page);
     await pickModel(page);
@@ -198,7 +198,7 @@ test.describe("Playground — Web Search e2e", () => {
     );
   });
 
-  test("qwen3-30b-a3b myra security gmbh germany — english response, fetched content used", async ({ page }) => {
+  test("qwen3.6-35b-a3b myra security gmbh germany — english response, fetched content used", async ({ page }) => {
     test.setTimeout(180_000);
     await setup(page);
     await pickModel(page);

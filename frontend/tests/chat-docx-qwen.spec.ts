@@ -1,8 +1,8 @@
 /**
- * chat-docx-qwen.spec.ts — E2E tests for .docx upload via qwen3-30b-a3b (vLLM).
+ * chat-docx-qwen.spec.ts — E2E tests for .docx upload via qwen3.6-35b-a3b (vLLM).
  *
  * Gateway: myratest / prod-pii  (vLLM on http://172.28.0.1:8003)
- * Model:   qwen3-30b-a3b
+ * Model:   qwen3.6-35b-a3b
  * Fixture: tests/fixtures/eiffel-tower.docx
  */
 
@@ -14,7 +14,7 @@ import type {  Page  } from "./base";
 const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT  = "myratest";
 const TARGET_GATEWAY = "prod-pii";
-const TARGET_MODEL   = "qwen3-30b-a3b";
+const TARGET_MODEL   = "qwen3.6-35b-a3b";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,7 +69,7 @@ async function selectGatewayAndModel(page: Page): Promise<boolean> {
     await page.waitForTimeout(300);
   }
 
-  // Exact match — avoids picking fireworks_ai/…/qwen3-30b-a3b
+  // Exact match — avoids picking fireworks_ai/…/qwen3.6-35b-a3b
   const opt = page.locator("[role='listbox'] [role='option']")
     .filter({ hasText: new RegExp(`^\\s*${TARGET_MODEL}\\s*$`) })
     .first();

@@ -1,24 +1,26 @@
 /**
- * chat-qwen3-a3b.spec.ts — end-to-end tests for Qwen3-30B-A3B-AWQ in the chat module.
+ * chat-qwen3-a3b.spec.ts — end-to-end tests for Qwen3.6-35B-A3B in the chat module.
  *
- * Gateway: myratest / prod-pii  (has provider_base_urls.vllm = http://127.0.0.1:8003)
- * Model:   qwen3-30b-a3b        (served by vllm-qwen3-A3B.service on port 8003)
+ * Gateway: myratest / prod-pii
+ * Model:   qwen3.6-35b-a3b  (served by vllm-qwen3.6-A3B.service on port 8003,
+ *                             routed via MODEL_PORTS in src/providers/vllm.lua)
  */
 
 import { test, expect } from "./base";
 import type {  Page  } from "./base";
 import { deleteConversations, captureConvId } from "./helpers";
 
-const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
+const ADMIN_URL      = process.env.PLAYWRIGHT_ADMIN_URL   ?? "https://ai-api-admin.myra.eu";
+const GATEWAY_URL    = process.env.PLAYWRIGHT_GATEWAY_URL ?? "https://ai-api.myra.eu";
 const TARGET_TENANT  = "myratest";
 const TARGET_GATEWAY = "prod-pii";
-const TARGET_MODEL   = "qwen3-30b-a3b";
+const TARGET_MODEL   = "qwen3.6-35b-a3b";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Select myratest / prod-pii, then pick qwen3-30b-a3b from the ModelPicker. */
+/** Select myratest / prod-pii, then pick qwen3.6-35b-a3b from the ModelPicker. */
 async function selectGatewayAndModel(page: Page): Promise<boolean> {
   const tenantSel = page.locator("select").first();
   await tenantSel.waitFor({ state: "visible", timeout: 5000 });
@@ -64,7 +66,7 @@ async function selectGatewayAndModel(page: Page): Promise<boolean> {
     await page.waitForTimeout(300);
   }
 
-  // Exact match: avoid picking e.g. "fireworks_ai/accounts/fireworks/models/qwen3-30b-a3b"
+  // Exact match: avoid picking e.g. "fireworks_ai/accounts/fireworks/models/qwen3.6-35b-a3b"
   const opt = page.locator("[role='listbox'] [role='option']")
     .filter({ hasText: new RegExp(`^\\s*${TARGET_MODEL}\\s*$`) })
     .first();
@@ -106,7 +108,7 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
     convIds = [];
   });
 
-  test("qwen3-30b-a3b appears in the ModelPicker for a vllm-enabled gateway", async ({ page, workerTenantId }) => {
+  test("qwen3.6-35b-a3b appears in the ModelPicker for a vllm-enabled gateway", async ({ page, workerTenantId }) => {
     // myratest uses presets (no ModelPicker in config bar). Use the worker's own
     // e2e-tenant instead — no presets → normalMode → ModelPicker is always visible.
     // DB-1 configured e2e-gateway with provider_base_urls.vllm, so vllm models appear.
@@ -148,7 +150,7 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
     await page.keyboard.press("Escape");
   });
 
-  test("selecting qwen3-30b-a3b is reflected in the config bar and localStorage", async ({ page }) => {
+  test("selecting qwen3.6-35b-a3b is reflected in the config bar and localStorage", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
     if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
@@ -163,7 +165,7 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
     expect(stored).toBe(TARGET_MODEL);
   });
 
-  test("qwen3-30b-a3b selection survives a hard page reload", async ({ page }) => {
+  test("qwen3.6-35b-a3b selection survives a hard page reload", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
     if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
@@ -185,7 +187,7 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
 
   test("structured analysis renders as inline markdown, not wrapped in an artifact card", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
-    expect(ok, "Could not select qwen3-30b-a3b on prod-pii — model unavailable").toBeTruthy();
+    expect(ok, "Could not select qwen3.6-35b-a3b on prod-pii — model unavailable").toBeTruthy();
 
     await page.getByRole("button", { name: /new chat/i }).click();
     await page.waitForTimeout(300);
@@ -216,7 +218,7 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
       .not.toBeVisible({ timeout: 2_000 }).catch(() => {});
   });
 
-  test("sends a message and receives a non-empty reply from qwen3-30b-a3b", async ({ page }) => {
+  test("sends a message and receives a non-empty reply from qwen3.6-35b-a3b", async ({ page }) => {
     const ok = await selectGatewayAndModel(page);
     if (!ok) { test.skip(true, "Required gateway or model not available in this environment"); return; }
 
@@ -318,5 +320,85 @@ test.describe(`Chat — ${TARGET_MODEL} via ${TARGET_TENANT}/${TARGET_GATEWAY}`,
 
     await expect(page.getByText(/failed to fetch|TypeError/i).first())
       .not.toBeVisible({ timeout: 2000 }).catch(() => {});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: <think> tags must not appear in streaming output (AGF-feedback 2026-04-28)
+//
+// Qwen3-family models embed thinking tokens in delta.content as <think>...</think>
+// blocks.  The vllm provider's parse_sse_chunk must strip them before they reach
+// the client.  This test calls the compat streaming endpoint directly and asserts
+// that the accumulated delta.content contains no think tags.
+// ---------------------------------------------------------------------------
+
+interface PlaygroundToken {
+  token: string;
+  tenant_slug: string;
+  gateway_slug: string;
+  expires_at: string;
+}
+
+async function getPlaygroundToken(page: Page): Promise<PlaygroundToken> {
+  const tenantsResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants`);
+  expect(tenantsResp.ok(), `GET /tenants failed: ${tenantsResp.status()}`).toBeTruthy();
+  const tenants = await tenantsResp.json() as Array<{ id: string; slug: string }>;
+  const tenant = tenants.find((t) => t.slug === TARGET_TENANT);
+  expect(tenant, `Tenant ${TARGET_TENANT} not found`).toBeTruthy();
+
+  const gwResp = await page.context().request.get(`${ADMIN_URL}/admin/v1/tenants/${tenant!.id}/gateways`);
+  expect(gwResp.ok(), `GET /gateways failed: ${gwResp.status()}`).toBeTruthy();
+  const gateways = await gwResp.json() as Array<{ id: string; slug: string }>;
+  const gw = gateways.find((g) => g.slug === TARGET_GATEWAY);
+  expect(gw, `Gateway ${TARGET_GATEWAY} not found`).toBeTruthy();
+
+  const tokResp = await page.context().request.post(`${ADMIN_URL}/admin/v1/playground/token`, {
+    data: { gateway_id: gw!.id },
+  });
+  expect(tokResp.ok(), `POST /playground/token failed: ${tokResp.status()}`).toBeTruthy();
+  return tokResp.json() as Promise<PlaygroundToken>;
+}
+
+async function streamCompatMessage(page: Page, tok: PlaygroundToken, prompt: string): Promise<string> {
+  const url = `${GATEWAY_URL}/v1/${tok.tenant_slug}/${tok.gateway_slug}/compat/chat/completions`;
+  const resp = await page.context().request.fetch(url, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tok.token}` },
+    data:    JSON.stringify({ model: TARGET_MODEL, messages: [{ role: "user", content: prompt }], stream: true }),
+    timeout: 90_000,
+  });
+  const body = await resp.text();
+  expect(resp.status(), `Compat endpoint returned ${resp.status()}: ${body.slice(0, 300)}`).toBe(200);
+
+  let accumulated = "";
+  for (const line of body.split("\n")) {
+    const m = line.match(/^data:\s*(.+)$/);
+    if (!m || m[1] === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(m[1]);
+      if (parsed.aig_tool_call || parsed.aig_status) continue;
+      accumulated += (parsed?.choices?.[0]?.delta?.content ?? "") as string;
+    } catch { /* skip malformed chunk */ }
+  }
+  return accumulated;
+}
+
+test.describe(`${TARGET_MODEL} — no <think> tags in compat streaming output`, () => {
+  test.setTimeout(120_000);
+
+  test("<think> and </think> do not appear in streaming response", async ({ page }) => {
+    await page.goto("/chat");
+    const tok = await getPlaygroundToken(page);
+    const text = await streamCompatMessage(page, tok, "Reply with exactly one word: hello");
+
+    expect(text.length, "Expected a non-empty response from the model").toBeGreaterThan(0);
+    expect(
+      text,
+      `Response must not contain <think>: "${text.slice(0, 500)}"`
+    ).not.toContain("<think>");
+    expect(
+      text,
+      `Response must not contain </think>: "${text.slice(0, 500)}"`
+    ).not.toContain("</think>");
   });
 });

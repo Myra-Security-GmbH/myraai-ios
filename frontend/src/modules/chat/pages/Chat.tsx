@@ -126,7 +126,7 @@ function MemoryIcon() {
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "";
 
 /** Derive a human-readable AI label from a model string.
- *  Returns e.g. "Claude (claude-sonnet-4-6)" or "Qwen (qwen3-30b-a3b)". */
+ *  Returns e.g. "Claude (claude-sonnet-4-6)" or "Qwen (qwen3.6-35b-a3b)". */
 function aiLabel(model: string): string {
   const m = model.toLowerCase();
   let name: string;

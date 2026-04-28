@@ -279,7 +279,7 @@ test.describe("Chat page — .xlsx upload and analysis", () => {
 
 const QWEN_TENANT  = "myratest";
 const QWEN_GATEWAY = "prod-pii";
-const QWEN_MODEL   = "qwen3-30b-a3b";
+const QWEN_MODEL   = "qwen3.6-35b-a3b";
 const MULTI_FIXTURE = path.resolve(__dirname, "fixtures/q1-multi-sheet.xlsx");
 
 async function selectQwenGateway(page: Page): Promise<boolean> {
@@ -343,7 +343,7 @@ test.describe("Chat — multi-sheet xlsx sheet names (CSV path via qwen3)", () =
   test("multi-sheet xlsx upload: model can identify all three sheet names", async ({ page }) => {
     const ok = await selectQwenGateway(page);
     if (!ok) {
-      throw new Error("Required gateway or model not available — check that prod-pii/qwen3-30b-a3b is configured for myratest");
+      throw new Error("Required gateway or model not available — check that prod-pii/qwen3.6-35b-a3b is configured for myratest");
     }
 
     await page.getByRole("button", { name: /new chat/i }).click();
@@ -375,7 +375,7 @@ test.describe("Chat — multi-sheet xlsx sheet names (CSV path via qwen3)", () =
   test("single-sheet xlsx upload: no spurious sheet separator in CSV output", async ({ page }) => {
     const ok = await selectQwenGateway(page);
     if (!ok) {
-      throw new Error("Required gateway or model not available — check that prod-pii/qwen3-30b-a3b is configured for myratest");
+      throw new Error("Required gateway or model not available — check that prod-pii/qwen3.6-35b-a3b is configured for myratest");
     }
 
     await page.getByRole("button", { name: /new chat/i }).click();

@@ -4,7 +4,7 @@
  *
  * Tenant:  myratest
  * Presets: "SAFE local only", "PII claude-sonnet-4-6"
- * Prompt:  "tell me how qwen3-30b-a3b works compared to other qwen3 llm"
+ * Prompt:  "tell me how qwen3.6-35b-a3b works compared to other qwen3 llm"
  *
  * Pass condition: after the first exchange the sidebar title must be non-empty
  * AND must not equal (or start with) the verbatim prompt text.
@@ -16,7 +16,7 @@ import type {  Page  } from "./base";
 
 const ADMIN_URL     = process.env.PLAYWRIGHT_ADMIN_URL ?? "https://ai-api-admin.myra.eu";
 const TARGET_TENANT = "myratest";
-const PROMPT        = "tell me how qwen3-30b-a3b works compared to other qwen3 llm";
+const PROMPT        = "tell me how qwen3.6-35b-a3b works compared to other qwen3 llm";
 
 const PRESETS = [
   "SAFE local only",

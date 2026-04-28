@@ -128,7 +128,7 @@ INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('mistral',   'mistral-large-latest',        0.002,    0.006,   NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('groq',      'llama-3.3-70b-versatile',     0.00059,  0.00079, NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('vllm',      'qwen3-235b',                  0.0,      0.0,     NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
-INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('vllm',      'qwen3-30b-a3b',               0.0,      0.0,     NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
+INSERT OR REPLACE INTO model_price (provider, model, input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k, updated_at) VALUES ('vllm',      'qwen3.6-35b-a3b',             0.0,      0.0,     NULL,      NULL,      CAST(strftime('%s','now') AS INTEGER));
 
 -- Period-aware spend ledger — replaces ephemeral shared-dict budget counters.
 -- entity_type: 'gateway' | 'tenant' | 'token'

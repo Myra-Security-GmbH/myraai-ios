@@ -2,7 +2,7 @@
  * chat-tool-matrix.spec.ts — full permutation E2E tests for server-side tool use.
  *
  * Covers all combinations of:
- *   models   : claude-sonnet-4-6 (Anthropic), qwen3-30b-a3b (vLLM)
+ *   models   : claude-sonnet-4-6 (Anthropic), qwen3.6-35b-a3b (vLLM)
  *   PII      : inactive (prod gateway), active (prod-pii gateway)
  *   tools    : web_search, fetch_url, read_file, write_file
  *

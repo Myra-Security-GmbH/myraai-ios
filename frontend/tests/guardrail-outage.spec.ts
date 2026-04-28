@@ -109,7 +109,7 @@ async function chatCompat(
       "x-aig-token":   tok.token,
     },
     data: {
-      model:       "qwen3-30b-a3b",
+      model:       "qwen3.6-35b-a3b",
       messages:    [{ role: "user", content: "Reply with the single word: hello." }],
       max_tokens:  32,
       temperature: 0,
@@ -237,7 +237,7 @@ test.describe("guardrail outage — chat UI", () => {
       await page.addInitScript(([tenantId, gatewayId]) => {
         localStorage.setItem("aig-chat-tenant",  tenantId);
         localStorage.setItem("aig-chat-gateway", gatewayId);
-        localStorage.setItem("aig-chat-model",   "qwen3-30b-a3b");
+        localStorage.setItem("aig-chat-model",   "qwen3.6-35b-a3b");
       }, [tenant.id, gw.id]);
 
       await page.goto("/chat");
@@ -269,7 +269,7 @@ test.describe("guardrail outage — chat UI", () => {
       await page.addInitScript(([tenantId, gatewayId]) => {
         localStorage.setItem("aig-chat-tenant",  tenantId);
         localStorage.setItem("aig-chat-gateway", gatewayId);
-        localStorage.setItem("aig-chat-model",   "qwen3-30b-a3b");
+        localStorage.setItem("aig-chat-model",   "qwen3.6-35b-a3b");
       }, [tenant.id, gw.id]);
 
       await page.goto("/chat");
