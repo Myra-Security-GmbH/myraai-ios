@@ -167,6 +167,30 @@ final class ScreenshotTests: XCTestCase {
         }
         _ = XCTWaiter.wait(for: [expectation(description: "chat-paint")], timeout: 2)
         capture("02_chat", to: creds.outputDir)
+
+        // 4 — Projects screen
+        let projectsTrigger = webView.buttons["screenshot-nav-projects"]
+        XCTAssertTrue(projectsTrigger.waitForExistence(timeout: 5),
+                      "Screenshot projects trigger not found")
+        projectsTrigger.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let projectsTitle = webView.staticTexts["Projects"]
+        XCTAssertTrue(projectsTitle.waitForExistence(timeout: 15),
+                      "Projects page did not load")
+        _ = XCTWaiter.wait(for: [expectation(description: "projects-paint")], timeout: 2)
+        capture("04_projects", to: creds.outputDir)
+
+        // 5 — Playground screen
+        let playgroundTrigger = webView.buttons["screenshot-nav-playground"]
+        XCTAssertTrue(playgroundTrigger.waitForExistence(timeout: 5),
+                      "Screenshot playground trigger not found")
+        playgroundTrigger.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let playgroundTitle = webView.staticTexts["Playground"]
+        XCTAssertTrue(playgroundTitle.waitForExistence(timeout: 15),
+                      "Playground page did not load")
+        _ = XCTWaiter.wait(for: [expectation(description: "playground-paint")], timeout: 2)
+        capture("05_playground", to: creds.outputDir)
     }
 
     // MARK: - Helpers

@@ -298,9 +298,10 @@ export default function Sidebar() {
       <AppFeedbackWidget open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       {/* Invisible trigger buttons for XCUITest screenshot automation.
-          Positioned at y=100pt and y=155pt — well below the iPhone 16 Pro Max
-          Dynamic Island safe area (~59pt) so touch events reach WKWebView.
-          Only rendered when the WebView injects __myraScreenshotMode=true via WKUserScript. */}
+          Stacked at right:10pt, 44pt tall with 11pt gaps starting at y=100pt — well
+          below the iPhone 16 Pro Max Dynamic Island safe area (~59pt) so touch
+          events reach WKWebView. Only rendered when the WebView injects
+          __myraScreenshotMode=true via WKUserScript. */}
       {window.__myraScreenshotMode && (
         <>
           <button
@@ -312,6 +313,16 @@ export default function Sidebar() {
             aria-label="screenshot-nav-chat"
             onClick={() => { setMobileOpen(false); navigate("/chat"); }}
             style={{ position: "fixed", top: 155, right: 10, width: 44, height: 44, opacity: 0.001, zIndex: 9999, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+          />
+          <button
+            aria-label="screenshot-nav-projects"
+            onClick={() => { setMobileOpen(false); navigate("/projects"); }}
+            style={{ position: "fixed", top: 210, right: 10, width: 44, height: 44, opacity: 0.001, zIndex: 9999, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+          />
+          <button
+            aria-label="screenshot-nav-playground"
+            onClick={() => { setMobileOpen(false); navigate("/playground"); }}
+            style={{ position: "fixed", top: 265, right: 10, width: 44, height: 44, opacity: 0.001, zIndex: 9999, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
           />
         </>
       )}
