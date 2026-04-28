@@ -27,8 +27,16 @@ function M.strip(text, in_think)
                 break            -- rest of chunk is reasoning — drop
             end
         else
-            local open = text:find("<think>", pos, true)
-            if open then
+            local open  = text:find("<think>",  pos, true)
+            local close = text:find("</think>", pos, true)
+            -- Orphan </think>: vLLM reasoning-parser mode puts thinking in
+            -- delta.reasoning and emits </think> as a transition marker in
+            -- delta.content.  Everything before (and including) </think> is
+            -- leaked reasoning content — drop it.
+            if close and (not open or close < open) then
+                in_think = false
+                pos = close + 8  -- skip past </think>
+            elseif open then
                 if open > pos then parts[#parts + 1] = text:sub(pos, open - 1) end
                 in_think = true
                 pos = open + 7  -- skip past <think>
