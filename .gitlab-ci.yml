@@ -541,24 +541,14 @@ android:build:
     - sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" >/dev/null
     # Reconstruct keystore from base64-encoded CI variable
     - echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/release.jks
-    # Diagnostic: show the working tree the runner actually has, to debug
-    # the persistent "No such file or directory" on the local.properties
-    # heredoc. Remove once stable.
+    # Diagnostic + write local.properties — combined into one shell block so
+    # the cd persists for the heredoc, and so we can see exactly what's in
+    # the android source dir on the runner.
     - |
-      echo "=== diagnostic ===" \
-      && echo "pwd: $(pwd)" \
-      && echo "CI_PROJECT_DIR: $CI_PROJECT_DIR" \
-      && ls -la "$CI_PROJECT_DIR" | head -20 \
-      && echo "--- src/ ---" \
-      && ls -la "$CI_PROJECT_DIR/src" 2>&1 \
-      && echo "--- src/mobile/ ---" \
-      && ls -la "$CI_PROJECT_DIR/src/mobile" 2>&1 \
-      && echo "=== end diagnostic ==="
-    # Build local.properties for gradle. cd into the android dir so the
-    # heredoc target is just a filename — sidesteps any working-dir / path
-    # resolution quirk.
-    - cd "$CI_PROJECT_DIR/src/mobile/android"
-    - |
+      set -x
+      cd "$CI_PROJECT_DIR/src/mobile/android"
+      pwd
+      ls -la
       cat > local.properties <<EOF
       sdk.dir=$ANDROID_HOME
       RELEASE_STORE_FILE=/tmp/release.jks
@@ -566,7 +556,8 @@ android:build:
       RELEASE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASS
       RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASS
       EOF
-    - cd "$CI_PROJECT_DIR"
+      echo "--- wrote local.properties ---"
+      cat local.properties
   script:
     - cd src/mobile/android
     - chmod +x gradlew
