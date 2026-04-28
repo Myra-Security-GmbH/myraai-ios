@@ -116,6 +116,17 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(navBtn.waitForExistence(timeout: 30),
                       "Dashboard did not appear after login")
 
+        // Dismiss the first-time "A note about MYRA AI" disclaimer modal if it appears.
+        // With a nonPersistent data store the app can never persist the dismissal, so it
+        // always shows on first render.  We dismiss it before capturing any screenshot.
+        let gotItBtn = webView.buttons
+            .matching(NSPredicate(format: "label CONTAINS 'Got it'"))
+            .firstMatch
+        if gotItBtn.waitForExistence(timeout: 8) {
+            gotItBtn.tap()
+            _ = XCTWaiter.wait(for: [expectation(description: "modal-dismiss")], timeout: 1)
+        }
+
         // Open sidebar via the invisible screenshot trigger button.
         // The hamburger sits at top:12pt — inside the iPhone 16 Pro Max Dynamic Island
         // safe area (~59pt) where touch events never reach WKWebView.  The trigger button
@@ -146,6 +157,14 @@ final class ScreenshotTests: XCTestCase {
 
         // 2 — Chat screen
         XCTAssertTrue(navBtn.waitForExistence(timeout: 15), "Chat page did not load")
+        // The disclaimer modal may reappear on the chat page (first visit in this session).
+        let gotItChat = webView.buttons
+            .matching(NSPredicate(format: "label CONTAINS 'Got it'"))
+            .firstMatch
+        if gotItChat.waitForExistence(timeout: 8) {
+            gotItChat.tap()
+            _ = XCTWaiter.wait(for: [expectation(description: "chat-modal-dismiss")], timeout: 1)
+        }
         _ = XCTWaiter.wait(for: [expectation(description: "chat-paint")], timeout: 2)
         capture("02_chat", to: creds.outputDir)
     }
