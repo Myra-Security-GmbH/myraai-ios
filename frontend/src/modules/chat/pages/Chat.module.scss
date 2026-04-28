@@ -176,7 +176,10 @@
 // has plenty of horizontal room so we leave its labels and select widths intact.
 @media (max-width: 640px) {
   .config-bar {
-    padding: 6px 8px 6px 62px; // compact all-sides; 62px left clears hamburger + gap
+    padding-top: max(6px, env(safe-area-inset-top)); // safe-area for Dynamic Island
+    padding-right: 8px;
+    padding-bottom: 6px;
+    padding-left: 62px; // clears hamburger + gap
     min-height: 40px;
   }
 
