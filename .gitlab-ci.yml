@@ -114,11 +114,6 @@ build:docker:
   needs:
     - job: build:frontend
       artifacts: true
-  before_script:
-    # docker:24 refuses interactive login on a non-TTY runner; pipe the
-    # password via stdin instead. Plain `-p` was producing
-    # "Cannot perform an interactive login from a non TTY device".
-    - echo "$REGISTRY_PASS" | docker login -u "$REGISTRY_USER" --password-stdin "$REGISTRY"
   script:
     # docs/out/ must exist for the COPY in the Dockerfile to succeed.
     # If you want docs included in the image, replace this with the actual
@@ -131,7 +126,23 @@ build:docker:
     # Push to the registry only on master (as :latest + :<sha>) or on a git
     # tag (as :<tag> + :<sha>).  Feature branch builds validate the image
     # builds cleanly but nothing is pushed.
+    #
+    # Registry push is best-effort — REGISTRY_USER / REGISTRY_PASS must be
+    # configured as CI/CD variables.  Without them the build still validates
+    # the Dockerfile but the archive step is skipped.  Production deploys
+    # run from local source via run_docker_production.sh, not via registry
+    # pulls, so a missing registry archive is non-fatal.
     - |
+      if [ -z "$REGISTRY_USER" ] || [ -z "$REGISTRY_PASS" ]; then
+        echo "REGISTRY_USER / REGISTRY_PASS not set — skipping registry push."
+        echo "(Set them in GitLab Settings → CI/CD → Variables to enable pushes.)"
+        exit 0
+      fi
+
+      # docker:24 refuses interactive login on a non-TTY runner; pipe the
+      # password via stdin instead.
+      echo "$REGISTRY_PASS" | docker login -u "$REGISTRY_USER" --password-stdin "$REGISTRY"
+
       if [ "$CI_COMMIT_BRANCH" = "master" ]; then
         docker tag "${IMAGE}:${CI_COMMIT_SHORT_SHA}" "${IMAGE}:latest"
         docker push "${IMAGE}:${CI_COMMIT_SHORT_SHA}"
