@@ -35,9 +35,14 @@
 20. [Playground UI](#20-playground-ui)
 21. [Chat Console UI](#21-chat-console-ui)
     - [21b. Memory System](#21b-memory-system)
-22. [Gateway Configuration Reference](#22-gateway-configuration-reference)
-23. [Error Handling](#23-error-handling)
-24. [Development Cost Estimation](#24-development-cost-estimation)
+22. [Mobile Apps & Push Notifications](#22-mobile-apps--push-notifications)
+23. [Provider Health Monitoring](#23-provider-health-monitoring)
+24. [Account Deletion & Privacy](#24-account-deletion--privacy)
+25. [Anthropic Direct Integration](#25-anthropic-direct-integration)
+26. [Static OTP for App Store Reviewer](#26-static-otp-for-app-store-reviewer)
+27. [Gateway Configuration Reference](#27-gateway-configuration-reference)
+28. [Error Handling](#28-error-handling)
+29. [Development Cost Estimation](#29-development-cost-estimation)
 
 ---
 
@@ -194,6 +199,10 @@ A caller may only assign roles strictly below their own:
 - Per-user gateway access matrix (`user_gateway_access` table) — enforced for `member` role
 - `tenant_admin` users are automatically scoped to their own tenant; cross-tenant requests return 403
 - Deleting a user immediately disables all their tokens
+
+### Static OTP path
+
+A user row may carry a `static_otp_hash` column (SHA-256 of a fixed code) — when present, the email-OTP flow is bypassed: `/otp/request` short-circuits without sending email, and `/otp/verify` compares the submitted code's hash directly. Used for App Store / Play Store reviewer accounts and CI smoke tests. See §26 for full details.
 
 ---
 
@@ -1040,7 +1049,9 @@ Tenant
 ├── Users (admin / member / viewer)
 │   ├── User-Gateway Access Matrix
 │   ├── Chat Commands (personal slash commands)
-│   └── Memories (personalisation facts)
+│   ├── Memories (personalisation facts)
+│   ├── Device Tokens (APNs / FCM, see §22.7)
+│   └── Static OTP hash (optional, see §26)
 └── Projects
     ├── Project Members (owner / editor / viewer)
     ├── Knowledge Items (text + optional binary blob)
@@ -1254,6 +1265,33 @@ Model Context Protocol connectors let an admin configure external MCP servers an
 | POST | `/client-errors` | Report a frontend JavaScript error |
 | GET | `/client-errors` | List recent client errors (supports `?limit=`) |
 
+### Account Lifecycle (self-service + admin restore)
+
+| Method | Path | Description |
+|---|---|---|
+| DELETE | `/me` | Soft-delete the caller's own account; protected accounts (apple-review, google-review, sascha) return 403 — see §24 |
+| POST | `/admin/users/{id}/restore` | Admin-only; clears `soft_deleted_at` and re-enables the user |
+
+### Push Devices
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/me/device-token` | Register or refresh an APNs / FCM token (`{token, platform: "ios"\|"android"}`); see §22.7 |
+| DELETE | `/me/device-token` | Unregister a token (e.g. on logout or app uninstall) |
+
+### Provider Health
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/providers/health` | Provider status snapshot (status / latency / last-checked / has-status-page); see §23 |
+
+### In-App Feedback
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/feedback` | Submit feedback (rating, type, message, screenshot); used by the floating feedback widget |
+| GET | `/admin/feedback` | Admin-only feedback inbox |
+
 ---
 
 ## 19. Dashboard UI
@@ -1315,8 +1353,11 @@ The React admin SPA (`frontend/src/modules/`) exposes one page per area of the A
 | `commands` | Slash commands list | Tenant-wide slash command CRUD (`name`, `description`, `template` with `{{placeholder}}`) |
 | `monitor` | Live monitor | Live counters (requests/sec, active streams, recent blocks); recent request list; auto-refresh via `/admin/v1/monitor/stats` |
 | `projects` | Projects list, Project detail | Project CRUD; instructions editor; knowledge file manager (drag-and-drop upload); member roles drawer |
+| `providers` | Provider health | Live provider status (ok / degraded / down / unknown), latency, last-checked timestamp, link to upstream status page; auto-refresh every 60 s; admin/tenant_admin only — see §23 |
+| `privacy` | Privacy Policy | Static Markdown page (Privacy Policy + Cookie Policy + GDPR rights summary); linked from pre-login screen, Profile, and account-deletion modal — see §24 |
 | `settings` | Settings | Per-user preferences (theme, default tenant, default gateway) and admin-scoped secrets (OAuth, Brave API, SMTP, Slack) |
-| `profile` | Profile | User profile: email, avatar, account deletion |
+| `profile` | Profile | User profile: email, avatar, **Danger Zone** (self-delete account); Android version badge when running inside the native shell |
+| `feedback` | Feedback Inbox (admin) | Floating widget submissions with rating, type, message, and screenshot; admin-only — see §18 |
 
 Navigation uses a collapsible sidebar (`common/components/sidebar/Sidebar.tsx`); the active page is highlighted and links honour the user's role (viewers don't see destructive actions).
 
@@ -1477,6 +1518,7 @@ Attached via paperclip button or drag-and-drop. Supported formats:
 
 - Attachments shown as chips in the input bar and in the sent user bubble (filename only, no content dump)
 - Drop zone overlay with label "Images · PDF · DOCX · PPTX · XLSX · ODS · CSV · TXT · MD"
+- **iOS WebView gating** — the native iOS shell injects `window.__MYRAFilePickerSupported = true|false` based on the OS version (`WKOpenPanelParameters` requires iOS 18.4+). On iOS < 18.4 the chat input disables the attach button and shows a tooltip. See §22.2.
 
 ### Slash Commands
 
@@ -1869,7 +1911,314 @@ This covers the Claude.ai limitation: "Memory is personal — no mechanism for a
 
 ---
 
-## 22. Gateway Configuration Reference
+## 22. Mobile Apps & Push Notifications
+
+The platform ships with **two native mobile apps** (iOS and Android), a **shared push-notification microservice** (APNs HTTP/2 + FCM HTTP v1), a **JS↔native bridge** for in-WebView feature parity, and a **fully automated mobile release pipeline** in GitLab CI plus Codemagic. The apps are thin native shells around `WKWebView` / `WebView` loading `https://ai.myra.eu`; the rest of this section covers what's native-only.
+
+### 22.1 Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  iOS app (Swift / SwiftUI)        │  Android app (Kotlin)        │
+│  ┌────────────────────────────┐   │  ┌────────────────────────┐  │
+│  │ ContentView                │   │  │ MainActivity           │  │
+│  │  └ WKWebView ───── ai.myra.eu  │  │  └ WebView ─── ai.myra.eu │
+│  │     ├ NativeBridge (JS shim) │  │  ├ WebAppInterface (JS shim)│
+│  │     └ Offline / launch       │  │  └ FCM service              │
+│  └────────────────────────────┘   │  └────────────────────────┘  │
+│  Native: BiometricLockView,       │  Native: adaptive icons,      │
+│  privacy shield, file picker,     │  shortcuts, pull-to-refresh,  │
+│  push permission, OTP smoke test  │  deep links, FCM intent       │
+└────────────────┬─────────────────────────────────┬────────────────┘
+                 │                                 │
+                 └─────── HTTPS / WSS ─────────────┘
+                                  │
+                  ┌───────────────▼──────────────────┐
+                  │  AI Gateway backend (OpenResty)  │
+                  │  ┌─────────────────────────────┐ │
+                  │  │ Push dispatcher (Python)    │ │
+                  │  │ APNs (HTTP/2)  FCM (HTTP v1)│ │
+                  │  └─────────────────────────────┘ │
+                  └──────────────────────────────────┘
+```
+
+The native shells let us ship to the App Store / Play Store while keeping the React frontend as the single source of truth for chat, projects, gateways, etc. Anything that *can* be a web feature *is* a web feature; only the items below have native-only code.
+
+### 22.2 iOS native shell
+
+**Source:** `src/mobile/ios/MYRAai/Sources/MYRAai/`. Bundle id `eu.myra.myraai`, deployment target iOS 16.0, Xcode 26 toolchain.
+
+| Component | File | Purpose |
+|---|---|---|
+| `AIGatewayApp` | `AIGatewayApp.swift` | SwiftUI `@main`, scene lifecycle |
+| `ContentView` | `ContentView.swift` | ZStack of WebView + OfflineView + LaunchOverlay; 30-min auto-reload on resume via `scenePhase`; `preferredColorScheme(nil)` |
+| `WebView` | `WebView.swift` | `UIViewRepresentable` wrapper; `WKWebView` + JS bridge; `NWPathMonitor` for offline detection; computed `jsShim` that injects `window.Android` shim and `window.__MYRAFilePickerSupported` flag |
+| `NativeBridge` | `NativeBridge.swift` | `WKScriptMessageHandler` for haptic, share, copy, scrollTop, getDeviceToken, requestFullPushPermission |
+| `BiometricLockView` | `BiometricLockView.swift` | `LAContext.deviceOwnerAuthentication` lock; appears instantly on `.background` (privacy shield); locks after 30 min of background absence |
+| `OfflineView` | `OfflineView.swift` | Shown when network monitor reports `unsatisfied`; tap-to-reload |
+| `LaunchOverlay` | `LaunchOverlay.swift` | Hides the WebView until the React app fires `isLoaded` |
+| `UIApplication+KeyWindow` | extension | iOS 16+ window discovery for share sheet anchoring |
+
+Notable iOS-only behaviour:
+
+- **File picker availability gating** — `WKOpenPanelParameters` requires iOS 18.4+; the JS shim sets `window.__MYRAFilePickerSupported = (filePickerAvailable ? "true" : "false")`. The frontend's chat input disables the attach button (with tooltip) when the flag is false.
+- **Pre-login privacy link** — JS shim injects a "Privacy Policy" link on the login form (Apple App Review requires it before sign-up).
+- **Status bar** — `UIStatusBarStyle = LightContent` with `UIViewControllerBasedStatusBarAppearance = false` (white text on dark navy `LaunchBackground`).
+- **Light/dark mode** — `preferredColorScheme(nil)` makes the WebView follow system; the React app reads OS appearance.
+
+### 22.3 iOS App Store readiness
+
+| Requirement | Implementation |
+|---|---|
+| **Export compliance** | `ITSAppUsesNonExemptEncryption = false` baked into Info.plist (avoids a per-build self-declaration prompt and keeps the provisioning profile / app review flow clean) |
+| **Privacy manifest** | `MYRAai/Resources/PrivacyInfo.xcprivacy` declares email-address + user-content data types |
+| **Permission usage strings** | `NSPhotoLibraryUsageDescription`, `NSCameraUsageDescription`, `NSFaceIDUsageDescription` |
+| **Entitlements** | `aps-environment = production`, `com.apple.developer.associated-domains = applinks:ai.myra.eu` |
+| **Account deletion** | Profile page exposes a Danger Zone; bridge call invokes `DELETE /admin/v1/me`; satisfies Guideline 5.1.1(v) |
+| **Generative-AI disclosure** | App Privacy section calls out third-party AI processing (parallel to Play Store disclosure) |
+| **Native feature requirement (Guideline 4.2)** | Push notifications wired to a real product trigger (project-member-add → push); also satisfied by biometric lock and share extensions |
+
+### 22.4 iOS XCUITest target (`MYRAaiUITests`)
+
+Two test classes under `src/mobile/ios/MYRAai/Tests/MYRAaiUITests/`:
+
+- **`LoginTests`** — login round-trip smoke test that runs **before every Codemagic archive**. Reads `TEST_LOGIN_EMAIL` / `TEST_LOGIN_OTP` from `ProcessInfo.processInfo.environment` (injected by Codemagic's "test" variable group at `xcodebuild test` invocation). Asserts: app launches, WebView loads, "Continue with Email code" → email input → "Send code" → OTP input → "Sign in" → dashboard sidebar visible. If env vars are missing, the test `XCTSkip`s (so local runs without credentials don't blast random text into production).
+- **`ScreenshotTests`** — captures App Store-quality PNGs at 6.9" (iPhone 16 Pro Max) on demand via the `screenshots` Codemagic workflow. Uses a JSON sidecar (`/tmp/myra_screenshot_creds.json`) because Xcode 26 doesn't forward shell env into the XCUITest runner reliably.
+
+### 22.5 Android native shell
+
+**Source:** `src/mobile/android/app/src/main/java/eu/myra/myraai/`. Package id `eu.myra.myraai`, min SDK 24 (Android 7.0), target SDK 35.
+
+| Component | File | Purpose |
+|---|---|---|
+| `MyraApplication` | `MyraApplication.kt` | `Application` subclass; FCM init |
+| `MainActivity` | `MainActivity.kt` | `WebView` host with `WebAppInterface` bridge, deep-link intent filter, pull-to-refresh, file chooser |
+| `MyraFirebaseMessagingService` | `MyraFirebaseMessagingService.kt` | FCM token registration + incoming notification handler; forwards token to backend via `POST /admin/v1/me/device-token` |
+| Adaptive icons | `res/mipmap-anydpi-v26/*.xml` | AdaptiveIconDrawable with 30% safe-zone padding, opaque foreground, 50% blue swoosh fill — multiple cache-bust iterations to defeat Launcher3 thumbnail caching |
+| Shortcuts | `res/xml/shortcuts.xml` | App-launcher long-press shortcuts: New Chat, Projects, Settings |
+| Theme | `res/values{,-v27}/themes.xml` | Dark navy splash, light status bar, edge-to-edge on API 27+ |
+
+Notable Android-only behaviour:
+
+- **Pull-to-refresh** — wraps the WebView in `SwipeRefreshLayout`; the gesture fires `webView.reload()`; conflict with vertical scroll handled via `OverScrollMode = NEVER` on the WebView.
+- **Generative-AI policy compliance** — Play Console disclosure form points at the same Privacy Policy page the iOS app links to.
+
+### 22.6 Native bridge (`window.Android`)
+
+The JS shim injects a single `window.Android` object exposing six methods. Each one posts to a `WKScriptMessageHandler` (iOS) or calls a `@JavascriptInterface`-annotated Kotlin method (Android); the React frontend uses identical JS regardless of platform.
+
+| Method | Purpose | Platforms |
+|---|---|---|
+| `hapticFeedback(type)` | `light` / `medium` / `success` / `warning` / `error` | iOS + Android |
+| `share(text, url)` | Native share sheet | iOS + Android |
+| `copyToClipboard(text)` | Native pasteboard | iOS + Android |
+| `notifyScrollTop(scrolled)` | Native code hides/shows nav chrome based on scroll position | iOS + Android |
+| `getDeviceToken(callbackName)` | Async — calls back into JS with the APNs/FCM token via `window[callbackName](token)` | iOS + Android |
+| `requestFullPushPermission()` | Triggers the native permission prompt (provisional → full opt-in) | iOS only |
+
+The frontend feature-detects via `typeof window.Android === "object"` and falls back to web equivalents (Web Share API, Clipboard API, etc.) outside the native shell.
+
+### 22.7 Push notification microservice
+
+**Source:** `src/push/`. Two Python microservices listening on `127.0.0.1:8010` (APNs) and `127.0.0.1:8011` (FCM), invoked by the OpenResty backend over local HTTP. Migration `0012_device_tokens.sql` adds the `device_tokens` table.
+
+| Service | File | Protocol | Auth |
+|---|---|---|---|
+| APNs | `src/push/apns_service.py` | HTTP/2 to `api.push.apple.com` | JWT (ES256) with the team APNs Authentication Key |
+| FCM | `src/push/fcm_service.py` | HTTP v1 (`fcm.googleapis.com/v1/projects/.../messages:send`) | OAuth2 access token from a service-account JSON |
+
+**Platform-aware routing** — the backend looks up the device's recorded `platform` (`ios` / `android`) on the `device_tokens` row and dispatches to the appropriate microservice. A token with `platform = ios` always goes to APNs; never to FCM (and vice versa).
+
+**Triggers wired today:**
+
+| Event | Recipients | Body |
+|---|---|---|
+| Project member added | The newly-added user, on every device they have registered | "You were added to project {name}" with a deep link |
+
+This single trigger satisfies App Store guideline 4.2's "native feature" requirement; additional triggers (chat replies, budget alerts, guardrail blocks) are planned but not yet wired.
+
+**Admin endpoints:**
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/admin/v1/me/device-token` | Register or refresh a token (`{token, platform}`) |
+| DELETE | `/admin/v1/me/device-token` | Unregister (e.g. on logout or app uninstall) |
+
+### 22.8 Mobile release pipeline
+
+End-to-end automation from a `git push` on master to a TestFlight + Play Store internal-track release. Two CI systems coordinate:
+
+```
+master push (src/mobile/ios/** changes)
+          │
+          ▼
+   GitLab: ios:mirror (alpine/git)
+   force-pushes src/mobile/ios/ to github.com/Myra-Security-GmbH/myraai-ios
+          │
+          ▼
+   GitLab: ios:build (python:3.12-alpine)
+   ├ Layer 1: cancels in-flight Codemagic builds for ios-app-store workflow
+   ├ POST https://api.codemagic.io/builds  → triggers Codemagic
+   ├ polls until terminal state
+   └ Layer 2: captures Codemagic's `index` field as the pinned CFBundleVersion
+          │
+          ▼   (Codemagic in parallel)
+   Codemagic ios-app-store workflow:
+   1. Set up code signing identities (auto-fetches the latest ACTIVE
+      profile from ASC for bundle eu.myra.myraai)
+   2. Smoke test in iOS Simulator — runs MYRAaiUITests/LoginTests
+   3. Archive (xcodebuild archive, manual signing)
+   4. Export IPA
+   5. Upload to App Store Connect (publishing.app_store_connect)
+          │
+          ▼
+   GitLab: ios:submit-for-review
+   ├ reads codemagic_build_number.txt artifact
+   ├ polls ASC for that exact build version → VALID
+   ├ submission to Beta App Review
+   └ on ANOTHER_BUILD_IN_REVIEW: soft warning, exit 0
+        (Apple permits only one external review at a time;
+         next push retries when current review completes)
+```
+
+Android side is symmetric: `android:build` runs Gradle in `gradle:8.4-jdk17`, reconstructs the keystore from `ANDROID_KEYSTORE_BASE64`, builds AAB+APK; `android:publish:internal` (master push) and `android:publish:production` (`vMAJOR.MINOR.PATCH` tag) call `scripts/android_publish.py` to upload to Play Console.
+
+**Layer 4 — pipeline-failure email notifications** are configured at the GitLab project level (`/projects/765/integrations/pipelines-email`) — broken pipelines only.
+
+**Codemagic's own `submit_to_testflight` is disabled** (`submit_to_testflight: false`). The GitLab `ios:submit-for-review` job is the sole submitter; this avoids races where both submitters race on `ANOTHER_BUILD_IN_REVIEW` and Codemagic fails the whole build while GitLab handles it as a soft warning.
+
+**RUN_IOS / RUN_ANDROID** environment-variable rule lets a developer trigger the pipeline via `POST /api/v4/projects/765/pipeline` without a git commit (used heavily during the CI bring-up).
+
+### 22.9 ASC API automation
+
+All App Store Connect operations are scriptable via the ASC API key (`ASC_ISSUER_ID` + `ASC_KEY_ID` + `ASC_PRIVATE_KEY` p8 — stored as GitLab CI variables and never on disk):
+
+- Add an `bundleIdCapability` (e.g. `PUSH_NOTIFICATIONS`) → invalidates dependent profiles
+- Delete an INVALID profile + re-create a fresh ACTIVE one with the same name → Codemagic re-fetches it on the next build
+- Add a beta tester to a group (`betaTesters` POST + `betaGroups` relationship)
+- Set Beta App Review metadata: `betaAppLocalizations` (description + feedbackEmail per locale), `betaAppReviewDetails` (contact)
+- Submit a build to Beta Review: `betaAppReviewSubmissions` POST with the pinned build relationship
+- Patch `whatsNew` on `betaBuildLocalizations`
+
+A local developer helper (`apple_debug.sh`, gitignored) wraps these for ad-hoc operations during the App Store review cycle. `gitlab_debug.sh` (also gitignored) wraps the GitLab CI side: pipelines, jobs, traces, lint, runner inspection, manual triggers.
+
+---
+
+## 23. Provider Health Monitoring
+
+A 5-minute timer (started by `init_worker_by_lua_block` on worker 0 only) polls each upstream provider's status page and a quick connectivity probe (`HEAD /v1/models` or equivalent). Results are persisted in the `provider_health` table (migration 0010) and exposed via the admin API.
+
+### Architecture
+
+| Component | File / Endpoint |
+|---|---|
+| Polling loop | `src/admin/provider_health.lua` — `start_timer()`, runs once per worker startup, then on a recurring `ngx.timer.every(300, ...)` |
+| Storage | `provider_health` table (provider name, status, message, latency_ms, checked_at, has_status_page) |
+| Admin API | `GET /admin/v1/providers/health` |
+| Frontend | `frontend/src/modules/providers/pages/Providers.tsx` — admin/tenant_admin gated (Sidebar nav entry hidden for other roles) |
+
+### Status values
+
+| Status | Meaning |
+|---|---|
+| `ok` | Last probe succeeded; status page (if any) reports operational |
+| `degraded` | Probe succeeded but provider's status page reports incident |
+| `down` | Probe failed (timeout, 5xx, DNS) |
+| `unknown` | No data yet (first poll hasn't completed since worker started) |
+
+Each row also records the latency of the most recent probe and a free-form `message` (e.g. the incident title from the provider's status page).
+
+### Frontend
+
+`/providers` page (admin / tenant_admin only). Lists each provider with a coloured badge, latency, last-checked timestamp, and a "View status page" link when one is known. Auto-refreshes every 60 seconds.
+
+---
+
+## 24. Account Deletion & Privacy
+
+End-user account deletion is exposed to comply with App Store Guideline 5.1.1(v), Play Store policy, and GDPR Article 17.
+
+### Self-service deletion
+
+Profile page → Danger Zone → "Delete my account" button. Calls `DELETE /admin/v1/me`. Performs a **soft delete**: sets `soft_deleted_at = NOW()` on the user row, revokes all session cookies, invalidates all personal API tokens. Conversations and project memberships remain in the database for **30 days** in case the user wants to restore.
+
+### Protected accounts
+
+A small allowlist (`apple-review@myrasecurity.com`, `google-review@myrasecurity.com`, `sascha@schumann.net`) is hard-coded to return `403 Forbidden` on self-delete to prevent accidental destruction of credentials needed for App Store / Play Store review.
+
+### Admin restore
+
+Admins see soft-deleted users in the Users list (rendered with strikethrough). `POST /admin/v1/admin/users/:id/restore` clears `soft_deleted_at`, re-enables the user, and emits an audit log entry.
+
+### Audit trail
+
+Every delete + restore writes a row to the existing `audit_log` table (`actor_id`, `action = "user.soft_delete" / "user.restore"`, `target_id`, `at`).
+
+### Privacy Policy page
+
+Frontend route `/privacy` renders a static Markdown document (Privacy Policy + Cookie Policy + GDPR rights summary). Linked from:
+- The pre-login screen (via the iOS WebView JS shim that injects a `<a href="/privacy">Privacy Policy</a>` link on the login form)
+- Footer of the Profile page
+- Account deletion confirmation modal
+
+---
+
+## 25. Anthropic Direct Integration
+
+Beyond the standard provider abstraction, the gateway has a dedicated integration path for Anthropic that pulls authoritative cost and rate-limit data directly from Anthropic's admin APIs.
+
+### Per-tenant Anthropic admin key
+
+Each tenant can provide its own Anthropic admin API key (separate from inference keys). Used to call Anthropic's organisation-level endpoints — usage, cost, rate-limit headers — without exposing the inference keys or relying on cross-tenant aggregation.
+
+### Hourly usage sync
+
+A cron-like `ngx.timer` (also worker-0-only) runs every hour and calls `POST https://api.anthropic.com/v1/organizations/usage_report/messages` for each tenant with an admin key. The result (per-model token counts, cache reads, cache writes including the new 1-hour TTL bucket, costs) is written to a `anthropic_usage` table.
+
+### 1-hour cache write tracking
+
+The old code only tracked 5-minute cache writes. Anthropic now exposes 1-hour cache writes as a separate billed line item; the gateway's per-request cost calculator and the analytics dashboard both account for it. Per-model pricing tables in `cost_table.lua` were corrected to match Anthropic's published per-tier rates.
+
+### Authoritative cost chart
+
+The frontend's Cost Analytics page now has a toggle to switch between:
+1. **Gateway-tracked cost** — what the gateway computed from per-token pricing × counts
+2. **Anthropic-authoritative cost** — what Anthropic's `usage_report` actually billed
+
+Discrepancies between the two surface as a warning banner — typically caused by clock skew, cache-token miscounts, or pricing-table drift.
+
+### Rate-limit header forwarding
+
+When Anthropic returns `anthropic-ratelimit-*` headers (input / output / requests, both 1m and 1d windows), the gateway:
+1. Forwards them to the client unchanged (so SDKs can throttle locally)
+2. Persists the snapshot in `request_log.meta` (so the dashboard can chart usage vs limit over time)
+3. On 429 with `retry-after`, surfaces the wait time in the Dashboard's rate-limit visibility panel
+
+---
+
+## 26. Static OTP for App Store Reviewer
+
+Apple and Google reviewers cannot receive email OTPs (no inbox at the developer's domain), and the App Review process requires login credentials in the submission form. The `static_otp_hash` column on the `user` table (migration 0011) is a per-user opt-in fixed code that bypasses the email round-trip.
+
+### Behaviour
+
+When `static_otp_hash` is non-NULL on a user row:
+
+- `POST /admin/auth/otp/request` short-circuits — no email is sent, returns `200 OK` with the standard message
+- `POST /admin/auth/otp/verify` compares the submitted code's `sha256_hex` directly against `static_otp_hash`. The code never expires and is reusable.
+
+Normal users still go through the email OTP flow — `static_otp_hash` is opt-in per row (set manually by an admin).
+
+### Used by
+
+- App Store Connect submission form (reviewer enters `apple-review@myrasecurity.com` + `386539`)
+- Codemagic XCUITest smoke tests (`TEST_LOGIN_EMAIL` / `TEST_LOGIN_OTP` injected via the `test` Codemagic variable group; the test target reads them from `ProcessInfo.processInfo.environment`)
+
+The reviewer accounts are also on the protected-from-deletion allowlist (§24) so they can't be soft-deleted by a click-happy admin.
+
+---
+
+## 27. Gateway Configuration Reference
 
 ```json
 {
@@ -1937,7 +2286,7 @@ This covers the Claude.ai limitation: "Memory is personal — no mechanism for a
 
 ---
 
-## 23. Error Handling
+## 28. Error Handling
 
 All errors return a JSON body:
 
@@ -1960,7 +2309,7 @@ All errors return a JSON body:
 
 ---
 
-## 24. Development Cost Estimation
+## 29. Development Cost Estimation
 
 **Rate: 150 EUR/h** (senior full-stack + DevOps, all-in: design, implementation, unit/integration tests, E2E tests, documentation)
 
@@ -2065,6 +2414,78 @@ The published documentation is a standalone deliverable separate from inline cod
 
 ---
 
+### Mobile Apps (iOS + Android)
+
+| Feature | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|
+| §22.2 iOS native shell (Swift app, native bridge, network monitor, launch screen, status bar, offline view) | 48 | 16 | 6 | 70 | **10 500** |
+| §22.2 iOS biometric lock + privacy shield + 30-min auto-reload on resume | 12 | 4 | 2 | 18 | **2 700** |
+| §22.2 iOS file picker with iOS 18.4 availability gating | 6 | 2 | 1 | 9 | **1 350** |
+| §22.6 iOS push integration (provisional + full permission, token bridge, callback API) | 12 | 4 | 2 | 18 | **2 700** |
+| §22.3 iOS App Store readiness (privacy info, entitlements, account-delete bridge, 5 expert review iterations) | 32 | 8 | 4 | 44 | **6 600** |
+| §22.4 iOS XCUITest target (login smoke + screenshots automation, simulator gymnastics) | 16 | 12 | 2 | 30 | **4 500** |
+| §22.2 iOS Xcode 26 / pbxproj surgery (storyboard removal, JSON conversion, target additions) | 12 | 2 | 2 | 16 | **2 400** |
+| §22.5 Android native shell (Kotlin, WebView, native bridge, pull-to-refresh) | 28 | 8 | 4 | 40 | **6 000** |
+| §22.5 Android adaptive icons + launcher (multiple cache-bust iterations) | 6 | 2 | 1 | 9 | **1 350** |
+| §22.5 Android shortcuts.xml + theme + manifest hardening | 8 | 2 | 2 | 12 | **1 800** |
+| §22.5 Android FCM integration | 16 | 6 | 2 | 24 | **3 600** |
+| §22.5 Play Store generative-AI policy compliance (disclosure + reporting) | 8 | 2 | 2 | 12 | **1 800** |
+| **Mobile Apps subtotal** | **204** | **68** | **30** | **302** | **45 300** |
+
+---
+
+### Push Notifications Backend
+
+| Feature | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|
+| §22.7 APNs HTTP/2 dispatcher microservice (Python on 127.0.0.1:8010) | 16 | 4 | 2 | 22 | **3 300** |
+| §22.7 FCM HTTP v1 dispatcher | 12 | 4 | 2 | 18 | **2 700** |
+| §22.7 Platform-aware push routing | 6 | 2 | 1 | 9 | **1 350** |
+| §22.7 Device token CRUD endpoints + migration 0012 | 8 | 4 | 1 | 13 | **1 950** |
+| §22.7 Project-member-add push trigger (Apple Guideline 4.2 native-feature requirement) | 4 | 2 | 1 | 7 | **1 050** |
+| **Push subtotal** | **46** | **16** | **7** | **69** | **10 350** |
+
+---
+
+### Mobile CI / DevOps
+
+| Feature | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|
+| §22.8 GitLab mobile release pipeline (5 jobs, DAG, tagged-runner targeting, RUN_IOS bypass, push-event gating) | 14 | 4 | 4 | 22 | **3 300** |
+| §22.8 Codemagic iOS workflows (app-store + screenshots) | 10 | 4 | 2 | 16 | **2 400** |
+| §22.9 ASC API automation (build cancel, pinned version, soft-warn on review conflict, beta tester mgmt, profile/capability mgmt) | 16 | 6 | 2 | 24 | **3 600** |
+| §22.8 Pipeline-failure email notifications + variable group bootstrap | 4 | 2 | 1 | 7 | **1 050** |
+| **Mobile CI / DevOps subtotal** | **44** | **16** | **9** | **69** | **10 350** |
+
+---
+
+### Other Backend / UI Additions (Apr 23–28)
+
+| Feature | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|
+| §23 Provider health monitoring (lua + nginx timer + admin API + frontend page + migration 0010) | 12 | 4 | 2 | 18 | **2 700** |
+| §26 Static OTP for App Store reviewer (migration 0011 + auth bypass) | 4 | 4 | 1 | 9 | **1 350** |
+| §24 Account deletion + restore (soft-delete + audit + admin restore + Privacy Policy + protected accounts) | 16 | 8 | 2 | 26 | **3 900** |
+| §25 Anthropic per-tenant admin key + hourly usage sync + 1h cache token + analytics panel | 24 | 8 | 4 | 36 | **5 400** |
+| In-app feedback widget (AGF-31) | 6 | 4 | 1 | 11 | **1 650** |
+| PII masking indicator in chat bubbles | 4 | 2 | 1 | 7 | **1 050** |
+| Optimistic attachment preview with undo-on-error | 4 | 2 | 1 | 7 | **1 050** |
+| qwen3-a3b model + xlsx multi-sheet handling | 6 | 2 | 1 | 9 | **1 350** |
+| Compaction tracking + Anthropic rate-limit header DB columns + dashboard visibility | 8 | 3 | 1 | 12 | **1 800** |
+| **Other subtotal** | **84** | **37** | **14** | **135** | **20 250** |
+
+---
+
+### Tooling Additions
+
+| Feature | Dev h | QA h | Docs h | Total h | **EUR** |
+|---|---|---|---|---|---|
+| Audit prompts (`AUDIT-LUA.md`, `AUDIT-MYRAUI.md`, `AUDIT-CSS.md`) + planner agent (`agf-planner.md`) + perf tooling (`PERFMETER.md`) | 0 | 0 | 16 | 16 | **2 400** |
+| `count-loc.sh` mobile / Python / CI counters | 1 | 0 | 0 | 1 | **150** |
+| **Tooling subtotal** | **1** | **0** | **16** | **17** | **2 550** |
+
+---
+
 ### Revision & Iteration Overhead
 
 The git history (~85 commits) shows substantial revision work on top of the initial feature build. The following categories are **not** captured in the per-feature rows above:
@@ -2090,10 +2511,17 @@ The git history (~85 commits) shows substantial revision work on top of the init
 | QA infrastructure & test suite | 76 | 192 | 29 | 297 | **44 550** |
 | Revision & iteration overhead | 100 | 72 | 44 | 216 | **32 400** |
 | Technical documentation site (300+ pages, 75 screenshots, 3 refresh cycles) | 0 | 0 | 350 | 350 | **52 500** |
-| **Total** | **1 046** | **587** | **552** | **2 185** | **327 750** |
+| Mobile apps (iOS + Android) | 204 | 68 | 30 | 302 | **45 300** |
+| Push notifications backend | 46 | 16 | 7 | 69 | **10 350** |
+| Mobile CI / DevOps | 44 | 16 | 9 | 69 | **10 350** |
+| Other backend / UI additions (Apr 23–28) | 84 | 37 | 14 | 135 | **20 250** |
+| Tooling additions | 1 | 0 | 16 | 17 | **2 550** |
+| **Total** | **1 425** | **724** | **628** | **2 777** | **416 550** |
 
-**Total estimated investment: ~2 185 hours / ~327 750 EUR** at 150 EUR/h.
+**Total estimated investment: ~2 777 hours / ~416 550 EUR** at 150 EUR/h.
+
+The five new categories (Mobile apps, Push backend, Mobile CI / DevOps, Other Apr 23–28 additions, Tooling) account for **+592 hours / +88 800 EUR** of work added on top of the previous baseline of 2 185 hours, all delivered in the 5-day window of 23–28 April 2026 visible in the git history (~170 commits).
 
 > The "Docs h" column in the per-feature rows covers inline documentation (code comments, config examples, FEATURES.md entries). The documentation site row covers the separately deliverable 300-page MkDocs site as a distinct writing and production effort.
 >
-> These figures represent estimated hours for a single senior engineer working end-to-end (design → implementation → tests → documentation), including the actual iteration and refactoring cycles visible in the git history. A team of 2–3 engineers working in parallel would reduce calendar time but not total hours. Estimates assume familiarity with OpenResty/LuaJIT, React, and Playwright; onboarding a less experienced engineer would add 20–30% to the Dev bucket.
+> These figures represent estimated hours for a single senior engineer working end-to-end (design → implementation → tests → documentation), including the actual iteration and refactoring cycles visible in the git history. A team of 2–3 engineers working in parallel would reduce calendar time but not total hours. Estimates assume familiarity with OpenResty/LuaJIT, React, and Playwright; onboarding a less experienced engineer would add 20–30% to the Dev bucket. Mobile categories assume Swift + Kotlin proficiency and prior App Store / Play Store submission experience; first-time submissions typically incur an additional 30–50% on top of the figures above for the App Review review-cycle iterations.
