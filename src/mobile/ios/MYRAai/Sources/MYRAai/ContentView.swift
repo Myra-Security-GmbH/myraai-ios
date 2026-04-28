@@ -60,7 +60,7 @@ struct ContentView: View {
         .animation(.easeOut(duration: 0.3), value: webViewState.isLoaded)
         .animation(.easeOut(duration: 0.2), value: webViewState.showOffline)
         .preferredColorScheme(nil)
-        .onChange(of: scenePhase) { _, newPhase in
+        .onChange(of: scenePhase) { newPhase in
             switch newPhase {
             case .inactive:
                 // Beat the app-switcher snapshot — .inactive fires before .background.
