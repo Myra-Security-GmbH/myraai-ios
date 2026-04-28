@@ -32,11 +32,13 @@ final class RegressionGuards: XCTestCase {
     /// Catches: re-introduction of `.provisional` in `requestAuthorization` options
     /// (the bug that started the simplification pass — provisional silently routes
     /// pushes to Quiet Delivery so testers never see a banner).
+    ///
+    /// Relies on Codemagic providing a clean simulator state per run — there is
+    /// no public API to reset notification permissions from a UI test
+    /// (XCUIProtectedResource has no .userNotifications case).
     func test_first_launch_shows_push_permission_dialog() throws {
         let app = XCUIApplication()
-        // Reset to first-run state so the OS prompts again.
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.resetAuthorizationStatus(for: .userNotifications)
         app.launch()
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
