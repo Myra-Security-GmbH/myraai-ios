@@ -40,9 +40,10 @@
 24. [Account Deletion & Privacy](#24-account-deletion--privacy)
 25. [Anthropic Direct Integration](#25-anthropic-direct-integration)
 26. [Static OTP for App Store Reviewer](#26-static-otp-for-app-store-reviewer)
-27. [Gateway Configuration Reference](#27-gateway-configuration-reference)
-28. [Error Handling](#28-error-handling)
-29. [Development Cost Estimation](#29-development-cost-estimation)
+27. [Content Moderation](#27-content-moderation)
+28. [Gateway Configuration Reference](#28-gateway-configuration-reference)
+29. [Error Handling](#29-error-handling)
+30. [Development Cost Estimation](#30-development-cost-estimation)
 
 ---
 
@@ -921,13 +922,15 @@ Written after each request completes. Fields:
 | Routing | `provider`, `model`, `fallback_provider`, `fallback_model`, `upstream_attempts` |
 | Status | `status`, `blocked`, `blocked_by`, `block_reason` |
 | Cache | `cached`, `saved_cost_usd`, `saved_latency_ms` |
-| Tokens | `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens` |
+| Tokens | `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_creation_tokens_1h` (Anthropic 1-hour cache writes — separate billed line item), `cache_read_tokens` |
 | Cost | `cost_usd` |
 | Timing | `latency_ms`, `upstream_latency_ms`, `time_to_first_token_ms` |
 | Request | `request_size_bytes`, `prompt` (user messages), `response` (null for streaming) |
 | Guardrails | `detectors_fired` (array of names), `scrub_applied` (bool), `guardrail_verdict` (`safe` / `unsafe` / `error`), `guardrail_latency_ms` |
 | Guardrail outage | `meta.guardrail_error` (`{name, type, stage, url, error_class, message}` — sidecar unreachable), `meta.guardrail_degraded` (fail_open kept the request alive despite outage) |
-| Custom | `meta` (all `x-aig-meta-*` headers, plus guardrail outage fields above) |
+| Compaction | `compaction_triggered` (bool — model-side message-history compaction kicked in), `compaction_tokens_before` (token count of pre-compaction history) |
+| Rate-limit snapshot | `meta.anthropic_rate_limit` (full set of `anthropic-ratelimit-*` headers — input / output / requests, both 1-minute and 1-day windows; plus `retry-after` on 429) — feeds the Dashboard rate-limit visibility panel (§19) |
+| Custom | `meta` (all `x-aig-meta-*` headers, plus guardrail/compaction/rate-limit fields above) |
 
 ### Payload Logging Control
 
@@ -1292,6 +1295,16 @@ Model Context Protocol connectors let an admin configure external MCP servers an
 | POST | `/feedback` | Submit feedback (rating, type, message, screenshot); used by the floating feedback widget |
 | GET | `/admin/feedback` | Admin-only feedback inbox |
 
+### Content Reports (Generative-AI Moderation)
+
+Required by Google Play's generative-AI policy (effective 28 Jan 2026) and Apple's parallel requirement: users must be able to flag offensive or inaccurate AI output without leaving the app, and the developer must operate a moderation pipeline. See §27.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/conversations/{id}/messages/{mid}/report` | File a report against an assistant message (`reason`, `details`); persists a snapshot of `message_text` so subsequent edits/deletes don't erase the evidence |
+| GET | `/admin/content-reports` | Admin moderation queue (filters: status, since, reporter); returns reports with original message snapshot |
+| PATCH | `/admin/content-reports/{id}` | Update report status (`pending` → `reviewed` / `actioned` / `dismissed`); record moderator notes |
+
 ---
 
 ## 19. Dashboard UI
@@ -1334,6 +1347,10 @@ Shows all tenants with their request count, token consumption, and cost for the 
 
 On mount, period stats and timeseries data are loaded in a single `Promise.allSettled` batch — the dashboard always renders with whatever data arrived and never shows an error page. On each timeframe change, `/stats/analytics` is re-fetched with the matching `since` timestamp to update the Top Models and Usage by Tenant tables. Missing or failed fetches fall back to zero values or hidden sections silently.
 
+### Rate-Limit Visibility (Anthropic)
+
+A dedicated panel surfaces the latest `anthropic-ratelimit-*` snapshot persisted in `request_log.meta.anthropic_rate_limit` (§15). Shows current usage vs limit for input tokens, output tokens, and requests, on both the 1-minute and 1-day windows, with an at-a-glance bar chart and the upcoming reset timestamp. When a 429 has been observed in the timeframe, the panel also displays the `retry-after` value. Helps users diagnose throttling without tailing logs.
+
 ---
 
 ## 19a. Other Admin UI Pages
@@ -1354,10 +1371,12 @@ The React admin SPA (`frontend/src/modules/`) exposes one page per area of the A
 | `monitor` | Live monitor | Live counters (requests/sec, active streams, recent blocks); recent request list; auto-refresh via `/admin/v1/monitor/stats` |
 | `projects` | Projects list, Project detail | Project CRUD; instructions editor; knowledge file manager (drag-and-drop upload); member roles drawer |
 | `providers` | Provider health | Live provider status (ok / degraded / down / unknown), latency, last-checked timestamp, link to upstream status page; auto-refresh every 60 s; admin/tenant_admin only — see §23 |
-| `privacy` | Privacy Policy | Static Markdown page (Privacy Policy + Cookie Policy + GDPR rights summary); linked from pre-login screen, Profile, and account-deletion modal — see §24 |
+| `reports` | Content reports / moderation queue | User-filed reports against AI-generated messages; original-message snapshot; status workflow (`pending` → `reviewed` / `actioned` / `dismissed`); admin-only — see §27 |
 | `settings` | Settings | Per-user preferences (theme, default tenant, default gateway) and admin-scoped secrets (OAuth, Brave API, SMTP, Slack) |
 | `profile` | Profile | User profile: email, avatar, **Danger Zone** (self-delete account); Android version badge when running inside the native shell |
 | `feedback` | Feedback Inbox (admin) | Floating widget submissions with rating, type, message, and screenshot; admin-only — see §18 |
+
+The `/privacy` route renders a `<PrivacyPolicy />` page (static Markdown — Privacy Policy + Cookie Policy + GDPR rights summary) but is not a CRUD module — it has no `frontend/src/modules/privacy/` directory. Linked from the pre-login screen (via the iOS WebView JS shim), from Profile, and from the account-deletion modal — see §24.
 
 Navigation uses a collapsible sidebar (`common/components/sidebar/Sidebar.tsx`); the active page is highlighted and links honour the user's role (viewers don't see destructive actions).
 
@@ -1500,6 +1519,10 @@ Two dismissible banners above the chat thread surface backend problems without b
 - **Guardrail warning (yellow, `data-cy=guardrail-warning`)** — rendered when the inference response carries `X-Aig-Guardrail-Warning`. Shows the detector name and error class (e.g. *"outage-probe unavailable (dns); request processed without this guardrail"*). Non-blocking: the assistant reply still arrives. Dismissible.
 - **Hard error (red)** — shown on fetch failure, non-2xx status, or when the SSE stream closes with `accumulatedChars === 0 && continueCount === 0` (empty-stream detection). The empty-stream path raises an explicit error — *"Connection to the AI gateway was interrupted before a response arrived"* — instead of leaving the user staring at an empty thread. When `X-Aig-Guardrail-Warning` is present the message is upgraded to *"Guardrail degraded and no response was received: \<warning\>"*.
 
+### PII Masking Indicator
+
+When a request is forwarded with the buffered PII path (Presidio scrub or `custom_pii` redaction applied), the message bubble shows a subtle "🛡 PII masked" badge with a tooltip listing the entity types that were replaced (e.g. EMAIL_ADDRESS, PHONE_NUMBER, IBAN). The badge appears on the user message bubble, *before* the model sees the redacted version, so the user can verify what got sanitised. Clicking the badge expands a panel with the original-vs-masked text diff for that message only.
+
 ### File Attachments
 
 Attached via paperclip button or drag-and-drop. Supported formats:
@@ -1518,6 +1541,8 @@ Attached via paperclip button or drag-and-drop. Supported formats:
 
 - Attachments shown as chips in the input bar and in the sent user bubble (filename only, no content dump)
 - Drop zone overlay with label "Images · PDF · DOCX · PPTX · XLSX · ODS · CSV · TXT · MD"
+- **Optimistic preview with undo on error** — selected files appear as chips immediately; if the server-side extraction (`POST /chat/files`) returns 4xx/5xx, the chip flips to an error state with an *Undo* button that removes it cleanly without leaving the input box in a stuck "pending" state.
+- **xlsx multi-sheet** — Excel workbooks with multiple sheets are extracted per-sheet (each sheet's content prefixed with `# Sheet: <name>`), so the model can reason about a workbook holistically rather than only the first tab.
 - **iOS WebView gating** — the native iOS shell injects `window.__MYRAFilePickerSupported = true|false` based on the OS version (`WKOpenPanelParameters` requires iOS 18.4+). On iOS < 18.4 the chat input disables the attach button and shows a tooltip. See §22.2.
 
 ### Slash Commands
@@ -2218,7 +2243,66 @@ The reviewer accounts are also on the protected-from-deletion allowlist (§24) s
 
 ---
 
-## 27. Gateway Configuration Reference
+## 27. Content Moderation
+
+User-facing reporting flow plus admin moderation queue for AI-generated output. Required by Google Play's generative-AI policy (effective **28 January 2026**) and Apple's parallel guideline: users must be able to flag offensive or inaccurate model output without leaving the app, and the developer must operate a moderation pipeline.
+
+### Report submission
+
+Every assistant message in the chat thread carries a "Report" affordance in its action menu (alongside Copy / Edit / Regenerate). Submitting a report opens a small modal with:
+
+- **Reason** dropdown — `offensive`, `inaccurate`, `harmful`, `privacy_violation`, `other`
+- **Details** textarea (optional, free text)
+- **Submit** → `POST /admin/v1/conversations/{id}/messages/{mid}/report`
+
+The report is persisted with a **frozen snapshot of `message_text`** at the moment of reporting (migration 0014, `content_reports` table). This is critical because the user can still edit or delete the conversation afterwards — without the snapshot, the evidence moderators need would vanish.
+
+### Storage schema (migration 0014)
+
+```sql
+CREATE TABLE content_reports (
+    id              CHAR(36) PRIMARY KEY,
+    conversation_id CHAR(36) NOT NULL,
+    message_id      CHAR(36) NOT NULL,
+    reporter_id     CHAR(36) NOT NULL,            -- user_id
+    reason          VARCHAR(64) NOT NULL,
+    details         TEXT,
+    message_snapshot TEXT NOT NULL,                -- frozen at report time
+    status          VARCHAR(32) DEFAULT 'pending', -- pending|reviewed|actioned|dismissed
+    moderator_notes TEXT,
+    reviewed_by     CHAR(36),                      -- admin user_id
+    reviewed_at     TIMESTAMP,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Admin moderation queue
+
+Frontend module: `frontend/src/modules/reports/`. Listed in §19a as the `reports` page. Admin-only. Each row shows reporter, reason, age, status, and the snapshot of the offending message. From a row drawer, a moderator can:
+
+- Mark as **Reviewed** (acknowledged, no action needed) — closes the report
+- Mark as **Actioned** (took corrective action — e.g. tweaked guardrails, banned the user, contacted the model provider) — closes with notes
+- Mark as **Dismissed** (false positive / not a violation) — closes with notes
+
+Each transition writes to `audit_log`; the moderator's user_id, timestamp, and free-text notes are persisted on the `content_reports` row.
+
+### Backend endpoints
+
+See §18 → "Content Reports" group (`POST .../report`, `GET /admin/content-reports`, `PATCH /admin/content-reports/{id}`).
+
+### Why this matters for store compliance
+
+Both stores require:
+
+1. A user-visible reporting affordance on every piece of AI-generated content
+2. A documented moderator workflow with timestamps and outcomes
+3. Snapshotted evidence (not just a pointer to a row that the user can later delete)
+
+The `content_reports.message_snapshot` column + the moderation queue + the audit log entries together satisfy all three requirements; the **Generative-AI disclosure** in App Privacy / Play Console points to this feature as the in-app moderation channel.
+
+---
+
+## 28. Gateway Configuration Reference
 
 ```json
 {
@@ -2286,7 +2370,7 @@ The reviewer accounts are also on the protected-from-deletion allowlist (§24) s
 
 ---
 
-## 28. Error Handling
+## 29. Error Handling
 
 All errors return a JSON body:
 
@@ -2309,7 +2393,7 @@ All errors return a JSON body:
 
 ---
 
-## 29. Development Cost Estimation
+## 30. Development Cost Estimation
 
 **Rate: 150 EUR/h** (senior full-stack + DevOps, all-in: design, implementation, unit/integration tests, E2E tests, documentation)
 
@@ -2330,7 +2414,7 @@ All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
 | Feature | Dev h | QA h | Docs h | Total h | **EUR** |
 |---|---|---|---|---|---|
 | §1 Request Pipeline (middleware chain, 3-phase Nginx) | 24 | 8 | 4 | 36 | **5 400** |
-| §2 Multi-Provider Support (21 providers, compat resolution, LiteLLM prefix stripping, translation layers) | 60 | 16 | 8 | 84 | **12 600** |
+| §2 Multi-Provider Support (23 providers, compat resolution, LiteLLM prefix stripping, translation layers) | 60 | 16 | 8 | 84 | **12 600** |
 | §3 Authentication & Authorization (OTP email, Google OAuth2, roles, token hashing, access matrix) | 20 | 8 | 4 | 32 | **4 800** |
 | §4 Dynamic Routing & Fallback (rules engine, load balancing, sticky sessions, circuit breaker) | 28 | 10 | 4 | 42 | **6 300** |
 | §5 Caching — exact-match + semantic (embeddings, cosine similarity, async store) | 24 | 8 | 4 | 36 | **5 400** |
@@ -2399,7 +2483,7 @@ All figures are in **hours**. The Euro column is `(Dev + QA + Docs) × 150 EUR`.
 
 ### Technical Documentation Site
 
-The published documentation is a standalone deliverable separate from inline code comments. It comprises **81 Markdown source files**, **~74,640 words**, **75 annotated screenshots**, and a full MkDocs site with PDF export (`gen_pdf.py`, WeasyPrint). This maps to **~300 printed pages** at ~250 words/page.
+The published documentation is a standalone deliverable separate from inline code comments. It comprises **81 Markdown source files**, **~76,142 words**, **75 annotated screenshots**, and a full MkDocs site with PDF export (`gen_pdf.py`, WeasyPrint). This maps to **~305 printed pages** at ~250 words/page.
 
 | Work item | Detail | Hours |
 |---|---|---|
@@ -2471,8 +2555,10 @@ The published documentation is a standalone deliverable separate from inline cod
 | PII masking indicator in chat bubbles | 4 | 2 | 1 | 7 | **1 050** |
 | Optimistic attachment preview with undo-on-error | 4 | 2 | 1 | 7 | **1 050** |
 | qwen3-a3b model + xlsx multi-sheet handling | 6 | 2 | 1 | 9 | **1 350** |
-| Compaction tracking + Anthropic rate-limit header DB columns + dashboard visibility | 8 | 3 | 1 | 12 | **1 800** |
-| **Other subtotal** | **84** | **37** | **14** | **135** | **20 250** |
+| Compaction tracking + Anthropic rate-limit header DB columns | 6 | 2 | 1 | 9 | **1 350** |
+| §19 Dashboard rate-limit visibility panel (Anthropic input/output/requests, 1m + 1d windows, 429 retry-after) | 4 | 2 | 1 | 7 | **1 050** |
+| §27 Content moderation (migration 0014, message-snapshot reports, admin queue with status workflow, audit log integration; mandatory for Play Store + App Store generative-AI compliance) | 12 | 6 | 2 | 20 | **3 000** |
+| **Other subtotal** | **96** | **43** | **17** | **156** | **23 400** |
 
 ---
 
@@ -2488,7 +2574,7 @@ The published documentation is a standalone deliverable separate from inline cod
 
 ### Revision & Iteration Overhead
 
-The git history (~85 commits) shows substantial revision work on top of the initial feature build. The following categories are **not** captured in the per-feature rows above:
+The git history (~250 commits, of which ~170 in the 5-day Apr 23–28 window alone) shows substantial revision work on top of the initial feature build. The following categories are **not** captured in the per-feature rows above:
 
 | Revision category | Evidence in git log | Dev h | QA h | Docs h | Total h | **EUR** |
 |---|---|---|---|---|---|---|
@@ -2498,7 +2584,12 @@ The git history (~85 commits) shows substantial revision work on top of the init
 | Infrastructure & DevOps (Docker, nginx, build scripts, presidio sidecar, vLLM services) | `d8dc7c3`, `2ca9cfa`, `5503fc3`, `bbbae16` | 16 | 4 | 2 | 22 | **3 300** |
 | Documentation refresh cycles (architecture rewrite, screenshots ×3, competitive analysis) | `afcde7e`, `9539788`, `6553f9f`, `9cabffa`, `b04a6f2` | 0 | 0 | 32 | 32 | **4 800** |
 | E2E test suite expansion rounds (3 separate rounds of new specs + infrastructure) | `824ec0a`, `9af4a2b`, `7a89617`, `f884946` | 8 | 40 | 4 | 52 | **7 800** |
-| **Revision subtotal** | | **100** | **72** | **44** | **216** | **32 400** |
+| Apr 23 backend bug-fix sprint (`pcall` guards on user-controlled patterns, dict-full handling, fd leaks, ulimit, `query_all` coerce return, missing returns after `errors.send()`, `db:escape_literal()` removal, `cjson.array_mt` reference, hardened auth guards) | `718a5b2`, `bf507a1`, `de370ec`, `a959775`, `b655027`, `c34ceb7` | 12 | 4 | 0 | 16 | **2 400** |
+| iOS / Codemagic / ASC provisioning ordeal (Xcode 26 storyboard incompatibility removal, JSON pbxproj conversion, agvtool failure → CURRENT_PROJECT_VERSION command-line override, capability add → profile invalidation → ASC profile recreate, Codemagic keychain stale profile diagnostic) | `60a2dcd`, `5d5e15d`, `9b6ffcc`, `b45512b`, `e44dbce`, `4f8b169`, `b0317c8` | 8 | 2 | 0 | 10 | **1 500** |
+| iOS screenshot XCUITest tap-strategy iterations (~15 fixes: coordinate tap vs hittable, sidebar centre tap, React portal hijack, completionHandler nil, Dynamic Island dead-zone, WKWebView cache, `launchEnvironment` for screenshot mode, modal dismiss) | `5ec62e4` … `13f3747` (sequential fix chain) | 12 | 4 | 0 | 16 | **2 400** |
+| GitLab CI mobile pipeline bring-up (runner tag mismatch, DAG `needs: []`, RUN_IOS env-var bypass, `CI_PIPELINE_SOURCE == "push"` gating, alpine/git entrypoint override, codemagic_build_number artifact pinning) | `5e982d7`, `504d19c`, `d04df06`, `0fc271c`, `d191fac`, `f71feaf` | 6 | 2 | 1 | 9 | **1 350** |
+| Android adaptive-icon cache-bust iterations (mipmap resource renames, versionCode bumps, opacity / fill / safe-zone refinement to defeat Launcher3 thumbnail caching) | `3190596`, `947728a`, `0725b66`, `99eb09e`, `c396fdd`, `0b66f11` | 4 | 1 | 0 | 5 | **750** |
+| **Revision subtotal** | | **142** | **85** | **45** | **272** | **40 800** |
 
 ---
 
@@ -2509,18 +2600,18 @@ The git history (~85 commits) shows substantial revision work on top of the init
 | Backend | 484 | 179 | 81 | 744 | **111 600** |
 | Frontend | 386 | 144 | 48 | 578 | **86 700** |
 | QA infrastructure & test suite | 76 | 192 | 29 | 297 | **44 550** |
-| Revision & iteration overhead | 100 | 72 | 44 | 216 | **32 400** |
+| Revision & iteration overhead | 142 | 85 | 45 | 272 | **40 800** |
 | Technical documentation site (300+ pages, 75 screenshots, 3 refresh cycles) | 0 | 0 | 350 | 350 | **52 500** |
 | Mobile apps (iOS + Android) | 204 | 68 | 30 | 302 | **45 300** |
 | Push notifications backend | 46 | 16 | 7 | 69 | **10 350** |
 | Mobile CI / DevOps | 44 | 16 | 9 | 69 | **10 350** |
-| Other backend / UI additions (Apr 23–28) | 84 | 37 | 14 | 135 | **20 250** |
+| Other backend / UI additions (Apr 23–28) | 96 | 43 | 17 | 156 | **23 400** |
 | Tooling additions | 1 | 0 | 16 | 17 | **2 550** |
-| **Total** | **1 425** | **724** | **628** | **2 777** | **416 550** |
+| **Total** | **1 479** | **743** | **632** | **2 854** | **428 100** |
 
-**Total estimated investment: ~2 777 hours / ~416 550 EUR** at 150 EUR/h.
+**Total estimated investment: ~2 854 hours / ~428 100 EUR** at 150 EUR/h.
 
-The five new categories (Mobile apps, Push backend, Mobile CI / DevOps, Other Apr 23–28 additions, Tooling) account for **+592 hours / +88 800 EUR** of work added on top of the previous baseline of 2 185 hours, all delivered in the 5-day window of 23–28 April 2026 visible in the git history (~170 commits).
+The five new feature categories (Mobile apps, Push backend, Mobile CI / DevOps, Other Apr 23–28 additions, Tooling) plus the four new revision-overhead rows account for **+669 hours / +100 350 EUR** of work added on top of the previous baseline of 2 185 hours, all delivered in the 5-day window of 23–28 April 2026 visible in the git history (~170 commits).
 
 > The "Docs h" column in the per-feature rows covers inline documentation (code comments, config examples, FEATURES.md entries). The documentation site row covers the separately deliverable 300-page MkDocs site as a distinct writing and production effort.
 >
