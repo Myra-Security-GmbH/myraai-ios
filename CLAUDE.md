@@ -549,18 +549,36 @@ machines. All secrets live as masked + protected CI/CD variables on the
 
 | Action | Trigger | Result |
 |---|---|---|
-| Push to `master` with iOS source changes | auto | iOS app uploaded to App Store Connect, submitted to Beta App Review |
+| Push to `master` with iOS source changes | auto | Mirror + Codemagic build + ASC upload. Beta App Review submission is a **manual** ▶ button in the pipeline (see below). |
 | Push to `master` with Android source changes | auto | AAB uploaded to Play Store **internal** track |
-| Tag `vMAJOR.MINOR.PATCH` | auto | Both platforms re-released; Android AAB also lands on Play Store **production** track |
+| Tag `vMAJOR.MINOR.PATCH` | auto | iOS: mirror + build + ASC upload. **Both** iOS submit jobs (Beta App Review and App Store production review) are **manual** ▶ buttons. Android: AAB uploaded to Play Store **production** track. |
+
+iOS submission is manual because Apple permits only one external review per app at a time per queue and offers no API to cancel a pending submission — auto-submitting on every push would burn the slot on the wrong build. The build step is always automatic, so internal TestFlight testers get every commit immediately.
+
+#### iOS workflow on a `vX.Y.Z` tag
+
+The order matters — Apple rejects an App Store submission if the build hasn't passed Beta App Review first.
+
+1. Tag is pushed → `ios:mirror` and `ios:build` run automatically. Build is uploaded to ASC.
+2. Click ▶ on `ios:submit-for-review` in the pipeline view. Wait for Apple Beta App Review (24-48 h typical).
+3. Once Beta is **APPROVED**, click ▶ on `ios:submit-to-appstore`.
+
+To submit a non-tag master build to external Beta review: open that pipeline → click ▶ on `ios:submit-for-review`.
+
+API trigger paths (for scripts/cron):
+- `RUN_IOS=true` — build only, no submit.
+- `RUN_IOS_SUBMIT=true` — build + auto-submit to Beta App Review.
+- `RUN_IOS_APPSTORE=true` — build + auto-submit to App Store production. Only useful in pipelines where Beta review has already passed for this build (otherwise Apple rejects). For real release flow prefer the tag + manual click pattern.
 
 ### Pipeline stages
 
 | Stage | Job | What it does |
 |---|---|---|
 | `mobile` | `ios:mirror` | Push `src/mobile/ios/` to public GitHub mirror |
-| `mobile` | `ios:build` | Trigger Codemagic build via API; poll until finished |
+| `mobile` | `ios:build` | Trigger Codemagic build via API; poll until finished; capture pinned build number |
 | `mobile` | `android:build` | Reconstruct keystore from CI variable; sign + bundle release AAB + APK |
-| `release` | `ios:submit-for-review` | Wait for VALID build in ASC; set whatsNew; POST `betaAppReviewSubmissions` |
+| `release` | `ios:submit-for-review` | **Manual.** Wait for VALID build in ASC; set whatsNew (from commit title); POST `betaAppReviewSubmissions` |
+| `release` | `ios:submit-to-appstore` | **Manual.** Associate build with appStoreVersion; POST `appStoreVersionSubmissions` |
 | `release` | `android:publish:internal` | Upload AAB to Play **internal** track (master only) |
 | `release` | `android:publish:production` | Upload AAB to Play **production** track (tags only) |
 

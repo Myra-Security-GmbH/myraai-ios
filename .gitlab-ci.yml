@@ -33,10 +33,31 @@
 #   VITE_GATEWAY_URL    default: https://ai-api.myra.eu
 #   VITE_DOCS_URL       default: https://ai-docs.myra.eu
 #
-# Mobile release flow (zero manual steps):
-#   - Push to master with iOS changes  → iOS app is uploaded + submitted to TestFlight Beta App Review
-#   - Push to master with Android changes → AAB built + uploaded to Play Store internal track
-#   - Tag v*.*.*                       → AAB uploaded to Play Store production track
+# Mobile release flow (auto-build, manual submit on iOS):
+#   - Push to master with iOS changes  → mirror + Codemagic build + ASC upload (auto).
+#                                         Build is available to internal TestFlight
+#                                         testers immediately. Submission to Beta App
+#                                         Review is a **manual** job (▶ in the pipeline).
+#   - Push to master with Android changes → AAB built + uploaded to Play Store internal track (auto).
+#   - Tag v*.*.*                       → mirror + Codemagic build + ASC upload (auto).
+#                                         Both iOS submit jobs (Beta App Review and App
+#                                         Store production review) are **manual** — Apple
+#                                         only permits one review per app at a time per
+#                                         queue, and there is no API to cancel a pending
+#                                         submission, so we never auto-submit.
+#                                         Android AAB uploaded to Play Store production track (auto).
+#
+# iOS workflow on a vX.Y.Z tag (in this exact order — App Store submission requires Beta App Review to have passed first):
+#   1. Tag is pushed → ios:mirror, ios:build run automatically.
+#   2. Click ▶ on ios:submit-for-review.  Wait for Apple Beta App Review (24-48h typical).
+#   3. Once Beta is APPROVED, click ▶ on ios:submit-to-appstore.
+#
+# To submit a specific master build to external Beta review without tagging:
+#   - Open that pipeline → click ▶ on ios:submit-for-review.
+#
+# Triggering submits via API instead of UI clicks:
+#   - POST /pipeline with RUN_IOS_SUBMIT=true   → ios:submit-for-review auto-runs.
+#   - POST /pipeline with RUN_IOS_APPSTORE=true → ios:submit-to-appstore auto-runs.
 #
 # On the production server, to deploy a new image:
 #   docker compose pull && docker compose up -d
@@ -140,7 +161,12 @@ ios:mirror:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "master"
       changes:
         - src/mobile/ios/**/*
-    - if: $RUN_IOS == "true"   # API-triggered runs (POST /pipeline with RUN_IOS=true)
+    # API-triggered runs (POST /pipeline). RUN_IOS=true is "build only";
+    # RUN_IOS_SUBMIT / RUN_IOS_APPSTORE imply a build is needed too, since the
+    # submit jobs depend on this pipeline's build artifact.
+    - if: $RUN_IOS == "true"
+    - if: $RUN_IOS_SUBMIT == "true"
+    - if: $RUN_IOS_APPSTORE == "true"
   script:
     - apk add --no-cache bash
     - |
@@ -168,7 +194,11 @@ ios:build:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "master"
       changes:
         - src/mobile/ios/**/*
+    # API triggers — same set as ios:mirror so the build artifact exists for
+    # any submit job that fires in the same pipeline.
     - if: $RUN_IOS == "true"
+    - if: $RUN_IOS_SUBMIT == "true"
+    - if: $RUN_IOS_APPSTORE == "true"
   script:
     - apk add --no-cache curl
     # Layer 1: cancel any in-flight Codemagic builds for this workflow before
@@ -244,7 +274,10 @@ ios:build:
     paths:
       - codemagic_build_id.txt
       - codemagic_build_number.txt
-    expire_in: 1 day
+    # Manual submit jobs read codemagic_build_number.txt to pin which ASC build
+    # gets submitted. The human may take days to click ▶, so the artifact has
+    # to outlive a normal review-decision cycle.
+    expire_in: 30 days
 
 # ── iOS: submit the new build to Beta App Review (zero clicks, zero waiting on humans) ──
 ios:submit-for-review:
@@ -255,11 +288,16 @@ ios:submit-for-review:
     - job: ios:build
       artifacts: true
   rules:
+    # API trigger — auto-runs (Claude/scripts/cron).
+    - if: $RUN_IOS_SUBMIT == "true"
+    # Tag pipelines: build runs auto, submit waits as ▶ until clicked.
     - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+      when: manual
+    # Master pushes with iOS changes: build runs auto, submit waits as ▶.
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "master"
       changes:
         - src/mobile/ios/**/*
-    - if: $RUN_IOS == "true"
+      when: manual
   script:
     - pip install --quiet cryptography
     - |
@@ -336,9 +374,10 @@ ios:submit-for-review:
 
       print(f"Build: {build_id} (version {target_version})")
 
-      # whatsNew on the build's beta localization
+      # whatsNew on the build's beta localization — sourced from the commit
+      # message that triggered the build so testers see what changed.
       bbl, _ = call("GET", f"/v1/builds/{build_id}/betaBuildLocalizations")
-      whats_new = "Latest build. Please test the core chat functionality and report any issues."
+      whats_new = os.environ.get("CI_COMMIT_TITLE") or "Latest build."
       if bbl and bbl.get("data"):
           bbl_id = bbl["data"][0]["id"]
           call("PATCH", f"/v1/betaBuildLocalizations/{bbl_id}", {
@@ -404,8 +443,12 @@ ios:submit-to-appstore:
       artifacts: true
     - job: ios:submit-for-review
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+    # API trigger — auto-runs.
     - if: $RUN_IOS_APPSTORE == "true"
+    # Tag pipelines: waits as ▶. Click only after Beta App Review has APPROVED
+    # this build — Apple rejects appStoreVersionSubmissions otherwise.
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+      when: manual
   script:
     - pip install --quiet cryptography
     - |
