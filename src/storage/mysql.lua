@@ -183,6 +183,7 @@ local MIGRATIONS = {
     { version = "0013", file = "0013_user_deleted_by_and_restore.sql", description = "Track who soft-deleted a user (audit for admin restore)" },
     { version = "0014", file = "0014_content_reports.sql",            description = "User-submitted reports of inappropriate or inaccurate model output" },
     { version = "0015", file = "0015_feedback_client_context.sql",    description = "client_context JSON on app_feedback and content_report for diagnostic context (route, viewport, app/OS version, etc.)" },
+    { version = "0016", file = "0016_content_report_request_log_id.sql", description = "Link content_report to the request_log row it concerns (chat-feedback triage deep-link)" },
 }
 
 -- Errors that mean "this change is already applied" — tolerated silently.
@@ -3449,11 +3450,12 @@ function M.insert_content_report(report)
     local e = exec_one(db, [[
         INSERT INTO content_report
             (id, user_id, tenant_id, conversation_id, message_id, message_text,
-             reason, notes, client_context, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+             reason, notes, client_context, request_log_id, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
     ]], id,
         report.user_id, report.tenant_id, report.conversation_id, report.message_id,
-        report.message_text, report.reason, report.notes, report.client_context, os.time())
+        report.message_text, report.reason, report.notes, report.client_context,
+        report.request_log_id, os.time())
     release(db)
     if e then return nil, e end
     return id
@@ -3481,9 +3483,17 @@ function M.list_content_reports(opts)
         SELECT r.id, r.user_id, r.tenant_id, r.conversation_id, r.message_id,
                r.message_text, r.reason, r.notes, r.client_context, r.status,
                r.created_at, r.triaged_at, r.triaged_by_id,
+               r.request_log_id,
+               rl.provider AS request_log_provider,
+               rl.model    AS request_log_model,
+               rl.status   AS request_log_status,
+               rl.latency_ms     AS request_log_latency_ms,
+               rl.input_tokens   AS request_log_input_tokens,
+               rl.output_tokens  AS request_log_output_tokens,
                u.email AS user_email
         FROM   content_report r
         LEFT JOIN `user` u ON u.id = r.user_id
+        LEFT JOIN request_log rl ON rl.id = r.request_log_id
         %s
         ORDER BY r.created_at DESC
         LIMIT %d OFFSET %d
@@ -3498,7 +3508,7 @@ function M.get_content_report(id)
     if not db then return nil end
     local row = query_one(db, [[
         SELECT id, user_id, tenant_id, conversation_id, message_id,
-               message_text, reason, notes, client_context, status,
+               message_text, reason, notes, client_context, request_log_id, status,
                created_at, triaged_at, triaged_by_id
         FROM   content_report WHERE id = ?
     ]], id)

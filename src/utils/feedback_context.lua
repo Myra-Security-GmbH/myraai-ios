@@ -43,17 +43,17 @@ local ALLOWED_KEYS = {
     reduced_motion = true,
     current_route  = true,
     referrer       = true,
-    -- Layer 2 (native bridge) — added when populated.
-    device_model_raw = true,
-    os_version       = true,
-    device_arch      = true,
+    -- Layer 2 (browser-API only): battery from navigator.getBattery() on
+    -- Android Chrome WebView.  WebKit removed the Battery Status API for
+    -- privacy, so iOS submissions never carry these.  Disk-free, carrier,
+    -- and connection_type are deliberately not collected — Apple's Feedback
+    -- Assistant gets them via private OS APIs we cannot match, and their
+    -- diagnostic value for chat-quality triage is low.  Device model / OS
+    -- version / app version / arch ride on the User-Agent string set by
+    -- the native WebView wrappers and are parsed server-side from the
+    -- request_log.user_agent column rather than re-sent here.
     battery_pct      = true,
     battery_charging = true,
-    disk_free_bytes  = true,
-    disk_total_bytes = true,
-    connection_type  = true,
-    carrier          = true,
-    uptime_app_sec   = true,
 }
 
 -- Identity-ish keys the client must never set: server enriches these.

@@ -1206,6 +1206,11 @@ route("POST", "^/admin/v1/reports$", function()
         reason          = b.reason,
         notes           = b.notes and tostring(b.notes):sub(1, 2000) or nil,
         client_context  = ctx_json,
+        -- Linkage to the gateway request_log row that produced this assistant
+        -- message — captured by the chat client from the X-Request-Id response
+        -- header. UUID format; nil for legacy clients that don't supply it.
+        request_log_id  = b.request_log_id and tostring(b.request_log_id):match("^[%w%-]+$")
+                          and tostring(b.request_log_id):sub(1, 36) or nil,
     }
     local id, err = storage.insert_content_report(report)
     if not id then return send(500, { error = err or "db error" }) end

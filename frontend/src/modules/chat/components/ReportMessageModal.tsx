@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { Modal } from "src/common/components/Modal";
 import { api } from "src/api/client";
-import { collectWithBridge } from "src/common/utils/clientContext";
+import { collect as collectClientContext } from "src/common/utils/clientContext";
 import s from "src/common/components/layout/Layout.module.scss";
 
 type Reason = "offensive" | "inaccurate" | "unsafe" | "other";
@@ -17,10 +17,14 @@ interface Props {
   messageId: string;
   messageText: string;
   conversationId?: string | null;
+  /** UUID of the request_log row that produced this message — captured live
+   *  from the X-Request-Id response header by the chat client. Optional;
+   *  legacy messages won't have it. */
+  requestLogId?: string | null;
   onClose: () => void;
 }
 
-export default function ReportMessageModal({ messageId, messageText, conversationId, onClose }: Props) {
+export default function ReportMessageModal({ messageId, messageText, conversationId, requestLogId, onClose }: Props) {
   const [reason, setReason] = useState<Reason>("offensive");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -31,7 +35,7 @@ export default function ReportMessageModal({ messageId, messageText, conversatio
     setSubmitting(true);
     setError(null);
     try {
-      const client_context = await collectWithBridge();
+      const client_context = await collectClientContext();
       await api.post("/reports", {
         conversation_id: conversationId ?? null,
         message_id:      messageId,
@@ -39,6 +43,7 @@ export default function ReportMessageModal({ messageId, messageText, conversatio
         reason,
         notes:           notes.trim() || null,
         client_context,
+        ...(requestLogId ? { request_log_id: requestLogId } : {}),
       });
       setDone(true);
     } catch (e: any) {

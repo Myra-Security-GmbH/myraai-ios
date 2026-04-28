@@ -648,6 +648,14 @@ export interface ChatMessage {
   attachments?: ChatAttachment[];
   /** Set when PII was masked in the request that produced this message (live session only; not persisted). */
   pii_masked_info?: PiiMaskedInfo;
+  /**
+   * UUID matching request_log.id of the gateway request that produced this
+   * message. Captured live from the X-Request-Id response header on the
+   * inference call; live-session only, not persisted on the chat_message
+   * row. Used to populate request_log_id when a user clicks "Report" on
+   * an assistant message.
+   */
+  request_log_id?: string;
 }
 
 export interface ChatAttachment {

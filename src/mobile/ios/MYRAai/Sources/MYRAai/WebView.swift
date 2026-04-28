@@ -3,6 +3,21 @@ import WebKit
 import UIKit
 import Network
 import UniformTypeIdentifiers
+import Darwin
+
+// Read the raw machine identifier (e.g. "iPhone15,2") via sysctl. Used to
+// extend the WebView UA so the gateway server can resolve the marketing
+// name ("iPhone 14 Pro") via a small server-side lookup table — keeps the
+// app independent of new iPhone model announcements.
+private func deviceMachineIdentifier() -> String {
+    var sys = utsname()
+    uname(&sys)
+    return withUnsafePointer(to: &sys.machine) { ptr in
+        ptr.withMemoryRebound(to: CChar.self, capacity: Int(_SYS_NAMELEN)) {
+            String(cString: $0)
+        }
+    }
+}
 
 // MARK: - State
 
@@ -70,7 +85,18 @@ struct WebView: UIViewRepresentable {
         // Under screenshot runs use a throwaway store so no cached JS bundles interfere.
         config.websiteDataStore = isScreenshotMode ? .nonPersistent() : .default()
         config.defaultWebpagePreferences.preferredContentMode = .mobile
-        config.applicationNameForUserAgent = "MYRAai-iOS/1.0"
+        // UA extension: append app version+build, raw device machine identifier,
+        // OS version, and arch so request_log / feedback_context can attribute
+        // every request without a separate native bridge call. Mirrors the
+        // Android side in MainActivity.kt:setupWebView. arch is "arm64e" on
+        // every modern iPhone we ship to (A12 Bionic and later); we hardcode
+        // rather than sysctl-read since a JS Layer-2 collector cannot derive
+        // it any other way.
+        let ver   = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+        let machine = deviceMachineIdentifier()
+        let osVer = UIDevice.current.systemVersion
+        config.applicationNameForUserAgent = "MYRAai-iOS/\(ver) (\(build)) \(machine) / iOS \(osVer) / arm64e"
 
         let proxy = WeakScriptMessageHandler(context.coordinator.bridge)
         for name in NativeBridge.handlerNames {

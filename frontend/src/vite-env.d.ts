@@ -7,7 +7,6 @@ interface AndroidBridge {
   copyToClipboard(text: string): void;
   getDeviceToken?(callbackName: string): void;
   requestNotificationPermission?(callbackName: string): void;
-  getDeviceContext?(callbackName: string): void;
 }
 
 declare interface Window {

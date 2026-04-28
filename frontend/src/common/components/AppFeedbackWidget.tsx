@@ -10,7 +10,7 @@
 import { useState, useEffect } from "react";
 import { api } from "src/api/client";
 import { Modal } from "./Modal";
-import { collectWithBridge } from "src/common/utils/clientContext";
+import { collect as collectClientContext } from "src/common/utils/clientContext";
 import s from "./layout/Layout.module.scss";
 
 type FeedbackType = "bug" | "feature" | "other";
@@ -59,7 +59,7 @@ export function AppFeedbackWidget({ open, onClose }: Props) {
     setSaving(true);
     setError(null);
     try {
-      const client_context = await collectWithBridge();
+      const client_context = await collectClientContext();
       await api.post("/app-feedback", {
         type,
         summary: summary.trim(),

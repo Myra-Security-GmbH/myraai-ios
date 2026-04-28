@@ -712,6 +712,7 @@ const MessageBubble = memo(function MessageBubble({
                 messageId={message.id}
                 messageText={extractText(message.content)}
                 conversationId={message.conversation_id ?? null}
+                requestLogId={message.request_log_id ?? null}
                 onClose={() => setShowReport(false)}
               />
             )}

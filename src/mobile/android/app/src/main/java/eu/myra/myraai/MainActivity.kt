@@ -177,7 +177,15 @@ class MainActivity : AppCompatActivity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             allowFileAccess = false  // app only loads https://ai.myra.eu — no local file access needed
-            userAgentString = "$userAgentString MYRAai-Android/${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+            // UA extension: append app, device, OS, and ABI so request_log
+            // captures static device context on every request without needing
+            // a separate bridge call. Server-side feedback_context.lua and
+            // src/utils/ios_models.lua resolve raw model identifiers (Android
+            // already returns marketing names — Pixel 7, etc.) for display.
+            val deviceTag = "${Build.MANUFACTURER} ${Build.MODEL}".replace(" ", "_")
+            val abi       = (Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown")
+            userAgentString = "$userAgentString MYRAai-Android/${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) " +
+                              "$deviceTag / Android ${Build.VERSION.RELEASE} / $abi"
             // Respect the device accessibility font-size setting.
             textZoom = (resources.configuration.fontScale * 100).toInt()
         }

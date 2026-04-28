@@ -1406,6 +1406,11 @@ export default function Chat() {
     let outputTokens: number | null = null;
     let costUsd: number | null = null;
     let piiMaskedInfo: import("src/api/types").PiiMaskedInfo | undefined;
+    // request_log.id of the LAST leg (the one whose final content the user
+    // sees). Captured from the X-Request-Id response header — exposed via
+    // Access-Control-Expose-Headers in nginx.{docker,int}.conf. Used when
+    // the user clicks "Report" so triage can JOIN to request_log.
+    let lastRequestLogId: string | null = null;
 
     // Build MCP tools header for server-side tool_loop
     const mcpToolsHeader = mcpTools.length > 0
@@ -1490,6 +1495,13 @@ export default function Chat() {
           "| content-type:", res.headers.get("content-type"),
           "| x-aig-provider:", res.headers.get("x-aig-provider"),
           "| x-aig-cache:", res.headers.get("x-aig-cache"));
+
+        // Capture the X-Request-Id header — equals request_log.id (see
+        // src/observability/logger.lua: id = ctx.request_id). Updated on
+        // each leg so the last successful leg's id wins, which is what the
+        // user is reading when they click Report.
+        const reqId = res.headers.get("x-request-id");
+        if (reqId) lastRequestLogId = reqId;
 
         // Surface guardrail degradation (fail_open path on the gateway) as a
         // non-blocking banner. The gateway exposes this header via CORS, so it
@@ -1769,6 +1781,7 @@ export default function Chat() {
         created_at: Math.floor(Date.now() / 1000),
         attachments: [],
         ...(piiMaskedInfo ? { pii_masked_info: piiMaskedInfo } : {}),
+        ...(lastRequestLogId ? { request_log_id: lastRequestLogId } : {}),
       };
       if (activeConvIdRef.current === convId) {
         setMessages((prev) => [...prev, assistantMsg]);
@@ -1800,6 +1813,7 @@ export default function Chat() {
           created_at: Math.floor(Date.now() / 1000),
           attachments: [],
           ...(piiMaskedInfo ? { pii_masked_info: piiMaskedInfo } : {}),
+          ...(lastRequestLogId ? { request_log_id: lastRequestLogId } : {}),
         };
         if (activeConvIdRef.current === convId) {
           setMessages((prev) => [...prev, assistantMsg]);
