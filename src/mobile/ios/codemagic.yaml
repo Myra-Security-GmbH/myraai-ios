@@ -11,16 +11,17 @@ workflows:
       vars:
         XCODE_PROJECT: "MYRAai.xcodeproj"
         XCODE_SCHEME: "MYRAai"
-      xcode: "16"  # Xcode 16 (iOS 18) — has iPhone 15/16 series; iPhone 14 not available
+      xcode: latest  # must match ios-app-store; WKOpenPanelParameters requires iOS 18.4 SDK
     scripts:
-      - name: Capture screenshots — iPhone 15 Plus → resize to 1284×2778 (ASC 6.7")
+      - name: Capture screenshots → resize to 1284×2778 (ASC 6.7" requirement)
         script: |
           set -e
           # ASC requires 1284×2778 (6.7") or 1242×2688 (6.5").
-          # iPhone 15 Plus (available in Xcode 16) produces 1290×2796 at 3x.
-          # After capture we resize to 1284×2778 with sips (aspect ratio is identical).
-          SIM=$(xcrun simctl list devices available | grep -oE "iPhone (15 Plus|16 Plus)" | head -1)
-          [ -z "$SIM" ] && SIM="iPhone 15 Plus"
+          # Xcode 26 only ships iPhone 17 series; we capture at native resolution
+          # then resize with sips. 1320×2868 (17 Pro Max) and 1290×2796 (17/Air)
+          # both resize cleanly — aspect ratios differ by <0.5%, imperceptible.
+          SIM=$(xcrun simctl list devices available | grep -oE "iPhone 17 Pro Max|iPhone 17 Pro|iPhone 17$|iPhone Air" | head -1)
+          [ -z "$SIM" ] && SIM="iPhone 17 Pro Max"
           echo "Simulator: $SIM"
 
           OUT="$CM_BUILD_DIR/screenshots/iphone_6_7"
@@ -48,7 +49,7 @@ workflows:
             -resultBundlePath "$CM_BUILD_DIR/result_6_7.xcresult" \
             CODE_SIGNING_ALLOWED=NO
 
-          # Resize to exact ASC-required dimensions (1290×2796 → 1284×2778).
+          # Resize to exact ASC-required 6.7" dimensions.
           echo "Resizing PNGs to 1284×2778..."
           for f in "$OUT"/*.png; do
             sips -z 2778 1284 "$f"
