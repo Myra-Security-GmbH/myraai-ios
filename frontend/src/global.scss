@@ -1,6 +1,35 @@
 @use "@myraui/styles/scss/variables/typography" as *;
 
+html, body {
+  // Lock the page to the viewport so mobile browsers (and the WKWebView /
+  // Android WebView wrappers) can't rubber-band the whole document when the
+  // user drags — that was exposing dark space below the chat input.
+  // Scrollable regions (chat list, admin tables) still scroll because they
+  // have their own overflow:auto / overflow-y:scroll containers.
+  overscroll-behavior: none;
+  overflow: hidden;
+}
+
 body {
   font-family: $primary-font-family;
+}
+
+// Safe-area variables — single source of truth for env(safe-area-inset-*).
+// The Android WebView is laid out below the system bars by MainActivity's
+// inset listener, so its frame already excludes the status bar / home indicator.
+// Chrome WebView still reports those insets via env() under viewport-fit=cover,
+// which would double-count the spacing. The .aig-android class neutralises
+// them so CSS rules below only "fire" on iOS WKWebView, where the inset is real.
+:root {
+  --aig-safe-top:    env(safe-area-inset-top, 0px);
+  --aig-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --aig-safe-left:   env(safe-area-inset-left, 0px);
+  --aig-safe-right:  env(safe-area-inset-right, 0px);
+}
+html.aig-android {
+  --aig-safe-top:    0px;
+  --aig-safe-bottom: 0px;
+  --aig-safe-left:   0px;
+  --aig-safe-right:  0px;
 }
 

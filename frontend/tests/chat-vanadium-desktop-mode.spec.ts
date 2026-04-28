@@ -86,8 +86,10 @@ test.describe("viewport-fix script — desktop-mode simulation (innerWidth=980, 
     await openChat(page);
 
     const content = await getViewportMeta(page);
-    // The inline fix script must have set: width=427,initial-scale=1.0
-    expect(content).toBe("width=427,initial-scale=1.0");
+    // Inline fix script rewrites the meta to width=<outerWidth>,initial-scale=1.0
+    // plus the zoom-clamp keys (maximum-scale=1.0,user-scalable=no) — pinch-zoom
+    // is disabled in every viewport mode, including the desktop-mode rewrite.
+    expect(content).toBe("width=427,initial-scale=1.0,maximum-scale=1.0,user-scalable=no");
   });
 
   test("chat page loads without JS errors in simulated desktop-mode", async ({ page }) => {
@@ -200,7 +202,7 @@ test.describe("viewport-fix script — no false positive on desktop (innerWidth=
     await openChat(page);
 
     const content = await getViewportMeta(page);
-    expect(content).toBe("width=device-width, initial-scale=1.0");
+    expect(content).toBe("width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover");
   });
 
   test("CSS zoom is not applied on real desktop", async ({ page }) => {
@@ -229,7 +231,7 @@ test.describe("viewport-fix script — no false positive on narrow desktop (inne
     await openChat(page);
 
     const content = await getViewportMeta(page);
-    expect(content).toBe("width=device-width, initial-scale=1.0");
+    expect(content).toBe("width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover");
   });
 
   test("CSS zoom is not applied on narrow desktop", async ({ page }) => {

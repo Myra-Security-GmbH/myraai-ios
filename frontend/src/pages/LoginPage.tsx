@@ -152,6 +152,18 @@ export default function LoginPage() {
         )}
 
         <AndroidBuildBadge />
+
+        <p style={{ textAlign: "center", fontSize: 12, margin: "16px 0 0" }}>
+          <a
+            href="https://ai.myra.eu/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--text-muted, #8899aa)", textDecoration: "underline" }}
+            data-cy={cyId("privacy-link")}
+          >
+            Privacy Policy
+          </a>
+        </p>
       </div>
     </div>
   );

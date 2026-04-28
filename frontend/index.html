@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <!-- Fix for Chrome/Vanadium "Request Desktop Site" mode.
          In that mode the browser forces innerWidth to ~980 px while outerWidth stays at
          the real device CSS pixel width (~427 px).  The browser then scales the 980 px
@@ -33,7 +33,7 @@
         if (ow > 0 && iw > ow * 1.5 && ow < 600) {
           // Fix 1: meta viewport (works in non-Chromium browsers)
           document.querySelector('meta[name="viewport"]')
-            .setAttribute('content', 'width=' + ow + ',initial-scale=1.0');
+            .setAttribute('content', 'width=' + ow + ',initial-scale=1.0,maximum-scale=1.0,user-scalable=no');
           // Fix 2: CSS zoom compensation (Chrome 128+ / Vanadium 128+)
           var zoom = iw / ow;
           document.documentElement.style.zoom = String(zoom);

@@ -3,30 +3,46 @@ import { useNavigate } from "react-router-dom";
 import { authApi, AdminUser, api } from "src/api/client";
 
 function registerPushTokenIfAvailable() {
-  if (!window.Android?.getDeviceToken) return;
+  const ua = navigator.userAgent;
+  const isAndroid = /MYRAai-Android/.test(ua);
+  const isIOS     = /MYRAai-iOS/.test(ua);
+  if (!isAndroid && !isIOS) return;
 
-  // Both iOS and Android expose the bridge under window.Android. The Android
-  // WebView appends "MYRAai-Android" to the user-agent so we can tell which
-  // OS we're talking to and tag tokens correctly server-side.
-  const isAndroid = /MYRAai-Android/.test(navigator.userAgent);
   const platform = isAndroid ? "android" : "ios";
+  const post = (token: string) => {
+    api.post("/me/device-token", { token, platform }).catch(() => {});
+  };
 
+  if (isIOS) {
+    // iOS pushes the token in: AppDelegate sets window.__myraApnsToken and
+    // dispatches a 'myra:apns-token' CustomEvent on every page-load. Either
+    // path may win the race depending on whether the token arrived before
+    // or after the WebView finished navigating.
+    if (typeof window.__myraApnsToken === "string" && window.__myraApnsToken) {
+      post(window.__myraApnsToken);
+      return;
+    }
+    window.addEventListener("myra:apns-token", (e: Event) => {
+      const detail = (e as CustomEvent<{ token?: string }>).detail;
+      if (detail?.token) post(detail.token);
+    }, { once: true });
+    return;
+  }
+
+  // Android: callback-pull. POST_NOTIFICATIONS is a runtime permission on
+  // Android 13+; the native bridge shows the rationale + system prompt and
+  // calls back with the granted bool. On Android <13 it returns true
+  // immediately.
+  if (!window.Android?.getDeviceToken) return;
   const fetchAndPostToken = () => {
     const cb = "__myraOnPushToken_" + Date.now();
     window[cb] = (token: string | null) => {
       delete window[cb];
-      if (!token) return;
-      api.post("/me/device-token", { token, platform }).catch(() => {});
+      if (token) post(token);
     };
     window.Android!.getDeviceToken!(cb);
   };
-
-  // On Android 13+ POST_NOTIFICATIONS is a runtime permission. The native
-  // bridge shows a rationale dialog, then triggers the system prompt, then
-  // calls our callback with the result. On older Android and on iOS this
-  // is a no-op (the bridge returns granted=true immediately on Android <13;
-  // iOS uses a separate flow).
-  if (isAndroid && window.Android?.requestNotificationPermission) {
+  if (window.Android.requestNotificationPermission) {
     const cb = "__myraOnNotifPerm_" + Date.now();
     window[cb] = (granted: boolean) => {
       delete window[cb];
