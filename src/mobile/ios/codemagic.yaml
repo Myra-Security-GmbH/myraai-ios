@@ -11,7 +11,7 @@ workflows:
       vars:
         XCODE_PROJECT: "MYRAai.xcodeproj"
         XCODE_SCHEME: "MYRAai"
-      xcode: latest
+      xcode: "16"  # Xcode 16 (iOS 18) has iPhone 14 Plus simulator; Xcode 26 only has iPhone 17 series
     scripts:
       - name: Capture screenshots — iPhone 14 Plus (6.7", 1284×2778 — required by ASC)
         script: |
@@ -32,7 +32,7 @@ workflows:
             exit 1
           fi
 
-          # Xcode 26 does not forward the shell environment into the XCUITest runner
+          # Xcode does not reliably forward shell environment into the XCUITest runner
           # process.  Write a JSON sidecar that the Swift test reads from /tmp.
           printf '{"email":"%s","otp":"%s","output_dir":"%s"}' \
             "$TEST_LOGIN_EMAIL" "$TEST_LOGIN_OTP" "$OUT" \
