@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "src/common/hooks/useDocumentTitle";
 import { useCurrency } from "src/common/hooks/useCurrency";
@@ -10,6 +10,7 @@ import {
   LatencyPercentiles, AnthropicUsage, AnthropicUsageRow,
 } from "src/api/types";
 import { fmtNumber, fmtCost, fmtMs } from "src/common/utils/format";
+import { useChartHover, ChartTooltip } from "../components/ChartHover";
 import s from "src/common/components/layout/Layout.module.scss";
 import ta from "./TenantAnalytics.module.scss";
 
@@ -18,6 +19,10 @@ function fmtRate(numerator: number, denominator: number): string {
   const pct = (numerator / denominator) * 100;
   if (pct === 0) return "0%";
   return pct < 0.1 ? "<0.1%" : `${pct.toFixed(1)}%`;
+}
+
+function dateLabel(ts: number, opts?: Intl.DateTimeFormatOptions): string {
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", ...opts });
 }
 
 type Period = "today" | "7d" | "30d";
@@ -37,11 +42,19 @@ function periodLabel(p: Period) {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function OverviewChart({ data }: { data: TimeseriesPoint[] }) {
+function OverviewChart({
+  data, formatCurrency,
+}: {
+  data: TimeseriesPoint[];
+  formatCurrency: (n: number) => string;
+}) {
+  const hover = useChartHover();
+  const containerRef = useRef<HTMLDivElement | null>(null);
   if (!data.length) return null;
   const W = 600; const H = 64; const gap = 1;
   const n    = data.length;
   const barW = Math.max(1, Math.floor((W - gap * (n - 1)) / n));
+  const slotW = (W - gap * (n - 1)) / n + gap;  // includes gap so slots tile flush
   const maxCost = Math.max(...data.map(d => d.cost_usd), 0.0001);
   const maxReq  = Math.max(...data.map(d => d.requests), 1);
   const pts = data.map((d, i) => {
@@ -50,7 +63,7 @@ function OverviewChart({ data }: { data: TimeseriesPoint[] }) {
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
   return (
-    <div className={s.card} style={{ marginBottom: 20 }}>
+    <div ref={containerRef} className={s.card} style={{ marginBottom: 20, position: "relative" }}>
       <div className={`${s["card-header"]} ${ta["overview-chart-header"]}`}>
         <h2 className={s["card-title"]}>30-Day Overview</h2>
         <div className={ta["chart-legend"]}>
@@ -64,14 +77,58 @@ function OverviewChart({ data }: { data: TimeseriesPoint[] }) {
           </span>
         </div>
       </div>
-      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: "block" }} aria-label="30-day overview chart">
+      <svg
+        width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+        style={{ display: "block" }}
+        aria-label="30-day overview chart"
+        onMouseLeave={hover.onLeave}
+      >
         {data.map((d, i) => {
           const bh = Math.max(1, (d.cost_usd / maxCost) * (H - 2));
-          return <rect key={i} x={i * (barW + gap)} y={H - bh} width={barW} height={bh}
-                        fill="var(--badge-success-text, #16a34a)" opacity={0.55} rx={1} />;
+          const isHovered = hover.hovered === i;
+          return (
+            <rect
+              key={i}
+              x={i * (barW + gap)} y={H - bh} width={barW} height={bh}
+              fill="var(--badge-success-text, #16a34a)"
+              opacity={isHovered ? 1.0 : 0.55}
+              stroke={isHovered ? "var(--accent)" : "none"}
+              strokeWidth={isHovered ? 1 : 0}
+              rx={1}
+            />
+          );
         })}
         <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="1.5" opacity={0.8} />
+        {/* Invisible hit-targets last so they sit on top of bars+line in z-order
+            and capture pointer events for any vertical position over a column. */}
+        {data.map((d, i) => (
+          <rect
+            key={`hit-${i}`}
+            data-chart-hit
+            x={i * slotW} y={0} width={slotW} height={H}
+            fill="transparent" cursor="pointer"
+            aria-label={`${dateLabel(d.ts, { weekday: "short" })}: ${formatCurrency(d.cost_usd)}, ${fmtNumber(d.requests)} request${d.requests === 1 ? "" : "s"}`}
+            onClick={() => hover.togglePin(i)}
+            {...hover.bind(i)}
+          />
+        ))}
       </svg>
+      <ChartTooltip
+        hover={hover}
+        data={data}
+        containerRef={containerRef}
+        render={d => (
+          <div data-cy="overview-tooltip">
+            <div style={{ color: "var(--text-secondary)", marginBottom: 2 }}>
+              {dateLabel(d.ts, { weekday: "short" })}
+            </div>
+            <div><strong>{formatCurrency(d.cost_usd)}</strong></div>
+            <div style={{ color: "var(--text-secondary)" }}>
+              {fmtNumber(d.requests)} request{d.requests === 1 ? "" : "s"}
+            </div>
+          </div>
+        )}
+      />
     </div>
   );
 }
@@ -124,9 +181,15 @@ function BudgetBar({ used, total, fmtFn = fmtCost }: { used: number; total: numb
   );
 }
 
-function BarChart({ data, height = 72 }: { data: TimeseriesPoint[]; height?: number }) {
-  const [hovered, setHovered] = useState<number | null>(null);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
+function BarChart({
+  data, height = 72, formatCurrency,
+}: {
+  data: TimeseriesPoint[];
+  height?: number;
+  formatCurrency: (n: number) => string;
+}) {
+  const hover = useChartHover();
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   if (!data.length) return <div style={{ height }} />;
   const max = Math.max(...data.map(d => d.cost_usd));
@@ -137,37 +200,51 @@ function BarChart({ data, height = 72 }: { data: TimeseriesPoint[]; height?: num
   );
   const W = 400; const H = height; const gap = 2;
   const barW = Math.max(2, (W - gap * (data.length - 1)) / data.length);
-  const hp = hovered !== null ? data[hovered] : null;
+  const slotW = (W - gap * (data.length - 1)) / data.length + gap;
+
   return (
-    <div style={{ position: "relative" }}>
-      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
-           style={{ color: "var(--badge-success-text, #16a34a)", display: "block" }}
-           onMouseLeave={() => setHovered(null)}>
+    <div ref={containerRef} style={{ position: "relative" }}>
+      <svg
+        width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+        style={{ color: "var(--badge-success-text, #16a34a)", display: "block" }}
+        onMouseLeave={hover.onLeave}
+      >
         {data.map((d, i) => {
           const bh = (d.cost_usd / max) * H * 0.92;
+          const isHovered = hover.hovered === i;
           return (
-            <rect key={i} x={i * (barW + gap)} y={H - bh} width={barW} height={bh}
-                  fill="currentColor" opacity={hovered === null || hovered === i ? 0.75 : 0.35} rx={1}
-                  onMouseEnter={e => { setHovered(i); setPos({ x: e.clientX, y: e.clientY }); }}
-                  onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })} />
+            <rect
+              key={i}
+              x={i * (barW + gap)} y={H - bh} width={barW} height={bh}
+              fill="currentColor"
+              opacity={isHovered ? 1.0 : 0.65}
+              rx={1}
+            />
           );
         })}
+        {data.map((d, i) => (
+          <rect
+            key={`hit-${i}`}
+            data-chart-hit
+            x={i * slotW} y={0} width={slotW} height={H}
+            fill="transparent" cursor="pointer"
+            aria-label={`${dateLabel(d.ts)}: ${formatCurrency(d.cost_usd)}`}
+            onClick={() => hover.togglePin(i)}
+            {...hover.bind(i)}
+          />
+        ))}
       </svg>
-      {hp && (
-        <div style={{
-          position: "fixed", left: pos.x + 12, top: pos.y - 40,
-          background: "var(--card-bg, #fff)", border: "1px solid var(--card-border)",
-          borderRadius: 6, padding: "4px 9px", fontSize: 12,
-          pointerEvents: "none", zIndex: 9999,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.15)", whiteSpace: "nowrap",
-        }}>
-          <span style={{ color: "var(--text-secondary)" }}>
-            {new Date(hp.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-          </span>
-          {" "}
-          <strong>${hp.cost_usd.toFixed(4)}</strong>
-        </div>
-      )}
+      <ChartTooltip
+        hover={hover}
+        data={data}
+        containerRef={containerRef}
+        render={d => (
+          <div data-cy="barchart-tooltip">
+            <span style={{ color: "var(--text-secondary)" }}>{dateLabel(d.ts)}</span>
+            {" "}<strong>{formatCurrency(d.cost_usd)}</strong>
+          </div>
+        )}
+      />
     </div>
   );
 }
@@ -364,7 +441,7 @@ function DetailPanel({
                 )}
               </div>
               {chartData.length > 0
-                ? <BarChart data={chartData} />
+                ? <BarChart data={chartData} formatCurrency={fc} />
                 : <div className={s.empty} style={{ padding: 24 }}>Loading…</div>}
             </div>
           );
@@ -580,7 +657,7 @@ export default function TenantAnalytics() {
 
       {/* 30-day overview chart */}
       {globalTimeseries && globalTimeseries.length > 0 && (
-        <OverviewChart data={globalTimeseries} />
+        <OverviewChart data={globalTimeseries} formatCurrency={fc} />
       )}
 
       {/* Latency percentile strip */}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import TenantAnalytics from "./TenantAnalytics";
@@ -919,5 +919,168 @@ describe("TenantAnalytics — empty states", () => {
     await waitFor(() =>
       expect(screen.getByText(/No data for this period/i)).toBeInTheDocument()
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Overview chart hover tooltip
+// ---------------------------------------------------------------------------
+//
+// The 30-Day Overview SVG renders 30 invisible hit-target rects (one per day)
+// last in z-order so they capture pointer events for any vertical position
+// over a column. fireEvent.mouseEnter is more reliable than userEvent.hover
+// in jsdom because jsdom doesn't compute SVG bounding boxes.
+
+describe("TenantAnalytics — overview chart hover tooltip", () => {
+  // Helper: return the n-th hit-target rect inside the 30-day overview SVG.
+  // Hit-targets are the rects with the data-chart-hit attribute.
+  function getHitTargets(): Element[] {
+    const svg = screen.getByLabelText("30-day overview chart");
+    return Array.from(svg.querySelectorAll<Element>("rect[data-chart-hit]"));
+  }
+
+  it("renders 30 invisible hit-target rects for hover detection", async () => {
+    setupDefaultMocks();
+    renderPage();
+    await waitFor(() => screen.getByLabelText("30-day overview chart"));
+    expect(getHitTargets()).toHaveLength(30);
+  });
+
+  it("each hit-target carries an aria-label with date, cost, and request count", async () => {
+    setupDefaultMocks();
+    renderPage();
+    await waitFor(() => screen.getByLabelText("30-day overview chart"));
+    const rects = getHitTargets();
+    // GLOBAL_TS day 0: cost=0.20, requests=10
+    const first = rects[0].getAttribute("aria-label") ?? "";
+    expect(first).toMatch(/\$0\.20/);
+    expect(first).toMatch(/10 requests/);
+    // GLOBAL_TS day 29 (last): cost=6.00, requests=300
+    const last = rects[29].getAttribute("aria-label") ?? "";
+    expect(last).toMatch(/\$6\.00/);
+    expect(last).toMatch(/300 requests/);
+  });
+
+  it("hovering a hit-target shows the tooltip with date, cost, and requests", async () => {
+    setupDefaultMocks();
+    renderPage();
+    await waitFor(() => screen.getByLabelText("30-day overview chart"));
+    expect(screen.queryByTestId("overview-tooltip-marker")).toBeNull();
+
+    const rects = getHitTargets();
+    fireEvent.mouseEnter(rects[29], { clientX: 200, clientY: 100 });
+
+    await waitFor(() => {
+      const tip = document.querySelector("[data-cy='overview-tooltip']");
+      expect(tip).not.toBeNull();
+      expect(tip!.textContent).toMatch(/\$6\.00/);
+      expect(tip!.textContent).toMatch(/300 requests/);
+    });
+  });
+
+  it("singular 'request' (no s) when count is exactly 1", async () => {
+    // Override timeseries: one day with exactly 1 request
+    mockApi.get.mockImplementation((path: string) => {
+      if (path.startsWith("/stats/analytics"))  return Promise.resolve(ANALYTICS);
+      if (path === "/tenants")                  return Promise.resolve([TENANT1, TENANT2]);
+      if (path === "/stats/timeseries?bucket=1d&n=30") return Promise.resolve([
+        { ts: Date.now(), requests: 1, blocked: 0, rate_limited: 0, cost_usd: 0.01 },
+      ]);
+      if (path.includes("anthropic-usage"))     return Promise.resolve(null);
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await waitFor(() => screen.getByLabelText("30-day overview chart"));
+    const rects = getHitTargets();
+    fireEvent.mouseEnter(rects[0], { clientX: 100, clientY: 100 });
+
+    await waitFor(() => {
+      const tip = document.querySelector("[data-cy='overview-tooltip']");
+      expect(tip).not.toBeNull();
+      // "1 request" must appear; "1 requests" (plural) must not.
+      expect(tip!.textContent).toContain("1 request");
+      expect(tip!.textContent).not.toContain("1 requests");
+    });
+  });
+
+  it("mouseLeave on the chart dismisses the tooltip", async () => {
+    setupDefaultMocks();
+    renderPage();
+    await waitFor(() => screen.getByLabelText("30-day overview chart"));
+    const svg = screen.getByLabelText("30-day overview chart");
+    const rects = getHitTargets();
+
+    fireEvent.mouseEnter(rects[5], { clientX: 100, clientY: 100 });
+    await waitFor(() => expect(document.querySelector("[data-cy='overview-tooltip']")).not.toBeNull());
+
+    fireEvent.mouseLeave(svg);
+    await waitFor(() => expect(document.querySelector("[data-cy='overview-tooltip']")).toBeNull());
+  });
+
+  it("clicking a hit-target pins the tooltip so it survives mouseLeave", async () => {
+    setupDefaultMocks();
+    renderPage();
+    await waitFor(() => screen.getByLabelText("30-day overview chart"));
+    const svg = screen.getByLabelText("30-day overview chart");
+    const rects = getHitTargets();
+
+    fireEvent.mouseEnter(rects[10], { clientX: 100, clientY: 100 });
+    fireEvent.click(rects[10]);
+
+    fireEvent.mouseLeave(svg);
+    // Pinned: tooltip remains visible after mouse leaves.
+    await waitFor(() => expect(document.querySelector("[data-cy='overview-tooltip']")).not.toBeNull());
+  });
+
+  it("focusing a hit-target via keyboard reveals the tooltip", async () => {
+    setupDefaultMocks();
+    renderPage();
+    await waitFor(() => screen.getByLabelText("30-day overview chart"));
+    const rects = getHitTargets() as HTMLElement[];
+    expect(rects[0].getAttribute("tabindex")).toBe("0");
+
+    fireEvent.focus(rects[0]);
+    await waitFor(() => expect(document.querySelector("[data-cy='overview-tooltip']")).not.toBeNull());
+
+    fireEvent.blur(rects[0]);
+    await waitFor(() => expect(document.querySelector("[data-cy='overview-tooltip']")).toBeNull());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Detail-panel BarChart tooltip — currency-aware regression guard
+// ---------------------------------------------------------------------------
+//
+// BarChart used to hard-code `$${cost.toFixed(4)}` in its tooltip. After the
+// option-B refactor it accepts `formatCurrency` from the parent so the page's
+// currency selector applies. With USD as the default, hovering a non-zero day
+// must produce a tooltip with a `$` prefix (not just bare digits).
+
+describe("TenantAnalytics — detail-panel BarChart tooltip", () => {
+  it("tooltip on hover shows currency-formatted cost (default USD)", async () => {
+    setupDefaultMocks();
+    renderPage();
+
+    // Open detail drawer for acme
+    await waitFor(() => screen.getByText("devteam"));
+    const rows    = screen.getAllByRole("row");
+    const acmeRow = rows.find(r => within(r).queryByText("acme") !== null);
+    await userEvent.click(acmeRow!);
+
+    // Wait for the per-tenant Cost — Last 30 Days card
+    await waitFor(() => expect(screen.getByText(/Cost — Last 30 Days/i)).toBeInTheDocument());
+
+    // The detail BarChart has its own hit-targets. Pick the last one and hover.
+    const allHits = document.querySelectorAll("rect[data-chart-hit]");
+    expect(allHits.length).toBeGreaterThan(30);  // overview's 30 + detail's 30
+    // The detail BarChart's hit-targets are AFTER the overview's in DOM order.
+    const detailHit = allHits[allHits.length - 1];
+    fireEvent.mouseEnter(detailHit, { clientX: 100, clientY: 100 });
+
+    await waitFor(() => {
+      const tip = document.querySelector("[data-cy='barchart-tooltip']");
+      expect(tip).not.toBeNull();
+      expect(tip!.textContent).toMatch(/\$/);
+    });
   });
 });
