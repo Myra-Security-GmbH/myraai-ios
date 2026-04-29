@@ -204,7 +204,7 @@ function fmtTokens(n: number): string {
 }
 
 function AnthropicUsagePanel({ usage }: { usage: AnthropicUsage | null }) {
-  if (!usage) return null;
+  if (!usage || !usage.daily) return null;
   if (usage.daily.length === 0) return (
     <div className={s.card} style={{ marginBottom: 20 }}>
       <div className={s["card-header"]}><h2 className={s["card-title"]}>Anthropic Usage (API)</h2></div>
@@ -351,7 +351,7 @@ function DetailPanel({
         )}
 
         {(() => {
-          const anthropicTs = anthropicUsage && anthropicUsage.daily.length > 0
+          const anthropicTs = anthropicUsage && anthropicUsage.daily && anthropicUsage.daily.length > 0
             ? anthropicToTimeseries(anthropicUsage) : null;
           const chartData = anthropicTs ?? detail?.timeseries ?? [];
           const authoritative = anthropicTs !== null;

@@ -147,6 +147,7 @@ function setupDefaultMocks() {
     if (path.startsWith("/stats/analytics"))  return Promise.resolve(ANALYTICS);
     if (path === "/tenants")                  return Promise.resolve([TENANT1, TENANT2]);
     if (path === "/stats/timeseries?bucket=1d&n=30") return Promise.resolve(GLOBAL_TS);
+    if (path.includes("anthropic-usage"))     return Promise.resolve(null);
     if (path.includes("/analytics"))          return Promise.resolve(DETAIL);
     if (path.includes("/spend"))              return Promise.resolve(SPEND);
     return Promise.resolve([]);
