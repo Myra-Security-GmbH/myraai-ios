@@ -58,6 +58,42 @@ workflows:
 
           echo "PNG files written:"
           ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — check XCTAttachments in xcresult)"
+      - name: Capture iPad 13" screenshots (ASC 12.9" / 13" slot)
+        script: |
+          set -e
+          # iPad Pro 13" (M4) captures at 2064×2752; 12.9" 6th gen at 2048×2732.
+          # App Store Connect accepts both for the "12.9" or 13"" display slot.
+          # The sidebar shows in hamburger mode on iPad because the app uses
+          # @media (pointer: coarse) — no Swift test changes needed.
+          SIM="iPad Pro (13-inch) (M4)"
+          xcrun simctl list devices available | grep -qF "$SIM" || \
+            SIM="iPad Pro (12.9-inch) (6th generation)"
+          xcrun simctl list devices available | grep -qF "$SIM" || \
+            SIM=$(xcrun simctl list devices available | grep -oE "iPad Pro[^(]+" | head -1 | sed 's/ *$//')
+          echo "Simulator: $SIM"
+
+          OUT="$CM_BUILD_DIR/screenshots/ipad_13"
+          mkdir -p "$OUT"
+
+          printf '{"email":"%s","otp":"%s","output_dir":"%s"}' \
+            "$TEST_LOGIN_EMAIL" "$TEST_LOGIN_OTP" "$OUT" \
+            > /tmp/myra_screenshot_creds.json
+
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "platform=iOS Simulator,name=$SIM,OS=latest" \
+            -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_app_store_screenshots \
+            -resultBundlePath "$CM_BUILD_DIR/result_ipad.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+          echo "iPad screenshot dimensions:"
+          for f in "$OUT"/*.png; do
+            printf "  %s: " "$(basename "$f")"
+            sips -g pixelWidth -g pixelHeight "$f" | grep pixel | tr '\n' ' '
+            echo
+          done
+          ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — check XCTAttachments in xcresult)"
     artifacts:
       - screenshots/**/*.png
 
