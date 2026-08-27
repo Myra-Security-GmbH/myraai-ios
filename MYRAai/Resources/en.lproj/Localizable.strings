@@ -1,0 +1,26 @@
+/* Offline screen — accessibility label on wifi icon */
+"No internet connection" = "No internet connection";
+
+/* Offline screen — headline */
+"No Connection" = "No Connection";
+
+/* Offline screen — body text */
+"Check your internet connection\nand try again." = "Check your internet connection\nand try again.";
+
+/* Offline screen — retry button */
+"Retry" = "Retry";
+
+/* Biometric lock screen — headline */
+"MYRA AI is locked" = "MYRA AI is locked";
+
+/* Biometric lock screen — subtitle */
+"Authenticate to continue" = "Authenticate to continue";
+
+/* Biometric lock screen — unlock button */
+"Unlock" = "Unlock";
+
+/* Biometric prompt reason */
+"Unlock MYRA AI" = "Unlock MYRA AI";
+
+/* Biometric lock screen — generic failure */
+"Authentication failed" = "Authentication failed";

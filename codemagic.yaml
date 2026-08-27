@@ -1,0 +1,504 @@
+workflows:
+  keyboard-check:
+    name: iOS smoke — login, virtual keyboard, a11y audit
+    # AGF-1937: proves the sim raises the SOFTWARE keyboard + captures the keyboard-open /easy
+    # states (composer + model picker). Replaces the separate GitHub-Actions Appium rig once green.
+    max_build_duration: 25
+    instance_type: mac_mini_m2
+    cache:
+      cache_paths:
+        - ~/Library/Developer/Xcode/DerivedData  # skip the full test-target rebuild on repeat runs
+    environment:
+      groups:
+        - test   # provides TEST_LOGIN_EMAIL and TEST_LOGIN_OTP
+      vars:
+        XCODE_PROJECT: "MYRAai.xcodeproj"
+        XCODE_SCHEME: "MYRAai"
+      xcode: latest
+    scripts:
+      - name: Keyboard-open captures (software keyboard forced)
+        script: |
+          set -e
+          SIM=$(xcrun simctl list devices available | grep -oE "iPhone 17 Pro Max|iPhone 17 Pro|iPhone 17$|iPhone Air" | head -1)
+          [ -z "$SIM" ] && SIM="iPhone 17 Pro Max"
+          DEVID=$(xcrun simctl list devices available | grep -F "$SIM (" | head -1 | grep -oiE "[0-9a-f]{8}-[0-9a-f-]{27}" | head -1)
+          echo "Simulator: $SIM ($DEVID)"
+          # Force the ON-SCREEN keyboard BEFORE boot (a boot-time preference): without this a sim
+          # can attach the Mac's hardware keyboard and typeText never raises the software keyboard.
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false || true
+          if [ -n "$DEVID" ]; then
+            PLIST="$HOME/Library/Preferences/com.apple.iphonesimulator.plist"
+            /usr/libexec/PlistBuddy -c "Add :DevicePreferences dict" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :DevicePreferences:$DEVID dict" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :DevicePreferences:$DEVID:ConnectHardwareKeyboard bool false" "$PLIST" 2>/dev/null ||               /usr/libexec/PlistBuddy -c "Set :DevicePreferences:$DEVID:ConnectHardwareKeyboard false" "$PLIST" || true
+          fi
+          xcrun simctl boot "$DEVID" 2>/dev/null || true
+          xcrun simctl bootstatus "$DEVID" -b 2>/dev/null || true
+          # Dark appearance: the main iOS reporter runs dark; captures + audits should match.
+          xcrun simctl ui "$DEVID" appearance dark 2>/dev/null || true
+          if [ -n "$DEVID" ]; then DEST="platform=iOS Simulator,id=$DEVID"; else DEST="platform=iOS Simulator,name=$SIM,OS=latest"; fi
+
+          OUT="$CM_BUILD_DIR/screenshots/keyboard"
+          mkdir -p "$OUT"
+          # INT-targeted smoke (AGF-1937): fixes land on int pre-prod, so testing int makes the
+          # a11y gate real. Dedicated int identity (google-review, static OTP set on the int DB) via
+          # the TEST_LOGIN_*_INT variables; the prod capture account stays for the other workflows.
+          SMOKE_EMAIL="${TEST_LOGIN_EMAIL_INT:-$TEST_LOGIN_EMAIL}"
+          SMOKE_OTP="${TEST_LOGIN_OTP_INT:-$TEST_LOGIN_OTP}"
+          SMOKE_BASE="https://ai-int.myra.eu"
+          A11Y_GATE="false" # AGF-1944 login hit-areas not fully clean yet (7 residual) — log-only until then; flip to true when the baseline is green
+          echo "smoke identity: $SMOKE_EMAIL @ $SMOKE_BASE (a11y gate: $A11Y_GATE)"
+          if [ -z "$SMOKE_EMAIL" ] || [ -z "$SMOKE_OTP" ]; then
+            echo "ERROR: smoke credentials empty — check the Codemagic variable group 'test'"
+            exit 1
+          fi
+
+          # AGF-1948: mint a CI session (UI-free auth) so the keyboard/audit tests boot ALREADY
+          # authenticated — no login-UI drive, killing the iOS login flake class. Curl the grant on
+          # the ADMIN-API host (where the aig_admin cookie is scoped; the SPA calls it cross-origin)
+          # with the bearer secret from the encrypted 'test' group, requesting a SHORT ttl (the token
+          # rides argv into artifacts). Best-effort: if the endpoint 404s (int not yet enabled) or
+          # AIG_CI_SESSION_SECRET is unset, session_cookie stays empty and the tests fall back to the
+          # real login round-trip — never a hard failure here. NEVER set -x around this curl.
+          ADMIN_HOST="ai-api-admin-int.myra.eu"
+          CI_TOKEN=""
+          if [ -n "$AIG_CI_SESSION_SECRET" ]; then
+            CI_RESP="$(curl -sS --max-time 25 -X POST "https://$ADMIN_HOST/admin/auth/ci-session" \
+              -H "Authorization: Bearer $AIG_CI_SESSION_SECRET" -H "Content-Type: application/json" \
+              -d '{"email":"ci-ios@local.test","ttl_minutes":15}' 2>/dev/null || true)"
+            CI_TOKEN="$(printf '%s' "$CI_RESP" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)"
+            if [ -n "$CI_TOKEN" ]; then
+              echo "CI session grant: OK (booting authed, no login UI)"
+            else
+              echo "CI session grant: unavailable (falling back to UI login) — resp head: $(printf '%s' "$CI_RESP" | head -c 60)"
+            fi
+          else
+            echo "CI session grant: AIG_CI_SESSION_SECRET unset — using UI login"
+          fi
+
+          # Write both sidecars (screenshot + historical LoginTests name), including the CI session
+          # cookie + admin host when minted. Use python for robust JSON (avoids quoting a JWT by hand).
+          SMOKE_EMAIL="$SMOKE_EMAIL" SMOKE_OTP="$SMOKE_OTP" OUT="$OUT" SMOKE_BASE="$SMOKE_BASE" \
+          A11Y_GATE="$A11Y_GATE" CI_TOKEN="$CI_TOKEN" ADMIN_HOST="$ADMIN_HOST" python3 - <<'PYEOF'
+          import json, os
+          base = {"email": os.environ["SMOKE_EMAIL"], "otp": os.environ["SMOKE_OTP"],
+                  "base_url": os.environ["SMOKE_BASE"], "a11y_gate": os.environ["A11Y_GATE"]}
+          if os.environ.get("CI_TOKEN"):
+              base["session_cookie"] = os.environ["CI_TOKEN"]
+              base["admin_host"] = os.environ["ADMIN_HOST"]
+          shot = dict(base, output_dir=os.environ["OUT"])
+          open("/tmp/myra_screenshot_creds.json", "w").write(json.dumps(shot))
+          open("/tmp/myra_test_creds.json", "w").write(json.dumps(base))
+          PYEOF
+
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "$DEST" \
+            -only-testing:MYRAaiUITests/LoginTests \
+            -only-testing:MYRAaiUITests/A11yAuditTests \
+            -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_de_composer_keyboard \
+            -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_keyboard_screens \
+            -resultBundlePath "$CM_BUILD_DIR/result_keyboard.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+          echo "=== A11YAUDIT summary ==="
+          grep -a "A11YAUDIT" /tmp/xcodebuild_logs/*.log 2>/dev/null || true
+
+          echo "PNG files written:"
+          ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — the keyboard assert failed?)"
+    artifacts:
+      - screenshots/**/*.png
+
+  kb-debug:
+    name: iOS kb-debug — /easy conversation keyboard status-bar overlap (one scenario, fast)
+    # AGF-1991: a FAST, focused repro of the /easy conversation + soft-keyboard status-bar overlap on a
+    # real simulator (that class is unreproducible in headless WebKit — keyboardViewport.ts). Same setup
+    # as keyboard-check (INT target, forced soft keyboard, CI-session auth) but runs ONLY
+    # test_capture_kb_conversation_overlap, so a SPA fix deployed to int can be re-checked in ONE short
+    # build. Trigger via the Codemagic API (workflowId: kb-debug) once the GitHub mirror carries this file.
+    max_build_duration: 18
+    instance_type: mac_mini_m2
+    cache:
+      cache_paths:
+        - ~/Library/Developer/Xcode/DerivedData
+    environment:
+      groups:
+        - test
+      vars:
+        XCODE_PROJECT: "MYRAai.xcodeproj"
+        XCODE_SCHEME: "MYRAai"
+      xcode: latest
+    scripts:
+      - name: Capture the /easy conversation keyboard-open state (software keyboard forced)
+        script: |
+          set -e
+          SIM=$(xcrun simctl list devices available | grep -oE "iPhone 17 Pro Max|iPhone 17 Pro|iPhone 17$|iPhone Air" | head -1)
+          [ -z "$SIM" ] && SIM="iPhone 17 Pro Max"
+          DEVID=$(xcrun simctl list devices available | grep -F "$SIM (" | head -1 | grep -oiE "[0-9a-f]{8}-[0-9a-f-]{27}" | head -1)
+          echo "Simulator: $SIM ($DEVID)"
+          # Force the ON-SCREEN keyboard BEFORE boot (a sim can otherwise attach the Mac's hardware
+          # keyboard and typeText never raises the software keyboard) — same as keyboard-check.
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false || true
+          if [ -n "$DEVID" ]; then
+            PLIST="$HOME/Library/Preferences/com.apple.iphonesimulator.plist"
+            /usr/libexec/PlistBuddy -c "Add :DevicePreferences dict" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :DevicePreferences:$DEVID dict" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :DevicePreferences:$DEVID:ConnectHardwareKeyboard bool false" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :DevicePreferences:$DEVID:ConnectHardwareKeyboard false" "$PLIST" || true
+          fi
+          xcrun simctl boot "$DEVID" 2>/dev/null || true
+          xcrun simctl bootstatus "$DEVID" -b 2>/dev/null || true
+          xcrun simctl ui "$DEVID" appearance dark 2>/dev/null || true
+          if [ -n "$DEVID" ]; then DEST="platform=iOS Simulator,id=$DEVID"; else DEST="platform=iOS Simulator,name=$SIM,OS=latest"; fi
+
+          OUT="$CM_BUILD_DIR/screenshots/kb-debug"
+          mkdir -p "$OUT"
+          # INT identity (fixes land pre-prod), same as keyboard-check.
+          SMOKE_EMAIL="${TEST_LOGIN_EMAIL_INT:-$TEST_LOGIN_EMAIL}"
+          SMOKE_OTP="${TEST_LOGIN_OTP_INT:-$TEST_LOGIN_OTP}"
+          SMOKE_BASE="https://ai-int.myra.eu"
+          echo "kb-debug identity: $SMOKE_EMAIL @ $SMOKE_BASE"
+          if [ -z "$SMOKE_EMAIL" ] || [ -z "$SMOKE_OTP" ]; then
+            echo "ERROR: smoke credentials empty — check the Codemagic variable group 'test'"
+            exit 1
+          fi
+          # AGF-1948 CI session (UI-free auth). NEVER set -x around this curl.
+          ADMIN_HOST="ai-api-admin-int.myra.eu"
+          CI_TOKEN=""
+          if [ -n "$AIG_CI_SESSION_SECRET" ]; then
+            CI_RESP="$(curl -sS --max-time 25 -X POST "https://$ADMIN_HOST/admin/auth/ci-session" \
+              -H "Authorization: Bearer $AIG_CI_SESSION_SECRET" -H "Content-Type: application/json" \
+              -d '{"email":"ci-ios@local.test","ttl_minutes":15}' 2>/dev/null || true)"
+            CI_TOKEN="$(printf '%s' "$CI_RESP" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)"
+            [ -n "$CI_TOKEN" ] && echo "CI session grant: OK (booting authed)" || echo "CI session grant: unavailable (UI login fallback)"
+          else
+            echo "CI session grant: AIG_CI_SESSION_SECRET unset — using UI login"
+          fi
+          SMOKE_EMAIL="$SMOKE_EMAIL" SMOKE_OTP="$SMOKE_OTP" OUT="$OUT" SMOKE_BASE="$SMOKE_BASE" \
+          CI_TOKEN="$CI_TOKEN" ADMIN_HOST="$ADMIN_HOST" python3 - <<'PYEOF'
+          import json, os
+          base = {"email": os.environ["SMOKE_EMAIL"], "otp": os.environ["SMOKE_OTP"],
+                  "base_url": os.environ["SMOKE_BASE"]}
+          if os.environ.get("CI_TOKEN"):
+              base["session_cookie"] = os.environ["CI_TOKEN"]
+              base["admin_host"] = os.environ["ADMIN_HOST"]
+          shot = dict(base, output_dir=os.environ["OUT"])
+          open("/tmp/myra_screenshot_creds.json", "w").write(json.dumps(shot))
+          open("/tmp/myra_test_creds.json", "w").write(json.dumps(base))
+          PYEOF
+
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "$DEST" \
+            -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_kb_conversation_overlap \
+            -resultBundlePath "$CM_BUILD_DIR/result_kbdebug.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+          echo "=== SHOTLOG ==="
+          grep -a "SHOTLOG\|WEBFLOW" /tmp/xcodebuild_logs/*.log 2>/dev/null || true
+          echo "PNG files written:"
+          ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — the capture failed?)"
+    artifacts:
+      - screenshots/**/*.png
+      - /tmp/xcodebuild_logs/*.log
+      - $CM_BUILD_DIR/result_kbdebug.xcresult
+
+  screenshots:
+    name: App Store Screenshots
+    # Trigger manually from the Codemagic UI — not part of every push.
+    # Produces PNG files as build artefacts ready to upload to App Store Connect.
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - test   # provides TEST_LOGIN_EMAIL and TEST_LOGIN_OTP
+      vars:
+        XCODE_PROJECT: "MYRAai.xcodeproj"
+        XCODE_SCHEME: "MYRAai"
+      xcode: latest  # must match ios-app-store; WKOpenPanelParameters requires iOS 18.4 SDK
+    scripts:
+      - name: Capture screenshots → resize to 1284×2778 (ASC 6.7" requirement)
+        script: |
+          set -e
+          # ASC requires 1284×2778 (6.7") or 1242×2688 (6.5").
+          # Xcode 26 only ships iPhone 17 series; we capture at native resolution
+          # then resize with sips. 1320×2868 (17 Pro Max) and 1290×2796 (17/Air)
+          # both resize cleanly — aspect ratios differ by <0.5%, imperceptible.
+          SIM=$(xcrun simctl list devices available | grep -oE "iPhone 17 Pro Max|iPhone 17 Pro|iPhone 17$|iPhone Air" | head -1)
+          [ -z "$SIM" ] && SIM="iPhone 17 Pro Max"
+          echo "Simulator: $SIM"
+
+          # Boot the sim and normalise the status bar (clean 9:41, full battery/
+          # signal) so every captured shot has a tidy marketing status bar.
+          DEVID=$(xcrun simctl list devices available | grep -F "$SIM (" | head -1 | grep -oiE "[0-9a-f]{8}-[0-9a-f-]{27}" | head -1)
+          echo "Simulator UDID: $DEVID"
+          xcrun simctl boot "$DEVID" 2>/dev/null || true
+          xcrun simctl bootstatus "$DEVID" -b 2>/dev/null || true
+          xcrun simctl status_bar "$DEVID" override \
+            --time "9:41" --batteryState charged --batteryLevel 100 \
+            --cellularMode active --cellularBars 4 --operatorName "" \
+            --dataNetwork wifi --wifiMode active --wifiBars 3 2>/dev/null || true
+          # Use the resolved UDID when we have it; otherwise fall back to the
+          # name-based destination so a failed UDID parse never breaks the build.
+          if [ -n "$DEVID" ]; then DEST="platform=iOS Simulator,id=$DEVID"; else DEST="platform=iOS Simulator,name=$SIM,OS=latest"; fi
+          echo "Destination: $DEST"
+
+          OUT="$CM_BUILD_DIR/screenshots/iphone_6_7"
+          mkdir -p "$OUT"
+
+          # Fail loudly if the 'test' variable group didn't inject credentials.
+          echo "TEST_LOGIN_EMAIL set: $([ -n "$TEST_LOGIN_EMAIL" ] && echo yes || echo NO)"
+          if [ -z "$TEST_LOGIN_EMAIL" ] || [ -z "$TEST_LOGIN_OTP" ]; then
+            echo "ERROR: TEST_LOGIN_EMAIL or TEST_LOGIN_OTP is empty — check the Codemagic variable group 'test'"
+            exit 1
+          fi
+
+          # Xcode does not reliably forward shell environment into the XCUITest runner
+          # process.  Write a JSON sidecar that the Swift test reads from /tmp.
+          printf '{"email":"%s","otp":"%s","output_dir":"%s"}' \
+            "$TEST_LOGIN_EMAIL" "$TEST_LOGIN_OTP" "$OUT" \
+            > /tmp/myra_screenshot_creds.json
+          echo "Credentials written to /tmp/myra_screenshot_creds.json"
+
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "$DEST" \
+            -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_app_store_screenshots \
+            -resultBundlePath "$CM_BUILD_DIR/result_6_7.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+          # Resize to exact ASC-required 6.7" dimensions.
+          echo "Resizing PNGs to 1284×2778..."
+          for f in "$OUT"/*.png; do
+            sips -z 2778 1284 "$f"
+            echo "  $(basename "$f"): $(sips -g pixelWidth -g pixelHeight "$f" | grep pixel | tr '\n' ' ')"
+          done
+
+          echo "PNG files written:"
+          ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — check XCTAttachments in xcresult)"
+      - name: Capture iPad 13" screenshots (ASC 12.9" / 13" slot)
+        script: |
+          set -e
+          # iPad Pro 13" (M4) captures at 2064×2752; 12.9" 6th gen at 2048×2732.
+          # App Store Connect accepts both for the "12.9" or 13"" display slot.
+          # The sidebar shows in hamburger mode on iPad because the app uses
+          # @media (pointer: coarse) — no Swift test changes needed.
+          # Strip UUID + status suffix to get a clean device name from simctl output.
+          # e.g. "    iPad Pro (13-inch) (M4) (B3C8A1D4-...) (Shutdown)"
+          #   → "iPad Pro (13-inch) (M4)"
+          strip_simctl() { sed 's/ *([A-F0-9a-f-]\{8,\}).*//;s/^ *//' ; }
+
+          SIM="iPad Pro (13-inch) (M4)"
+          xcrun simctl list devices available | grep -qF "$SIM" || \
+            SIM="iPad Pro (12.9-inch) (6th generation)"
+          xcrun simctl list devices available | grep -qF "$SIM" || \
+            SIM=$(xcrun simctl list devices available | grep "iPad Pro" | head -1 | strip_simctl)
+          [ -z "$SIM" ] && echo "ERROR: no iPad Pro simulator found" && xcrun simctl list devices available && exit 1
+          echo "Simulator: $SIM"
+
+          DEVID=$(xcrun simctl list devices available | grep -F "$SIM" | head -1 | grep -oiE "[0-9a-f]{8}-[0-9a-f-]{27}" | head -1)
+          echo "Simulator UDID: $DEVID"
+          xcrun simctl boot "$DEVID" 2>/dev/null || true
+          xcrun simctl bootstatus "$DEVID" -b 2>/dev/null || true
+          xcrun simctl status_bar "$DEVID" override \
+            --time "9:41" --batteryState charged --batteryLevel 100 \
+            --dataNetwork wifi --wifiMode active --wifiBars 3 2>/dev/null || true
+          if [ -n "$DEVID" ]; then DEST="platform=iOS Simulator,id=$DEVID"; else DEST="platform=iOS Simulator,name=$SIM,OS=latest"; fi
+          echo "Destination: $DEST"
+
+          OUT="$CM_BUILD_DIR/screenshots/ipad_13"
+          mkdir -p "$OUT"
+
+          printf '{"email":"%s","otp":"%s","output_dir":"%s"}' \
+            "$TEST_LOGIN_EMAIL" "$TEST_LOGIN_OTP" "$OUT" \
+            > /tmp/myra_screenshot_creds.json
+
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "$DEST" \
+            -only-testing:MYRAaiUITests/ScreenshotTests/test_capture_app_store_screenshots \
+            -resultBundlePath "$CM_BUILD_DIR/result_ipad.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+          echo "iPad screenshot dimensions:"
+          for f in "$OUT"/*.png; do
+            printf "  %s: " "$(basename "$f")"
+            sips -g pixelWidth -g pixelHeight "$f" | grep pixel | tr '\n' ' '
+            echo
+          done
+          ls -lh "$OUT"/*.png 2>/dev/null || echo "  (none — check XCTAttachments in xcresult)"
+    artifacts:
+      - screenshots/**/*.png
+
+  ios-app-store:
+    name: MYRAai App Store
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: codemagic
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: eu.myra.myraai
+      groups:
+        - test  # provides TEST_LOGIN_EMAIL and TEST_LOGIN_OTP for UI tests; never logged in build output
+      vars:
+        XCODE_PROJECT: "MYRAai.xcodeproj"
+        XCODE_SCHEME: "MYRAai"
+        DEVELOPMENT_TEAM: "A4C54HLPJ7"
+        SIGN_ID: "Apple Distribution: SASCHA SCHUMANN (A4C54HLPJ7)"
+        PROFILE_NAME: "MYRAai Distribution"
+      xcode: latest
+    scripts:
+      - name: Verify project readable
+        script: |
+          xcodebuild -list -project "$CM_BUILD_DIR/$XCODE_PROJECT"
+      - name: UI test suite — release gate (deterministic native guards)
+        script: |
+          set -e
+          # RegressionGuards are native/hermetic: no network, no prod SPA, no
+          # login, no credentials. They are the reliable gate — they MUST pass to
+          # ship, and they can't flake on prod availability. ScreenshotTests is a
+          # capture job for the 'screenshots' workflow; excluded here.
+          SIM_NAME=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone [0-9]+ /{print $0; exit}' | sed 's/ *(.*//;s/^ *//')
+          [ -z "$SIM_NAME" ] && SIM_NAME="iPhone 15"
+          echo "Using simulator: $SIM_NAME"
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "platform=iOS Simulator,name=$SIM_NAME,OS=latest" \
+            -only-testing:MYRAaiUITests/RegressionGuards \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Prod-smoke UI tests (NON-BLOCKING — live login page + login round-trip)
+        script: |
+          set -e
+          # LoginTests load the live prod SPA and perform a real reviewer login.
+          # Valuable smoke, but they MUST NOT block shipping the app on a prod
+          # blip or a slow cold SPA load — so this step always exits 0. Failures
+          # are surfaced in the log (and by the GitLab ios:build diagnostics).
+          SIM_NAME=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone [0-9]+ /{print $0; exit}' | sed 's/ *(.*//;s/^ *//')
+          [ -z "$SIM_NAME" ] && SIM_NAME="iPhone 15"
+          # xcodebuild does NOT forward shell env into the XCUITest runner; write
+          # the creds to a /tmp sidecar the tests read (simulator shares host
+          # /tmp). Never logged. If absent, the login round-trip self-skips.
+          if [ -n "$TEST_LOGIN_EMAIL" ] && [ -n "$TEST_LOGIN_OTP" ]; then
+            printf '{"email":"%s","otp":"%s"}' "$TEST_LOGIN_EMAIL" "$TEST_LOGIN_OTP" > /tmp/myra_test_creds.json
+          else
+            echo "WARN: TEST_LOGIN_* not set — login round-trip will self-skip"
+          fi
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "platform=iOS Simulator,name=$SIM_NAME,OS=latest" \
+            -only-testing:MYRAaiUITests/LoginTests \
+            CODE_SIGNING_ALLOWED=NO || echo "WARN: prod-smoke LoginTests failed (non-blocking) — see log above"
+      - name: Inspect installed provisioning profile
+        script: |
+          for PROFILE in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo "=== $PROFILE ==="
+            security cms -D -i "$PROFILE" | python3 -c "
+          import sys, plistlib, io
+          p = plistlib.load(io.BytesIO(sys.stdin.buffer.read()))
+          ent = p.get('Entitlements') or {}
+          print('  Name:           ', p.get('Name'))
+          print('  UUID:            ', p.get('UUID'))
+          print('  CreationDate:    ', p.get('CreationDate'))
+          print('  AppIDName:       ', p.get('AppIDName'))
+          print('  application-id:  ', ent.get('application-identifier'))
+          print('  aps-environment: ', ent.get('aps-environment'))
+          print('  All entitlement keys:', sorted(ent.keys()))
+          "
+          done
+      - name: Version guard — never archive into a closed App Store train (AGF-1937 standing rule)
+        script: |
+          set -e
+          # An App Store RELEASE closes its version train: TestFlight then rejects every new build of
+          # that MARKETING_VERSION at the PUBLISH step (iris 90186/90478) — after a 15-minute build.
+          # This guard moves the failure to t=0 and auto-recovers. Two hard-won correctness rules:
+          #  - PROJ_MV is the MAX across ALL pbxproj MARKETING_VERSION entries (helper targets carry
+          #    "1.0"; a first-match sed once archived the whole app as 1.0 — iris 90478).
+          #  - The ASC query logs its stderr; a silently-swallowed auth error looked like "unknown".
+          PROJ_MV=$(python3 -c "
+          import re
+          vs = re.findall(r'\"MARKETING_VERSION\": \"([0-9.]+)\"', open('$CM_BUILD_DIR/$XCODE_PROJECT/project.pbxproj').read())
+          print(max(vs, key=lambda s: [int(x) for x in s.split('.')]) if vs else '')")
+          echo "Project MARKETING_VERSION (max across targets): $PROJ_MV"
+          [ -z "$PROJ_MV" ] && { echo "ERROR: no MARKETING_VERSION in pbxproj"; exit 1; }
+          MV="$PROJ_MV"
+          echo "ASC auth present: issuer=$([ -n "$APP_STORE_CONNECT_ISSUER_ID" ] && echo yes || echo NO) key=$([ -n "$APP_STORE_CONNECT_KEY_IDENTIFIER" ] && echo yes || echo NO)"
+          set +e
+          APP_ID=$(app-store-connect apps list --bundle-id-identifier "eu.myra.myraai" --json 2>/tmp/asc_err.log | python3 -c 'import sys,json;a=json.load(sys.stdin);print(a[0]["id"] if a else "")' 2>>/tmp/asc_err.log)
+          echo "ASC app id: ${APP_ID:-<none>}"
+          LIVE=""
+          if [ -n "$APP_ID" ]; then
+            LIVE=$(app-store-connect apps app-store-versions "$APP_ID" --json 2>>/tmp/asc_err.log | python3 -c '
+          import sys, json
+          try:
+              vs = json.load(sys.stdin)
+          except Exception:
+              vs = []
+          best = ""
+          for v in vs if isinstance(vs, list) else []:
+              at = (v.get("attributes") or {}) if isinstance(v, dict) else {}
+              if at.get("appStoreState") not in ("READY_FOR_SALE", "REPLACED_WITH_NEW_VERSION"):
+                  continue
+              s = at.get("versionString") or ""
+              try:
+                  if [int(x) for x in s.split(".")] > [int(x) for x in (best or "0").split(".")]:
+                      best = s
+              except ValueError:
+                  pass
+          print(best)' 2>>/tmp/asc_err.log)
+          fi
+          set -e
+          [ -s /tmp/asc_err.log ] && { echo "--- ASC query stderr ---"; cat /tmp/asc_err.log; echo "---"; }
+          echo "Highest RELEASED App Store version: ${LIVE:-unknown}"
+          if [ -n "$LIVE" ]; then
+            NEED_BUMP=$(python3 -c "print('no' if [int(x) for x in '$PROJ_MV'.split('.')] > [int(x) for x in '$LIVE'.split('.')] else 'yes')")
+            if [ "$NEED_BUMP" = "yes" ]; then
+              MV=$(python3 -c "p='$LIVE'.split('.'); p[-1]=str(int(p[-1])+1); print('.'.join(p))")
+              echo "WARN: project version $PROJ_MV is not above released $LIVE — archiving as $MV instead. Bump MARKETING_VERSION in project.pbxproj to make this permanent."
+            fi
+          fi
+          echo "Archiving MARKETING_VERSION=$MV"
+          echo "MARKETING_VERSION=$MV" >> "$CM_ENV"
+      - name: Archive
+        script: |
+          xcodebuild archive \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -archivePath "$CM_BUILD_DIR/MYRAai.xcarchive" \
+            CODE_SIGN_STYLE=Manual \
+            "CODE_SIGN_IDENTITY=$SIGN_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            -verbose
+      - name: Export IPA
+        script: |
+          xcodebuild -exportArchive \
+            -archivePath "$CM_BUILD_DIR/MYRAai.xcarchive" \
+            -exportPath "$CM_BUILD_DIR/build/ios/ipa" \
+            -exportOptionsPlist "$CM_BUILD_DIR/ExportOptions.plist"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      app_store_connect:
+        auth: integration
+        # Submission to Beta App Review is handled by the GitLab
+        # 'ios:submit-for-review' job, which tolerates ANOTHER_BUILD_IN_REVIEW
+        # as a soft warning. Letting Codemagic also submit causes both to race
+        # and Codemagic fails the build whenever a previous review is pending.
+        submit_to_testflight: false
+        submit_to_app_store: false
+      email:
+        recipients:
+          - sascha@schumann.net
+        notify:
+          success: true
+          failure: true
