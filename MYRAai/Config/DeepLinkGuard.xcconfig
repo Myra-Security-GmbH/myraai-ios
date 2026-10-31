@@ -1,0 +1,13 @@
+// AGF-5758: passed ONLY by the `deeplink-guard` workflow (`xcodebuild -xcconfig`), never referenced by
+// project.pbxproj or the ios-app-store workflow (scripts/lint_ios_debug_entitlements.sh).
+//
+// Indirection through $(TARGET_NAME): the entitlements and signing apply to the app target only. The unit and UI
+// test targets resolve the undefined DEEPLINK_*_<target> variables to the empty string, so they keep NO
+// entitlements; CODE_SIGNING_ALLOWED=NO is the fallback for them (the app target gets YES).
+DEEPLINK_ENT_MYRAai = MYRAai/Resources/MYRAai.debug-sim.entitlements
+DEEPLINK_SIGN_MYRAai = YES
+
+CODE_SIGN_ENTITLEMENTS = $(DEEPLINK_ENT_$(TARGET_NAME))
+CODE_SIGNING_ALLOWED = $(DEEPLINK_SIGN_$(TARGET_NAME):default=NO)
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM = A4C54HLPJ7
