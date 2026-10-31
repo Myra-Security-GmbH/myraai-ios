@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- AGF-3758: the navigation fence of every sandboxed preview. A frame's OWN navigation is limited only by its
+     EMBEDDER's frame-src, so the preview runs one frame below this document, whose policy allows no frame
+     navigation at all (the preview's own srcdoc is not a fetch and still loads). Measured in Chromium, Firefox and
+     WebKit. The preview's own CSP (SANDBOX_CSP / the MCP app CSP) and the app's CSP are unchanged.
+     Delivered as the srcdoc of SandboxFrame's iframe (imported ?raw): no request, no server route, works offline
+     and in every shell. -->
+<meta http-equiv="Content-Security-Policy" content="frame-src 'none'; child-src 'none'">
+<title>sandbox</title>
+<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent;position:relative}iframe{display:block;border:0;position:absolute;top:0;left:0;width:100%;height:100%}</style>
+</head>
+<body>
+<script>
+(function () {
+  "use strict";
+  // Framed by the app only. Opened top-level (or in a window we did not frame) it does nothing.
+  if (window.parent === window) return;
+  var ENVELOPE = "__aigSandboxHost";
+  var FLAGS = { "allow-scripts": true };   // the only flags a preview ever gets (no allow-same-origin)
+  function allowed(flag) { return Object.prototype.hasOwnProperty.call(FLAGS, flag); }   // never an inherited key
+  var inner = null;                         // the CURRENT preview frame — a fresh one per document
+  var visible = null;                       // the frame on screen: `inner`, or (seamless swap pending) its predecessor
+  var shown = null;                         // the document + flags `inner` shows
+  var visibleKey = null;                    // the document + flags of `visible`
+
+  function render(msg) {
+    if (typeof msg.srcdoc !== "string" || typeof msg.sandbox !== "string") return;
+    var flags = msg.sandbox.split(/\s+/).filter(Boolean);
+    for (var i = 0; i < flags.length; i++) if (!allowed(flags[i])) return;   // unknown flag: render nothing
+    var key = flags.join(" ") + "\n" + msg.srcdoc;
+    if (inner && shown === key) return;     // the same document again: keep the running one
+    if (visible && inner !== visible && visibleKey === key) {
+      // back to the document still on screen while a successor loads: drop the successor, keep the running one
+      inner.remove();
+      inner = visible;
+      shown = visibleKey;
+      return;
+    }
+    shown = key;
+    // AGF-3781: `seamless: true` (strictly the boolean) keeps the frame on screen until its successor has LOADED, then
+    // swaps — a script-less slide-by-slide deck never flashes blank. Routing below is unaffected: from this moment
+    // `inner` is the successor, so the predecessor's late messages no longer match and the page's reach the successor.
+    var seamless = msg.seamless === true && flags.length === 0 && visible !== null && visibleKey.charAt(0) === "\n";   // script-less on BOTH sides: a running app would sit on screen deaf to input
+    if (inner && inner !== visible) inner.remove();   // an earlier successor that never got on screen
+    if (!seamless && visible) visible.remove();
+    var next = document.createElement("iframe");
+    next.setAttribute("sandbox", flags.join(" "));
+    next.setAttribute("title", "");          // the app's frame carries the title (announced once)
+    if (seamless) {
+      next.style.visibility = "hidden";
+      next.addEventListener("load", function () {
+        if (inner !== next || visible === next) return;   // superseded while loading, or a later load of the shown frame
+        next.style.visibility = "";
+        if (visible) visible.remove();
+        visible = next;
+        visibleKey = key;
+      }, { once: true });
+    } else {
+      visible = next;
+      visibleKey = key;
+    }
+    inner = next;
+    next.srcdoc = msg.srcdoc;
+    document.body.appendChild(next);
+  }
+
+  window.addEventListener("message", function (ev) {
+    var d = ev.data;
+    if (ev.source === window.parent) {
+      if (d && typeof d === "object" && d[ENVELOPE] === "render") { render(d); return; }
+      if (inner && inner.contentWindow) inner.contentWindow.postMessage(d, "*", ev.ports ? Array.prototype.slice.call(ev.ports) : []);
+      return;
+    }
+    if (inner && ev.source === inner.contentWindow) {
+      window.parent.postMessage(d, "*", ev.ports ? Array.prototype.slice.call(ev.ports) : []);
+    }
+  });
+})();
+</script>
+</body>
+</html>
