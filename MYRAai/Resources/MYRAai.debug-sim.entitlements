@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- AGF-5758: SIMULATOR HARNESS ONLY (deeplink-guard workflow). The shipped entitlements plus the developer-mode
+     applinks entry, so swcd on the simulator fetches the AASA from the origin. Never referenced by project.pbxproj
+     or the ios-app-store workflow (scripts/lint_ios_debug_entitlements.sh). -->
+<plist version="1.0">
+<dict>
+	<key>application-identifier</key>
+	<string>A4C54HLPJ7.eu.myra.myraai</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>A4C54HLPJ7</string>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:ai.myra.eu</string>
+		<string>applinks:ai.myra.eu?mode=developer</string>
+		<string>webcredentials:ai.myra.eu</string>
+		<string>webcredentials:ai-int.myra.eu</string>
+	</array>
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>
