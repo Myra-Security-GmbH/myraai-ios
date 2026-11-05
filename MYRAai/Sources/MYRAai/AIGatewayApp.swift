@@ -1,0 +1,129 @@
+import SwiftUI
+import UserNotifications
+
+@main
+struct AIGatewayApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+
+// MARK: - App Delegate (APNs registration)
+
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        #if DEBUG
+        AppDelegate.applyUITestApnsTokenHook()
+        #endif
+        // Hard (non-provisional) authorization is REQUIRED: .provisional routes
+        // pushes to Quiet Delivery so testers/users never see a banner — that was
+        // the bug a prior simplification pass removed, and RegressionGuards T-1
+        // (test_first_launch_shows_push_permission_dialog) fails the build if
+        // .provisional is re-introduced here. Do not add it back.
+        //
+        // The push dialog is once-per-install, so any UI test that launches the
+        // app before T-1 would consume it and make T-1 flaky. Every UI test
+        // EXCEPT T-1 launches with -MyraUITestSuppressPushPrompt so only T-1
+        // triggers the prompt — deterministic regardless of test order. DEBUG
+        // only; absent from the Release build users get.
+        if !AppDelegate.suppressPushPromptForUITest {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
+        }
+        return true
+    }
+
+    private static var suppressPushPromptForUITest: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-MyraUITestSuppressPushPrompt")
+        #else
+        return false
+        #endif
+    }
+
+    /// The APNs token (lowercase hex) once registration succeeded. Main thread only. The web page gets it ONLY by asking
+    /// (`getDeviceToken`, AGF-6849) - it is never pushed into a page.
+    static var apnsToken: String?
+    /// True once registration failed (and no token has arrived since): a page that asks is then told null at once.
+    static var apnsRegistrationFailed = false
+
+    /// The one place a token becomes known: `didRegister...` and the DEBUG UI-test hook both come through here.
+    static func receiveApnsToken(hex: String) {
+        apnsToken = hex
+        apnsRegistrationFailed = false
+        NotificationCenter.default.post(name: .apnsTokenReceived, object: hex)
+    }
+
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        AppDelegate.receiveApnsToken(hex: deviceToken.map { String(format: "%02x", $0) }.joined())
+    }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        // Sandbox / simulator - not fatal. AGF-6849: remembered, so a page that asks gets null instead of waiting forever.
+        AppDelegate.apnsRegistrationFailed = true
+        NotificationCenter.default.post(name: .apnsRegistrationFailed, object: nil)
+    }
+
+    #if DEBUG
+    /// UI-test hook (AGF-6849; only in the HTML-probe mode, absent from Release): `-MyraUITestApnsToken <hex>` makes a
+    /// fake token known, immediately or after `-MyraUITestApnsTokenAfter <0...60>` seconds, through the same
+    /// `receiveApnsToken` the real registration callback uses.
+    private static func applyUITestApnsTokenHook() {
+        guard WebView.uiTestHTMLMode, let hex = WebView.launchArgValue("-MyraUITestApnsToken"),
+              DeviceTokenPolicy.isValidToken(hex) else { return }
+        if let raw = WebView.launchArgValue("-MyraUITestApnsTokenAfter"), let after = Double(raw),
+           after.isFinite, after > 0, after <= 60 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + after) { receiveApnsToken(hex: hex) }
+        } else {
+            receiveApnsToken(hex: hex)
+        }
+    }
+    #endif
+
+    // Show notification banners even when the app is in the foreground
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                  willPresent notification: UNNotification,
+                                  withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
+    }
+
+    /// AGF-4244: the user tapped a notification. APNs puts the payload keys at the top level of `userInfo`.
+    /// Park it for ContentView (the web view may not exist yet on a cold start) and tell it to look; the
+    /// routing decision (and its validation) lives in NavigationPolicy.pushTargetURL. Always completes.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let userInfo = response.notification.request.content.userInfo
+        DispatchQueue.main.async {
+            AppDelegate.pendingPushUserInfo = userInfo
+            NotificationCenter.default.post(name: .pushTapped, object: nil)
+        }
+        completionHandler()
+    }
+
+    /// The userInfo of a tapped push not yet consumed. Main thread only (written and read via DispatchQueue.main).
+    static var pendingPushUserInfo: [AnyHashable: Any]?
+
+    static func takePendingPushUserInfo() -> [AnyHashable: Any]? {
+        defer { pendingPushUserInfo = nil }
+        return pendingPushUserInfo
+    }
+}
+
+extension Notification.Name {
+    static let apnsTokenReceived = Notification.Name("APNsTokenReceived")
+    static let apnsRegistrationFailed = Notification.Name("APNsRegistrationFailed")
+    static let pushTapped = Notification.Name("MyraPushTapped")
+}
