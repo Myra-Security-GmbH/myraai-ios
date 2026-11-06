@@ -1,0 +1,410 @@
+[
+ {
+  "name": "valid via activity",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid via openURL",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "openURL",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid via intent",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "intent",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid route shared",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid route auth",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "auth",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid route c",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "c",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid route other",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "other",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid outcome loaded",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid outcome dropped_host",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "dropped_host"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid outcome dropped_scheme",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "dropped_scheme"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid outcome dropped_app_complete",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "dropped_app_complete"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid outcome dropped_env",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "dropped_env"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid outcome switch_prompted",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "switch_prompted"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid ms 0",
+  "value": {
+   "received_at_ms": 0,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "valid ms upper bound",
+  "value": {
+   "received_at_ms": 4102444800000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": true
+ },
+ {
+  "name": "ms -1",
+  "value": {
+   "received_at_ms": -1,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "ms 1.5",
+  "value": {
+   "received_at_ms": 1.5,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "ms above bound",
+  "value": {
+   "received_at_ms": 4102444800001,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "ms string",
+  "value": {
+   "received_at_ms": "123",
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "ms null",
+  "value": {
+   "received_at_ms": null,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "ms bool",
+  "value": {
+   "received_at_ms": true,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "via wrong type",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": 1,
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "via unknown",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "push",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "via uppercase",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "ACTIVITY",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "route url string",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "https://app.myra.ai/shared/abc?token=x",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "route path",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "/shared/abc",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "route wrong type",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": [
+    "shared"
+   ],
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "outcome uppercase",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "LOADED"
+  },
+  "valid": false
+ },
+ {
+  "name": "outcome unknown",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "ok"
+  },
+  "valid": false
+ },
+ {
+  "name": "outcome null",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": null
+  },
+  "valid": false
+ },
+ {
+  "name": "extra key",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded",
+   "extra": 1
+  },
+  "valid": false
+ },
+ {
+  "name": "extra server key",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded",
+   "user_id": "u1"
+  },
+  "valid": false
+ },
+ {
+  "name": "missing route",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "missing ms",
+  "value": {
+   "via": "activity",
+   "route": "shared",
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "empty object",
+  "value": {},
+  "valid": false
+ },
+ {
+  "name": "array",
+  "value": [
+   {
+    "received_at_ms": 1700000000000,
+    "via": "activity",
+    "route": "shared",
+    "outcome": "loaded"
+   }
+  ],
+  "valid": false
+ },
+ {
+  "name": "empty array",
+  "value": [],
+  "valid": false
+ },
+ {
+  "name": "true",
+  "value": true,
+  "valid": false
+ },
+ {
+  "name": "false",
+  "value": false,
+  "valid": false
+ },
+ {
+  "name": "number",
+  "value": 5,
+  "valid": false
+ },
+ {
+  "name": "string",
+  "value": "shared",
+  "valid": false
+ },
+ {
+  "name": "nested object field",
+  "value": {
+   "received_at_ms": 1700000000000,
+   "via": "activity",
+   "route": {
+    "a": 1
+   },
+   "outcome": "loaded"
+  },
+  "valid": false
+ },
+ {
+  "name": "nested object value",
+  "value": {
+   "x": {
+    "received_at_ms": 1700000000000,
+    "via": "activity",
+    "route": "shared",
+    "outcome": "loaded"
+   }
+  },
+  "valid": false
+ }
+]
