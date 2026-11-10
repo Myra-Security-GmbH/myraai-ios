@@ -1,0 +1,1340 @@
+{
+ "_header": [
+  "tests/fixtures/native_ua_token_cases.json (AGF-7211): the pinned contract of the MYRAai User-Agent token.",
+  "Grammar: MYRAai-<Android|iOS>/<head>[ / <osname> <osver> / <arch>( / <key>=<value>)*] running to the END of the user_agent.",
+  "CORE (head, osname == platform, osver 1..32 [A-Za-z0-9._-], arch 1..16 [A-Za-z0-9_-]): any failure -> native_os absent + _native_os_invalid.",
+  "OPTIONAL (sdk 1..9999 integer, build/display 1..64 [A-Za-z0-9._-], patch YYYY-MM-DD with month 01-12 and day 01-31 (range check only, no per-month calendar check: 2025-02-31 is accepted, 2025-13-45 / 2025-00-10 / 2025-12-32 / 2025-02-00 are dropped + marker); unknown [a-z][a-z0-9_]* keys with value 0..64 of the class are ignored): judged per segment; a bad one is skipped + _native_os_invalid, the rest stays.",
+  "PRODUCER RULES (AGF-7212 Android, AGF-7213 iOS): emit sdk only as an integer 1..9999; patch only if YYYY-MM-DD (month 01-12, day 01-31); build/display after replacing every character outside [A-Za-z0-9._-] with '_' and cutting to 64, and OMIT the segment when the result is empty; the core osver likewise (replace, cut to 32, empty RELEASE -> 'unknown'). HEAD: version ^[0-9][0-9.]*$ max 32 chars, build digits only max 10, device 1..128 bytes that must not contain ' / ': replace every character outside [A-Za-z0-9._-] with '_' and cut to 128 bytes (an empty device is rejected, so substitute a non-empty fallback). The whole User-Agent carries exactly one `MYRAai-`: every field and the platform default UA turn any `MYRAai-` into `MYRAai_`. A producer following these rules never triggers _native_os_invalid. iOS (AGF-7213): the device class is [A-Za-z0-9._,-] (the raw utsname.machine such as iPhone15,2 keeps its comma; Android's stricter class is unaffected and a subset); a head version or build that is off its class is replaced by '0' so the core OS facts survive; the build segment is the OS build (sysctl kern.osversion), omitted when unavailable or empty. iOS cannot rewrite the WebKit default UA (Apple-fixed text, no user/vendor-controlled part): the app token is appended by WebKit and DeviceTokenGuards proves the real UA carries exactly one `MYRAai-`.",
+  "Producer cases may carry an `android` object (AGF-7212: version_name, version_code, manufacturer, model, release, abi, sdk_int, build_id, display, security_patch (JSON null = Build field null), optional default_ua): the raw Android inputs; the Kotlin test asserts NativeUaToken output equals the token in `ua` (the whole `ua` when default_ua is given). The Lua unit ignores the key.",
+  "Producer cases may carry an `ios` object (AGF-7213: version, build, machine, system_version, os_build (JSON null = unavailable), default_ua = the WebKit default UA the token is appended to): the raw iOS inputs; the Swift test asserts `ua == default_ua + \" \" + NativeUaToken.token(...)`. The Lua unit ignores the key.",
+  "expect: \"absent\" (no key, no marker) | \"malformed\" (no native_os, _native_os_invalid) | {native_os} (exact object, no marker) | {native_os, invalid:true} (partial)."
+ ],
+ "cases": [
+  {
+   "name": "browser UA, no token",
+   "ua": "Mozilla/5.0 (X11; Linux x86_64) Chrome/130.0",
+   "expect": "absent"
+  },
+  {
+   "name": "empty user agent",
+   "ua": "",
+   "expect": "absent"
+  },
+  {
+   "name": "Android today's token",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "iOS today's token",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 MYRAai-iOS/3.2 (45) iPhone15,2 / iOS 17.0 / arm64e",
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "17.0",
+     "arch": "arm64e"
+    }
+   }
+  },
+  {
+   "name": "token alone (no browser prefix)",
+   "ua": "MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "Android full new shape",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=36 / build=BP2A.250805.005 / display=BP2A.250805.005 / patch=2025-08-05",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36,
+     "build": "BP2A.250805.005",
+     "display": "BP2A.250805.005",
+     "patch": "2025-08-05"
+    }
+   },
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": "samsung",
+    "model": "SM-S911B",
+    "release": "16",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": "BP2A.250805.005",
+    "display": "BP2A.250805.005",
+    "security_patch": "2025-08-05"
+   }
+  },
+  {
+   "name": "iOS with build",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 MYRAai-iOS/3.2 (45) iPhone15,2 / iOS 17.0 / arm64e / build=22B83",
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "17.0",
+     "arch": "arm64e",
+     "build": "22B83"
+    }
+   }
+  },
+  {
+   "name": "old build: version only",
+   "ua": "Mozilla/5.0 MYRAai-Android/1.0",
+   "expect": "absent"
+  },
+  {
+   "name": "old build: version and build",
+   "ua": "Mozilla/5.0 MYRAai-Android/1.4.0 (77)",
+   "expect": "absent"
+  },
+  {
+   "name": "old build: empty head",
+   "ua": "Mozilla/5.0 MYRAai-iOS/",
+   "expect": "absent"
+  },
+  {
+   "name": "old build iOS version",
+   "ua": "Mozilla/5.0 MYRAai-iOS/3.2",
+   "expect": "absent"
+  },
+  {
+   "name": "Android preview codename osver",
+   "ua": "Mozilla/5.0 (Linux; Android Baklava; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android Baklava / arm64-v8a",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "Baklava",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "unknown future key ignored",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / future_key=abc.1 / sdk=34",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 34
+    }
+   }
+  },
+  {
+   "name": "unknown future key empty value ignored",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / flag=",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "sdk upper bound 9999",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=9999",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 9999
+    }
+   }
+  },
+  {
+   "name": "sdk lower bound 1",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=1",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 1
+    }
+   }
+  },
+  {
+   "name": "patch only",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-08-05",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "patch": "2025-08-05"
+    }
+   }
+  },
+  {
+   "name": "device with spaces",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) Galaxy S23 Ultra / Android 16 / arm64-v8a",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "16 parts accepted",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / k0=v / k1=v / k2=v / k3=v / k4=v / k5=v / k6=v / k7=v / k8=v / k9=v / k10=v / k11=v / k12=v",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "two tokens",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "two tokens, second old",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a MYRAai-iOS/",
+   "expect": "malformed"
+  },
+  {
+   "name": "unknown platform MYRAai-Foo",
+   "ua": "Mozilla/5.0 MYRAai-Foo/1.0 (1) dev / Foo 1 / x",
+   "expect": "malformed"
+  },
+  {
+   "name": "lowercase platform",
+   "ua": "Mozilla/5.0 MYRAai-android/1.0 (1) dev / android 1 / x",
+   "expect": "malformed"
+  },
+  {
+   "name": "no slash after platform",
+   "ua": "Mozilla/5.0 MYRAai-Android",
+   "expect": "malformed"
+  },
+  {
+   "name": "two parts",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) dev / Android 16",
+   "expect": "malformed"
+  },
+  {
+   "name": "17 parts",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / k0=v / k1=v / k2=v / k3=v / k4=v / k5=v / k6=v / k7=v / k8=v / k9=v / k10=v / k11=v / k12=v / k13=v",
+   "expect": "malformed"
+  },
+  {
+   "name": "30 parts",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / k0=v / k1=v / k2=v / k3=v / k4=v / k5=v / k6=v / k7=v / k8=v / k9=v / k10=v / k11=v / k12=v / k13=v / k14=v / k15=v / k16=v / k17=v / k18=v / k19=v / k20=v / k21=v / k22=v / k23=v / k24=v / k25=v / k26=v",
+   "expect": "malformed"
+  },
+  {
+   "name": "osname differs from platform",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / iOS 16 / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "bad head garbage",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/garbage",
+   "expect": "malformed"
+  },
+  {
+   "name": "head with letters in version",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0a",
+   "expect": "malformed"
+  },
+  {
+   "name": "head version too long",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/111111111111111111111111111111111",
+   "expect": "malformed"
+  },
+  {
+   "name": "head build over 10 digits",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0 (12345678901)",
+   "expect": "malformed"
+  },
+  {
+   "name": "3-part head without build",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0 dev / Android 16 / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "3-part head without device",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0 (1)  / Android 16 / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "device over 128 bytes",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd / Android 16 / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "device 128 bytes ok",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd / Android 16 / arm64-v8a",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "osver with space",
+   "ua": "Mozilla/5.0 (Linux; Android 16 beta; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 beta / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "osver with unicode",
+   "ua": "Mozilla/5.0 (Linux; Android 1é; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 1é / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "osver with angle bracket",
+   "ua": "Mozilla/5.0 (Linux; Android <b>; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android <b> / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "osver empty",
+   "ua": "Mozilla/5.0 (Linux; Android ; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android  / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "osver over 32",
+   "ua": "Mozilla/5.0 (Linux; Android 111111111111111111111111111111111; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 111111111111111111111111111111111 / arm64-v8a",
+   "expect": "malformed"
+  },
+  {
+   "name": "osver 32 ok",
+   "ua": "Mozilla/5.0 (Linux; Android 11111111111111111111111111111111; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 11111111111111111111111111111111 / arm64-v8a",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "11111111111111111111111111111111",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "arch with dot",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm.64",
+   "expect": "malformed"
+  },
+  {
+   "name": "arch empty",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / ",
+   "expect": "malformed"
+  },
+  {
+   "name": "arch over 16",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / aaaaaaaaaaaaaaaaa",
+   "expect": "malformed"
+  },
+  {
+   "name": "arch 16 ok",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / aaaaaaaaaaaaaaaa",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "aaaaaaaaaaaaaaaa"
+    }
+   }
+  },
+  {
+   "name": "arch with trailing space",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a ",
+   "expect": "malformed"
+  },
+  {
+   "name": "client cut ellipsis inside core",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64…",
+   "expect": "malformed"
+  },
+  {
+   "name": "cut inside the build digits",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (98",
+   "expect": "malformed"
+  },
+  {
+   "name": "sdk 0",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=0 / build=X1",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "build": "X1"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "sdk 10000",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=10000",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "sdk 3a",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=3a",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "sdk 5 digits",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=00036",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "sdk negative",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=-3",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "sdk empty",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "build 65 chars",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / build=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "build 64 chars ok",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / build=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "build": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   }
+  },
+  {
+   "name": "build with space",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / build=a b / sdk=36",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "build with angle bracket",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / build=<script>",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "build with unicode",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / build=café / patch=2025-01-02",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "patch": "2025-01-02"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "display empty",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / display=",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "display bad char",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / display=a;b",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "duplicate key keeps first",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=34 / sdk=35",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 34
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "duplicate after invalid first stays dropped",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=x / sdk=35",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "segment without =",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / garbage / sdk=36",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "empty segment (double space)",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a /  / sdk=36",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "patch not zero padded",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-8-5",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "patch year-month only",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2019-05",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "patch trailing garbage",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-08-05x",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "patch 31st of a short month (no per-month calendar check)",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-02-31",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "patch": "2025-02-31"
+    }
+   }
+  },
+  {
+   "name": "patch last day of year",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-12-31",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "patch": "2025-12-31"
+    }
+   }
+  },
+  {
+   "name": "patch first day of year",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-01-01",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "patch": "2025-01-01"
+    }
+   }
+  },
+  {
+   "name": "patch out of range 2025-13-45",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-13-45",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "patch out of range 2025-00-10",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-00-10",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "patch out of range 2025-12-32",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-12-32",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "patch out of range 2025-02-00",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-02-00",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "patch out of range 2025-13-99",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / patch=2025-13-99",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "producer-sanitised device (spaces and brackets replaced by _)",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) Galaxy_S23_Ultra__5G_ / Android 16 / arm64-v8a",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "producer device cut to 128 bytes",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa / Android 16 / arm64-v8a",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    }
+   }
+  },
+  {
+   "name": "trailing space on last segment",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / sdk=36 ",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "trailing ellipsis cut on last segment",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / build=BP2A.250805…",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "trailing separator",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / ",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "unknown key bad name uppercase",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / Future=1 / sdk=36",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "unknown key bad name leading digit",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / 1x=1",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "unknown key value over 64",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / zz=vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "unknown key value with space",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / zz=a b",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "unknown key name over 32",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk=1",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "known key wrong case",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / SDK=36",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "equals only",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / =",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "lone slash segment",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) samsung_SM-S911B / Android 16 / arm64-v8a / / sdk=36",
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a"
+    },
+    "invalid": true
+   }
+  },
+  {
+   "name": "producer: GrapheneOS-like Pixel",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) Google_Pixel_9_Pro / Android 16 / arm64-v8a / sdk=36 / build=BP2A.250805.005 / display=BP2A.250805.005 / patch=2025-08-05",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": "Google",
+    "model": "Pixel 9 Pro",
+    "release": "16",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": "BP2A.250805.005",
+    "display": "BP2A.250805.005",
+    "security_patch": "2025-08-05"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36,
+     "build": "BP2A.250805.005",
+     "display": "BP2A.250805.005",
+     "patch": "2025-08-05"
+    }
+   }
+  },
+  {
+   "name": "producer: beta release and spaced display",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) Google_Pixel_9_Pro / Android 16_beta / arm64-v8a / sdk=36 / display=BP31.250502.008_release-keys",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": "Google",
+    "model": "Pixel 9 Pro",
+    "release": "16 beta",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": null,
+    "display": "BP31.250502.008 release-keys",
+    "security_patch": null
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16_beta",
+     "arch": "arm64-v8a",
+     "sdk": 36,
+     "display": "BP31.250502.008_release-keys"
+    }
+   }
+  },
+  {
+   "name": "producer: long display cut to 64",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) Google_Pixel_9_Pro / Android 16 / arm64-v8a / sdk=36 / build=BP2A.250805.005 / display=lineage_21.0-20250805-UNOFFICIAL-x_y_x_y_x_y_x_y_x_y_x_y_x_y_x_y",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": "Google",
+    "model": "Pixel 9 Pro",
+    "release": "16",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": "BP2A.250805.005",
+    "display": "lineage_21.0-20250805-UNOFFICIAL-x y x y x y x y x y x y x y x y x y x y ",
+    "security_patch": null
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36,
+     "build": "BP2A.250805.005",
+     "display": "lineage_21.0-20250805-UNOFFICIAL-x_y_x_y_x_y_x_y_x_y_x_y_x_y_x_y"
+    }
+   }
+  },
+  {
+   "name": "producer: off-format patch and empty build id",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) Google_Pixel_9_Pro / Android 16 / arm64-v8a / sdk=36",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": "Google",
+    "model": "Pixel 9 Pro",
+    "release": "16",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": "",
+    "display": null,
+    "security_patch": "2019-05"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36
+    }
+   }
+  },
+  {
+   "name": "producer: unicode and slash in model and display",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) Google_Mi_11_Ultra___ / Android 16 / arm64-v8a / sdk=36 / display=Mi_11_Ultra_____",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": "Google",
+    "model": "Mi 11 Ultra/国行",
+    "release": "16",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": null,
+    "display": "Mi 11 Ultra/国行 😀",
+    "security_patch": null
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36,
+     "display": "Mi_11_Ultra_____"
+    }
+   }
+  },
+  {
+   "name": "producer: MYRAai- inside model, build id and display",
+   "ua": "Mozilla/5.0 (Linux; Android 16; MYRAai_X Build/MYRAai_1; wv) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) MYRAai_X / Android 16 / arm64-v8a / sdk=36 / build=MYRAai_1 / display=foo_MYRAai_1",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": null,
+    "model": "MYRAai-X",
+    "release": "16",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": "MYRAai-1",
+    "display": "foo MYRAai-1",
+    "security_patch": null,
+    "default_ua": "Mozilla/5.0 (Linux; Android 16; MYRAai-X Build/MYRAai-1; wv) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36,
+     "build": "MYRAai_1",
+     "display": "foo_MYRAai_1"
+    }
+   }
+  },
+  {
+   "name": "producer: patch with trailing newline is omitted",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) Google_Pixel_9_Pro / Android 16 / arm64-v8a / sdk=36",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": "Google",
+    "model": "Pixel 9 Pro",
+    "release": "16",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": null,
+    "display": null,
+    "security_patch": "2025-08-05\n"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36
+    }
+   }
+  },
+  {
+   "name": "producer: null manufacturer and model",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) unknown / Android 16 / arm64-v8a / sdk=36",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": null,
+    "model": null,
+    "release": "16",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": null,
+    "display": null,
+    "security_patch": null
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36
+    }
+   }
+  },
+  {
+   "name": "producer: null release and abi, sdk 0",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) Google_Pixel_9_Pro / Android unknown / unknown",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": "Google",
+    "model": "Pixel 9 Pro",
+    "release": null,
+    "abi": null,
+    "sdk_int": 0,
+    "build_id": null,
+    "display": null,
+    "security_patch": null
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "unknown",
+     "arch": "unknown"
+    }
+   }
+  },
+  {
+   "name": "producer: over-long model cut to 128",
+   "ua": "Mozilla/5.0 (Linux; Android 16; SM-S911B) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36 MYRAai-Android/1.0.9 (984) mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm / Android 16 / arm64-v8a / sdk=36",
+   "android": {
+    "version_name": "1.0.9",
+    "version_code": 984,
+    "manufacturer": "",
+    "model": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+    "release": "16",
+    "abi": "arm64-v8a",
+    "sdk_int": 36,
+    "build_id": null,
+    "display": null,
+    "security_patch": null
+   },
+   "expect": {
+    "native_os": {
+     "platform": "Android",
+     "os_version": "16",
+     "arch": "arm64-v8a",
+     "sdk": 36
+    }
+   }
+  },
+  {
+   "name": "iOS producer: release iPhone",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) iPhone15,2 / iOS 18.1 / arm64e / build=22B83",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": "iPhone15,2",
+    "system_version": "18.1",
+    "os_build": "22B83",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "18.1",
+     "arch": "arm64e",
+     "build": "22B83"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: beta OS build with lowercase suffix",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) iPhone15,2 / iOS 26.0 / arm64e / build=23A5276f",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": "iPhone15,2",
+    "system_version": "26.0",
+    "os_build": "23A5276f",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "26.0",
+     "arch": "arm64e",
+     "build": "23A5276f"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: simulator-like machine and macOS host build",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) arm64 / iOS 18.1 / arm64e / build=24G90",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": "arm64",
+    "system_version": "18.1",
+    "os_build": "24G90",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "18.1",
+     "arch": "arm64e",
+     "build": "24G90"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: os_build unavailable (null) -> no build segment",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) iPhone15,2 / iOS 18.1 / arm64e",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": "iPhone15,2",
+    "system_version": "18.1",
+    "os_build": null,
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "18.1",
+     "arch": "arm64e"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: os_build empty -> no build segment",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) iPhone15,2 / iOS 18.1 / arm64e",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": "iPhone15,2",
+    "system_version": "18.1",
+    "os_build": "",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "18.1",
+     "arch": "arm64e"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: os_build with space, unicode and MYRAai-",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) iPhone15,2 / iOS 18.1 / arm64e / build=22B83_MYRAai_x__",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": "iPhone15,2",
+    "system_version": "18.1",
+    "os_build": "22B83 MYRAai-x é",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "18.1",
+     "arch": "arm64e",
+     "build": "22B83_MYRAai_x__"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: machine with MYRAai- and unicode, system_version with space",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) MYRAai_iPhone,_ / iOS 18.1_beta / arm64e / build=22B83",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": "MYRAai-iPhone,é",
+    "system_version": "18.1 beta",
+    "os_build": "22B83",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "18.1_beta",
+     "arch": "arm64e",
+     "build": "22B83"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: nil machine and nil system_version -> unknown",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) unknown / iOS unknown / arm64e / build=22B83",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": null,
+    "system_version": null,
+    "os_build": "22B83",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "unknown",
+     "arch": "arm64e",
+     "build": "22B83"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: over-long os_build and machine are cut",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm / iOS 18.1 / arm64e / build=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+    "system_version": "18.1",
+    "os_build": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "18.1",
+     "arch": "arm64e",
+     "build": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: bad head version/build fall back to 0",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/0 (0) iPhone15,2 / iOS 18.1 / arm64e / build=22B83",
+   "ios": {
+    "version": "1.0.15-beta",
+    "build": "10.1",
+    "machine": "iPhone15,2",
+    "system_version": "18.1",
+    "os_build": "22B83",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "18.1",
+     "arch": "arm64e",
+     "build": "22B83"
+    }
+   }
+  },
+  {
+   "name": "iOS producer: combining mark and flag emoji are one underscore per scalar",
+   "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) MYRAai-iOS/1.0.15 (10) e___ / iOS 18.1 / arm64e / build=22B83",
+   "ios": {
+    "version": "1.0.15",
+    "build": "10",
+    "machine": "é🇩🇪",
+    "system_version": "18.1",
+    "os_build": "22B83",
+    "default_ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+   },
+   "expect": {
+    "native_os": {
+     "platform": "iOS",
+     "os_version": "18.1",
+     "arch": "arm64e",
+     "build": "22B83"
+    }
+   }
+  }
+ ]
+}
